@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
@@ -33,6 +34,19 @@ public static class ValidationBundleTools
         "obj",
         "TestResults",
     };
+
+    // workspace-fork-apply-security-hardening: default TTL (hours) for retained forks when
+    // ROSLYNMCP_FORK_TTL_HOURS is unset/invalid. Kept forks older than this are swept on the
+    // next fork-apply write path (bounded O(fork-count)).
+    private const double DefaultForkTtlHours = 24;
+
+    // Default dotnet restore timeout (minutes) when ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES
+    // is unset/invalid.
+    private const double DefaultForkRestoreTimeoutMinutes = 2;
+
+    // The exact wire format CreateForkDirectory stamps as the fork-directory-name prefix.
+    // Quoted 'T'/'Z' so the literals are matched (not interpreted) on the parse side.
+    private const string ForkTimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
 
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
@@ -274,11 +288,94 @@ public static class ValidationBundleTools
         var forkRoot = Path.Combine(sourceRoot, ".roslynmcp", "forks");
         Directory.CreateDirectory(forkRoot);
 
+        // workspace-fork-apply-security-hardening: lazily expire stale retained forks before
+        // minting a new one so retention=keep no longer accumulates forks indefinitely.
+        SweepExpiredForks(forkRoot);
+
         var slug = SanitizeForkName(forkName);
-        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffZ");
+        var timestamp = DateTimeOffset.UtcNow.ToString(ForkTimestampFormat, CultureInfo.InvariantCulture);
         var forkPath = Path.Combine(forkRoot, $"{timestamp}-{slug}");
         Directory.CreateDirectory(forkPath);
         return forkPath;
+    }
+
+    /// <summary>
+    /// workspace-fork-apply-security-hardening: TTL sweep for retained forks. Reads
+    /// <c>ROSLYNMCP_FORK_TTL_HOURS</c> (default 24h) and deletes fork dirs whose
+    /// <see cref="ForkTimestampFormat"/> name-prefix is older than the cutoff. Fork dirs with an
+    /// unparseable prefix are kept (fail-safe: never delete something we cannot date). A
+    /// non-positive TTL disables the sweep. Best-effort — a delete failure is swallowed so a
+    /// locked stale fork never blocks a fresh fork-apply.
+    /// </summary>
+    internal static void SweepExpiredForks(string forkRoot)
+        => SweepExpiredForks(forkRoot, ResolveForkTtlHours(), DateTimeOffset.UtcNow);
+
+    internal static void SweepExpiredForks(string forkRoot, double ttlHours, DateTimeOffset now)
+    {
+        if (ttlHours <= 0 || !Directory.Exists(forkRoot))
+        {
+            return;
+        }
+
+        var cutoff = now - TimeSpan.FromHours(ttlHours);
+        foreach (var dir in Directory.EnumerateDirectories(forkRoot))
+        {
+            var name = Path.GetFileName(dir);
+            var dashIndex = name.IndexOf('-');
+            var timestampPart = dashIndex > 0 ? name[..dashIndex] : name;
+
+            if (!DateTimeOffset.TryParseExact(
+                    timestampPart,
+                    ForkTimestampFormat,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var created))
+            {
+                // Unparseable prefix — keep it. We only expire forks we can positively date.
+                continue;
+            }
+
+            if (created < cutoff)
+            {
+                try
+                {
+                    DeleteDirectoryIfExists(dir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort — a locked stale fork must not block minting a new one.
+                }
+            }
+        }
+    }
+
+    internal static double ResolveForkTtlHours()
+        => ReadPositiveEnvDouble("ROSLYNMCP_FORK_TTL_HOURS", DefaultForkTtlHours, allowZero: true);
+
+    internal static double ResolveForkRestoreTimeoutMinutes()
+        => ReadPositiveEnvDouble("ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES", DefaultForkRestoreTimeoutMinutes, allowZero: false);
+
+    internal static string ResolveForkDotnetPath()
+    {
+        var configured = Environment.GetEnvironmentVariable("ROSLYNMCP_FORK_DOTNET_PATH");
+        return string.IsNullOrWhiteSpace(configured) ? "dotnet" : configured.Trim();
+    }
+
+    private static double ReadPositiveEnvDouble(string variable, double fallback, bool allowZero)
+    {
+        var raw = Environment.GetEnvironmentVariable(variable);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && (parsed > 0 || (allowZero && parsed == 0)))
+        {
+            return parsed;
+        }
+
+        return fallback;
     }
 
     private static string SanitizeForkName(string? forkName)
@@ -300,12 +397,20 @@ public static class ValidationBundleTools
         return slug.Length <= 40 ? slug : slug[..40];
     }
 
-    private static void CopyDirectory(string sourceDir, string destinationDir)
+    internal static void CopyDirectory(string sourceDir, string destinationDir)
     {
         Directory.CreateDirectory(destinationDir);
 
         foreach (var file in Directory.EnumerateFiles(sourceDir))
         {
+            // workspace-fork-apply-security-hardening: never copy secret-bearing files into a
+            // server-writable fork dir. This is a denylist (known secret filename shapes), not an
+            // allowlist — see IsSecretBearingFile for the documented limitation.
+            if (IsSecretBearingFile(Path.GetFileName(file)))
+            {
+                continue;
+            }
+
             var destination = Path.Combine(destinationDir, Path.GetFileName(file));
             File.Copy(file, destination, overwrite: true);
         }
@@ -321,16 +426,68 @@ public static class ValidationBundleTools
         }
     }
 
+    /// <summary>
+    /// workspace-fork-apply-security-hardening: true when <paramref name="fileName"/> matches a
+    /// known secret-bearing filename shape that must not be copied into a server-writable fork
+    /// dir. All comparisons are case-insensitive (<see cref="StringComparison.OrdinalIgnoreCase"/>).
+    /// <para>
+    /// KNOWN LIMITATION: this is a denylist of common secret-file shapes, not an allowlist. A
+    /// project that stashes secrets in a non-matching filename (e.g. <c>config.local.yaml</c>,
+    /// <c>credentials.txt</c>) will still have that file copied into the fork. The fork dir lives
+    /// under the source root and is deleted by retention policy / TTL sweep, so exposure is
+    /// bounded, but this predicate should be extended as new secret conventions surface.
+    /// </para>
+    /// Excluded shapes: <c>.env</c>, <c>.env.*</c>, <c>secrets.json</c>, <c>*.pubxml</c>,
+    /// <c>*.pubxml.user</c>, <c>*.pfx</c>, <c>*.key</c>, and <c>appsettings.*.json</c> EXCEPT the
+    /// non-secret base <c>appsettings.json</c> and <c>appsettings.Development.json</c>.
+    /// </summary>
+    internal static bool IsSecretBearingFile(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return false;
+        }
+
+        if (fileName.Equals(".env", StringComparison.OrdinalIgnoreCase)
+            || fileName.StartsWith(".env.", StringComparison.OrdinalIgnoreCase)
+            || fileName.Equals("secrets.json", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".pubxml", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".pubxml.user", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // appsettings.*.json — environment-specific settings often carry connection strings /
+        // secrets. The base appsettings.json and the conventionally-non-secret
+        // appsettings.Development.json are retained.
+        if (fileName.StartsWith("appsettings.", StringComparison.OrdinalIgnoreCase)
+            && fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            return !fileName.Equals("appsettings.json", StringComparison.OrdinalIgnoreCase)
+                && !fileName.Equals("appsettings.Development.json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
     private static async Task RestoreForkAsync(string forkLoadedPath, CancellationToken ct)
     {
         var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
             ?? throw new InvalidOperationException($"Could not resolve working directory for fork '{forkLoadedPath}'.");
+
+        // workspace-fork-apply-security-hardening: dotnet path + restore timeout are env-configurable
+        // (ROSLYNMCP_FORK_DOTNET_PATH / ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES) so pinned-SDK and
+        // slow-network environments are not stuck with a hardcoded "dotnet" on PATH and a fixed 2-min cap.
+        var dotnetPath = ResolveForkDotnetPath();
+        var timeoutMinutes = ResolveForkRestoreTimeoutMinutes();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromMinutes(2));
+        timeout.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = dotnetPath,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -356,7 +513,8 @@ public static class ValidationBundleTools
             // process already exited, or a race on the process handle) is not actionable here —
             // we are already throwing TimeoutException — so the swallow is deliberate.
             try { process.Kill(entireProcessTree: true); } catch { /* see comment above — non-actionable on the timeout path */ }
-            throw new TimeoutException("dotnet restore for workspace fork exceeded the 2 minute timeout.");
+            throw new TimeoutException(
+                $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");
         }
 
         var stdout = await stdoutTask.ConfigureAwait(false);

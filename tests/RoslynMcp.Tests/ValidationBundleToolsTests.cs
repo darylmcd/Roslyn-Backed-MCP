@@ -119,6 +119,227 @@ public sealed class ValidationBundleToolsTests
                 gate, service, workspaceId: "ws-1", runTests: false, summary: false, ct: default));
     }
 
+    // ── workspace-fork-apply-security-hardening ─────────────────────────────
+    // Secret-file exclusion, retained-fork TTL sweep, and env-configurable restore path/timeout.
+
+    [TestMethod]
+    [DataRow(".env")]
+    [DataRow(".ENV")]
+    [DataRow(".env.local")]
+    [DataRow(".env.Production")]
+    [DataRow("secrets.json")]
+    [DataRow("Secrets.JSON")]
+    [DataRow("app.pubxml")]
+    [DataRow("app.pubxml.user")]
+    [DataRow("cert.pfx")]
+    [DataRow("private.key")]
+    [DataRow("appsettings.Production.json")]
+    [DataRow("appsettings.Staging.json")]
+    [DataRow("APPSETTINGS.PRODUCTION.JSON")]
+    public void IsSecretBearingFile_SecretShapes_ReturnsTrue(string fileName)
+        => Assert.IsTrue(ValidationBundleTools.IsSecretBearingFile(fileName),
+            $"'{fileName}' is a secret-bearing shape and must be excluded from forks.");
+
+    [TestMethod]
+    [DataRow("appsettings.json")]
+    [DataRow("APPSETTINGS.JSON")]
+    [DataRow("appsettings.Development.json")]
+    [DataRow("appsettings.development.json")]
+    [DataRow("Program.cs")]
+    [DataRow("README.md")]
+    [DataRow("keychain.txt")]
+    [DataRow("envelope.cs")]
+    [DataRow("")]
+    public void IsSecretBearingFile_SafeShapes_ReturnsFalse(string fileName)
+        => Assert.IsFalse(ValidationBundleTools.IsSecretBearingFile(fileName),
+            $"'{fileName}' is not a secret-bearing shape and must be copied into forks.");
+
+    [TestMethod]
+    public void CopyDirectory_ExcludesSecretFiles_KeepsSafeFiles()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-copy-tests", Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(root, "src");
+        var dest = Path.Combine(root, "fork");
+        try
+        {
+            Directory.CreateDirectory(source);
+            // Secret-bearing — must NOT land in the fork.
+            File.WriteAllText(Path.Combine(source, ".env"), "SECRET=1");
+            File.WriteAllText(Path.Combine(source, "appsettings.Production.json"), "{}");
+            File.WriteAllText(Path.Combine(source, "cert.pfx"), "binary");
+            // Safe — must land in the fork.
+            File.WriteAllText(Path.Combine(source, "appsettings.json"), "{}");
+            File.WriteAllText(Path.Combine(source, "appsettings.Development.json"), "{}");
+            File.WriteAllText(Path.Combine(source, "Program.cs"), "class C {}");
+
+            ValidationBundleTools.CopyDirectory(source, dest);
+
+            Assert.IsFalse(File.Exists(Path.Combine(dest, ".env")), ".env must be excluded.");
+            Assert.IsFalse(File.Exists(Path.Combine(dest, "appsettings.Production.json")),
+                "appsettings.Production.json must be excluded.");
+            Assert.IsFalse(File.Exists(Path.Combine(dest, "cert.pfx")), "*.pfx must be excluded.");
+            Assert.IsTrue(File.Exists(Path.Combine(dest, "appsettings.json")),
+                "base appsettings.json must be copied.");
+            Assert.IsTrue(File.Exists(Path.Combine(dest, "appsettings.Development.json")),
+                "appsettings.Development.json must be copied.");
+            Assert.IsTrue(File.Exists(Path.Combine(dest, "Program.cs")), "Program.cs must be copied.");
+        }
+        finally
+        {
+            TryDeleteTree(root);
+        }
+    }
+
+    [TestMethod]
+    public void SweepExpiredForks_DeletesExpired_KeepsFreshAndUnparseable()
+    {
+        var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(forkRoot);
+            var now = DateTimeOffset.UtcNow;
+
+            // Expired: stamped 48h ago (TTL below is 24h).
+            var expired = MakeForkDir(forkRoot, now.AddHours(-48), "old");
+            // Fresh: stamped 1h ago.
+            var fresh = MakeForkDir(forkRoot, now.AddHours(-1), "new");
+            // Unparseable prefix — must be kept (fail-safe).
+            var unparseable = Path.Combine(forkRoot, "not-a-timestamp-abc");
+            Directory.CreateDirectory(unparseable);
+
+            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours: 24, now: now);
+
+            Assert.IsFalse(Directory.Exists(expired), "Fork older than the TTL must be swept.");
+            Assert.IsTrue(Directory.Exists(fresh), "Fork newer than the TTL must be kept.");
+            Assert.IsTrue(Directory.Exists(unparseable),
+                "Fork with an unparseable timestamp prefix must be kept (fail-safe).");
+        }
+        finally
+        {
+            TryDeleteTree(forkRoot);
+        }
+    }
+
+    [TestMethod]
+    public void SweepExpiredForks_NonPositiveTtl_DisablesSweep()
+    {
+        var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(forkRoot);
+            var now = DateTimeOffset.UtcNow;
+            var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
+
+            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours: 0, now: now);
+
+            Assert.IsTrue(Directory.Exists(ancient), "A non-positive TTL must disable the sweep entirely.");
+        }
+        finally
+        {
+            TryDeleteTree(forkRoot);
+        }
+    }
+
+    [TestMethod]
+    public void ResolveForkTtlHours_HonorsEnvOverrideAndFallsBack()
+    {
+        const string var = "ROSLYNMCP_FORK_TTL_HOURS";
+        var previous = Environment.GetEnvironmentVariable(var);
+        try
+        {
+            Environment.SetEnvironmentVariable(var, null);
+            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Unset must fall back to 24h.");
+
+            Environment.SetEnvironmentVariable(var, "6");
+            Assert.AreEqual(6, ValidationBundleTools.ResolveForkTtlHours(), "Override must be honored.");
+
+            Environment.SetEnvironmentVariable(var, "0");
+            Assert.AreEqual(0, ValidationBundleTools.ResolveForkTtlHours(), "Zero is a valid disable value for TTL.");
+
+            Environment.SetEnvironmentVariable(var, "not-a-number");
+            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Invalid must fall back to the default.");
+
+            Environment.SetEnvironmentVariable(var, "-5");
+            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Negative must fall back to the default.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(var, previous);
+        }
+    }
+
+    [TestMethod]
+    public void ResolveForkRestoreTimeoutMinutes_HonorsEnvOverrideAndFallsBack()
+    {
+        const string var = "ROSLYNMCP_FORK_RESTORE_TIMEOUT_MINUTES";
+        var previous = Environment.GetEnvironmentVariable(var);
+        try
+        {
+            Environment.SetEnvironmentVariable(var, null);
+            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Unset must fall back to 2 min.");
+
+            Environment.SetEnvironmentVariable(var, "10");
+            Assert.AreEqual(10, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Override must be honored.");
+
+            Environment.SetEnvironmentVariable(var, "0");
+            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(),
+                "Zero is not a usable timeout — must fall back to the default.");
+
+            Environment.SetEnvironmentVariable(var, "garbage");
+            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Invalid must fall back.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(var, previous);
+        }
+    }
+
+    [TestMethod]
+    public void ResolveForkDotnetPath_HonorsEnvOverrideAndFallsBack()
+    {
+        const string var = "ROSLYNMCP_FORK_DOTNET_PATH";
+        var previous = Environment.GetEnvironmentVariable(var);
+        try
+        {
+            Environment.SetEnvironmentVariable(var, null);
+            Assert.AreEqual("dotnet", ValidationBundleTools.ResolveForkDotnetPath(), "Unset must fall back to 'dotnet'.");
+
+            Environment.SetEnvironmentVariable(var, "  ");
+            Assert.AreEqual("dotnet", ValidationBundleTools.ResolveForkDotnetPath(), "Whitespace must fall back to 'dotnet'.");
+
+            Environment.SetEnvironmentVariable(var, @"C:\sdk\dotnet.exe");
+            Assert.AreEqual(@"C:\sdk\dotnet.exe", ValidationBundleTools.ResolveForkDotnetPath(),
+                "A configured dotnet path must be honored.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(var, previous);
+        }
+    }
+
+    private static string MakeForkDir(string forkRoot, DateTimeOffset stamp, string slug)
+    {
+        var name = $"{stamp.UtcDateTime.ToString("yyyyMMdd'T'HHmmssfff'Z'", System.Globalization.CultureInfo.InvariantCulture)}-{slug}";
+        var path = Path.Combine(forkRoot, name);
+        Directory.CreateDirectory(path);
+        // Drop a file so we prove recursive deletion, not just empty-dir removal.
+        File.WriteAllText(Path.Combine(path, "marker.txt"), "x");
+        return path;
+    }
+
+    private static void TryDeleteTree(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Best-effort test cleanup.
+        }
+    }
+
     private static void AssertStructuredEnvelope(string result, string expectedTool)
     {
         Assert.IsFalse(string.IsNullOrWhiteSpace(result), "Handler must always return a non-empty JSON string.");
