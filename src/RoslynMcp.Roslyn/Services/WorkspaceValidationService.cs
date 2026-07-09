@@ -102,8 +102,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         // is the cooperative-cancellation signal and must propagate to the caller.
         try
         {
-            return await ValidateInternalAsync(workspaceId, changedFilePaths, runTests, ct, summary, warnings: Array.Empty<string>())
-                .ConfigureAwait(false);
+            return await ValidateInternalAsync(
+                new ValidationRequestContext(workspaceId, changedFilePaths, runTests, summary, Array.Empty<string>()),
+                ct).ConfigureAwait(false);
         }
         catch (InternalValidationTimeoutException ex)
         {
@@ -136,8 +137,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             try
             {
-                return await ValidateInternalAsync(workspaceId, gitFiles, runTests, ct, summary, warnings: Array.Empty<string>())
-                    .ConfigureAwait(false);
+                return await ValidateInternalAsync(
+                    new ValidationRequestContext(workspaceId, gitFiles, runTests, summary, Array.Empty<string>()),
+                    ct).ConfigureAwait(false);
             }
             catch (InternalValidationTimeoutException ex)
             {
@@ -151,8 +153,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         // caller can tell why the scope is full instead of narrow.
         try
         {
-            return await ValidateInternalAsync(workspaceId, changedFilePaths: null, runTests, ct, summary, warnings: gitWarnings)
-                .ConfigureAwait(false);
+            return await ValidateInternalAsync(
+                new ValidationRequestContext(workspaceId, ChangedFilePaths: null, runTests, summary, gitWarnings),
+                ct).ConfigureAwait(false);
         }
         catch (InternalValidationTimeoutException ex)
         {
@@ -160,67 +163,38 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         }
     }
 
+    /// <summary>
+    /// Parameter object for <see cref="ValidateInternalAsync"/>. Folds the five per-call inputs
+    /// (<see cref="Warnings"/> carries any pre-accrued git-fallback warnings; the ambient
+    /// <see cref="CancellationToken"/> stays a separate argument). <c>unknownFiles</c> is NOT a
+    /// member — it is derived locally from <see cref="ResolveChangedFiles"/> inside the method.
+    /// </summary>
+    private readonly record struct ValidationRequestContext(
+        string WorkspaceId,
+        IReadOnlyList<string>? ChangedFilePaths,
+        bool RunTests,
+        bool Summary,
+        IReadOnlyList<string> Warnings);
+
     private async Task<WorkspaceValidationDto> ValidateInternalAsync(
-        string workspaceId,
-        IReadOnlyList<string>? changedFilePaths,
-        bool runTests,
-        CancellationToken ct,
-        bool summary,
-        IReadOnlyList<string> warnings)
+        ValidationRequestContext request,
+        CancellationToken ct)
     {
-        var (changedFiles, unknownFiles) = ResolveChangedFiles(workspaceId, changedFilePaths);
+        var (changedFiles, unknownFiles) = ResolveChangedFiles(request.WorkspaceId, request.ChangedFilePaths);
 
-        // validate-workspace-changetracker-no-disk-reconcile-after-git-checkout (gh #738):
-        // when the caller omits changedFilePaths we fall back to the ChangeTracker's
-        // append-only log. The tracker has no mechanism to drop entries for files that
-        // were subsequently reverted out-of-band (e.g. `git checkout -- foo.cs`), so the
-        // raw fallback list can include files that are now clean on disk. Reconcile the
-        // tracker-derived list against `git status` and keep only files git still reports
-        // as dirty. On git-unavailable / non-git-repo conditions we degrade gracefully:
-        // the unfiltered tracker list is used as before so the no-git path keeps its
-        // existing semantics.
-        if (changedFilePaths is null or { Count: 0 } && changedFiles.Count > 0)
+        // When the caller omitted changedFilePaths we fell back to the ChangeTracker's
+        // append-only log; reconcile that list against `git status` before validating.
+        if (request.ChangedFilePaths is null or { Count: 0 } && changedFiles.Count > 0)
         {
-            string? solutionDir;
-            try
-            {
-                solutionDir = ResolveSolutionDirectory(workspaceId);
-            }
-            catch
-            {
-                solutionDir = null;
-            }
-
-            if (solutionDir is not null)
-            {
-                var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
-                    .ConfigureAwait(false);
-
-                if (gitWarnings.Count == 0)
-                {
-                    // Build the dirty set with case-insensitive normalized paths so the
-                    // intersection survives platform path-separator + casing differences.
-                    var dirty = new HashSet<string>(
-                        gitFiles.Select(NormalizePathForReconcile),
-                        StringComparer.OrdinalIgnoreCase);
-                    var reconciled = changedFiles
-                        .Where(p => dirty.Contains(NormalizePathForReconcile(p)))
-                        .ToArray();
-                    changedFiles = reconciled;
-                }
-                // else: git unavailable / repo not found / git error — preserve existing
-                // unfiltered behavior (do NOT add a warning here; this branch is the
-                // default validate_workspace path, not validate_recent_git_changes; the
-                // git-status reconcile is a best-effort precision improvement, not a
-                // mandatory step).
-            }
+            changedFiles = await ReconcileChangeTrackerFilesAsync(request.WorkspaceId, changedFiles, ct)
+                .ConfigureAwait(false);
         }
 
         // Stage 1: in-memory compile check across the whole workspace.
         var compile = await RunValidationPhaseAsync(
             "compile_check",
             token => _compile.CheckAsync(
-                workspaceId,
+                request.WorkspaceId,
                 new CompileCheckOptions(SeverityFilter: "Error", Limit: 200),
                 token),
             ct).ConfigureAwait(false);
@@ -230,7 +204,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var diagResult = await RunValidationPhaseAsync(
             "project_diagnostics",
             token => _diagnostics.GetDiagnosticsAsync(
-                workspaceId, projectFilter: null, fileFilter: null,
+                request.WorkspaceId, projectFilter: null, fileFilter: null,
                 severityFilter: "Error", diagnosticIdFilter: null, token),
             ct).ConfigureAwait(false);
         var allErrors = compile.Diagnostics
@@ -240,6 +214,102 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             .DistinctBy(d => (d.Id, d.FilePath, d.StartLine, d.StartColumn))
             .ToArray();
 
+        // Stages 3+4: discover related tests and (optionally) run them.
+        var (related, testRunResult) = await DiscoverAndOptionallyRunTestsAsync(
+            request.WorkspaceId, changedFiles, request.RunTests, ct).ConfigureAwait(false);
+
+        var status = ComputeOverallStatus(compile, allErrors, testRunResult, request.RunTests);
+
+        var emittedWarnings = AppendTestZeroRunWarning(
+            request.Warnings, testRunResult, request.RunTests, related.DotnetTestFilter);
+
+        // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
+        // when caller asked for a summary. Counts + status still surface the verdict; the
+        // CompileResult and TestRunResult are kept because they already carry their own
+        // bounded summaries (compile_check.Diagnostics is capped at 200 by the caller above;
+        // test results are aggregate counters, not per-test rows).
+        var emittedErrors = request.Summary ? Array.Empty<DiagnosticDto>() : (IReadOnlyList<DiagnosticDto>)allErrors;
+        var emittedTests = request.Summary ? Array.Empty<RelatedTestCaseDto>() : related.Tests;
+
+        return new WorkspaceValidationDto(
+            OverallStatus: status,
+            ChangedFilePaths: changedFiles,
+            UnknownFilePaths: unknownFiles,
+            CompileResult: compile,
+            ErrorDiagnostics: emittedErrors,
+            // validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics:
+            // ErrorCount mirrors the always-populated WarningCount field below. Counted off
+            // allErrors (the full merged set), NOT emittedErrors, so summary=true callers
+            // still see the count that drove the OverallStatus verdict.
+            ErrorCount: allErrors.Length,
+            WarningCount: compile.WarningCount,
+            DiscoveredTests: emittedTests,
+            DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
+            TestRunResult: testRunResult,
+            Warnings: emittedWarnings);
+    }
+
+    /// <summary>
+    /// validate-workspace-changetracker-no-disk-reconcile-after-git-checkout (gh #738):
+    /// when the caller omits changedFilePaths we fall back to the ChangeTracker's
+    /// append-only log. The tracker has no mechanism to drop entries for files that
+    /// were subsequently reverted out-of-band (e.g. <c>git checkout -- foo.cs</c>), so the
+    /// raw fallback list can include files that are now clean on disk. Reconcile the
+    /// tracker-derived list against <c>git status</c> and return only files git still
+    /// reports as dirty. On git-unavailable / non-git-repo conditions we degrade gracefully:
+    /// the unfiltered tracker list is returned unchanged so the no-git path keeps its
+    /// existing semantics. Callers rebind their local — this method does NOT mutate a
+    /// captured variable.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ReconcileChangeTrackerFilesAsync(
+        string workspaceId,
+        IReadOnlyList<string> changedFiles,
+        CancellationToken ct)
+    {
+        string? solutionDir;
+        try
+        {
+            solutionDir = ResolveSolutionDirectory(workspaceId);
+        }
+        catch
+        {
+            solutionDir = null;
+        }
+
+        if (solutionDir is null)
+            return changedFiles;
+
+        var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
+            .ConfigureAwait(false);
+
+        // git unavailable / repo not found / git error — preserve existing unfiltered behavior
+        // (do NOT add a warning here; this branch is the default validate_workspace path, not
+        // validate_recent_git_changes; the git-status reconcile is a best-effort precision
+        // improvement, not a mandatory step).
+        if (gitWarnings.Count != 0)
+            return changedFiles;
+
+        // Build the dirty set with case-insensitive normalized paths so the intersection
+        // survives platform path-separator + casing differences.
+        var dirty = new HashSet<string>(
+            gitFiles.Select(NormalizePathForReconcile),
+            StringComparer.OrdinalIgnoreCase);
+        return changedFiles
+            .Where(p => dirty.Contains(NormalizePathForReconcile(p)))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Stage 3 (discover related tests for the changed files) plus optional Stage 4 (run them
+    /// when <paramref name="runTests"/> is set and a filter was discovered). Returns the
+    /// discovered-tests DTO and the test-run result (null when tests were not run).
+    /// </summary>
+    private async Task<(RelatedTestsForFilesDto Related, TestRunResultDto? TestRunResult)> DiscoverAndOptionallyRunTestsAsync(
+        string workspaceId,
+        IReadOnlyList<string> changedFiles,
+        bool runTests,
+        CancellationToken ct)
+    {
         // Stage 3: discover related tests for the changed files (no test execution yet).
         var related = changedFiles.Count == 0
             ? new RelatedTestsForFilesDto(
@@ -295,50 +365,36 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             }
         }
 
-        var status = ComputeOverallStatus(compile, allErrors, testRunResult, runTests);
+        return (related, testRunResult);
+    }
 
-        // validate-workspace-runtests-total-zero: when the new "test-zero-run" verdict fires,
-        // append a diagnostic warning that names the discovered filter and points at the most
-        // likely cause. Helps the caller decide whether to re-run test_run standalone (which
-        // tends to succeed because it does not race with the workspace's IChangeTracker
-        // refresh / dotnet test working-directory resolution).
-        var emittedWarnings = warnings;
-        if (runTests && testRunResult is not null && testRunResult.Total == 0 && !string.IsNullOrWhiteSpace(related.DotnetTestFilter))
+    /// <summary>
+    /// validate-workspace-runtests-total-zero: when the "test-zero-run" verdict fires, append a
+    /// diagnostic warning that names the discovered filter and points at the most likely cause.
+    /// Helps the caller decide whether to re-run test_run standalone (which tends to succeed
+    /// because it does not race with the workspace's IChangeTracker refresh / dotnet test
+    /// working-directory resolution). Returns <paramref name="warnings"/> unchanged when the
+    /// verdict does not apply.
+    /// </summary>
+    private static IReadOnlyList<string> AppendTestZeroRunWarning(
+        IReadOnlyList<string> warnings,
+        TestRunResultDto? testRunResult,
+        bool runTests,
+        string? filter)
+    {
+        if (runTests && testRunResult is not null && testRunResult.Total == 0 && !string.IsNullOrWhiteSpace(filter))
         {
-            emittedWarnings = warnings
+            return warnings
                 .Concat(new[]
                 {
-                    $"validate_workspace: runTests=true produced testRunResult.total=0 with filter '{related.DotnetTestFilter}'; "
+                    $"validate_workspace: runTests=true produced testRunResult.total=0 with filter '{filter}'; "
                     + "this likely indicates filter resolution failure (working-directory or IChangeTracker timing). "
                     + "Run test_run with the same filter to confirm."
                 })
                 .ToArray();
         }
 
-        // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
-        // when caller asked for a summary. Counts + status still surface the verdict; the
-        // CompileResult and TestRunResult are kept because they already carry their own
-        // bounded summaries (compile_check.Diagnostics is capped at 200 by the caller above;
-        // test results are aggregate counters, not per-test rows).
-        var emittedErrors = summary ? Array.Empty<DiagnosticDto>() : (IReadOnlyList<DiagnosticDto>)allErrors;
-        var emittedTests = summary ? Array.Empty<RelatedTestCaseDto>() : related.Tests;
-
-        return new WorkspaceValidationDto(
-            OverallStatus: status,
-            ChangedFilePaths: changedFiles,
-            UnknownFilePaths: unknownFiles,
-            CompileResult: compile,
-            ErrorDiagnostics: emittedErrors,
-            // validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics:
-            // ErrorCount mirrors the always-populated WarningCount field below. Counted off
-            // allErrors (the full merged set), NOT emittedErrors, so summary=true callers
-            // still see the count that drove the OverallStatus verdict.
-            ErrorCount: allErrors.Length,
-            WarningCount: compile.WarningCount,
-            DiscoveredTests: emittedTests,
-            DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
-            TestRunResult: testRunResult,
-            Warnings: emittedWarnings);
+        return warnings;
     }
 
     /// <summary>
