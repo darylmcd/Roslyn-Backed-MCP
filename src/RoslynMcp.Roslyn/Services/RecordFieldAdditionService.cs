@@ -251,11 +251,11 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
                 break;
             case DeclarationExpressionSyntax decl when decl.Designation is ParenthesizedVariableDesignationSyntax pvd
                                                         && InferredDeconstructionTargetMatches(decl, semanticModel, typeSymbol, ct):
-                AddUniqueDeconstructionFromDesignation(decl, pvd, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
+                AddUniqueDeconstructionFromDesignation(pvd, BuildLocationDto(decl, doc), existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
                 break;
             case AssignmentExpressionSyntax asn when asn.Left is TupleExpressionSyntax tuple
                                                       && AssignmentTargetMatches(asn, semanticModel, typeSymbol, ct):
-                AddUniqueDeconstructionFromTuple(asn, tuple, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
+                AddUniqueDeconstructionFromTuple(tuple, BuildLocationDto(asn, doc), existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
                 break;
             case RecursivePatternSyntax rp when PatternMatchesTarget(rp, semanticModel, typeSymbol, ct):
                 AddUniqueRecursivePattern(rp, doc, existingPositionalParameters, newField, deconstructionSites, propertyPatternSites, dedupeSpans);
@@ -428,7 +428,7 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
     {
         if (decl.Designation is not ParenthesizedVariableDesignationSyntax pvd) return false;
         if (!InferredDeconstructionTargetMatches(decl, ctx.SemanticModel, ctx.TargetType, ct)) return false;
-        AddUniqueDeconstructionFromDesignation(decl, pvd, baseDto, ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
+        AddUniqueDeconstructionFromDesignation(pvd, UpdateDtoSpan(baseDto, decl), ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
         return true;
     }
 
@@ -440,7 +440,7 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
     {
         if (asn.Left is not TupleExpressionSyntax tuple) return false;
         if (!AssignmentTargetMatches(asn, ctx.SemanticModel, ctx.TargetType, ct)) return false;
-        AddUniqueDeconstructionFromTuple(asn, tuple, baseDto, ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
+        AddUniqueDeconstructionFromTuple(tuple, UpdateDtoSpan(baseDto, asn), ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
         return true;
     }
 
@@ -475,36 +475,19 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         }
     }
 
+    // Deconstruction-site recorders shared by both discovery passes. The pass-A reference walker
+    // resolves `loc` via UpdateDtoSpan(baseDto, node); the pass-B document walker resolves it via
+    // BuildLocationDto(node, document). Both callers pass the already-resolved LocationDto so this
+    // method is span-source-agnostic.
     private static void AddUniqueDeconstructionFromDesignation(
-        DeclarationExpressionSyntax decl,
         ParenthesizedVariableDesignationSyntax pvd,
-        LocationDto baseDto,
+        LocationDto loc,
         IReadOnlyList<ExistingPositionalParameterDto> existingParameters,
         NewRecordFieldDto newField,
         List<RecordDeconstructionSiteDto> deconstructionSites,
         HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans)
     {
         if (existingParameters.Count == 0 || pvd.Variables.Count != existingParameters.Count) return;
-        var loc = UpdateDtoSpan(baseDto, decl);
-        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Designation:" + nameof(DeclarationExpressionSyntax))))
-        {
-            var original = pvd.ToString();
-            var suggested = BuildSuggestedDesignationPattern(pvd, newField);
-            deconstructionSites.Add(new RecordDeconstructionSiteDto(loc, original, suggested));
-        }
-    }
-
-    private static void AddUniqueDeconstructionFromDesignation(
-        DeclarationExpressionSyntax decl,
-        ParenthesizedVariableDesignationSyntax pvd,
-        Document document,
-        IReadOnlyList<ExistingPositionalParameterDto> existingParameters,
-        NewRecordFieldDto newField,
-        List<RecordDeconstructionSiteDto> deconstructionSites,
-        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans)
-    {
-        if (existingParameters.Count == 0 || pvd.Variables.Count != existingParameters.Count) return;
-        var loc = BuildLocationDto(decl, document);
         if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Designation:" + nameof(DeclarationExpressionSyntax))))
         {
             var original = pvd.ToString();
@@ -514,35 +497,14 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
     }
 
     private static void AddUniqueDeconstructionFromTuple(
-        AssignmentExpressionSyntax asn,
         TupleExpressionSyntax tuple,
-        LocationDto baseDto,
+        LocationDto loc,
         IReadOnlyList<ExistingPositionalParameterDto> existingParameters,
         NewRecordFieldDto newField,
         List<RecordDeconstructionSiteDto> deconstructionSites,
         HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans)
     {
         if (existingParameters.Count == 0 || tuple.Arguments.Count != existingParameters.Count) return;
-        var loc = UpdateDtoSpan(baseDto, asn);
-        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Tuple:" + nameof(AssignmentExpressionSyntax))))
-        {
-            var original = tuple.ToString();
-            var suggested = BuildSuggestedTuplePattern(tuple, newField);
-            deconstructionSites.Add(new RecordDeconstructionSiteDto(loc, original, suggested));
-        }
-    }
-
-    private static void AddUniqueDeconstructionFromTuple(
-        AssignmentExpressionSyntax asn,
-        TupleExpressionSyntax tuple,
-        Document document,
-        IReadOnlyList<ExistingPositionalParameterDto> existingParameters,
-        NewRecordFieldDto newField,
-        List<RecordDeconstructionSiteDto> deconstructionSites,
-        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans)
-    {
-        if (existingParameters.Count == 0 || tuple.Arguments.Count != existingParameters.Count) return;
-        var loc = BuildLocationDto(asn, document);
         if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Tuple:" + nameof(AssignmentExpressionSyntax))))
         {
             var original = tuple.ToString();

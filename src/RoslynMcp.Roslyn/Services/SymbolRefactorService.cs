@@ -379,7 +379,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 .ToArray();
 
             var partitionMethods = rawPartitionMethods
-                .Select(method => NormalizeMemberForPartition(method))
+                .Select(method => NormalizeForPartition(method))
                 .ToArray();
 
             var referencedFields = ResolveFieldsReferencedByMethods(context.FieldDeclarations, rawPartitionMethods);
@@ -667,13 +667,21 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return builder.ToString();
     }
 
-    private static MethodDeclarationSyntax NormalizeMemberForPartition(MethodDeclarationSyntax method)
+    /// <summary>
+    /// Strips attribute lists and resets leading/trailing trivia so a migrated member (method or
+    /// field) sits cleanly in the generated partition file. Attributes on the source declaration
+    /// are kept on the facade's forwarding stub if the user needs them; the authoritative
+    /// implementation on the partition gets a neutral decoration. Field initializers are preserved
+    /// verbatim — they may carry trailing trivia we don't want to disturb
+    /// (e.g. <c>= new(); // configured at construction</c>).
+    /// </summary>
+    private static T NormalizeForPartition<T>(T member) where T : MemberDeclarationSyntax
     {
-        // Strip attribute lists and normalize leading trivia so the moved method sits cleanly
-        // inside the generated partition file. Attributes on the source declaration are kept on
-        // the facade's forwarding stub if the user needs them; the authoritative implementation
-        // on the partition gets a neutral decoration.
-        return method
+        // WithAttributeLists on the MemberDeclarationSyntax base returns the base type; the
+        // WithLeading/TrailingTrivia extensions are generic over the node type. Roslyn's Update
+        // preserves the concrete runtime node type through the whole chain, so the cast back to T
+        // is safe.
+        return (T)member
             .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
             .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed))
             .WithTrailingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed));
@@ -693,7 +701,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         // assigned in the synthesized ctor body. When no uninitialized fields remain the ctor
         // is omitted entirely so we don't conflict with the implicit default constructor.
         var partitionMembers = new List<MemberDeclarationSyntax>();
-        partitionMembers.AddRange(referencedFields.Select(NormalizeFieldForPartition));
+        partitionMembers.AddRange(referencedFields.Select(field => NormalizeForPartition(field)));
 
         var ctorEligibleFields = referencedFields
             .Where(field => !FieldHasInitializer(field))
@@ -712,17 +720,6 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(usings);
         compilationUnit = WrapInNamespace(compilationUnit, namespaceName, classDecl);
         return compilationUnit.NormalizeWhitespace().ToFullString() + Environment.NewLine;
-    }
-
-    private static FieldDeclarationSyntax NormalizeFieldForPartition(FieldDeclarationSyntax field)
-    {
-        // Strip attributes and reset trivia so the migrated field sits cleanly at the top of the
-        // partition. Field initializers are preserved verbatim — they may carry trailing trivia
-        // we don't want to disturb (e.g. `= new(); // configured at construction`).
-        return field
-            .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
-            .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed))
-            .WithTrailingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed));
     }
 
     private static bool FieldHasInitializer(FieldDeclarationSyntax field)
