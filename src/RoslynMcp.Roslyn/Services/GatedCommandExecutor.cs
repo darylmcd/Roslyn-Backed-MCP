@@ -34,7 +34,25 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         _logger = logger;
         var globalLimit = Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
         _globalCommandGate = new SemaphoreSlim(globalLimit, globalLimit);
+        _workspaceManager.WorkspaceClosed += RemoveWorkspaceGate;
     }
+
+    /// <summary>
+    /// Prunes the per-workspace command gate when a workspace is closed or LRU-evicted, so the
+    /// <see cref="_workspaceCommandGates"/> dictionary stays bounded across repeated
+    /// load/close cycles instead of accumulating one <see cref="SemaphoreSlim"/> per distinct
+    /// workspaceId for the process lifetime.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does NOT call <see cref="SemaphoreSlim.Dispose"/> on the removed semaphore:
+    /// <see cref="ExecuteAsync(string, string, IReadOnlyList{string}, TimeSpan, IReadOnlyList{EarlyKillPattern}?, CancellationToken)"/>
+    /// can be mid-flight against this gate for the closing workspace (the command-execution gate
+    /// and the workspace-lifecycle gate are independent locking systems), and disposing a
+    /// <see cref="SemaphoreSlim"/> concurrently with an in-flight <c>WaitAsync</c>/<c>Release</c>
+    /// is documented as unsafe. Removing the dictionary entry alone satisfies bounded growth; the
+    /// orphaned semaphore is GC'd once the in-flight caller's local reference goes out of scope.
+    /// </remarks>
+    private void RemoveWorkspaceGate(string workspaceId) => _workspaceCommandGates.TryRemove(workspaceId, out _);
 
     public Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
@@ -117,6 +135,7 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
 
     public void Dispose()
     {
+        _workspaceManager.WorkspaceClosed -= RemoveWorkspaceGate;
         _globalCommandGate.Dispose();
         foreach (var kvp in _workspaceCommandGates)
         {

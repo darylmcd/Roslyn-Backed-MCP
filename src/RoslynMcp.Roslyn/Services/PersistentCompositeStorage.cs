@@ -61,38 +61,57 @@ public sealed class PersistentCompositeStorage
         // Search across workspaceVersion subdirectories — caller doesn't know the version
         // when redeeming a token from a separate process.
         if (!Directory.Exists(_rootDirectory)) return null;
-        foreach (var subdir in Directory.EnumerateDirectories(_rootDirectory))
+
+        // The enumeration and the TTL stat below race a sibling process's concurrent Delete /
+        // directory cleanup (this store's whole purpose is cross-process token redemption).
+        // Directory.EnumerateDirectories is lazy, so a mid-walk directory removal throws during
+        // the foreach's MoveNext, and File.GetLastWriteTimeUtc can throw between the File.Exists
+        // check and the stat. Wrap the whole loop so a caught race is treated as a cache miss
+        // (the in-memory CompositePreviewStore is the source of truth) rather than surfacing an
+        // uncaught DirectoryNotFoundException/IOException. DirectoryNotFoundException and
+        // FileNotFoundException both derive from IOException; UnauthorizedAccessException does
+        // not and is intentionally left to propagate (a genuine permissions problem, not a race).
+        try
         {
-            var path = Path.Combine(subdir, token + ".json");
-            if (!File.Exists(path)) continue;
+            foreach (var subdir in Directory.EnumerateDirectories(_rootDirectory))
+            {
+                var path = Path.Combine(subdir, token + ".json");
+                if (!File.Exists(path)) continue;
 
-            // TTL check based on file write time so cross-process readers honor expiry.
-            var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(path);
-            if (age > _ttl)
-            {
-                TryDelete(path);
-                return null;
-            }
+                // TTL check based on file write time so cross-process readers honor expiry.
+                var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(path);
+                if (age > _ttl)
+                {
+                    TryDelete(path);
+                    return null;
+                }
 
-            try
-            {
-                var json = File.ReadAllText(path);
-                var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
-                if (dto is null) return null;
-                return new CompositePreviewStore.Entry(
-                    dto.WorkspaceId,
-                    dto.WorkspaceVersion,
-                    dto.Description,
-                    dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
-                    dto.CreatedAt);
+                try
+                {
+                    var json = File.ReadAllText(path);
+                    var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
+                    if (dto is null) return null;
+                    return new CompositePreviewStore.Entry(
+                        dto.WorkspaceId,
+                        dto.WorkspaceVersion,
+                        dto.Description,
+                        dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
+                        dto.CreatedAt);
+                }
+                catch (Exception ex)
+                {
+                    // Corrupt entry — drop it and return null so the in-memory miss path takes over.
+                    _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable entry at {Path}.", path);
+                    TryDelete(path);
+                    return null;
+                }
             }
-            catch (Exception ex)
-            {
-                // Corrupt entry — drop it and return null so the in-memory miss path takes over.
-                _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable entry at {Path}.", path);
-                TryDelete(path);
-                return null;
-            }
+        }
+        catch (IOException ex)
+        {
+            // Directory/file removed by another process mid-enumeration — treat as a miss.
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: directory/file race while reading token; treating as miss.");
+            return null;
         }
         return null;
     }
