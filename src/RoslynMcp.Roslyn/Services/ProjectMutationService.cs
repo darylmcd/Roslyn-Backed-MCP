@@ -559,7 +559,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 preApplySolution: null,
                 fileSnapshots: new[] { new FileSnapshotDto(Path.GetFullPath(projectFilePath), preApplyContent) });
 
-            await File.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
+            await AtomicFileWriter.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
             _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");
