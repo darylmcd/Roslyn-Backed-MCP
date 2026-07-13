@@ -89,7 +89,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
                 var (type, project, compilation) = candidate;
                 try
                 {
-                    var metrics = await ComputeMetricsAsync(type, project, compilation, solution, token).ConfigureAwait(false);
+                    var metrics = await ComputeMetricsAsync(type, workspaceId, project, compilation, solution, token).ConfigureAwait(false);
                     results.Add(metrics);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -164,9 +164,9 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
     }
 
     private async Task<CouplingMetricsDto> ComputeMetricsAsync(
-        INamedTypeSymbol type, Project project, Compilation compilation, Solution solution, CancellationToken ct)
+        INamedTypeSymbol type, string workspaceId, Project project, Compilation compilation, Solution solution, CancellationToken ct)
     {
-        var afferent = await ComputeAfferentCouplingAsync(type, solution, ct).ConfigureAwait(false);
+        var afferent = await ComputeAfferentCouplingAsync(type, workspaceId, _compilationCache, solution, ct).ConfigureAwait(false);
         var efferent = await ComputeEfferentCouplingAsync(type, compilation, ct).ConfigureAwait(false);
 
         var instability = ComputeInstability(afferent, efferent);
@@ -196,7 +196,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
     /// one entity via <see cref="SymbolEqualityComparer"/>).
     /// </summary>
     private static async Task<int> ComputeAfferentCouplingAsync(
-        INamedTypeSymbol type, Solution solution, CancellationToken ct)
+        INamedTypeSymbol type, string workspaceId, ICompilationCache compilationCache, Solution solution, CancellationToken ct)
     {
         var references = await SymbolFinder.FindReferencesAsync(type, solution, ct).ConfigureAwait(false);
         var externalConsumers = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
@@ -209,8 +209,23 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
 
                 var doc = loc.Document;
                 var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (root is null || semanticModel is null) continue;
+                if (root is null) continue;
+
+                // Route the semantic model through the shared ICompilationCache instead of
+                // doc.GetSemanticModelAsync (a raw Roslyn Document fetch). Under GC pressure
+                // Roslyn's per-Project compilation memoization (a ConditionalWeakTable) is
+                // evictable, so the raw path could redundantly rebuild the referencing project's
+                // compilation on every location; the cache holds a strong reference and hands back
+                // the same warm Compilation the rest of this class already uses. Mirrors the
+                // cached-compilation + SyntaxTrees.Contains guard shape in
+                // ComputeEfferentCouplingAsync below.
+                var compilation = await compilationCache.GetCompilationAsync(workspaceId, doc.Project, ct).ConfigureAwait(false);
+                if (compilation is null) continue;
+
+                var tree = root.SyntaxTree;
+                if (!compilation.SyntaxTrees.Contains(tree)) continue;
+
+                var semanticModel = compilation.GetSemanticModel(tree);
 
                 var node = root.FindNode(loc.Location.SourceSpan);
                 var containing = FindContainingTopLevelType(node, semanticModel, ct);

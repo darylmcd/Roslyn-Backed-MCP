@@ -53,6 +53,42 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
     }
 
+    /// <summary>
+    /// Regression cover for <c>analysis-services-uncached-full-solution-scans</c> (change 1):
+    /// <see cref="CouplingAnalysisService.ComputeAfferentCouplingAsync"/> must obtain the semantic
+    /// model for every referencing document through the shared <see cref="ICompilationCache"/>
+    /// instead of the raw <c>doc.GetSemanticModelAsync</c> Document API. The candidate-enumeration
+    /// + efferent pass already fetches exactly one compilation per project through the cache; the
+    /// afferent reference scan fetches once more per referencing document, so a correctly-routed
+    /// implementation drives the cache call count strictly above the project count. Pre-fix the
+    /// afferent path bypassed the cache entirely and the count would equal the project count.
+    /// </summary>
+    [TestMethod]
+    public async Task CouplingAnalysisService_AfferentScan_RoutesReferencingDocsThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new CouplingAnalysisService(WorkspaceManager, cache, NullLogger<CouplingAnalysisService>.Instance);
+
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var projectCount = solution.Projects.Count();
+
+        var metrics = await service.GetCouplingMetricsAsync(
+            workspace.WorkspaceId,
+            projectFilter: null,
+            limit: 50,
+            excludeTestProjects: false,
+            includeInterfaces: false,
+            CancellationToken.None);
+
+        Assert.IsTrue(metrics.Count > 0, "Expected coupling metrics for the sample workspace.");
+        Assert.IsTrue(cache.GetCompilationCallCount > projectCount,
+            "Afferent coupling must route each referencing document's semantic model through " +
+            $"ICompilationCache — expected the cache call count ({cache.GetCompilationCallCount}) to " +
+            $"exceed the project count ({projectCount}); an equal count means the afferent scan still " +
+            "uses the raw doc.GetSemanticModelAsync path.");
+    }
+
     [TestMethod]
     public async Task ExceptionFlowService_ObtainsCompilations_ThroughSharedCache()
     {
@@ -197,9 +233,10 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
             new DiagnosticService(WorkspaceManager, cache, new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance)),
             cache);
 
-        // CollectPersistenceLayerFindingsAsync (and its FindMapperTypesAsync helper) are the two
-        // converted sites. They only fetch compilations when the swept symbol is a property — anchor
-        // on SampleLib.Dog.Name (a property) so the per-project compilation loop runs through the cache.
+        // CollectPersistenceLayerFindingsAsync (its DTO-sibling scan and the hoisted
+        // CollectMapperCandidateTypesAsync helper) are the two converted sites. They only fetch
+        // compilations when the swept symbol is a property — anchor on SampleLib.Dog.Name (a
+        // property) so the per-project compilation loop runs through the cache.
         var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
         var dogFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
 
