@@ -27,7 +27,13 @@ public sealed record ValidationServiceOptions
     /// <summary>
     /// Gets the maximum time allowed for a NuGet vulnerability scan
     /// (<c>dotnet list package --vulnerable</c>) before it is cancelled.
-    /// Defaults to 2 minutes.
+    /// Defaults to 5 minutes. <c>dotnet list package --vulnerable</c> fetches the full package
+    /// registration + vulnerability metadata from nuget.org rather than just the resolved
+    /// versions a normal restore needs, so a cold per-account NuGet HTTP cache (e.g. the
+    /// self-hosted CI runner's service account, which has its own separate profile/cache from
+    /// an interactive dev session) can take noticeably longer than a warm-cache run. 2 minutes
+    /// was observed to be too tight under a cold cache; 5 minutes gives headroom without masking
+    /// a genuinely hung process.
     /// </summary>
-    public TimeSpan VulnerabilityScanTimeout { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan VulnerabilityScanTimeout { get; init; } = TimeSpan.FromMinutes(5);
 }
