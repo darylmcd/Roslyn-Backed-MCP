@@ -32,10 +32,15 @@ jobs:
     # to keep coverage-collection (dispatch/schedule) artifacts consistent across
     # runs.
     runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
-    # Current PR run is ~12 min on hosted Linux (~2-3min on self-hosted Windows).
-    # 25 min gives headroom for runner variability without letting a hung test
-    # burn the 6-hour default.
-    timeout-minutes: 25
+    # Historical self-hosted Windows baseline was ~2-3min; as of 2026-07-13 the
+    # suite (now ~1700+ tests after several rounds of backlog-sweep initiatives)
+    # is observed running 10-25min on the self-hosted runner even on clean,
+    # otherwise-healthy runs, with no single root cause pinned down (checked and
+    # ruled out: a runaway orphaned process, the Windows power plan, disk health,
+    # AC power, vendor throttling software). 40 min gives real headroom above the
+    # observed ceiling without letting a genuinely hung test burn the 6-hour
+    # default. Hosted Linux run is ~12 min.
+    timeout-minutes: 40
 
     steps:
       - name: Check out repository
