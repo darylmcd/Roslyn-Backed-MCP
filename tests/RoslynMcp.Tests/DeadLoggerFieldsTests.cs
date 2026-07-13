@@ -28,7 +28,6 @@ public sealed class DeadLoggerFieldsTests
         typeof(CompletionService),
         typeof(ConsumerAnalysisService),
         typeof(DiagnosticService),
-        typeof(EditorConfigService),
         typeof(FlowAnalysisService),
         typeof(MutationAnalysisService),
         typeof(NamespaceDependencyService),

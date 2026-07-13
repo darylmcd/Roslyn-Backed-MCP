@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 using MsBuildProject = Microsoft.Build.Evaluation.Project;
 
@@ -12,6 +13,7 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ILogger<MsBuildEvaluationService>? _logger;
 
     /// <summary>
     /// msbuild-evaluation-uncached-perf: caches the loaded MSBuild <see cref="MsBuildProject"/>
@@ -27,9 +29,10 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<(int Version, string FilePath), Lazy<CachedMsBuildProject>>> _cache
         = new(StringComparer.Ordinal);
 
-    public MsBuildEvaluationService(IWorkspaceManager workspace)
+    public MsBuildEvaluationService(IWorkspaceManager workspace, ILogger<MsBuildEvaluationService>? logger = null)
     {
         _workspace = workspace;
+        _logger = logger;
         // Drop the cached ProjectCollection(s) for a workspace as soon as it reloads (version bump,
         // typically after an on-disk change / restore) or closes, so a subsequent evaluation re-parses
         // the fresh project XML. Mirrors NuGetDependencyService.cs:57-60.
@@ -219,6 +222,10 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
             var loadedList = loadedProjects.Count > 0
                 ? string.Join(", ", loadedProjects)
                 : "(none — the workspace has no projects loaded)";
+
+            _logger?.LogWarning(
+                "MSBuild evaluation could not resolve project '{ProjectName}' in workspace '{WorkspaceId}'; {LoadedCount} project(s) loaded: {LoadedProjects}.",
+                projectName, workspaceId, loadedProjects.Count, loadedList);
 
             throw new InvalidOperationException(
                 $"Project '{projectName}' not found in workspace '{workspaceId}'. " +

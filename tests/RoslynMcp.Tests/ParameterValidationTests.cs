@@ -81,4 +81,13 @@ public class ParameterValidationTests
     public void ValidatePagination_Negative_Limit_Throws()
         => Assert.ThrowsException<ArgumentException>(
             () => ParameterValidation.ValidatePagination(0, -5));
+
+    [TestMethod]
+    public void ValidatePagination_Limit_At_Max_Does_Not_Throw()
+        => ParameterValidation.ValidatePagination(0, 1000);
+
+    [TestMethod]
+    public void ValidatePagination_Limit_Above_Max_Throws()
+        => Assert.ThrowsException<ArgumentException>(
+            () => ParameterValidation.ValidatePagination(0, 1001));
 }

@@ -81,6 +81,17 @@ public sealed class StructuredCallToolFilterResolutionTests
         Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor(null));
     }
 
+    [TestMethod]
+    public void IsWorkspaceIdRecoveryAllowedFor_UnknownTool_ReturnsFalse()
+    {
+        // solutiondiscoveryhelper-hotpath-perf: the recovery predicate now resolves the tool via the
+        // O(1) ServerSurfaceCatalog.TryGetTool index instead of a linear FirstOrDefault scan. An
+        // unknown tool name must still short-circuit to false (TryGetTool miss ⇒ no eligible tool),
+        // preserving the pre-switch behavior.
+        Assert.IsFalse(
+            StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("not_a_real_tool", "workspaceId"));
+    }
+
     // ── classification ──────────────────────────────────────────────────────
 
     [TestMethod]

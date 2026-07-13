@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
@@ -8,15 +9,18 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private readonly IWorkspaceManager _workspace;
     private readonly ICompositePreviewStore _compositePreviewStore;
     private readonly IChangeTracker? _changeTracker;
+    private readonly ILogger<CompositeApplyOrchestrator>? _logger;
 
     public CompositeApplyOrchestrator(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
-        IChangeTracker? changeTracker = null)
+        IChangeTracker? changeTracker = null,
+        ILogger<CompositeApplyOrchestrator>? logger = null)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
         _changeTracker = changeTracker;
+        _logger = logger;
     }
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
@@ -73,7 +77,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                     Directory.CreateDirectory(directory);
                 }
 
-                await File.WriteAllTextAsync(mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct).ConfigureAwait(false);
+                await AtomicFileWriter.WriteAllTextAsync(mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct).ConfigureAwait(false);
                 appliedFiles.Add(mutation.FilePath);
             }
 
@@ -85,7 +89,71 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            return new ApplyResultDto(false, appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), ex.Message);
+            // A mutation failed mid-loop. Prior mutations already hit disk — this orchestrator does
+            // not roll them back (see plan Risk 3: true rollback would duplicate UndoService's
+            // pre-image capture). Instead we log a warning naming applied-vs-total plus the failing
+            // file, and clearly mark the returned result as a partial apply so a caller can tell a
+            // genuine partial state apart from a clean no-op failure. Each completed mutation adds
+            // exactly one entry to appliedFiles, so appliedFiles.Count is the index of the failing
+            // mutation. The preview token is intentionally left valid (Invalidate is not called).
+            var applied = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var failingFile = appliedFiles.Count < mutations.Count
+                ? mutations[appliedFiles.Count].FilePath
+                : "(unknown)";
+            _logger?.LogWarning(
+                ex,
+                "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing file: {FailingFile}. Prior writes are left in place (no rollback).",
+                appliedFiles.Count,
+                mutations.Count,
+                failingFile);
+            var message = appliedFiles.Count > 0
+                ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingFile}. {ex.Message}"
+                : ex.Message;
+            return new ApplyResultDto(false, applied, message);
+        }
+    }
+}
+
+/// <summary>
+/// Shared atomic file-write primitive: writes <paramref name="content"/> to a same-directory
+/// <c>.tmp</c> sibling of <paramref name="path"/>, then <see cref="File.Move(string, string, bool)"/>
+/// over the target. This mirrors the proven pattern in <c>WorkspaceCacheStore</c> and
+/// <c>PersistentCompositeStorage</c> and prevents a truncated/corrupt target file if the process
+/// crashes or the disk fills mid-write. The temp file is always <paramref name="path"/> + ".tmp",
+/// so it lives on the same directory/volume as the target — a precondition for <c>File.Move</c>
+/// being atomic (a cross-volume move degrades to a non-atomic copy+delete). On any failure the
+/// orphaned <c>.tmp</c> is best-effort deleted so a failed write leaves no artifact, then the
+/// original exception is re-thrown for the caller's catch filter.
+/// </summary>
+internal static class AtomicFileWriter
+{
+    public static async Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+    {
+        var tmp = path + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmp, content, ct).ConfigureAwait(false);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            TryDeleteTemp(tmp);
+            throw;
+        }
+    }
+
+    private static void TryDeleteTemp(string tmp)
+    {
+        try
+        {
+            if (File.Exists(tmp))
+            {
+                File.Delete(tmp);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort cleanup — a stray .tmp is non-fatal and must not mask the original failure.
         }
     }
 }

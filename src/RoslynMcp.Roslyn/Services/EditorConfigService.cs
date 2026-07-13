@@ -3,6 +3,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -11,15 +12,18 @@ public sealed class EditorConfigService : IEditorConfigService
     private readonly IWorkspaceManager _workspace;
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
+    private readonly ILogger<EditorConfigService>? _logger;
 
     public EditorConfigService(
         IWorkspaceManager workspace,
         IUndoService? undoService = null,
-        IChangeTracker? changeTracker = null)
+        IChangeTracker? changeTracker = null,
+        ILogger<EditorConfigService>? logger = null)
     {
         _workspace = workspace;
         _undoService = undoService;
         _changeTracker = changeTracker;
+        _logger = logger;
     }
 
     public async Task<EditorConfigOptionsDto> GetOptionsAsync(
@@ -64,25 +68,36 @@ public sealed class EditorConfigService : IEditorConfigService
         if (editorconfigPath is not null && File.Exists(editorconfigPath))
         {
             var existingKeys = new HashSet<string>(options.Select(o => o.Key), StringComparer.OrdinalIgnoreCase);
+            var diskSupplementedCount = 0;
             foreach (var (key, value) in ParseEditorconfigCsKeys(editorconfigPath))
             {
                 if (!existingKeys.Contains(key))
                 {
                     options.Add(new EditorConfigEntryDto(key, value, "disk"));
                     existingKeys.Add(key);
+                    diskSupplementedCount++;
                 }
             }
 
             // Second pass: override cached values for keys that the disk file has also
             // enumerated. Roslyn's snapshot may lag behind a recent set_editorconfig_option
             // write, so the on-disk value wins whenever the file exists.
+            var diskOverriddenCount = 0;
             foreach (var (key, diskValue) in ParseEditorconfigCsKeys(editorconfigPath))
             {
                 var idx = options.FindIndex(o => string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase));
                 if (idx >= 0 && options[idx].Source != "disk")
                 {
                     options[idx] = new EditorConfigEntryDto(key, diskValue, "disk");
+                    diskOverriddenCount++;
                 }
+            }
+
+            if (diskSupplementedCount > 0 || diskOverriddenCount > 0)
+            {
+                _logger?.LogDebug(
+                    "Applied disk-sourced .editorconfig values from '{EditorConfigPath}' over the Roslyn snapshot: {SupplementedCount} key(s) supplemented, {OverriddenCount} key(s) overridden.",
+                    editorconfigPath, diskSupplementedCount, diskOverriddenCount);
             }
         }
 

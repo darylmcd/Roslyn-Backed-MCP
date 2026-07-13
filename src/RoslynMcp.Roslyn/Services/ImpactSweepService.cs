@@ -156,9 +156,19 @@ public sealed class ImpactSweepService : IImpactSweepService
 
         // Find mapper-suffixed types that operate on these DTOs and detect whether they reference
         // the property in serialize (To*) and/or deserialize (From*) directions.
+        //
+        // The domain type is fixed for the whole call, so hoist the O(solution-types) suffix +
+        // domain-name scan OUT of the per-sibling loop: enumerate every project's types once here
+        // (a single GetCompilationAsync per project) to build a sibling-independent candidate
+        // SUPERSET, then per-sibling narrow it to the same-method domain+dtoType matches in-memory.
+        // Previously FindMapperTypesAsync re-walked every project's types per dtoSibling —
+        // O(dtoSiblings x solution-types) — recompiling each project once per sibling.
+        var mapperCandidates = await CollectMapperCandidateTypesAsync(
+            workspaceId, _compilationCache, solution, property.ContainingType, ct).ConfigureAwait(false);
+
         foreach (var (dtoType, dtoProperty) in dtoSiblings)
         {
-            var mappers = await FindMapperTypesAsync(workspaceId, _compilationCache, solution, property.ContainingType, dtoType, ct).ConfigureAwait(false);
+            var mappers = FilterMappersForDtoType(mapperCandidates, property.ContainingType, dtoType);
             if (mappers.Count == 0) continue;
 
             var directionsPresent = new List<string>();
@@ -221,10 +231,24 @@ public sealed class ImpactSweepService : IImpactSweepService
         return false;
     }
 
-    private static async Task<IReadOnlyList<INamedTypeSymbol>> FindMapperTypesAsync(
-        string workspaceId, ICompilationCache compilationCache, Solution solution, INamedTypeSymbol domainType, INamedTypeSymbol dtoType, CancellationToken ct)
+    /// <summary>
+    /// One pass over every project's types (a single cached <c>GetCompilationAsync</c> per project):
+    /// keeps mapper-suffixed types that have at least one method whose signature mentions the fixed
+    /// <paramref name="domainType"/>. This is a sibling-independent SUPERSET of the per-dtoType
+    /// matches — a type can only satisfy the same-method domain+dtoType check in
+    /// <see cref="FilterMappersForDtoType"/> if it already has a domain-mentioning method here — so
+    /// hoisting it out of the per-dtoSibling loop preserves behaviour while collapsing the scan cost
+    /// from O(dtoSiblings x solution-types) to O(solution-types).
+    /// </summary>
+    /// <remarks><c>internal</c> (not <c>private</c>) so the hoist can be regression-covered directly:
+    /// driving it through <see cref="SweepAsync"/> muddies the compilation-cache call count with the
+    /// reference/diagnostic sub-queries' own fetches, so the project-count-scaling assertion is only
+    /// clean against this helper in isolation. See
+    /// <c>CompilationCacheAdoptionTests.ImpactSweepService_MapperCandidateScan_*</c>.</remarks>
+    internal static async Task<IReadOnlyList<INamedTypeSymbol>> CollectMapperCandidateTypesAsync(
+        string workspaceId, ICompilationCache compilationCache, Solution solution, INamedTypeSymbol domainType, CancellationToken ct)
     {
-        var matches = new List<INamedTypeSymbol>();
+        var candidates = new List<INamedTypeSymbol>();
         foreach (var project in solution.Projects)
         {
             var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
@@ -238,14 +262,38 @@ public sealed class ImpactSweepService : IImpactSweepService
                       name.EndsWith("Translator", StringComparison.Ordinal) ||
                       name.EndsWith("Adapter", StringComparison.Ordinal))) continue;
 
-                var mentionsBoth = type.GetMembers().OfType<IMethodSymbol>().Any(m =>
-                {
-                    var sig = m.ToDisplayString();
-                    return sig.Contains(domainType.Name, StringComparison.Ordinal) &&
-                           sig.Contains(dtoType.Name, StringComparison.Ordinal);
-                });
-                if (mentionsBoth) matches.Add(type);
+                var mentionsDomain = type.GetMembers().OfType<IMethodSymbol>().Any(m =>
+                    m.ToDisplayString().Contains(domainType.Name, StringComparison.Ordinal));
+                if (mentionsDomain) candidates.Add(type);
             }
+        }
+        return candidates;
+    }
+
+    /// <summary>
+    /// Per-dtoSibling narrowing of the hoisted <paramref name="candidates"/>: a candidate matches
+    /// only when a SINGLE method's signature mentions BOTH the domain type and this
+    /// <paramref name="dtoType"/>. Keeping the domain+dtoType check same-method preserves the exact
+    /// semantics of the former <c>FindMapperTypesAsync.mentionsBoth</c> predicate — a type with
+    /// method A naming the domain and method B naming the dtoType must NOT match. Purely in-memory
+    /// over the small candidate list; no compilation fetch or solution-type re-enumeration.
+    /// </summary>
+    /// <remarks><c>internal</c> so the same-method narrowing semantics can be asserted directly (a
+    /// type whose domain-mention and dtoType-mention live in DIFFERENT methods must not match). See
+    /// <c>CompilationCacheAdoptionTests.ImpactSweepService_MapperCandidateScan_*</c>.</remarks>
+    internal static IReadOnlyList<INamedTypeSymbol> FilterMappersForDtoType(
+        IReadOnlyList<INamedTypeSymbol> candidates, INamedTypeSymbol domainType, INamedTypeSymbol dtoType)
+    {
+        var matches = new List<INamedTypeSymbol>();
+        foreach (var type in candidates)
+        {
+            var mentionsBoth = type.GetMembers().OfType<IMethodSymbol>().Any(m =>
+            {
+                var sig = m.ToDisplayString();
+                return sig.Contains(domainType.Name, StringComparison.Ordinal) &&
+                       sig.Contains(dtoType.Name, StringComparison.Ordinal);
+            });
+            if (mentionsBoth) matches.Add(type);
         }
         return matches;
     }

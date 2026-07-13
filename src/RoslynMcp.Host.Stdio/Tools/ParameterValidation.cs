@@ -11,6 +11,13 @@ internal static class ParameterValidation
     private static readonly string[] BulkReplaceScopeValues = ["parameters", "fields", "all"];
     private static readonly string[] ReplaceInvocationScopeValues = ["all"];
 
+    /// <summary>
+    /// Upper bound for pagination page size. Guards against unbounded materialization
+    /// when a caller supplies an excessively large limit (e.g. int.MaxValue). Chosen with
+    /// headroom above every current tool default/clamp (highest observed is 500).
+    /// </summary>
+    private const int MaxLimit = 1000;
+
     /// <summary>Validates severity filter if provided.</summary>
     public static void ValidateSeverity(string? severity)
     {
@@ -54,5 +61,8 @@ internal static class ParameterValidation
 
         if (limit <= 0)
             throw new ArgumentException($"Invalid limit '{limit}'. Limit must be greater than 0.");
+
+        if (limit > MaxLimit)
+            throw new ArgumentException($"Invalid limit '{limit}'. Limit must not exceed {MaxLimit}.");
     }
 }
