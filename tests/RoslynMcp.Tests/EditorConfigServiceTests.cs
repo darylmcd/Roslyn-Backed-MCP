@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -315,5 +316,40 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(EditorConfigService.SectionMatchesCSharp("[*.json]"));
         Assert.IsFalse(EditorConfigService.SectionMatchesCSharp(""));
         Assert.IsFalse(EditorConfigService.SectionMatchesCSharp("not-a-section"));
+    }
+
+    /// <summary>
+    /// Coverage for <c>build-test-services-swallowed-exceptions-no-logging</c>:
+    /// <see cref="IEditorConfigService.GetOptionsAsync"/> now emits a <see cref="LogLevel.Debug"/>
+    /// entry (previously no logger existed at all) when it applies disk-sourced .editorconfig
+    /// values over the Roslyn snapshot, naming the .editorconfig path and the supplement/override
+    /// counts so a stale-snapshot merge leaves a diagnostic trail.
+    /// </summary>
+    [TestMethod]
+    public async Task GetOptions_DiskSourcedOverrides_LogsDebug()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // Write an unloaded analyzer key so the on-disk supplement path (source "disk") fires
+        // on the next read — guaranteeing diskSupplementedCount > 0 and thus the Debug log.
+        const string unloadedKey = "dotnet_diagnostic.CA9998.severity";
+        await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, unloadedKey, "none", "set_editorconfig_option", CancellationToken.None);
+
+        var logger = new CaptureLogger<EditorConfigService>();
+        var service = new EditorConfigService(WorkspaceManager, logger: logger);
+
+        var options = await service.GetOptionsAsync(workspaceId, dogFilePath, CancellationToken.None);
+        Assert.IsTrue(
+            options.Options.Any(o => string.Equals(o.Key, unloadedKey, StringComparison.OrdinalIgnoreCase)),
+            "Precondition: the disk-supplemented key must be present in the returned options.");
+
+        var debug = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Debug);
+        Assert.IsNotNull(debug,
+            "Applying disk-sourced .editorconfig values must emit a Debug log. " +
+            $"Captured entries: {string.Join("; ", logger.Entries.Select(e => $"{e.Level}:{e.Message}"))}");
+        StringAssert.Contains(debug!.Message, options.ApplicableEditorConfigPath!);
     }
 }
