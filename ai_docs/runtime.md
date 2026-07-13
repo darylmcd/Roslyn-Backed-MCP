@@ -37,7 +37,7 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
-  - `pwsh ./eng/run-tests-sliced.ps1` — runs the MSTest suite as per-class `dotnet test` invocations to fit the 25-minute CI budget; supports `-Filter`, `-MaxSlices`, and `-ResumeFrom` for targeted re-runs.
+  - `pwsh ./eng/run-tests-sliced.ps1` — runs the MSTest suite as per-class `dotnet test` invocations to fit the 40-minute CI budget; supports `-Filter`, `-MaxSlices`, and `-ResumeFrom` for targeted re-runs.
 
 ## Package Identity
 
