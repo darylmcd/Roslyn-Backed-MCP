@@ -7,7 +7,7 @@ invocations, then accumulate results into a single triage-friendly report.
 The full suite has 166 [TestClass] / 1,054 [TestMethod] tests against an
 MSTest project that statically initializes ~50 services (TestBase) plus
 MSBuild registration on every assembly load. A single monolithic
-`dotnet test` blows the 25-min CI budget when slow integration classes
+`dotnet test` blows the 40-min CI budget when slow integration classes
 compound; this script runs each class in its own short-lived process so a
 hung class can be killed without poisoning the whole run.
 
