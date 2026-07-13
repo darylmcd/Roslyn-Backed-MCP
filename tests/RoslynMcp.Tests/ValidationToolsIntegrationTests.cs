@@ -182,30 +182,37 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     }
 
     // test-related-column-required-schema-mismatch: a caller who supplies filePath+line but
-    // omits column is using a partial source-location (mode-3 incomplete). The runtime MUST
-    // throw ArgumentException with a message that names the missing field — not a generic
-    // "provide one of…" fallthrough. This regression test pins that diagnostic path.
+    // omits column is using a partial source-location (mode-3 incomplete). The runtime raises
+    // an ArgumentException naming the missing field, but as of host-tools-layer-test-coverage-gap
+    // (ValidationTools error-handling alignment) the tool body catches it and returns a
+    // structured InvalidArgument error envelope instead of letting it propagate — matching the
+    // ClassifyAndFormat convention used elsewhere (e.g. ValidationBundleTools.ValidateRecentGitChanges).
+    // This regression test pins the diagnostic content inside that envelope.
     [TestMethod]
-    public async Task TestRelated_PartialSourceLocation_MissingColumn_ThrowsArgumentExceptionWithDiagnostic()
+    public async Task TestRelated_PartialSourceLocation_MissingColumn_ReturnsInvalidArgumentEnvelopeWithDiagnostic()
     {
         var programPath = FindDocumentPath("Program.cs");
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-            await ValidationTools.FindRelatedTests(
-                WorkspaceExecutionGate,
-                TestDiscoveryService,
-                WorkspaceId,
-                filePath: programPath,
-                line: 1,
-                column: null,
-                symbolHandle: null,
-                metadataName: null,
-                maxResults: 100,
-                ct: CancellationToken.None));
+        var json = await ValidationTools.FindRelatedTests(
+            WorkspaceExecutionGate,
+            TestDiscoveryService,
+            WorkspaceId,
+            filePath: programPath,
+            line: 1,
+            column: null,
+            symbolHandle: null,
+            metadataName: null,
+            maxResults: 100,
+            ct: CancellationToken.None);
 
-        StringAssert.Contains(ex.Message, "column",
-            $"Expected exception message to mention 'column' as the missing field. Actual: {ex.Message}");
-        StringAssert.Contains(ex.Message, "incomplete",
-            $"Expected exception message to contain 'incomplete'. Actual: {ex.Message}");
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidArgument", root.GetProperty("category").GetString());
+        var message = root.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "column",
+            $"Expected error message to mention 'column' as the missing field. Actual: {message}");
+        StringAssert.Contains(message, "incomplete",
+            $"Expected error message to contain 'incomplete'. Actual: {message}");
     }
 
     // test-related-column-required-schema-mismatch: a caller using metadataName mode (mode-2)
