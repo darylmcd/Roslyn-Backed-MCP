@@ -28,11 +28,24 @@ public static class ValidationTools
         // initiative scope. See ProgressHelper remarks for the label-naming contract.
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ProgressHelper.ReportStage(progress, 0, 3, "preparing-build");
-            ProgressHelper.ReportStage(progress, 1, 3, "msbuild-running");
-            var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
-            ProgressHelper.ReportStage(progress, 3, 3, "done");
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            try
+            {
+                ProgressHelper.ReportStage(progress, 0, 3, "preparing-build");
+                ProgressHelper.ReportStage(progress, 1, 3, "msbuild-running");
+                var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
+                ProgressHelper.ReportStage(progress, 3, 3, "done");
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ProgressHelper.ReportStage(progress, 3, 3, "done");
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "build_workspace");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "build_workspace");
+            }
         }, ct);
     }
 
@@ -45,11 +58,29 @@ public static class ValidationTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => buildService.BuildProjectAsync(workspaceId, projectName, c),
-            ct);
+    {
+        // Hand-rolls the gate.RunReadAsync call instead of delegating to
+        // ToolDispatch.ReadByWorkspaceIdAsync (the convention for read shims) so the body can
+        // wrap the service call in the same schemaHint-on-failure try/catch as test_run — the
+        // shared helper offers no error-envelope hook. See host-tools-layer-test-coverage-gap.
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            try
+            {
+                var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "build_project");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "build_project");
+            }
+        }, ct);
+    }
 
     [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter. The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
     [McpToolMetadata("validation", "stable", true, false,
@@ -66,80 +97,92 @@ public static class ValidationTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            if (limit <= 0)
-                throw new ArgumentException("limit must be greater than 0.", nameof(limit));
-            if (offset < 0)
-                throw new ArgumentException("offset must be non-negative.", nameof(offset));
-
-            var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
-
-            var filteredProjects = result.TestProjects.AsEnumerable();
-            if (!string.IsNullOrWhiteSpace(projectName))
+            try
             {
-                filteredProjects = filteredProjects.Where(p =>
-                    string.Equals(p.ProjectName, projectName, StringComparison.OrdinalIgnoreCase));
-            }
+                if (limit <= 0)
+                    throw new ArgumentException("limit must be greater than 0.", nameof(limit));
+                if (offset < 0)
+                    throw new ArgumentException("offset must be non-negative.", nameof(offset));
 
-            var projects = filteredProjects.ToList();
+                var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
 
-            // Apply name filter (substring, case-insensitive) BEFORE pagination so the offset
-            // and limit reference filtered results, not raw discovery output.
-            if (!string.IsNullOrWhiteSpace(nameFilter))
-            {
-                projects = projects
-                    .Select(p => new RoslynMcp.Core.Models.TestProjectDto(
-                        p.ProjectName,
-                        p.ProjectFilePath,
-                        p.Tests
-                            .Where(t => t.FullyQualifiedName.Contains(nameFilter, StringComparison.OrdinalIgnoreCase))
-                            .ToList()))
-                    .Where(p => p.Tests.Count > 0)
-                    .ToList();
-            }
-
-            var totalAfterFilter = projects.Sum(p => p.Tests.Count);
-
-            // Pagination: skip `offset` test cases (counted across projects), then take up to
-            // `limit`. Empty projects after pagination are dropped.
-            var remainingToSkip = offset;
-            var remainingToTake = limit;
-            var pagedProjects = new List<RoslynMcp.Core.Models.TestProjectDto>();
-            foreach (var proj in projects)
-            {
-                if (remainingToTake <= 0) break;
-
-                IEnumerable<RoslynMcp.Core.Models.TestCaseDto> tests = proj.Tests;
-                if (remainingToSkip > 0)
+                var filteredProjects = result.TestProjects.AsEnumerable();
+                if (!string.IsNullOrWhiteSpace(projectName))
                 {
-                    if (remainingToSkip >= proj.Tests.Count)
-                    {
-                        remainingToSkip -= proj.Tests.Count;
-                        continue;
-                    }
-                    tests = tests.Skip(remainingToSkip);
-                    remainingToSkip = 0;
+                    filteredProjects = filteredProjects.Where(p =>
+                        string.Equals(p.ProjectName, projectName, StringComparison.OrdinalIgnoreCase));
                 }
 
-                var pagedTests = tests.Take(remainingToTake).ToList();
-                if (pagedTests.Count == 0) continue;
+                var projects = filteredProjects.ToList();
 
-                remainingToTake -= pagedTests.Count;
-                pagedProjects.Add(new RoslynMcp.Core.Models.TestProjectDto(
-                    proj.ProjectName, proj.ProjectFilePath, pagedTests));
+                // Apply name filter (substring, case-insensitive) BEFORE pagination so the offset
+                // and limit reference filtered results, not raw discovery output.
+                if (!string.IsNullOrWhiteSpace(nameFilter))
+                {
+                    projects = projects
+                        .Select(p => new RoslynMcp.Core.Models.TestProjectDto(
+                            p.ProjectName,
+                            p.ProjectFilePath,
+                            p.Tests
+                                .Where(t => t.FullyQualifiedName.Contains(nameFilter, StringComparison.OrdinalIgnoreCase))
+                                .ToList()))
+                        .Where(p => p.Tests.Count > 0)
+                        .ToList();
+                }
+
+                var totalAfterFilter = projects.Sum(p => p.Tests.Count);
+
+                // Pagination: skip `offset` test cases (counted across projects), then take up to
+                // `limit`. Empty projects after pagination are dropped.
+                var remainingToSkip = offset;
+                var remainingToTake = limit;
+                var pagedProjects = new List<RoslynMcp.Core.Models.TestProjectDto>();
+                foreach (var proj in projects)
+                {
+                    if (remainingToTake <= 0) break;
+
+                    IEnumerable<RoslynMcp.Core.Models.TestCaseDto> tests = proj.Tests;
+                    if (remainingToSkip > 0)
+                    {
+                        if (remainingToSkip >= proj.Tests.Count)
+                        {
+                            remainingToSkip -= proj.Tests.Count;
+                            continue;
+                        }
+                        tests = tests.Skip(remainingToSkip);
+                        remainingToSkip = 0;
+                    }
+
+                    var pagedTests = tests.Take(remainingToTake).ToList();
+                    if (pagedTests.Count == 0) continue;
+
+                    remainingToTake -= pagedTests.Count;
+                    pagedProjects.Add(new RoslynMcp.Core.Models.TestProjectDto(
+                        proj.ProjectName, proj.ProjectFilePath, pagedTests));
+                }
+
+                var returnedCount = pagedProjects.Sum(p => p.Tests.Count);
+                var hasMore = offset + returnedCount < totalAfterFilter;
+
+                return JsonSerializer.Serialize(new
+                {
+                    testProjects = pagedProjects,
+                    offset,
+                    limit,
+                    returnedCount,
+                    totalCount = totalAfterFilter,
+                    hasMore,
+                }, JsonDefaults.Indented);
             }
-
-            var returnedCount = pagedProjects.Sum(p => p.Tests.Count);
-            var hasMore = offset + returnedCount < totalAfterFilter;
-
-            return JsonSerializer.Serialize(new
+            catch (OperationCanceledException)
             {
-                testProjects = pagedProjects,
-                offset,
-                limit,
-                returnedCount,
-                totalCount = totalAfterFilter,
-                hasMore,
-            }, JsonDefaults.Indented);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_discover");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "test_discover");
+            }
         }, ct);
     }
 
@@ -201,9 +244,21 @@ public static class ValidationTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-            var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, maxResults, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            try
+            {
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+                var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, maxResults, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_related");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "test_related");
+            }
         }, ct);
     }
 
@@ -217,9 +272,27 @@ public static class ValidationTools
         [Description("Array of absolute paths to changed source files")] string[] filePaths,
         [Description("Maximum number of test cases to return (default: 100)")] int maxResults = 100,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c),
-            ct);
+    {
+        // Hand-rolls the gate.RunReadAsync call instead of delegating to
+        // ToolDispatch.ReadByWorkspaceIdAsync (the convention for read shims) so the body can
+        // wrap the service call in the same schemaHint-on-failure try/catch as test_run — the
+        // shared helper offers no error-envelope hook. See host-tools-layer-test-coverage-gap.
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            try
+            {
+                var result = await testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_related_files");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "test_related_files");
+            }
+        }, ct);
+    }
 }

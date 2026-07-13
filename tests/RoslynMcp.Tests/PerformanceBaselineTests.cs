@@ -16,6 +16,14 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
+    /// <summary>
+    /// MSTest injects the run's context. Used by the coupling-metrics tests to CAPTURE the
+    /// post-fix elapsed-ms into the test output so the "measurably reduced" acceptance criterion of
+    /// <c>analysis-services-uncached-full-solution-scans</c> is observable against the documented
+    /// pre-fix baseline (the 12807ms p50 recorded in <see cref="CouplingMetrics_PerProject_Completes_Within_Budget"/>).
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
@@ -89,6 +97,12 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
         sw.Stop();
 
         Assert.IsTrue(results.Count > 0, "Expected at least one type with coupling metrics for SampleLib.");
+        // Capture the post-fix "after" number against the documented pre-fix "before" baseline
+        // (12807ms p50) so the 'measurably reduced' acceptance criterion of
+        // analysis-services-uncached-full-solution-scans is observable in the test log.
+        TestContext.WriteLine(
+            $"[perf-capture] CouplingMetrics_PerProject after-fix elapsed: {sw.ElapsedMilliseconds}ms " +
+            "(pre-fix baseline: 12807ms p50 full-solution; budget < 8000ms per-project).");
         Assert.IsTrue(sw.ElapsedMilliseconds < 8_000,
             $"Coupling metrics (per-project) took {sw.ElapsedMilliseconds}ms — expected < 8000ms.");
     }
@@ -109,6 +123,12 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
         sw.Stop();
 
         Assert.IsTrue(results.Count > 0, "Expected at least one type with coupling metrics for the full solution.");
+        // Capture the post-fix "after" number against the documented pre-fix "before" baseline
+        // (12807ms p50 on a 7-project / 571-doc solution) so the 'measurably reduced' acceptance
+        // criterion of analysis-services-uncached-full-solution-scans is observable in the test log.
+        TestContext.WriteLine(
+            $"[perf-capture] CouplingMetrics_FullSolution after-fix elapsed: {sw.ElapsedMilliseconds}ms " +
+            "(pre-fix baseline: 12807ms p50; budget < 15000ms).");
         Assert.IsTrue(sw.ElapsedMilliseconds < 15_000,
             $"Coupling metrics (full solution) took {sw.ElapsedMilliseconds}ms — expected < 15000ms.");
     }

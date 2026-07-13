@@ -1,3 +1,5 @@
+using System.Reflection;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Services;
 
@@ -391,5 +393,87 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(
             execution.Succeeded,
             $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
+    }
+
+    // ── build-test-services-swallowed-exceptions-no-logging ──
+    // These two cases exercise the previously-silent bare-catch fallbacks in
+    // ScaffoldingService (test-framework detection and test-project validation). The
+    // helpers are private instance methods with no instance-field dependency other than
+    // _logger, so they are constructed with null collaborators and driven directly via
+    // reflection against a hand-rolled capturing ILogger — the test project has no
+    // capturing logger and the shared static ScaffoldingService is built with a NullLogger.
+
+    [TestMethod]
+    public void DetectTestFramework_MalformedProjectFile_LogsWarning_AndDefaultsToMsTest()
+    {
+        var malformedPath = WriteMalformedProjectFile();
+        try
+        {
+            var logger = new CaptureLogger<ScaffoldingService>();
+            var service = new ScaffoldingService(null!, null!, null!, logger);
+
+            var method = typeof(ScaffoldingService).GetMethod(
+                "DetectTestFrameworkFromProjectFile",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var result = (string)method.Invoke(service, [malformedPath])!;
+
+            Assert.AreEqual("mstest", result,
+                "A malformed project file must still default to mstest (behavior unchanged).");
+            var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
+            Assert.IsNotNull(warning,
+                "A malformed project file must now emit a Warning log instead of being silently swallowed.");
+            StringAssert.Contains(warning!.Message, malformedPath);
+            Assert.IsNotNull(warning.Exception, "The underlying parse exception must be attached to the log entry.");
+        }
+        finally
+        {
+            File.Delete(malformedPath);
+        }
+    }
+
+    [TestMethod]
+    public void ValidateIsTestProject_MalformedProjectFile_LogsWarning_AndAllowsThrough()
+    {
+        var malformedPath = WriteMalformedProjectFile();
+        try
+        {
+            var logger = new CaptureLogger<ScaffoldingService>();
+            var service = new ScaffoldingService(null!, null!, null!, logger);
+
+            var project = new ProjectStatusDto(
+                Name: "Malformed",
+                FilePath: malformedPath,
+                DocumentCount: 0,
+                ProjectReferences: [],
+                TargetFrameworks: [],
+                IsTestProject: false,
+                AssemblyName: "Malformed",
+                OutputType: "Library");
+
+            var method = typeof(ScaffoldingService).GetMethod(
+                "ValidateIsTestProject",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            // Must NOT throw — a parse failure allows the operation through (behavior unchanged).
+            method.Invoke(service, [project]);
+
+            var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
+            Assert.IsNotNull(warning,
+                "A malformed project file must now emit a Warning log instead of being silently swallowed.");
+            StringAssert.Contains(warning!.Message, malformedPath);
+            Assert.IsNotNull(warning.Exception, "The underlying parse exception must be attached to the log entry.");
+        }
+        finally
+        {
+            File.Delete(malformedPath);
+        }
+    }
+
+    private static string WriteMalformedProjectFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"malformed-{Guid.NewGuid():N}.csproj");
+        // Unclosed element — XDocument.Load throws XmlException mid-parse.
+        File.WriteAllText(path, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0");
+        return path;
     }
 }

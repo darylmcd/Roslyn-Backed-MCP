@@ -293,7 +293,7 @@ public sealed class UndoService : IUndoService, IDisposable
                     {
                         Directory.CreateDirectory(directory);
                     }
-                    await File.WriteAllTextAsync(file.FilePath, file.OriginalText, cancellationToken).ConfigureAwait(false);
+                    await AtomicFileWriter.WriteAllTextAsync(file.FilePath, file.OriginalText, cancellationToken).ConfigureAwait(false);
                     restoredAny = true;
                 }
             }
@@ -488,7 +488,7 @@ public sealed class UndoService : IUndoService, IDisposable
         {
             try
             {
-                await File.WriteAllTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
+                await AtomicFileWriter.WriteAllTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
                 anyDiskWrite = true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

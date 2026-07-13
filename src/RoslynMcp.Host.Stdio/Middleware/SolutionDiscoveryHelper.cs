@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -31,6 +32,22 @@ internal static class SolutionDiscoveryHelper
     // Solution files preferred over projects; .slnx before .sln when both somehow coexist.
     private static readonly string[] SolutionExtensions = [".slnx", ".sln"];
     private static readonly string[] ProjectExtensions = [".csproj"];
+
+    // solutiondiscoveryhelper-hotpath-perf: the file-anchored walk-up is bounded to this many
+    // ancestor hops from the anchor file's directory so a pathological deep-nested filePath cannot
+    // trigger a full walk to the filesystem root on the read-only dispatch hot path. Mirrors the
+    // bounded (one-level-down) shape already used by ScanDirectoriesForSolutions.
+    private const int MaxAncestorLevels = 8;
+
+    // solutiondiscoveryhelper-hotpath-perf: short-TTL memoization of the query-anchored root scan.
+    // A burst of workspaceId-omitted read-only dispatches (no workspace loaded) would otherwise
+    // re-walk every declared client root's top level + one level down on every call. Keyed by the
+    // sorted, ordinal-case-insensitive root-directory set; scoped to the cold no-workspace path
+    // only, where a short staleness window (a solution created inside the TTL is not seen until
+    // expiry) is low-stakes because the caller falls back to binder/elicitation regardless.
+    private static readonly TimeSpan RootScanCacheTtl = TimeSpan.FromSeconds(10);
+    private static readonly ConcurrentDictionary<string, (DiscoveryResult Result, DateTime ExpiresUtc)> s_rootScanCache =
+        new(StringComparer.Ordinal);
 
     internal enum DiscoveryStatus
     {
@@ -70,7 +87,13 @@ internal static class SolutionDiscoveryHelper
         McpServer? server,
         CancellationToken cancellationToken)
     {
-        var fileAnchored = TryDiscoverFromFilePath(arguments);
+        // solutiondiscoveryhelper-hotpath-perf: off-load the synchronous ancestor-walk directory I/O
+        // to the thread pool so it does not block the calling async continuation's thread. .NET has
+        // no true async Directory API, so Task.Run off-loading plus the walk's own depth cap is the
+        // correct "off the hot synchronous path" fix. The method's own behavior/signature is
+        // unchanged — only how its single caller invokes it.
+        var fileAnchored = await Task.Run(() => TryDiscoverFromFilePath(arguments), cancellationToken)
+            .ConfigureAwait(false);
         if (fileAnchored.Status != DiscoveryStatus.None)
         {
             return fileAnchored;
@@ -101,6 +124,7 @@ internal static class SolutionDiscoveryHelper
             return DiscoveryResult.None;
         }
 
+        var levelsWalked = 0;
         while (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
         {
             var solutions = EnumerateByExtensions(directory, SolutionExtensions);
@@ -117,6 +141,13 @@ internal static class SolutionDiscoveryHelper
 
             var parent = Path.GetDirectoryName(directory);
             if (string.IsNullOrEmpty(parent) || string.Equals(parent, directory, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            // solutiondiscoveryhelper-hotpath-perf: bound the ancestor walk-up so a deeply-nested
+            // anchor file cannot trigger a walk all the way to the filesystem root.
+            if (++levelsWalked >= MaxAncestorLevels)
             {
                 break;
             }
@@ -158,7 +189,36 @@ internal static class SolutionDiscoveryHelper
             return DiscoveryResult.None;
         }
 
-        return ScanDirectoriesForSolutions(rootDirectories, cancellationToken);
+        return ScanDirectoriesForSolutionsCached(rootDirectories, cancellationToken);
+    }
+
+    /// <summary>
+    /// solutiondiscoveryhelper-hotpath-perf: short-TTL memoized wrapper around
+    /// <see cref="ScanDirectoriesForSolutions"/>. A burst of workspaceId-omitted read-only
+    /// dispatches within <see cref="RootScanCacheTtl"/> reuses the last scan for the same declared
+    /// root set instead of re-walking every root's tree. <see cref="DiscoveryStatus.None"/> results
+    /// are cached too (that is the burst case). Internal for direct coverage of the cache-hit /
+    /// staleness-window behavior.
+    /// </summary>
+    internal static DiscoveryResult ScanDirectoriesForSolutionsCached(
+        IReadOnlyList<string> rootDirectories, CancellationToken cancellationToken)
+    {
+        if (rootDirectories.Count == 0)
+        {
+            return DiscoveryResult.None;
+        }
+
+        var cacheKey = string.Join('\0', rootDirectories.OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
+        var nowUtc = DateTime.UtcNow;
+
+        if (s_rootScanCache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > nowUtc)
+        {
+            return cached.Result;
+        }
+
+        var result = ScanDirectoriesForSolutions(rootDirectories, cancellationToken);
+        s_rootScanCache[cacheKey] = (result, nowUtc.Add(RootScanCacheTtl));
+        return result;
     }
 
     /// <summary>
