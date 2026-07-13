@@ -240,7 +240,12 @@ public sealed class ImpactSweepService : IImpactSweepService
     /// hoisting it out of the per-dtoSibling loop preserves behaviour while collapsing the scan cost
     /// from O(dtoSiblings x solution-types) to O(solution-types).
     /// </summary>
-    private static async Task<IReadOnlyList<INamedTypeSymbol>> CollectMapperCandidateTypesAsync(
+    /// <remarks><c>internal</c> (not <c>private</c>) so the hoist can be regression-covered directly:
+    /// driving it through <see cref="SweepAsync"/> muddies the compilation-cache call count with the
+    /// reference/diagnostic sub-queries' own fetches, so the project-count-scaling assertion is only
+    /// clean against this helper in isolation. See
+    /// <c>CompilationCacheAdoptionTests.ImpactSweepService_MapperCandidateScan_*</c>.</remarks>
+    internal static async Task<IReadOnlyList<INamedTypeSymbol>> CollectMapperCandidateTypesAsync(
         string workspaceId, ICompilationCache compilationCache, Solution solution, INamedTypeSymbol domainType, CancellationToken ct)
     {
         var candidates = new List<INamedTypeSymbol>();
@@ -273,7 +278,10 @@ public sealed class ImpactSweepService : IImpactSweepService
     /// method A naming the domain and method B naming the dtoType must NOT match. Purely in-memory
     /// over the small candidate list; no compilation fetch or solution-type re-enumeration.
     /// </summary>
-    private static IReadOnlyList<INamedTypeSymbol> FilterMappersForDtoType(
+    /// <remarks><c>internal</c> so the same-method narrowing semantics can be asserted directly (a
+    /// type whose domain-mention and dtoType-mention live in DIFFERENT methods must not match). See
+    /// <c>CompilationCacheAdoptionTests.ImpactSweepService_MapperCandidateScan_*</c>.</remarks>
+    internal static IReadOnlyList<INamedTypeSymbol> FilterMappersForDtoType(
         IReadOnlyList<INamedTypeSymbol> candidates, INamedTypeSymbol domainType, INamedTypeSymbol dtoType)
     {
         var matches = new List<INamedTypeSymbol>();
