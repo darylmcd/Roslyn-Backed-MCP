@@ -247,4 +247,147 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
                 newFilePath: outsidePath,
                 CancellationToken.None));
     }
+
+    /// <summary>
+    /// Perf-refactor regression (refactor-services-full-solution-scan-perf): the SymbolFinder-based
+    /// <c>FindTypeInNamespaceAsync</c> must stay namespace-scoped. Two types share the short name
+    /// <c>Gadget</c> in different namespaces; relocating from one namespace must resolve uniquely to
+    /// that one type (the same-named type in the other namespace must NOT count as a duplicate
+    /// match), exactly as the previous per-document syntax walk did.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Resolves_Uniquely_When_Same_Short_Name_Exists_In_Another_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "ScopedNameFixture");
+        Directory.CreateDirectory(fixtureDir);
+
+        // Gadget in Scope.Alpha — the one we relocate.
+        await File.WriteAllTextAsync(
+            Path.Combine(fixtureDir, "AlphaGadget.cs"),
+            "namespace Scope.Alpha;\n\npublic sealed class Gadget\n{\n    public string Name { get; set; } = \"\";\n}\n",
+            CancellationToken.None);
+
+        // Gadget in Scope.Beta — a same-named type in a different namespace that must be ignored.
+        await File.WriteAllTextAsync(
+            Path.Combine(fixtureDir, "BetaGadget.cs"),
+            "namespace Scope.Beta;\n\npublic sealed class Gadget\n{\n    public int Value { get; set; }\n}\n",
+            CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var service = CreateService();
+        var preview = await service.PreviewChangeTypeNamespaceAsync(
+            wsId,
+            typeName: "Gadget",
+            fromNamespace: "Scope.Alpha",
+            toNamespace: "Scope.Relocated",
+            newFilePath: null,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        // Only the Scope.Alpha declaration must be rewritten; the Scope.Beta Gadget stays untouched.
+        var alphaChange = preview.Changes.FirstOrDefault(c =>
+            c.FilePath.EndsWith("AlphaGadget.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(alphaChange, "AlphaGadget.cs should be part of the preview.");
+        var betaChange = preview.Changes.FirstOrDefault(c =>
+            c.FilePath.EndsWith("BetaGadget.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNull(betaChange, "BetaGadget.cs (Scope.Beta.Gadget) must NOT be touched — namespace scoping resolves the match uniquely.");
+    }
+
+    /// <summary>
+    /// Perf-refactor regression (refactor-services-full-solution-scan-perf): a genuinely ambiguous
+    /// match — a <c>partial</c> type split across two files in the same namespace surfaces as one
+    /// symbol with multiple declaring references — must still throw the ">1 match" ambiguity error,
+    /// preserving the exact behaviour of the previous per-declaration walk.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Throws_On_Ambiguous_Match_For_Partial_Type_Split_Across_Files()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "PartialAmbiguityFixture");
+        Directory.CreateDirectory(fixtureDir);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixtureDir, "TwinPartA.cs"),
+            "namespace Dup;\n\npublic partial class Twin\n{\n    public string A { get; set; } = \"\";\n}\n",
+            CancellationToken.None);
+        await File.WriteAllTextAsync(
+            Path.Combine(fixtureDir, "TwinPartB.cs"),
+            "namespace Dup;\n\npublic partial class Twin\n{\n    public string B { get; set; } = \"\";\n}\n",
+            CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var service = CreateService();
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            service.PreviewChangeTypeNamespaceAsync(
+                wsId,
+                typeName: "Twin",
+                fromNamespace: "Dup",
+                toNamespace: "Dup.Moved",
+                newFilePath: null,
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "matched multiple files");
+    }
+
+    /// <summary>
+    /// Perf-refactor regression (refactor-services-full-solution-scan-perf): the compilation-symbol
+    /// based <c>CountSiblingTypesInNamespaceAsync</c> must still count sibling types that live in a
+    /// DIFFERENT project sharing the same namespace. Alpha (SampleLib) moves out of <c>Shared</c>
+    /// while Beta (SampleApp) remains in <c>Shared</c>; because a sibling remains, a non-ambient
+    /// consumer's <c>using Shared;</c> must be retained and a warning emitted. If the cross-project
+    /// sibling were missed, the using would be dropped and no warning would appear.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Counts_Cross_Project_Sibling_Types_And_Keeps_Using()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Alpha lives in SampleLib under namespace Shared — this is the type we relocate.
+        var libFixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "CrossProjectSiblingFixture");
+        Directory.CreateDirectory(libFixtureDir);
+        await File.WriteAllTextAsync(
+            Path.Combine(libFixtureDir, "Alpha.cs"),
+            "namespace Shared;\n\npublic sealed class Alpha\n{\n    public string Name { get; set; } = \"\";\n}\n",
+            CancellationToken.None);
+
+        // Beta lives in SampleApp under the SAME namespace Shared — a cross-project sibling that
+        // must keep `Shared` populated after Alpha moves out.
+        var appFixtureDir = Path.Combine(workspace.GetPath("SampleApp"), "CrossProjectSiblingFixture");
+        Directory.CreateDirectory(appFixtureDir);
+        await File.WriteAllTextAsync(
+            Path.Combine(appFixtureDir, "Beta.cs"),
+            "namespace Shared;\n\npublic sealed class Beta\n{\n    public int Value { get; set; }\n}\n",
+            CancellationToken.None);
+
+        // Consumer (SampleApp, references SampleLib) in a non-ambient namespace with `using Shared;`
+        // referencing Alpha.
+        await File.WriteAllTextAsync(
+            Path.Combine(appFixtureDir, "AlphaConsumer.cs"),
+            "using Shared;\n\nnamespace Consumers;\n\npublic sealed class AlphaConsumer\n{\n    public Alpha? Value { get; set; }\n}\n",
+            CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var service = CreateService();
+        var preview = await service.PreviewChangeTypeNamespaceAsync(
+            wsId,
+            typeName: "Alpha",
+            fromNamespace: "Shared",
+            toNamespace: "Shared.Moved",
+            newFilePath: null,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        Assert.IsNotNull(
+            preview.Warnings,
+            "A warning must be emitted because a cross-project sibling (Beta) remains in `Shared`, so `using Shared;` is kept.");
+        Assert.IsTrue(
+            preview.Warnings!.Any(w => w.Contains("Kept `using Shared;`", StringComparison.Ordinal)),
+            $"Expected a kept-using warning naming `Shared`. Warnings:\n{string.Join("\n", preview.Warnings)}");
+    }
 }

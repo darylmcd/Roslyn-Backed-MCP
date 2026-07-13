@@ -5,6 +5,7 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -226,47 +227,60 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var updatedConcreteType = await SymbolResolver.ResolveByMetadataNameAsync(updatedSolution, GetMetadataName(typeSymbol), ct).ConfigureAwait(false) as INamedTypeSymbol
             ?? throw new InvalidOperationException($"Type '{typeName}' could not be resolved after interface extraction.");
 
-        foreach (var project in updatedSolution.Projects)
+        // Only documents that actually reference the extracted concrete type can hold a
+        // constructor parameter typed at it. Use Roslyn's reference index (which honours the
+        // project dependency graph, including transitive project references) to visit just those
+        // documents instead of building a semantic model for every document in the solution.
+        var references = await SymbolFinder.FindReferencesAsync(updatedConcreteType, updatedSolution, ct).ConfigureAwait(false);
+        var referencingDocumentIds = references
+            .SelectMany(reference => reference.Locations)
+            .Select(location => location.Document.Id)
+            .Distinct();
+
+        foreach (var documentId in referencingDocumentIds)
         {
-            foreach (var document in project.Documents)
+            var document = updatedSolution.GetDocument(documentId);
+            if (document is null)
             {
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (root is null || model is null)
-                {
-                    continue;
-                }
-
-                var parameterReplacements = root.DescendantNodes()
-                    .OfType<ParameterSyntax>()
-                    .Where(parameter => parameter.FirstAncestorOrSelf<ConstructorDeclarationSyntax>() is not null && parameter.Type is not null)
-                    .Select(parameter => new
-                    {
-                        Parameter = parameter,
-                        Type = model.GetTypeInfo(parameter.Type!, ct).Type
-                    })
-                    .Where(entry => SymbolEqualityComparer.Default.Equals(entry.Type, updatedConcreteType))
-                    .ToArray();
-
-                if (parameterReplacements.Length == 0)
-                {
-                    continue;
-                }
-
-                var updatedRoot = root.ReplaceNodes(
-                    parameterReplacements.Select(entry => entry.Parameter),
-                    (original, _) =>
-                    {
-                        // FORMAT-BUG-002: Preserve the original type node's surrounding trivia.
-                        // `ParseTypeName` produces a bare identifier with no trivia; without
-                        // `WithTriviaFrom` the trailing space between type and parameter name is
-                        // lost, producing `IAnimalServiceservice` instead of `IAnimalService service`.
-                        var replacementType = SyntaxFactory.ParseTypeName(resolvedInterfaceName)
-                            .WithTriviaFrom(original.Type!);
-                        return original.WithType(replacementType);
-                    });
-                updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
+                continue;
             }
+
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (root is null || model is null)
+            {
+                continue;
+            }
+
+            var parameterReplacements = root.DescendantNodes()
+                .OfType<ParameterSyntax>()
+                .Where(parameter => parameter.FirstAncestorOrSelf<ConstructorDeclarationSyntax>() is not null && parameter.Type is not null)
+                .Select(parameter => new
+                {
+                    Parameter = parameter,
+                    Type = model.GetTypeInfo(parameter.Type!, ct).Type
+                })
+                .Where(entry => SymbolEqualityComparer.Default.Equals(entry.Type, updatedConcreteType))
+                .ToArray();
+
+            if (parameterReplacements.Length == 0)
+            {
+                continue;
+            }
+
+            var updatedRoot = root.ReplaceNodes(
+                parameterReplacements.Select(entry => entry.Parameter),
+                (original, _) =>
+                {
+                    // FORMAT-BUG-002: Preserve the original type node's surrounding trivia.
+                    // `ParseTypeName` produces a bare identifier with no trivia; without
+                    // `WithTriviaFrom` the trailing space between type and parameter name is
+                    // lost, producing `IAnimalServiceservice` instead of `IAnimalService service`.
+                    var replacementType = SyntaxFactory.ParseTypeName(resolvedInterfaceName)
+                        .WithTriviaFrom(original.Type!);
+                    return original.WithType(replacementType);
+                });
+            updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
         }
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
