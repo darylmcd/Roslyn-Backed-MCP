@@ -190,6 +190,104 @@ public sealed class TestRunFailureEnvelopeTests
         StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "workspaceId");
     }
 
+    // host-tools-layer-test-coverage-gap: build_workspace, build_project, test_discover,
+    // test_related, and test_related_files now attach the same schemaHint-on-failure recovery
+    // guidance as test_run on ANY error category (previously only ever hinting on
+    // InvalidArgument via the global filter default). Each test drives the shim with a service
+    // stub that throws InvalidOperationException — a non-InvalidArgument category — and asserts
+    // the returned envelope carries a catalog-backed schemaHint for the tool.
+
+    [TestMethod]
+    public async Task BuildWorkspace_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.BuildWorkspace(
+            new PassthroughGate(),
+            new ThrowingBuildService(new InvalidOperationException("workspace build blew up")),
+            workspaceId: "ws-build-workspace-envelope",
+            progress: null,
+            ct: CancellationToken.None);
+
+        AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "build_workspace", "workspace build blew up");
+    }
+
+    [TestMethod]
+    public async Task BuildProject_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.BuildProject(
+            new PassthroughGate(),
+            new ThrowingBuildService(new InvalidOperationException("project build blew up")),
+            workspaceId: "ws-build-project-envelope",
+            projectName: "Missing.Project",
+            ct: CancellationToken.None);
+
+        AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "build_project", "project build blew up");
+    }
+
+    [TestMethod]
+    public async Task DiscoverTests_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.DiscoverTests(
+            new PassthroughGate(),
+            new ThrowingTestDiscoveryService(new InvalidOperationException("discovery blew up")),
+            workspaceId: "ws-test-discover-envelope",
+            projectName: null,
+            nameFilter: null,
+            offset: 0,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_discover", "discovery blew up");
+    }
+
+    [TestMethod]
+    public async Task FindRelatedTests_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.FindRelatedTests(
+            new PassthroughGate(),
+            new ThrowingTestDiscoveryService(new InvalidOperationException("related-symbol blew up")),
+            workspaceId: "ws-test-related-envelope",
+            filePath: null,
+            line: null,
+            column: null,
+            symbolHandle: null,
+            metadataName: "Some.Namespace.SomeType",
+            maxResults: 100,
+            ct: CancellationToken.None);
+
+        AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_related", "related-symbol blew up");
+    }
+
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.FindRelatedTestsForFiles(
+            new PassthroughGate(),
+            new ThrowingTestDiscoveryService(new InvalidOperationException("related-files blew up")),
+            workspaceId: "ws-test-related-files-envelope",
+            filePaths: ["C:/fake/Changed.cs"],
+            maxResults: 100,
+            ct: CancellationToken.None);
+
+        AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_related_files", "related-files blew up");
+    }
+
+    private static void AssertNonInvalidArgumentEnvelopeHasSchemaHint(string json, string toolName, string messageFragment)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsTrue(root.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString(),
+            $"Expected a non-InvalidArgument category for {toolName}. Envelope: {json}");
+        Assert.AreEqual(toolName, root.GetProperty("tool").GetString());
+        Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(root.GetProperty("message").GetString() ?? string.Empty, messageFragment);
+        Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
+            $"{toolName} exception envelope must carry schemaHint on a non-InvalidArgument failure. Envelope: {json}");
+        StringAssert.Contains(schemaHint.GetString() ?? string.Empty, $"{toolName}(");
+        StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "workspaceId");
+    }
+
     private sealed class PassthroughGate : IWorkspaceExecutionGate
     {
         public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
@@ -222,6 +320,43 @@ public sealed class TestRunFailureEnvelopeTests
             string? projectName,
             string? filter,
             CancellationToken ct) =>
+            throw _exception;
+    }
+
+    private sealed class ThrowingBuildService : IBuildService
+    {
+        private readonly Exception _exception;
+
+        public ThrowingBuildService(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<BuildResultDto> BuildWorkspaceAsync(string workspaceId, CancellationToken ct) =>
+            throw _exception;
+
+        public Task<BuildResultDto> BuildProjectAsync(string workspaceId, string projectName, CancellationToken ct) =>
+            throw _exception;
+    }
+
+    private sealed class ThrowingTestDiscoveryService : ITestDiscoveryService
+    {
+        private readonly Exception _exception;
+
+        public ThrowingTestDiscoveryService(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct) =>
+            throw _exception;
+
+        public Task<RelatedTestsForSymbolDto> FindRelatedTestsAsync(
+            string workspaceId, SymbolLocator locator, int maxResults, CancellationToken ct) =>
+            throw _exception;
+
+        public Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
+            string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct) =>
             throw _exception;
     }
 }
