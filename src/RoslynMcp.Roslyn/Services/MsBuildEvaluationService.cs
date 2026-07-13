@@ -1,18 +1,40 @@
+using System.Collections.Concurrent;
 using Microsoft.Build.Evaluation;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
+using MsBuildProject = Microsoft.Build.Evaluation.Project;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
 {
     private readonly IWorkspaceManager _workspace;
+
+    /// <summary>
+    /// msbuild-evaluation-uncached-perf: caches the loaded MSBuild <see cref="MsBuildProject"/>
+    /// (and its owning <see cref="ProjectCollection"/>) keyed by workspace id → (workspace version,
+    /// project file path). Without this, every <c>EvaluatePropertyAsync</c>/<c>EvaluateItemsAsync</c>/
+    /// <c>GetEvaluatedPropertiesAsync</c> call re-parsed the full MSBuild import graph (SDK targets,
+    /// Directory.Build.props, …) from disk even when the project was unchanged — and
+    /// <c>get_nuget_dependencies</c> + <c>get_security_status</c> each loop over every project and
+    /// duplicated that work. Mirrors the version-keyed, per-workspace invalidation pattern of
+    /// <see cref="NuGetDependencyService"/>'s <c>_vulnCache</c>. Invalidated wholesale on
+    /// <see cref="IWorkspaceManager.WorkspaceReloaded"/>/<see cref="IWorkspaceManager.WorkspaceClosed"/>.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<(int Version, string FilePath), Lazy<CachedMsBuildProject>>> _cache
+        = new(StringComparer.Ordinal);
+
     public MsBuildEvaluationService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
+        // Drop the cached ProjectCollection(s) for a workspace as soon as it reloads (version bump,
+        // typically after an on-disk change / restore) or closes, so a subsequent evaluation re-parses
+        // the fresh project XML. Mirrors NuGetDependencyService.cs:57-60.
+        _workspace.WorkspaceReloaded += InvalidateWorkspace;
+        _workspace.WorkspaceClosed += InvalidateWorkspace;
     }
 
     public Task<MsBuildPropertyEvaluationDto> EvaluatePropertyAsync(
@@ -20,22 +42,16 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
     {
         MsBuildInitializer.EnsureInitialized();
         var roslynProj = ResolveRoslynProject(workspaceId, projectName);
-        using var collection = new ProjectCollection();
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            var msbuildProj = collection.LoadProject(roslynProj.FilePath!);
-            var value = msbuildProj.GetPropertyValue(propertyName);
-            return Task.FromResult(new MsBuildPropertyEvaluationDto(
-                roslynProj.Name,
-                roslynProj.FilePath!,
-                propertyName,
-                string.IsNullOrEmpty(value) ? null : value));
-        }
-        finally
-        {
-            collection.UnloadAllProjects();
-        }
+        // Keep the cancellation observation OUTSIDE GetOrLoadProject so a cancel on one caller cannot
+        // fault/poison the shared Lazy<CachedMsBuildProject> that other concurrent callers await.
+        ct.ThrowIfCancellationRequested();
+        var msbuildProj = GetOrLoadProject(workspaceId, roslynProj);
+        var value = msbuildProj.GetPropertyValue(propertyName);
+        return Task.FromResult(new MsBuildPropertyEvaluationDto(
+            roslynProj.Name,
+            roslynProj.FilePath!,
+            propertyName,
+            string.IsNullOrEmpty(value) ? null : value));
     }
 
     public Task<MsBuildItemEvaluationDto> EvaluateItemsAsync(
@@ -43,28 +59,21 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
     {
         MsBuildInitializer.EnsureInitialized();
         var roslynProj = ResolveRoslynProject(workspaceId, projectName);
-        using var collection = new ProjectCollection();
-        try
+        ct.ThrowIfCancellationRequested();
+        var msbuildProj = GetOrLoadProject(workspaceId, roslynProj);
+        var items = new List<MsBuildItemInstanceDto>();
+        foreach (var item in msbuildProj.GetItems(itemType))
         {
-            var msbuildProj = collection.LoadProject(roslynProj.FilePath!);
-            var items = new List<MsBuildItemInstanceDto>();
-            foreach (var item in msbuildProj.GetItems(itemType))
-            {
-                ct.ThrowIfCancellationRequested();
-                var meta = item.Metadata.ToDictionary(m => m.Name, m => m.EvaluatedValue, StringComparer.OrdinalIgnoreCase);
-                items.Add(new MsBuildItemInstanceDto(item.EvaluatedInclude, meta));
-            }
+            ct.ThrowIfCancellationRequested();
+            var meta = item.Metadata.ToDictionary(m => m.Name, m => m.EvaluatedValue, StringComparer.OrdinalIgnoreCase);
+            items.Add(new MsBuildItemInstanceDto(item.EvaluatedInclude, meta));
+        }
 
-            return Task.FromResult(new MsBuildItemEvaluationDto(
-                roslynProj.Name,
-                roslynProj.FilePath!,
-                itemType,
-                items));
-        }
-        finally
-        {
-            collection.UnloadAllProjects();
-        }
+        return Task.FromResult(new MsBuildItemEvaluationDto(
+            roslynProj.Name,
+            roslynProj.FilePath!,
+            itemType,
+            items));
     }
 
     public Task<MsBuildPropertiesDumpDto> GetEvaluatedPropertiesAsync(
@@ -76,58 +85,113 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
     {
         MsBuildInitializer.EnsureInitialized();
         var roslynProj = ResolveRoslynProject(workspaceId, projectName);
-        using var collection = new ProjectCollection();
-        try
+        ct.ThrowIfCancellationRequested();
+        var msbuildProj = GetOrLoadProject(workspaceId, roslynProj);
+
+        // Filter at evaluation time so we never serialize 60KB+ of internal MSBuild
+        // properties when the caller only needs a handful. The explicit allowlist takes
+        // precedence; falling back to a substring filter mirrors get_diagnostics behavior.
+        HashSet<string>? allowlist = null;
+        if (includedNames is not null && includedNames.Count > 0)
         {
-            var msbuildProj = collection.LoadProject(roslynProj.FilePath!);
-
-            // Filter at evaluation time so we never serialize 60KB+ of internal MSBuild
-            // properties when the caller only needs a handful. The explicit allowlist takes
-            // precedence; falling back to a substring filter mirrors get_diagnostics behavior.
-            HashSet<string>? allowlist = null;
-            if (includedNames is not null && includedNames.Count > 0)
-            {
-                allowlist = new HashSet<string>(includedNames, StringComparer.OrdinalIgnoreCase);
-            }
-
-            var hasSubstringFilter = !string.IsNullOrWhiteSpace(propertyNameFilter);
-            var totalCount = 0;
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var prop in msbuildProj.Properties)
-            {
-                ct.ThrowIfCancellationRequested();
-                totalCount++;
-
-                if (allowlist is not null)
-                {
-                    if (!allowlist.Contains(prop.Name)) continue;
-                }
-                else if (hasSubstringFilter &&
-                         !prop.Name.Contains(propertyNameFilter!, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                dict[prop.Name] = prop.EvaluatedValue;
-            }
-
-            var appliedFilter = allowlist is not null
-                ? $"includedNames=[{string.Join(",", allowlist.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))}]"
-                : hasSubstringFilter
-                    ? $"propertyNameFilter='{propertyNameFilter}'"
-                    : null;
-
-            return Task.FromResult(new MsBuildPropertiesDumpDto(
-                roslynProj.Name,
-                roslynProj.FilePath!,
-                dict,
-                TotalCount: totalCount,
-                ReturnedCount: dict.Count,
-                AppliedFilter: appliedFilter));
+            allowlist = new HashSet<string>(includedNames, StringComparer.OrdinalIgnoreCase);
         }
-        finally
+
+        var hasSubstringFilter = !string.IsNullOrWhiteSpace(propertyNameFilter);
+        var totalCount = 0;
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in msbuildProj.Properties)
+        {
+            ct.ThrowIfCancellationRequested();
+            totalCount++;
+
+            if (allowlist is not null)
+            {
+                if (!allowlist.Contains(prop.Name)) continue;
+            }
+            else if (hasSubstringFilter &&
+                     !prop.Name.Contains(propertyNameFilter!, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            dict[prop.Name] = prop.EvaluatedValue;
+        }
+
+        var appliedFilter = allowlist is not null
+            ? $"includedNames=[{string.Join(",", allowlist.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))}]"
+            : hasSubstringFilter
+                ? $"propertyNameFilter='{propertyNameFilter}'"
+                : null;
+
+        return Task.FromResult(new MsBuildPropertiesDumpDto(
+            roslynProj.Name,
+            roslynProj.FilePath!,
+            dict,
+            TotalCount: totalCount,
+            ReturnedCount: dict.Count,
+            AppliedFilter: appliedFilter));
+    }
+
+    /// <summary>
+    /// Returns a loaded MSBuild <see cref="MsBuildProject"/> for the given project, reusing a cached
+    /// instance when the workspace version and project file path are unchanged. The
+    /// <see cref="Lazy{T}"/> with <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/> guarantees
+    /// <c>LoadProject</c> runs exactly once per key even under concurrent callers. Ownership of the
+    /// created <see cref="ProjectCollection"/> transfers to the cache; callers must NOT unload it.
+    /// </summary>
+    private MsBuildProject GetOrLoadProject(string workspaceId, RoslynProject roslynProj)
+    {
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        var bucket = _cache.GetOrAdd(
+            workspaceId,
+            static _ => new ConcurrentDictionary<(int Version, string FilePath), Lazy<CachedMsBuildProject>>());
+
+        var filePath = roslynProj.FilePath!;
+        var entry = bucket.GetOrAdd(
+            (version, filePath),
+            static key => new Lazy<CachedMsBuildProject>(
+                () =>
+                {
+                    var collection = new ProjectCollection();
+                    return new CachedMsBuildProject(collection, collection.LoadProject(key.FilePath));
+                },
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        return entry.Value.Project;
+    }
+
+    private void InvalidateWorkspace(string workspaceId)
+    {
+        if (!_cache.TryRemove(workspaceId, out var bucket))
+        {
+            return;
+        }
+
+        foreach (var lazy in bucket.Values)
+        {
+            // Only dispose entries whose factory actually ran — touching an uncreated Lazy would
+            // force a needless LoadProject just to dispose it.
+            if (lazy.IsValueCreated)
+            {
+                lazy.Value.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Holds a loaded MSBuild <see cref="MsBuildProject"/> together with its owning
+    /// <see cref="ProjectCollection"/>. Disposal unloads and disposes the collection so the cached
+    /// import graph is released on workspace reload/close.
+    /// </summary>
+    private sealed class CachedMsBuildProject(ProjectCollection collection, MsBuildProject project) : IDisposable
+    {
+        public MsBuildProject Project { get; } = project;
+
+        public void Dispose()
         {
             collection.UnloadAllProjects();
+            collection.Dispose();
         }
     }
 
