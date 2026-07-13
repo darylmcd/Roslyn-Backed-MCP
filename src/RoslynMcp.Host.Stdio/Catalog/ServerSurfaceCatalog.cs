@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -29,7 +30,32 @@ public static partial class ServerSurfaceCatalog
     private static readonly Lazy<IReadOnlyList<SurfaceEntry>> s_allTools = new(
         static () => [.. WorkspaceTools!, .. SymbolTools!, .. AnalysisTools!, .. RefactoringTools!, .. EditingTools!, .. OrchestrationTools!]);
 
+    // solutiondiscoveryhelper-hotpath-perf: name-keyed index over the same Tools list, built once
+    // (Tools is a build-once immutable Lazy, never mutated), so hot-path eligibility checks in the
+    // dispatch filter (IsWorkspaceIdRecoveryAllowedFor / IsWorkspaceIdAutoResolveAllowedFor) are
+    // O(1) instead of an O(n) linear FirstOrDefault scan of the full catalog per read-only call.
+    // Built from Tools itself — never from the six partial arrays — to avoid drift.
+    private static readonly Lazy<IReadOnlyDictionary<string, SurfaceEntry>> s_toolsByName = new(
+        static () => Tools.ToDictionary(entry => entry.Name, StringComparer.Ordinal));
+
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
+
+    /// <summary>
+    /// solutiondiscoveryhelper-hotpath-perf: O(1) name lookup into <see cref="Tools"/>. Returns
+    /// <see langword="false"/> for a null/unknown tool name (leaving <paramref name="entry"/>
+    /// <see langword="null"/>), matching the prior <c>FirstOrDefault(...) is null</c> semantics.
+    /// </summary>
+    internal static bool TryGetTool(string? name, [NotNullWhen(true)] out SurfaceEntry? entry)
+    {
+        if (name is not null && s_toolsByName.Value.TryGetValue(name, out var found))
+        {
+            entry = found;
+            return true;
+        }
+
+        entry = null;
+        return false;
+    }
 
     public static string CurrentReleaseVersion => s_currentReleaseVersion.Value;
 

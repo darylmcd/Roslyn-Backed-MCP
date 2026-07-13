@@ -128,6 +128,30 @@ public sealed class SolutionDiscoveryHelperTests
         Assert.AreEqual(sln, SolutionDiscoveryHelper.TryDiscoverFromFilePath(Args(("file", source))).UniquePath);
     }
 
+    [TestMethod]
+    public void TryDiscoverFromFilePath_SolutionBeyondDepthCap_IsNone()
+    {
+        // solutiondiscoveryhelper-hotpath-perf: the ancestor walk-up is capped at 8 hops. Nest the
+        // source file 9 directory levels below the root and place the only solution at the root, so
+        // reaching it would require a 9th hop. The cap must stop the walk first → None (an uncapped
+        // walk would find the solution and return Unique).
+        var deep = _root;
+        for (var i = 1; i <= 9; i++)
+        {
+            deep = Path.Combine(deep, "l" + i);
+        }
+
+        Directory.CreateDirectory(deep);
+        File.WriteAllText(Path.Combine(_root, "Sample.slnx"), "<Solution />");
+        var source = Path.Combine(deep, "Class1.cs");
+        File.WriteAllText(source, "// source");
+
+        var result = SolutionDiscoveryHelper.TryDiscoverFromFilePath(Args(("filePath", source)));
+
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, result.Status,
+            "A solution more than 8 ancestor hops above the anchor file must not be discovered.");
+    }
+
     // ── scan seam (query-anchored core) ─────────────────────────────────────
 
     [TestMethod]
@@ -170,6 +194,39 @@ public sealed class SolutionDiscoveryHelperTests
         Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None,
             SolutionDiscoveryHelper.ScanDirectoriesForSolutions(
                 new[] { Path.Combine(_root, "does-not-exist") }, CancellationToken.None).Status);
+    }
+
+    // ── TTL cache around the root scan ──────────────────────────────────────
+
+    [TestMethod]
+    public void ScanDirectoriesForSolutionsCached_WithinTtl_ReturnsStaleResult()
+    {
+        // solutiondiscoveryhelper-hotpath-perf: the cached wrapper memoizes the root scan for a
+        // short TTL keyed by the root set. Prime the cache with a single-solution result, then add
+        // a second solution to the same root: a fresh scan would now be Ambiguous, but a cache hit
+        // within the TTL must return the original (stale) Unique result — proving the second call
+        // did not re-walk the tree.
+        File.WriteAllText(Path.Combine(_root, "First.slnx"), "<Solution />");
+        var roots = new[] { _root };
+
+        var first = SolutionDiscoveryHelper.ScanDirectoriesForSolutionsCached(roots, CancellationToken.None);
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Unique, first.Status);
+
+        File.WriteAllText(Path.Combine(_root, "Second.slnx"), "<Solution />");
+
+        var second = SolutionDiscoveryHelper.ScanDirectoriesForSolutionsCached(roots, CancellationToken.None);
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Unique, second.Status,
+            "A cache hit within the TTL must reuse the prior scan; the newly-added second solution " +
+            "must not turn the cached Unique result into Ambiguous until the TTL expires.");
+        Assert.AreEqual(first.UniquePath, second.UniquePath);
+    }
+
+    [TestMethod]
+    public void ScanDirectoriesForSolutionsCached_EmptyRoots_IsNone()
+    {
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None,
+            SolutionDiscoveryHelper.ScanDirectoriesForSolutionsCached(
+                Array.Empty<string>(), CancellationToken.None).Status);
     }
 
     [TestMethod]

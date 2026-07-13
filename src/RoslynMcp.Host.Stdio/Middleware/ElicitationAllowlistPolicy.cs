@@ -137,10 +137,9 @@ internal static class ElicitationAllowlistPolicy
         }
 
         var schema = ToolParameterIndex.GetParameter(toolName, paramName);
-        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
-            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
 
         return schema is { Type: "string" }
+               && ServerSurfaceCatalog.TryGetTool(toolName, out var tool)
                && tool is { ReadOnly: true, Destructive: false };
     }
 
@@ -168,8 +167,7 @@ internal static class ElicitationAllowlistPolicy
             return false;
         }
 
-        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
-            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
-        return tool is { ReadOnly: true, Destructive: false };
+        return ServerSurfaceCatalog.TryGetTool(toolName, out var tool)
+               && tool is { ReadOnly: true, Destructive: false };
     }
 }
