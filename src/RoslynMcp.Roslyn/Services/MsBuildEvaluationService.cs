@@ -3,6 +3,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -10,9 +11,11 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
 {
     private readonly IWorkspaceManager _workspace;
-    public MsBuildEvaluationService(IWorkspaceManager workspace)
+    private readonly ILogger<MsBuildEvaluationService>? _logger;
+    public MsBuildEvaluationService(IWorkspaceManager workspace, ILogger<MsBuildEvaluationService>? logger = null)
     {
         _workspace = workspace;
+        _logger = logger;
     }
 
     public Task<MsBuildPropertyEvaluationDto> EvaluatePropertyAsync(
@@ -155,6 +158,10 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
             var loadedList = loadedProjects.Count > 0
                 ? string.Join(", ", loadedProjects)
                 : "(none — the workspace has no projects loaded)";
+
+            _logger?.LogWarning(
+                "MSBuild evaluation could not resolve project '{ProjectName}' in workspace '{WorkspaceId}'; {LoadedCount} project(s) loaded: {LoadedProjects}.",
+                projectName, workspaceId, loadedProjects.Count, loadedList);
 
             throw new InvalidOperationException(
                 $"Project '{projectName}' not found in workspace '{workspaceId}'. " +

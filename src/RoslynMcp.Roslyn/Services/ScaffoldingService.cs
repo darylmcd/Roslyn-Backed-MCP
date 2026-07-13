@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -24,15 +25,18 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     private readonly IWorkspaceManager _workspace;
     private readonly IFileOperationService _fileOperationService;
     private readonly Contracts.IPreviewStore _previewStore;
+    private readonly ILogger<ScaffoldingService>? _logger;
 
     public ScaffoldingService(
         IWorkspaceManager workspace,
         IFileOperationService fileOperationService,
-        Contracts.IPreviewStore previewStore)
+        Contracts.IPreviewStore previewStore,
+        ILogger<ScaffoldingService>? logger = null)
     {
         _workspace = workspace;
         _fileOperationService = fileOperationService;
         _previewStore = previewStore;
+        _logger = logger;
     }
 
     /// <summary>
@@ -95,7 +99,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         public static ResolvedTargetTypeInfo NotFound { get; } = new(string.Empty, string.Empty, null, null, null);
     }
 
-    private static string ResolveTestFramework(string? requested, string? projectFilePath)
+    private string ResolveTestFramework(string? requested, string? projectFilePath)
     {
         if (string.IsNullOrWhiteSpace(requested) ||
             string.Equals(requested, "auto", StringComparison.OrdinalIgnoreCase))
@@ -111,7 +115,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
             $"Unsupported testFramework '{requested}'. Use mstest, xunit, nunit, or auto.");
     }
 
-    private static string DetectTestFrameworkFromProjectFile(string? projectFilePath)
+    private string DetectTestFrameworkFromProjectFile(string? projectFilePath)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
             return "mstest";
@@ -130,9 +134,9 @@ public sealed partial class ScaffoldingService : IScaffoldingService
             if (includes.Any(i => i.Contains("nunit", StringComparison.Ordinal)))
                 return "nunit";
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall through to default
+            _logger?.LogWarning(ex, "Failed to parse project file '{ProjectFilePath}' while detecting test framework; defaulting to mstest.", projectFilePath);
         }
 
         return "mstest";
@@ -482,7 +486,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
                ?? throw new InvalidOperationException($"Project not found: {projectName}");
     }
 
-    private static void ValidateIsTestProject(ProjectStatusDto project)
+    private void ValidateIsTestProject(ProjectStatusDto project)
     {
         if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
             return; // Can't validate — allow and let framework detection handle it
@@ -515,9 +519,10 @@ public sealed partial class ScaffoldingService : IScaffoldingService
                 "Please specify a test project instead.");
         }
         catch (InvalidOperationException) { throw; }
-        catch
+        catch (Exception ex)
         {
-            // If we can't parse the project file, allow and let downstream handle it
+            // If we can't parse the project file, allow and let downstream handle it.
+            _logger?.LogWarning(ex, "Failed to parse project file '{ProjectFilePath}' while validating test project; allowing operation to proceed.", project.FilePath);
         }
     }
 
