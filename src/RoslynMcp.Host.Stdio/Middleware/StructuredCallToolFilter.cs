@@ -66,8 +66,8 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// preserved exactly. Sensitive parameters (credentials, tokens, secrets, passwords,
 /// API keys, auth headers) are explicitly NOT on the allowlist — per MCP spec §
 /// Elicitation security, "Servers MUST NOT request sensitive information" via
-/// <c>elicitation/create</c>. See <see cref="IsSensitiveFieldName"/> and
-/// <see cref="AllowedElicitationParameters"/> for the defense layers.
+/// <c>elicitation/create</c>. See <see cref="ElicitationAllowlistPolicy.IsSensitiveFieldName"/>
+/// and <see cref="ElicitationAllowlistPolicy"/> for the defense layers.
 /// </para>
 ///
 /// <para>
@@ -76,33 +76,12 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class StructuredCallToolFilter
 {
+    // Shared with ElicitationAllowlistPolicy (which duplicates these consts — a private const
+    // does not cross the class boundary). Retained here because the filter's dispatch/recovery
+    // body still references all three (workspace_load dispatch, workspaceId patching, path elicit).
     private const string WorkspaceLoadToolName = "workspace_load";
     private const string WorkspaceIdParameterName = "workspaceId";
     private const string PathParameterName = "path";
-
-    /// <summary>
-    /// Strict allowlist of <c>(toolName, paramName)</c> pairs that may be elicited from the
-    /// user via <c>elicitation/create</c>. Anything not on this list is rejected at the
-    /// elicitation entry point regardless of any other heuristic — defense layer 1 (per-arg
-    /// allowlist) and defense layer 2 (<see cref="IsSensitiveFieldName"/>) are both checked
-    /// before any elicit request is built.
-    ///
-    /// <para>
-    /// Adding to this list requires explicit policy review: the parameter must be
-    /// non-sensitive, naturally bounded (a path, an id, a select-from-N), and the recovery
-    /// shape (one-shot retry with the elicited value patched in) must be safe for the tool's
-    /// idempotency semantics. <c>workspaceId</c> parameters (Required or optional) for read-only,
-    /// non-destructive tools are handled by
-    /// <see cref="IsWorkspaceIdRecoveryAllowedFor"/> because the concrete elicited field is
-    /// <c>workspace_load.path</c>; <c>workspaceId</c> itself is a path-derived session token,
-    /// not a credential, and is pinned non-sensitive by tests.
-    /// </para>
-    /// </summary>
-    private static readonly HashSet<(string Tool, string Param)> AllowedElicitationParameters =
-        new()
-        {
-            (WorkspaceLoadToolName, PathParameterName),
-        };
 
     /// <summary>
     /// Decorator factory matching the SDK's <c>McpRequestFilter&lt;TParams, TResult&gt;</c>
@@ -143,7 +122,7 @@ internal static class StructuredCallToolFilter
                     {
                         // Explicit id supplied — record it and skip the loaded-workspace
                         // enumeration entirely (the common path; avoids per-call DTO projection).
-                        RecordAutoResolution("explicit");
+                        CallMetricsRecorder.RecordAutoResolution("explicit");
                     }
                     else
                     {
@@ -161,16 +140,16 @@ internal static class StructuredCallToolFilter
                             case WorkspaceIdAutoResolution.SingleWorkspace:
                                 context.Params!.Arguments =
                                     WithWorkspaceId(context.Params.Arguments, resolvedWorkspaceId!);
-                                RecordAutoResolution("single-workspace");
+                                CallMetricsRecorder.RecordAutoResolution("single-workspace");
                                 logger?.LogInformation(
                                     "Tool {ToolName} called without workspaceId; resolved to the single " +
                                     "loaded workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
                                 break;
 
                             case WorkspaceIdAutoResolution.FastFail:
-                                RecordAutoResolution("fast-fail");
+                                CallMetricsRecorder.RecordAutoResolution("fast-fail");
                                 stopwatch.Stop();
-                                RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                                 logger?.LogWarning(
                                     "Tool {ToolName} called without workspaceId while {Count} workspaces " +
                                     "are loaded; returning a structured fast-fail.",
@@ -191,7 +170,7 @@ internal static class StructuredCallToolFilter
                                 if (autoLoadFastFail is not null)
                                 {
                                     stopwatch.Stop();
-                                    RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                    CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                                     return autoLoadFastFail;
                                 }
 
@@ -208,7 +187,7 @@ internal static class StructuredCallToolFilter
 
                 var result = await next(context, cancellationToken).ConfigureAwait(false);
                 stopwatch.Stop();
-                RecordElapsed(stopwatch.ElapsedMilliseconds);
+                CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                 logger?.LogInformation("Tool {ToolName} completed successfully", toolName);
                 return InjectMetaIntoContent(result, toolName);
             }
@@ -230,14 +209,14 @@ internal static class StructuredCallToolFilter
                 if (elicitResult is not null)
                 {
                     stopwatch.Stop();
-                    RecordElapsed(stopwatch.ElapsedMilliseconds);
+                    CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                     logger?.LogInformation(
                         "Tool {ToolName} succeeded on retry after elicitation", toolName);
                     return InjectMetaIntoContent(elicitResult, toolName);
                 }
 
                 stopwatch.Stop();
-                RecordElapsed(stopwatch.ElapsedMilliseconds);
+                CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
 
                 var level = IsInternalError(ex) ? LogLevel.Error : LogLevel.Warning;
                 logger?.Log(level, ex, "Tool {ToolName} failed", toolName);
@@ -248,71 +227,26 @@ internal static class StructuredCallToolFilter
     }
 
     /// <summary>
-    /// Capability-check helper: returns <see langword="true"/> when the connected client
-    /// declares the <c>elicitation</c> capability per MCP 2025-06-18 § Client Capabilities.
-    /// Public so initiative #9 (<c>elicit-disambiguation-on-multi-symbol-resolve</c>) can
-    /// reuse the same predicate without copy-pasting the null-coalescing dance.
+    /// Thin delegate preserving the historical static call surface. The policy lives in
+    /// <see cref="ElicitationAllowlistPolicy.HasElicitation"/>; kept here so existing callers
+    /// (<c>SymbolTools</c>, the filter test suites) compile unchanged.
     /// </summary>
-    /// <param name="capabilities">
-    /// The <see cref="McpServer.ClientCapabilities"/> snapshot, typically obtained as
-    /// <c>context.Server.ClientCapabilities</c> inside a request filter or tool method.
-    /// May be <see langword="null"/> on the server's pre-initialize path.
-    /// </param>
-    /// <returns>
-    /// <see langword="true"/> when both <paramref name="capabilities"/> and
-    /// <c>capabilities.Elicitation</c> are non-null. Zero-allocation and side-effect-free.
-    /// </returns>
     public static bool HasElicitation(ClientCapabilities? capabilities) =>
-        capabilities?.Elicitation is not null;
+        ElicitationAllowlistPolicy.HasElicitation(capabilities);
 
     /// <summary>
-    /// Defense-in-depth predicate: returns <see langword="true"/> when the parameter name
-    /// suggests credential / secret / token / password / API-key / authorization material.
-    /// The primary defense is the strict <see cref="AllowedElicitationParameters"/>
-    /// allowlist; this helper exists so tests can pin the policy and so any future allowlist
-    /// addition is double-checked before being merged. Per MCP spec § Elicitation security,
-    /// "Servers MUST NOT request sensitive information" via <c>elicitation/create</c>.
+    /// Thin delegate preserving the historical static call surface. See
+    /// <see cref="ElicitationAllowlistPolicy.IsSensitiveFieldName"/>.
     /// </summary>
-    /// <param name="paramName">Parameter name (case-insensitive comparison).</param>
-    /// <returns>
-    /// <see langword="true"/> when the name matches a sensitive-data pattern. Empty/null
-    /// names return <see langword="false"/> — the allowlist owns the positive permission
-    /// decision; this helper only owns the "do not even consider" decision.
-    /// </returns>
-    public static bool IsSensitiveFieldName(string? paramName)
-    {
-        if (string.IsNullOrEmpty(paramName)) return false;
-        // Use Contains-based matching so common variants ("apiKey", "api_key", "ApiKey",
-        // "authToken", "passwordHash", etc.) all classify as sensitive without
-        // enumerating every casing.
-        return paramName.Contains("password", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("secret", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("credential", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("token", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("apikey", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("api_key", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("api-key", StringComparison.OrdinalIgnoreCase)
-            || paramName.Equals("auth", StringComparison.OrdinalIgnoreCase)
-            || paramName.Equals("authorization", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("private_key", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("privatekey", StringComparison.OrdinalIgnoreCase)
-            || paramName.Contains("private-key", StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool IsSensitiveFieldName(string? paramName) =>
+        ElicitationAllowlistPolicy.IsSensitiveFieldName(paramName);
 
     /// <summary>
-    /// Returns <see langword="true"/> when <paramref name="toolName"/> + <paramref name="paramName"/>
-    /// is on the strict elicitation allowlist AND the parameter name is not flagged sensitive.
-    /// Both checks must pass — an entry that ends up sensitive (because someone added
-    /// <c>workspace_load.token</c> to the allowlist by mistake, say) still gets refused.
-    /// Public so tests can pin the allowlist policy.
+    /// Thin delegate preserving the historical static call surface. See
+    /// <see cref="ElicitationAllowlistPolicy.IsElicitationAllowedFor"/>.
     /// </summary>
-    public static bool IsElicitationAllowedFor(string? toolName, string? paramName)
-    {
-        if (string.IsNullOrEmpty(toolName) || string.IsNullOrEmpty(paramName)) return false;
-        if (IsSensitiveFieldName(paramName)) return false;
-        return AllowedElicitationParameters.Contains((toolName, paramName))
-               || IsWorkspaceIdRecoveryAllowedFor(toolName, paramName);
-    }
+    public static bool IsElicitationAllowedFor(string? toolName, string? paramName) =>
+        ElicitationAllowlistPolicy.IsElicitationAllowedFor(toolName, paramName);
 
     /// <summary>
     /// Core of the elicitation-fallback path: when <paramref name="ex"/> is an
@@ -440,64 +374,18 @@ internal static class StructuredCallToolFilter
     }
 
     /// <summary>
-    /// workspace-id-omitted-residual-recovery-coherence: returns <see langword="true"/> when
-    /// <paramref name="toolName"/> is a read-only, non-destructive tool and <paramref name="paramName"/>
-    /// is the non-sensitive string <c>workspaceId</c> parameter, making it eligible for the
-    /// exception-path elicitation recovery. <b>Independent of the Required flag</b> (mirrors
-    /// <see cref="IsWorkspaceIdAutoResolveAllowedFor"/>): the recovery only fires from the
-    /// exception-catch block, and the binder never throws for a missing <em>optional</em> arg, so a
-    /// relaxed gate cannot fire spuriously — but keeping it Required-independent ensures recovery
-    /// stays live for read-only tools that flip <c>workspaceId</c> to optional
-    /// (e.g. <c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>).
+    /// Thin delegate preserving the historical static call surface. See
+    /// <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor"/>.
     /// </summary>
-    internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName)
-    {
-        if (!string.Equals(paramName, WorkspaceIdParameterName, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (IsSensitiveFieldName(paramName))
-        {
-            return false;
-        }
-
-        var schema = ToolParameterIndex.GetParameter(toolName, paramName);
-        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
-            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
-
-        return schema is { Type: "string" }
-               && tool is { ReadOnly: true, Destructive: false };
-    }
+    internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName) =>
+        ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor(toolName, paramName);
 
     /// <summary>
-    /// workspace-id-omitted-single-resolve: returns <see langword="true"/> when
-    /// <paramref name="toolName"/> is a read-only, non-destructive tool that declares a string
-    /// <c>workspaceId</c> parameter, making it eligible for pre-dispatch auto-resolution.
-    /// Distinct from <see cref="IsWorkspaceIdRecoveryAllowedFor"/>: that predicate gates the
-    /// exception-path elicitation recovery (it fires when a tool-call surfaces a missing
-    /// <c>workspaceId</c>); both predicates are now <b>independent of the Required flag</b> so
-    /// they keep working after a read-only tool flips <c>workspaceId</c> to optional. This one
-    /// gates pre-dispatch auto-resolution rather than the exception-path recovery. Public so
-    /// tests can pin the policy.
+    /// Thin delegate preserving the historical static call surface. See
+    /// <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor"/>.
     /// </summary>
-    public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName)
-    {
-        if (string.IsNullOrEmpty(toolName))
-        {
-            return false;
-        }
-
-        var schema = ToolParameterIndex.GetParameter(toolName, WorkspaceIdParameterName);
-        if (schema is not { Type: "string" })
-        {
-            return false;
-        }
-
-        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
-            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
-        return tool is { ReadOnly: true, Destructive: false };
-    }
+    public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName) =>
+        ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor(toolName);
 
     /// <summary>
     /// The outcome of pre-dispatch <c>workspaceId</c> resolution for an auto-resolve-eligible
@@ -586,22 +474,6 @@ internal static class StructuredCallToolFilter
         return newArgs;
     }
 
-    private static void RecordAutoResolution(string value)
-    {
-        if (AmbientGateMetrics.Current is { } metrics)
-        {
-            metrics.AutoResolution = value;
-        }
-    }
-
-    private static void RecordAutoLoadElapsed(long elapsedMs)
-    {
-        if (AmbientGateMetrics.Current is { } metrics)
-        {
-            metrics.AutoLoadElapsedMs = elapsedMs;
-        }
-    }
-
     /// <summary>
     /// workspace-auto-load-on-demand: invoked from the pre-dispatch path when an auto-resolve
     /// eligible tool is called with <c>workspaceId</c> omitted and ZERO workspaces loaded.
@@ -656,8 +528,8 @@ internal static class StructuredCallToolFilter
                 }
 
                 context.Params!.Arguments = WithWorkspaceId(context.Params.Arguments, workspaceId);
-                RecordAutoResolution("auto-loaded");
-                RecordAutoLoadElapsed(stopwatch.ElapsedMilliseconds);
+                CallMetricsRecorder.RecordAutoResolution("auto-loaded");
+                CallMetricsRecorder.RecordAutoLoadElapsed(stopwatch.ElapsedMilliseconds);
                 logger?.LogInformation(
                     "Tool {ToolName} called without workspaceId and none loaded; auto-loaded {Path} " +
                     "as {WorkspaceId} in {ElapsedMs}ms.",
@@ -667,7 +539,7 @@ internal static class StructuredCallToolFilter
 
             case SolutionDiscoveryHelper.DiscoveryStatus.Ambiguous:
             {
-                RecordAutoResolution("fast-fail");
+                CallMetricsRecorder.RecordAutoResolution("fast-fail");
                 var candidates = string.Join(", ", discovery.Candidates);
                 logger?.LogWarning(
                     "Tool {ToolName} called without workspaceId and none loaded; {Count} candidate " +
@@ -1072,14 +944,6 @@ internal static class StructuredCallToolFilter
             // otherwise emit the schema-mirrored body when the tool has opted in.
             StructuredContent = result.StructuredContent ?? structuredFromBody,
         };
-    }
-
-    private static void RecordElapsed(long elapsedMs)
-    {
-        if (AmbientGateMetrics.Current is { } metrics)
-        {
-            metrics.ElapsedMs = elapsedMs;
-        }
     }
 
     /// <summary>
