@@ -661,7 +661,7 @@ public sealed class EditService : IEditService
         try
         {
             var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+            await AtomicFileWriter.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
