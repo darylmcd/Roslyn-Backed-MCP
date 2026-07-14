@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
@@ -517,14 +518,21 @@ public static class ValidationBundleTools
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        // Same defense as DotnetCommandRunner (dotnet-runner-nodereuse-pipe-hang): fresh
+        // reusable MSBuild worker nodes inherit the redirected pipe handles and outlive the
+        // restore by up to 15 minutes, so the stream reads below would otherwise wait for an
+        // EOF that never comes and burn the whole restore timeout. A one-shot restore gains
+        // nothing from node reuse.
+        startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         startInfo.ArgumentList.Add("restore");
         startInfo.ArgumentList.Add(forkLoadedPath);
         startInfo.ArgumentList.Add("--nologo");
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start dotnet restore for workspace fork.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var stdoutTask = ReadRedirectedStreamAsync(process.StandardOutput, drainCts.Token);
+        var stderrTask = ReadRedirectedStreamAsync(process.StandardError, drainCts.Token);
 
         try
         {
@@ -540,6 +548,10 @@ public static class ValidationBundleTools
                 $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");
         }
 
+        // The restore has exited; only handle-inheriting descendants can still hold the pipe
+        // open, and the child's own buffered output flushes within milliseconds — bound the
+        // drain instead of waiting for their EOF.
+        drainCts.CancelAfter(TimeSpan.FromSeconds(5));
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
         if (process.ExitCode != 0)
@@ -547,6 +559,37 @@ public static class ValidationBundleTools
             var detail = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
             throw new InvalidOperationException($"dotnet restore for workspace fork failed with exit code {process.ExitCode}. {detail}");
         }
+    }
+
+    /// <summary>
+    /// Reads a redirected stream chunk-wise, returning whatever arrived if the drain token
+    /// fires — <see cref="StreamReader.ReadToEndAsync(CancellationToken)"/> would discard its
+    /// buffered prefix on cancellation, losing the restore output the failure path reports.
+    /// </summary>
+    private static async Task<string> ReadRedirectedStreamAsync(StreamReader reader, CancellationToken drainCt)
+    {
+        var builder = new StringBuilder();
+        var buffer = new char[4096];
+        try
+        {
+            while (true)
+            {
+                var count = await reader.ReadAsync(buffer.AsMemory(), drainCt).ConfigureAwait(false);
+                if (count == 0)
+                {
+                    break;
+                }
+
+                builder.Append(buffer, 0, count);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Drain expiry (or restore timeout, which WaitForExitAsync already converted to
+            // TimeoutException on the caller's path): keep the output the child actually wrote.
+        }
+
+        return builder.ToString();
     }
 
     private static async Task<IReadOnlyList<string>> ReplayPreviewIntoForkAsync(
