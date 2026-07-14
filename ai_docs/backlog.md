@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-14T16:10:00Z
+**updated_at:** 2026-07-14T16:05:00Z
 
 ## Agent contract
 
@@ -57,7 +57,6 @@
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `refactor-services-non-atomic-write-rollback` | Medium | — | **Add atomic temp+rename writes and rollback on partial multi-file apply failure** — introduce a shared atomic-write helper (mirroring WorkspaceCacheStore/PersistentCompositeStorage pattern. [type: refactor] [source: refactor-matrix-pass1] | M | items/refactor-services-non-atomic-write-rollback.md |
-| `refactor-services-full-solution-scan-perf` | Medium | — | **Replace full-solution AST scans with indexed symbol lookups** — NamespaceRelocationService's FindTypeInNamespaceAsync/CountSiblingTypesInNamespaceAsync and CrossProjectRefactoringService's. [type: refactor] [source: refactor-matrix-pass1] | M | items/refactor-services-full-solution-scan-perf.md |
 | `workspace-infra-resource-cleanup-hygiene` | Medium | — | **Fix unpruned/unguarded resource-cleanup gaps** — prune GatedCommandExecutor's per-workspaceId SemaphoreSlim entries on workspace close/eviction (currently leaked for process lifetime). [type: refactor] [source: refactor-matrix-pass1] | M | items/workspace-infra-resource-cleanup-hygiene.md |
 | `solutiondiscoveryhelper-hotpath-perf` | Medium | — | **Fix hot-path sync I/O and linear scans in SolutionDiscoveryHelper/StructuredCallToolFilter dispatch** — cap/cache ScanDirectoriesForSolutions' directory fan-out. [type: refactor] [source: refactor-matrix-pass1] | M | items/solutiondiscoveryhelper-hotpath-perf.md |
 | `prompt-workflows-missing-test-coverage` | Medium | — | **Add test coverage for untested prompt workflows** — add direct test invocations for ReviewComplexity, CohesionAnalysis, ConsumerImpact, GuidedExtractMethod, RefactorAndValidate, FixAllDiagnostics. [type: refactor] [source: refactor-matrix-pass1] | M | items/prompt-workflows-missing-test-coverage.md |
