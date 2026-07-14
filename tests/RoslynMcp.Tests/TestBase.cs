@@ -12,12 +12,36 @@ public abstract class TestBase
     private static readonly WorkspaceIdCache _workspaceIdCache = new();
 
     /// <summary>
-    /// Validation timeouts for integration tests. These match production defaults
+    /// Validation timeouts for integration tests. Defaults match production
     /// (<see cref="ValidationServiceOptions"/>): timeouts should fail loudly when a real
-    /// regression appears, not be padded to mask perf smells. The shared workspace cache
-    /// below eliminated the previous MSBuild contention that caused 5-minute hangs.
+    /// regression appears, not be padded to mask perf smells. The same
+    /// <c>ROSLYNMCP_*_TIMEOUT_SECONDS</c> env vars the host binds (Program.cs
+    /// BindValidationServiceOptions) are honored here so CI can run fail-fast values —
+    /// production defaults are sized for arbitrary user solutions, and a wedged child on
+    /// a contended runner otherwise stacks 5-minute timeouts into the job budget.
     /// </summary>
-    private static readonly ValidationServiceOptions TestValidationOptions = new();
+    private static readonly ValidationServiceOptions TestValidationOptions = BindValidationOptionsFromEnvironment();
+
+    private static ValidationServiceOptions BindValidationOptionsFromEnvironment()
+    {
+        var opts = new ValidationServiceOptions();
+        if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_BUILD_TIMEOUT_SECONDS"), out var buildSeconds) && buildSeconds > 0)
+        {
+            opts = opts with { BuildTimeout = TimeSpan.FromSeconds(buildSeconds) };
+        }
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_TEST_TIMEOUT_SECONDS"), out var testSeconds) && testSeconds > 0)
+        {
+            opts = opts with { TestTimeout = TimeSpan.FromSeconds(testSeconds) };
+        }
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS"), out var vulnSeconds) && vulnSeconds > 0)
+        {
+            opts = opts with { VulnerabilityScanTimeout = TimeSpan.FromSeconds(vulnSeconds) };
+        }
+
+        return opts;
+    }
 
     protected static IPreviewStore PreviewStore { get; private set; } = null!;
     protected static WorkspaceManager WorkspaceManager { get; private set; } = null!;

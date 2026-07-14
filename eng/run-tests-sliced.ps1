@@ -613,10 +613,22 @@ if (-not $NoBuild) {
     & dotnet restore $solutionPath --nologo
     Invoke-DotnetStep 'dotnet restore (main solution)'
 
-    if (-not $NoSampleRestore -and (Test-Path -LiteralPath $sampleSolutionPath)) {
-        Write-Host "Restoring sample solution: $sampleSolutionPath"
-        & dotnet restore $sampleSolutionPath --nologo
-        Invoke-DotnetStep 'dotnet restore (sample solution)'
+    if (-not $NoSampleRestore) {
+        # Mirror verify-release.ps1: pre-restore every sample fixture the integration tests
+        # spawn `dotnet build` against, so the in-test child commands only compile instead
+        # of paying a cold implicit restore inside their timed window.
+        $sampleFixturePaths = @(
+            $sampleSolutionPath,
+            (Join-Path $repoRoot 'samples/GeneratedDocumentSolution/GeneratedDocumentSolution.slnx'),
+            (Join-Path $repoRoot 'samples/BuildFailureSolution/BuildFailureSolution.slnx')
+        )
+        foreach ($fixturePath in $sampleFixturePaths) {
+            if (Test-Path -LiteralPath $fixturePath) {
+                Write-Host "Restoring sample fixture: $fixturePath"
+                & dotnet restore $fixturePath --nologo
+                Invoke-DotnetStep "dotnet restore ($fixturePath)"
+            }
+        }
     }
 
     Write-Host "Building solution ($Configuration)..."
