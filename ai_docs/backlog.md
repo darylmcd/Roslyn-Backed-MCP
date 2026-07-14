@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-09T07:09:56Z
+**updated_at:** 2026-07-14T16:10:00Z
 
 ## Agent contract
 
@@ -78,6 +78,7 @@
 | `analyzer-catalog-untested-drift-suppression-branches` | Medium | — | **Add tests for catalog-drift suppression branches** — cover the non-literal catalog-name path that triggers AddUnresolvedCatalogEntry and the ReportDrift HasUnresolvedCatalogEntries short-circuit so. [type: refactor] [source: refactor-matrix-pass1] | S | items/analyzer-catalog-untested-drift-suppression-branches.md |
 | `dedupe-csharp-features-assembly-load-helper` | Medium | — | **Extract shared CSharp.Features assembly-load helper** — factor the byte-for-byte-identical Assembly.Load(\"Microsoft.CodeAnalysis.CSharp.Features\". [type: refactor] [source: refactor-matrix-pass1] | M | items/dedupe-csharp-features-assembly-load-helper.md |
 | refactoringservice-persistence-extraction | Medium | — | **Extract RefactoringService's document-set persistence logic** — move the ~210-line PersistDocumentSetChangesAsync block into a standalone type; wire for reuse by EditService/ProjectMutationService if needed. [type: refactor] [source: 2026-07-09 sweep #1039 follow-on] | M | items/refactoringservice-persistence-extraction.md |
+| `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 
 ## Low
 
@@ -93,6 +94,8 @@
 | `scripting-sync-over-async-document` | Low | — | **Document the scripting sync-over-async fence** — add the approved-exception comment/marker at `ScriptingService.cs:152` + grep assertion. [type: refactor] | M | items/scripting-sync-over-async-document.md |
 | `initiative-executor-roslyn-tool-discovery-experiment` | Low | — | **Executor Roslyn first-hop experiment** — measure post-`recommend_workflow` bypass (semantic-first-hop vs `Read`/`Grep`/`Edit` counts), produce a go/no-go note before editing the executor brief. [source: 2026-06-04 discovery-sweep + 2026-06-08 retro] | M | items/initiative-executor-roslyn-tool-discovery-experiment.md |
 | `surface-snapshot-stale-surface-audit` | Low | — | **Refresh the live-surface snapshot** — run `/surface-audit` to update `.ai-doc-audit.md` counts (snapshot 2026-05-06 says 168 tools; surface ~173, server v2.3.2) before the next release cut. [type: docs] | M | items/surface-snapshot-stale-surface-audit.md |
+| `gatedcommandexecutor-timeout-excludes-gate-wait` | Low | — | **GatedCommandExecutor timeout excludes gate-wait time** — the command timeout starts only after both semaphore waits, so a caller can wait gate+timeout with no signal; include queue wait in the budget or surface queue time on the DTO. [type: refactor] [source: 2026-07-14 CI-hang investigation] | S | items/gatedcommandexecutor-timeout-excludes-gate-wait.md |
+| `listlogger-tuple-assert-duplication` | Low | — | **Dedupe the ListLogger<T> test helper** — the tuple-entry ILogger capture class is copy-pasted in HardeningBehaviorTests and ValidateRecentGitChangesTests; hoist one copy into TestInfrastructure. [type: refactor] [source: 2026-07-14 MSTest migration] | S | items/listlogger-tuple-assert-duplication.md |
 | `shipped-skills-hardcode-bare-roslyn-tool-prefix` | Low | — | **Prefix-agnostic shipped skills** — VERIFY FIRST whether the plugin-prefix surface-test entry gate misfires, then sweep shipped `skills/**` + retro prompt to suffix-based tool references via the genericity guard. [type: bug] [source: 2026-06-08 retro follow-up] | L | items/shipped-skills-hardcode-bare-roslyn-tool-prefix.md |
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
