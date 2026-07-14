@@ -4,6 +4,7 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 
@@ -186,21 +187,33 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var matches = new List<(Document Document, CompilationUnitSyntax Root, TypeDeclarationSyntax TypeDecl, Project Project)>();
         foreach (var project in solution.Projects)
         {
-            foreach (var document in project.Documents)
-            {
-                if (document.FilePath is null) continue;
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
-                if (root is null) continue;
+            // Use Roslyn's pre-built declaration index instead of parsing every document's syntax
+            // tree. FindDeclarationsAsync returns only source declarations (metadata excluded)
+            // whose identifier matches typeName.
+            var declarations = await SymbolFinder
+                .FindDeclarationsAsync(project, typeName, ignoreCase: false, SymbolFilter.Type, ct)
+                .ConfigureAwait(false);
 
-                foreach (var type in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+            foreach (var symbol in declarations.OfType<INamedTypeSymbol>())
+            {
+                if (!string.Equals(symbol.Name, typeName, StringComparison.Ordinal)) continue;
+                if (symbol.ContainingNamespace is not { IsGlobalNamespace: false } nsSymbol) continue;
+                if (!string.Equals(nsSymbol.ToDisplayString(), fromNamespace, StringComparison.Ordinal)) continue;
+
+                // Resolve the symbol back to its concrete syntax. A partial type surfaces one
+                // symbol with multiple declaring references — enumerate each so a split declaration
+                // still trips the ">1 match" ambiguity guard the caller relies on, exactly as the
+                // previous per-TypeDeclaration walk did.
+                foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
                 {
-                    if (!string.Equals(type.Identifier.ValueText, typeName, StringComparison.Ordinal)) continue;
-                    var containing = type.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-                    var ns = containing?.Name.ToString() ?? string.Empty;
-                    if (string.Equals(ns, fromNamespace, StringComparison.Ordinal))
-                    {
-                        matches.Add((document, root, type, project));
-                    }
+                    var document = solution.GetDocument(syntaxRef.SyntaxTree);
+                    if (document?.FilePath is null) continue;
+                    // Count each declaration once, in the project we queried, so a source symbol
+                    // shared into other project-reference compilations is not listed twice.
+                    if (document.Project.Id != project.Id) continue;
+                    if (await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false) is not TypeDeclarationSyntax typeDecl) continue;
+                    if (await syntaxRef.SyntaxTree.GetRootAsync(ct).ConfigureAwait(false) is not CompilationUnitSyntax root) continue;
+                    matches.Add((document, root, typeDecl, document.Project));
                 }
             }
         }
@@ -398,19 +411,49 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         var count = 0;
         foreach (var project in solution.Projects)
         {
-            foreach (var document in project.Documents)
+            // Resolve the namespace off the project's already-built compilation symbol table
+            // instead of re-parsing every document. GetTypeMembers() returns only the types
+            // directly in the namespace, matching the previous direct-namespace-member walk.
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            var nsSymbol = ResolveNamespaceSymbol(compilation.GlobalNamespace, ns);
+            if (nsSymbol is null) continue;
+
+            foreach (var type in nsSymbol.GetTypeMembers())
             {
-                if (excludeDocumentId is not null && document.Id == excludeDocumentId) continue;
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
-                if (root is null) continue;
-                foreach (var nsDecl in root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>())
+                foreach (var syntaxRef in type.DeclaringSyntaxReferences)
                 {
-                    if (!string.Equals(nsDecl.Name.ToString(), ns, StringComparison.Ordinal)) continue;
-                    count += nsDecl.Members.OfType<TypeDeclarationSyntax>().Count();
+                    var document = solution.GetDocument(syntaxRef.SyntaxTree);
+                    if (document is null) continue;
+                    // A namespace symbol merges declarations across project-reference compilations;
+                    // count each source declaration once, in its owning project, and never for
+                    // metadata types (which have no declaring syntax references).
+                    if (document.Project.Id != project.Id) continue;
+                    if (excludeDocumentId is not null && document.Id == excludeDocumentId) continue;
+                    if (await syntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false) is not TypeDeclarationSyntax) continue;
+                    count++;
                 }
             }
         }
         return count;
+    }
+
+    /// <summary>
+    /// Walk <paramref name="global"/> down the dotted segments of <paramref name="ns"/> and return
+    /// the matching <see cref="INamespaceSymbol"/>, or <see langword="null"/> if any segment is
+    /// absent from the compilation.
+    /// </summary>
+    private static INamespaceSymbol? ResolveNamespaceSymbol(INamespaceSymbol global, string ns)
+    {
+        var current = global;
+        foreach (var segment in ns.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = current.GetNamespaceMembers()
+                .FirstOrDefault(n => string.Equals(n.Name, segment, StringComparison.Ordinal));
+            if (current is null) return null;
+        }
+        return current;
     }
 
     /// <summary>

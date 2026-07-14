@@ -619,6 +619,96 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"Error message leaks raw ProjectId token (regression).\nActual message: {exception.Message}");
     }
 
+    /// <summary>
+    /// Perf-refactor regression (refactor-services-full-solution-scan-perf): dependency-inversion's
+    /// post-extraction constructor rewrite now uses <c>SymbolFinder.FindReferencesAsync</c> instead
+    /// of a brute-force scan over every document in the solution. This must still rewrite a
+    /// constructor parameter in a project that references the extracted type only TRANSITIVELY
+    /// (Downstream → MidLib → SampleLib), which the old full-solution walk covered by inspecting
+    /// every project unconditionally.
+    /// </summary>
+    [TestMethod]
+    public async Task Dependency_Inversion_Rewrites_Constructor_Parameter_In_Transitively_Referencing_Project()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        // MidLib references SampleLib directly; Downstream references MidLib only — so Downstream's
+        // reference to SampleLib (and AnimalService) is purely transitive.
+        AddProjectWithReferenceToCopiedSolution(workspace.RootPath, "MidLib", "net10.0", "SampleLib/SampleLib.csproj");
+        AddProjectWithReferenceToCopiedSolution(workspace.RootPath, "Downstream", "net10.0", "MidLib/MidLib.csproj");
+
+        var downstreamDirectory = Path.Combine(workspace.RootPath, "Downstream");
+        var consumerFilePath = Path.Combine(downstreamDirectory, "DownstreamCoordinator.cs");
+        File.WriteAllText(
+            consumerFilePath,
+            "using SampleLib;\n\nnamespace Downstream;\n\npublic class DownstreamCoordinator\n{\n    public DownstreamCoordinator(AnimalService service)\n    {\n    }\n}\n");
+
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        // Restore so MSBuild's transitive project-reference flow makes SampleLib (and
+        // AnimalService) visible to Downstream through MidLib — without it the transitive hop is
+        // inactive and AnimalService would not resolve in Downstream at all.
+        await RestoreWorkspaceAsync(workspace, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(interfaceFilePath));
+
+        var consumerContents = await File.ReadAllTextAsync(consumerFilePath, CancellationToken.None);
+        Assert.IsFalse(
+            consumerContents.Contains("(AnimalService service", StringComparison.Ordinal),
+            $"Transitively-referencing consumer still declares the concrete type — FindReferencesAsync missed it.\nConsumer contents:\n{consumerContents}");
+        StringAssert.Contains(consumerContents, "IAnimalService service");
+    }
+
+    /// <summary>
+    /// Runs <c>dotnet restore</c> on the copied solution so newly-added projects acquire their
+    /// <c>obj/project.assets.json</c> (and transitive project-reference graph) before the workspace
+    /// is loaded. Mirrors the restore helper in <c>ScaffoldingFirstTestFileTests</c>.
+    /// </summary>
+    private static async Task RestoreWorkspaceAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
+    {
+        var execution = await DotnetCommandRunner.RunAsync(
+            workingDirectory: workspace.RootPath,
+            targetPath: workspace.SolutionPath,
+            arguments: ["restore", workspace.SolutionPath, "--nologo"],
+            ct).ConfigureAwait(false);
+
+        Assert.IsTrue(
+            execution.Succeeded,
+            $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
+    }
+
+    private static void AddProjectWithReferenceToCopiedSolution(
+        string copiedRoot,
+        string projectName,
+        string targetFramework,
+        string referencedProjectRelativePath)
+    {
+        var projectDirectory = Path.Combine(copiedRoot, projectName);
+        Directory.CreateDirectory(projectDirectory);
+
+        var includePath = ".." + Path.DirectorySeparatorChar + referencedProjectRelativePath.Replace('/', Path.DirectorySeparatorChar);
+        var projectFilePath = Path.Combine(projectDirectory, projectName + ".csproj");
+        File.WriteAllText(
+            projectFilePath,
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{targetFramework}</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <ProjectReference Include=\"{includePath}\" />\n  </ItemGroup>\n</Project>\n");
+
+        var solutionFilePath = Path.Combine(copiedRoot, "SampleSolution.slnx");
+        var solutionDocument = XDocument.Load(solutionFilePath, LoadOptions.PreserveWhitespace);
+        solutionDocument.Root?.Add(new XElement("Project", new XAttribute("Path", $"{projectName}/{projectName}.csproj")));
+        solutionDocument.Save(solutionFilePath, SaveOptions.DisableFormatting);
+    }
+
     private static void AddProjectToCopiedSolution(string copiedRoot, string projectName, string targetFramework)
     {
         var projectDirectory = Path.Combine(copiedRoot, projectName);
