@@ -101,7 +101,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public void GatedCommandExecutor_ResolveProject_ThrowsForUnknown()
     {
-        Assert.ThrowsException<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             var workspaceId = WorkspaceManager.ListWorkspaces().First().WorkspaceId;
             GatedCommandExecutor.ResolveProject(workspaceId, "NonExistentProject");
@@ -129,7 +129,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public void WorkspaceManager_SessionNotFound_ErrorIncludesActiveCount()
     {
-        var ex = Assert.ThrowsException<KeyNotFoundException>(() =>
+        var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
             WorkspaceManager.GetCurrentSolution("nonexistent-workspace-id"));
 
         Assert.IsTrue(ex.Message.Contains("active session(s)"));

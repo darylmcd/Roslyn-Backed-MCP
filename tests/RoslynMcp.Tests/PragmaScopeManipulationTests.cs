@@ -394,11 +394,11 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     public async Task VerifyPragmaSuppresses_Throws_OnBadArgs()
     {
         var sut = CreateService();
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", "/tmp/a.cs", 0, "CS0219", CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.VerifyPragmaSuppressesAsync("ws", " ", 1, "CS0219", CancellationToken.None));
     }
 
@@ -406,11 +406,11 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     public async Task PragmaScopeWiden_Throws_OnBadArgs()
     {
         var sut = CreateService();
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
             sut.WidenPragmaScopeAsync("ws", "/tmp/a.cs", 0, "CS0219", CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.WidenPragmaScopeAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.WidenPragmaScopeAsync("ws", " ", 1, "CS0219", CancellationToken.None));
     }
 }

@@ -56,7 +56,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var undo = new FakeUndo();
         var previewStore = new FakePreviewStore("ws"); // Retrieve returns null → filter skipped
 
-        var thrown = await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             ApplyWithVerifyTool.ApplyWithVerify(
                 new FakeGate(),
                 new FakeRefactoring(),
@@ -101,7 +101,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var loggerFactory = new CapturingLoggerFactory();
         var previewStore = new FakePreviewStore("ws");
 
-        var thrown = await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             ApplyWithVerifyTool.ApplyWithVerify(
                 new FakeGate(),
                 new FakeRefactoring(),
@@ -142,7 +142,7 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var refactoring = new FakeRefactoring();
         var previewStore = new FakePreviewStore("ws");
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             ApplyWithVerifyTool.ApplyWithVerify(
                 new FakeGate(),
                 refactoring,

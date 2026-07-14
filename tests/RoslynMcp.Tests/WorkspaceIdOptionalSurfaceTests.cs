@@ -52,7 +52,7 @@ public sealed class WorkspaceIdOptionalSurfaceTests
         // must throw a structured ArgumentException (the filter classifies it to InvalidArgument)
         // pointing the caller at workspace_load — not NRE on the downstream gate call. The guard
         // runs before any service is touched, so null DI args are safe here.
-        var ex = Assert.ThrowsException<ArgumentException>(() =>
+        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
             SymbolTools.GetDocumentSymbols(server: null!, gate: null!, symbolSearchService: null!, workspaceId: null));
 
         Assert.AreEqual("workspaceId", ex.ParamName);
@@ -67,7 +67,7 @@ public sealed class WorkspaceIdOptionalSurfaceTests
         // pagination validations pass for the defaults (severity=null, offset=0, limit=50), so the
         // null-workspaceId case reaches RequireResolvedWorkspaceId before any service or gate is
         // touched — null DI args are safe here.
-        var ex = Assert.ThrowsException<ArgumentException>(() =>
+        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
             CompileCheckTools.CompileCheck(gate: null!, compileCheckService: null!, workspaceId: null));
 
         Assert.AreEqual("workspaceId", ex.ParamName);

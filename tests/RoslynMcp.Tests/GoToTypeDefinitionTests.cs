@@ -53,7 +53,7 @@ public sealed class GoToTypeDefinitionTests : SharedWorkspaceTestBase
         // Cursor on `sound` (line 20 col 13 declared as `var sound = animal.Speak();` returning string).
         var locator = SymbolLocator.BySource(_animalServicePath, line: 20, column: 17);
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
             SymbolNavigationService.GoToTypeDefinitionAsync(
                 _workspaceId, locator, CancellationToken.None));
 

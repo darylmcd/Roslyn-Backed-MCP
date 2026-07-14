@@ -180,7 +180,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 TypeExtractionTools.PreviewExtractType(
                     session.Server,
                     WorkspaceExecutionGate,
@@ -245,7 +245,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 TypeExtractionService.PreviewExtractTypeAsync(
                     wsId, sourcePath, "ExternalConsumerFixture", ["Compute"], "ComputeHelper", null, CancellationToken.None));
 
@@ -311,7 +311,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("AnimalService.cs") == true);
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             TypeExtractionService.PreviewExtractTypeAsync(
                 wsId, doc.FilePath!, "AnimalService", [], "NewType", null, CancellationToken.None));
     }
@@ -326,7 +326,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("AnimalService.cs") == true);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeExtractionService.PreviewExtractTypeAsync(
                 wsId, doc.FilePath!, "NonExistentType", ["Foo"], "NewType", null, CancellationToken.None));
     }

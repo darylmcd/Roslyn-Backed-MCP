@@ -38,7 +38,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         // record so we construct it via `default` + expression to bypass nullable analysis.
         var edit = new TextEditDto(1, 1, 1, 1, null!);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "null NewText");
     }
@@ -52,7 +52,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         // Start (5,10) → End (5,5): end precedes start on the same line.
         var edit = new TextEditDto(5, 10, 5, 5, "x");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "reversed range");
     }
@@ -66,7 +66,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         // Line 9999 is far beyond the file length.
         var edit = new TextEditDto(9999, 1, 9999, 1, "oops");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "9999");
     }
@@ -80,7 +80,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         // Column 0 is invalid — line/column are 1-based.
         var edit = new TextEditDto(1, 0, 1, 1, "oops");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "1-based");
     }
@@ -118,7 +118,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var e1 = new TextEditDto(5, 5, 5, 12, "x");
         var e2 = new TextEditDto(5, 6, 5, 20, "y");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { e1, e2 }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "overlapping");
     }

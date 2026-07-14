@@ -158,7 +158,7 @@ public sealed class TestCoverageFailureEnvelopeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             TestCoverageTools.RunTestCoverageCore(
                 gate,
                 workspace,

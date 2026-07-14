@@ -25,22 +25,30 @@ permissions:
 jobs:
   validate:
     # Hybrid runner model — see docs/self-hosted-runner.md.
-    # Non-fork pull_request events run on the maintainer's self-hosted Windows
-    # runner (faster wall-clock; ~2-3min vs ~10min on hosted Linux). Fork PRs,
-    # workflow_dispatch, and scheduled runs stay on GitHub-hosted Linux to
-    # preserve the security model (no fork-PR code on the maintainer's box) and
-    # to keep coverage-collection (dispatch/schedule) artifacts consistent across
-    # runs.
-    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
-    # Historical self-hosted Windows baseline was ~2-3min; as of 2026-07-13 the
-    # suite (now ~1700+ tests after several rounds of backlog-sweep initiatives)
-    # is observed running 10-25min on the self-hosted runner even on clean,
-    # otherwise-healthy runs, with no single root cause pinned down (checked and
-    # ruled out: a runaway orphaned process, the Windows power plan, disk health,
-    # AC power, vendor throttling software). 40 min gives real headroom above the
-    # observed ceiling without letting a genuinely hung test burn the 6-hour
-    # default. Hosted Linux run is ~12 min.
-    timeout-minutes: 40
+    # Maintainer pull_request events run on the self-hosted Windows runner
+    # (faster wall-clock than hosted Linux). Fork PRs, dependabot PRs,
+    # workflow_dispatch, and scheduled runs stay on GitHub-hosted Linux:
+    # fork/dependabot PRs execute third-party-selected code in tests, which
+    # must not run on the maintainer's box, and routing dependabot to hosted
+    # also stops its PR waves from queueing behind the single self-hosted slot.
+    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+    # Healthy self-hosted runs are ~9-11 min with the live network tests included;
+    # the PR path now excludes TestCategory=Network, so 20 min is real headroom.
+    # The 10-25min spread previously observed here (and the temporary 40-min
+    # budget) was root-caused to DotnetCommandRunner waiting unboundedly for pipe
+    # EOF while MSBuild reuse nodes / VBCSCompiler held inherited handles — fixed
+    # at the source (dotnet-runner-nodereuse-pipe-hang), so a hung child now
+    # fails its own command timeout instead of absorbing the job budget.
+    timeout-minutes: 20
+    env:
+      # Fail-fast command timeouts for the integration tests (TestBase binds these
+      # ROSLYNMCP_*_TIMEOUT_SECONDS vars). Production defaults (5/10/5 min) are
+      # sized for arbitrary user solutions; the pre-restored sample fixtures here
+      # build in seconds, so a wedged child should fail its test in minutes, not
+      # stack 5-minute timeouts into the job budget.
+      ROSLYNMCP_BUILD_TIMEOUT_SECONDS: "150"
+      ROSLYNMCP_TEST_TIMEOUT_SECONDS: "300"
+      ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS: "120"
 
     steps:
       - name: Check out repository
@@ -96,9 +104,11 @@ jobs:
       # props + SDK version). Project-file edits no longer create a new cache
       # entry, which keeps the repo under the 10 GB Actions cache cap instead
       # of producing a fresh ~33 MB entry on every csproj tweak.
+      # Hosted runners only: the self-hosted runner's ~/.nuget/packages persists
+      # between runs, so cache save/restore there is pure transfer overhead.
       - name: Cache NuGet packages
-        if: steps.detect.outputs.docs_only != 'true'
-        uses: actions/cache@v5
+        if: steps.detect.outputs.docs_only != 'true' && runner.environment == 'github-hosted'
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
@@ -114,10 +124,14 @@ jobs:
       # Pass -NoCoverage on pull_request to skip the collection + HTML summary + upload;
       # workflow_dispatch and the weekly schedule keep full collection so the artifact
       # is still published and trend data continues.
+      # -ExcludeNetworkTests: PR CI gates vulnerabilities via the dedicated audit
+      # step below; the live api.nuget.org integration tests are redundant here and
+      # network-flaky on the self-hosted runner. Dispatch/schedule stay unfiltered
+      # so the live scan still runs weekly as a canary.
       - name: Verify release build (pull request — no coverage)
         if: steps.detect.outputs.docs_only != 'true' && github.event_name == 'pull_request'
         shell: pwsh
-        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage
+        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage -ExcludeNetworkTests
 
       - name: Verify release build (dispatch / schedule — with coverage)
         if: github.event_name != 'pull_request'

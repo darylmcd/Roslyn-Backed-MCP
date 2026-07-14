@@ -11,7 +11,7 @@ argument-hint: "[--stale-days N] (default 60) — threshold for the reserved-sta
 You audit `ai_docs/backlog.md` against live GitHub Issue state. The backlog references Issues two ways:
 
 1. **Reserved rows** — `**Reserved — [gh #NNN](https://github.com/<owner>/<repo>/issues/NNN) (good first issue); skip in sweeps until contributor pickup.**` — these rows are parked for outside contributors; sweeps must skip them.
-2. **Tracked-only rows** — `[gh #NNN](...)` somewhere in the `do` cell with no Reserved marker — the backlog row is the canonical work item, the Issue is just a public mirror.
+2. **Tracked-only rows** — `[gh #NNN]({issue-url})` somewhere in the `do` cell with no Reserved marker — the backlog row is the canonical work item, the Issue is just a public mirror.
 
 When PRs merge, Issues close, contributors abandon, or labels drift, the two sides desynchronize. This skill walks every `[gh #NNN]` reference, queries `gh issue view N`, classifies the result, and emits a triage report. **It does not mutate `backlog.md` or any Issue** — the maintainer applies recommendations manually (or via `/close-backlog-rows` for the easy cases).
 

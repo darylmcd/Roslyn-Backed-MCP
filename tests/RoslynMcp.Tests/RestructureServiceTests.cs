@@ -32,7 +32,7 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         // Pattern captures __items__; goal references a second placeholder __count__ that was
         // never captured. Pre-fix this produced output containing literal `__count__` text;
         // now the service rejects the preview before touching the solution.
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             Service.PreviewRestructureAsync(
                 WorkspaceId,
                 pattern: "return __items__;",
@@ -52,7 +52,7 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         // Canonical R17A shape: pattern has NO placeholders, goal has one. Pre-fix
         // `_placeholderNames.Count == 0` short-circuited Substitute and the goal's literal
         // `__x__` text was emitted verbatim. Now the mismatch is rejected at validation.
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             Service.PreviewRestructureAsync(
                 WorkspaceId,
                 pattern: "42",
@@ -71,7 +71,7 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         // validation must not break this case. The scope filter points at a file that does
         // not contain the pattern so we expect the "no matches" exception, NOT the orphaned
         // placeholder one — proves the validation path accepted the pattern/goal.
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             Service.PreviewRestructureAsync(
                 WorkspaceId,
                 pattern: "42",

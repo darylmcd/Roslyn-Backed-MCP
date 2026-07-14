@@ -63,7 +63,7 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : IsolatedWorks
             NewName: null,
             DefaultValue: null);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, request, CancellationToken.None));
 

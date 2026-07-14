@@ -599,7 +599,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         await workspace.LoadAsync(CancellationToken.None);
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
             await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
                 workspace.WorkspaceId,
                 sourceFilePath,

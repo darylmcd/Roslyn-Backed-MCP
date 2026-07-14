@@ -41,7 +41,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await AnalysisTools.GetCallersCallees(
                 WorkspaceExecutionGate,
                 SymbolRelationshipService,
@@ -68,7 +68,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<SymbolNotFoundException>(async () =>
             await AnalysisTools.AnalyzeImpact(
                 WorkspaceExecutionGate,
                 MutationAnalysisService,
@@ -98,7 +98,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<SymbolNotFoundException>(async () =>
             await ConsumerAnalysisTools.FindConsumers(
                 WorkspaceExecutionGate,
                 ConsumerAnalysisService,
@@ -126,7 +126,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         var bogusFile = Path.Combine(Path.GetTempPath(), "definitely_not_in_workspace.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await SymbolTools.GetSymbolRelationships(
                 WorkspaceExecutionGate,
                 SymbolRelationshipService,
@@ -161,7 +161,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await SymbolTools.GetMemberHierarchy(
                 WorkspaceExecutionGate,
                 SymbolRelationshipService,
@@ -188,7 +188,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await SymbolTools.GetSignatureHelp(
                 WorkspaceExecutionGate,
                 SymbolRelationshipService,

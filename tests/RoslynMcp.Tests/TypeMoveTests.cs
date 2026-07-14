@@ -74,7 +74,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
 
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 TypeMoveTools.PreviewMoveTypeToFile(
                     session.Server,
                     WorkspaceExecutionGate,
@@ -125,7 +125,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Dog.cs") == true);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "Dog", null, CancellationToken.None));
     }
@@ -143,7 +143,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Dog.cs") == true);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "Dog", null, CancellationToken.None));
 
@@ -163,7 +163,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "NonExistentType", null, CancellationToken.None));
     }
@@ -184,7 +184,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "IngestionTerminalStatus", null, CancellationToken.None));
 
@@ -209,7 +209,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "NotificationHandler", null, CancellationToken.None));
 

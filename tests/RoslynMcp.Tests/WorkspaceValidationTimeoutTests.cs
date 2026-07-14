@@ -132,7 +132,7 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromMilliseconds(50));
 
-        // ThrowsExceptionAsync<OperationCanceledException> is strict-typed and rejects the
+        // ThrowsExactlyAsync<OperationCanceledException> is strict-typed and rejects the
         // TaskCanceledException subclass that Task.Delay actually throws. Catch the base
         // class manually so subclass-vs-base differences don't fail the assertion.
         OperationCanceledException? caught = null;

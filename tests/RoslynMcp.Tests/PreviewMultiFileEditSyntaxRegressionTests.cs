@@ -44,7 +44,7 @@ public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspac
                 new[] { new TextEditDto(1, colAfterLine1, 1, colAfterLine1, "\n// F17\n{\n") }),
         };
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
             await edit.PreviewMultiFileTextEditsAsync(
                 workspaceId, fileEdits, CancellationToken.None, skipSyntaxCheck: false);

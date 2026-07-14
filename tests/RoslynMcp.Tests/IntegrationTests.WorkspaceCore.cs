@@ -53,7 +53,7 @@ public class IntegrationTests_WorkspaceCore : SharedWorkspaceTestBase
     [TestMethod]
     public async Task Workspace_Reload_Rejects_Unknown_Id()
     {
-        await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
             WorkspaceManager.ReloadAsync("missing-workspace", CancellationToken.None));
     }
 

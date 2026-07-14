@@ -129,7 +129,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         // `<PackageVersion Include="Legacy.NotPresent">` entry exists either.
         await workspace.LoadAsync(CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             PackageMigrationOrchestrator.PreviewMigratePackageAsync(
                 workspace.WorkspaceId,
                 "Legacy.NotPresent",
@@ -492,7 +492,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         await workspace.LoadAsync(CancellationToken.None);
 
         // Attempting to extract IAnimalService again must produce a structured rejection.
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ExtractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
                 workspace.WorkspaceId,
                 sourceFilePath,

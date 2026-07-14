@@ -69,6 +69,16 @@ foreach ($file in $markdownFiles) {
             continue
         }
 
+        # All-dot targets like `(...)` are ellipsis placeholders, never real paths. Windows
+        # path normalization makes Test-Path resolve them (so the self-hosted PR runs passed)
+        # while Linux treats them as a plain missing filename (so every hosted-ubuntu run
+        # failed) — flag them on every platform so PR CI catches what the weekly run would.
+        # Intentional placeholder links must use the {braces} convention skipped above.
+        if ($pathPart -match '^\.{3,}[/\\]?$') {
+            $issues.Add("Broken relative link (all-dot placeholder; use {braces} instead): $($file.FullName) -> $target")
+            continue
+        }
+
         if ($pathPart -match '^[a-zA-Z]:\\') {
             if (-not (Test-Path -LiteralPath $pathPart)) {
                 $issues.Add("Broken absolute link: $($file.FullName) -> $target")

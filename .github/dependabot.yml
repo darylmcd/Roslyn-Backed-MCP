@@ -17,7 +17,16 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # MSTest framework/adapter/analyzers are version-paired and their analyzers
+      # gate compilation, so ALL their updates (majors included) must move in one
+      # PR — previously the major bump fanned out into separate uncoordinated PRs
+      # (TestFramework alone mismatches TestAdapter).
+      mstest:
+        patterns:
+          - "MSTest*"
       nuget-minor-patch:
         update-types:
           - "minor"
           - "patch"
+        exclude-patterns:
+          - "MSTest*"

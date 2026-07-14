@@ -66,7 +66,7 @@ public sealed class ToolDispatchTests
         var gate = new FakeGate();
         var store = new FakePreviewStore(token: "real-token", workspaceId: "ws-x");
 
-        var ex = await Assert.ThrowsExceptionAsync<PreviewTokenStaleException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PreviewTokenStaleException>(() =>
             ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
                 gate,
                 store,

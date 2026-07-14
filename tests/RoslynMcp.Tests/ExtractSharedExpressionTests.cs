@@ -74,7 +74,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         // RefactoringProbe has only one `Math.PI * radius * radius` expression.
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspace.WorkspaceId,
                 filePath,
@@ -98,7 +98,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspace.WorkspaceId,
                 filePath,
@@ -119,7 +119,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "SharedExpressionProbe.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspace.WorkspaceId,
                 filePath,

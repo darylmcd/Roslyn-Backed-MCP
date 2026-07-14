@@ -102,7 +102,7 @@ public sealed class WorkspaceCapLruEvictionTests
                 "First workspace must be tracked (sanity).");
 
             // Strict load: must throw because the cap is full.
-            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
                 () => manager.LoadAsync(path2, EvictPolicy.Strict, CancellationToken.None));
 
             // Message must carry activeWorkspaces JSON and lruCandidate for self-recovery.

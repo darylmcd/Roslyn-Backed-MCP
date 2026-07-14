@@ -42,7 +42,7 @@ public sealed class ConsumerAnalysisTests : SharedWorkspaceTestBase
         // structured NotFound envelope (instead of the old null/empty result that callers
         // could not distinguish from a legitimate "valid symbol, zero consumers" outcome).
         var locator = SymbolLocator.ByMetadataName("SampleLib.NonExistentType");
-        await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(
+        await Assert.ThrowsExactlyAsync<SymbolNotFoundException>(
             () => ConsumerAnalysisService.FindConsumersAsync(WorkspaceId, locator, CancellationToken.None));
     }
 

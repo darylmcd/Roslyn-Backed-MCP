@@ -21,7 +21,7 @@ public class ParameterValidationTests
 
     [TestMethod]
     public void ValidateSeverity_Invalid_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidateSeverity("Critical"));
 
     [TestMethod]
@@ -40,7 +40,7 @@ public class ParameterValidationTests
 
     [TestMethod]
     public void ValidateTypeKind_Invalid_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidateTypeKind("struct"));
 
     // ── ValidateBulkReplaceScope ──
@@ -58,7 +58,7 @@ public class ParameterValidationTests
 
     [TestMethod]
     public void ValidateBulkReplaceScope_Invalid_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidateBulkReplaceScope("none"));
 
     // ── ValidatePagination ──
@@ -69,17 +69,17 @@ public class ParameterValidationTests
 
     [TestMethod]
     public void ValidatePagination_Negative_Offset_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidatePagination(-1, 50));
 
     [TestMethod]
     public void ValidatePagination_Zero_Limit_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidatePagination(0, 0));
 
     [TestMethod]
     public void ValidatePagination_Negative_Limit_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidatePagination(0, -5));
 
     [TestMethod]
@@ -88,6 +88,6 @@ public class ParameterValidationTests
 
     [TestMethod]
     public void ValidatePagination_Limit_Above_Max_Throws()
-        => Assert.ThrowsException<ArgumentException>(
+        => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidatePagination(0, 1001));
 }

@@ -142,7 +142,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
         try
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 BulkRefactoringService.PreviewReplaceInvocationAsync(
                     loadResult.WorkspaceId,
                     oldMethod: "SampleLib.ReplaceInvocationHelper.Build",
@@ -190,7 +190,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
         try
         {
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 BulkRefactoringService.PreviewReplaceInvocationAsync(
                     loadResult.WorkspaceId,
                     oldMethod: "SampleLib.ReplaceInvocationMismatch.OldFn(int, int)",
@@ -218,7 +218,7 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 
         try
         {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 BulkRefactoringService.PreviewReplaceInvocationAsync(
                     loadResult.WorkspaceId,
                     oldMethod: "SampleLib.ReplaceInvocationHelper.Build(int, string, bool)",
