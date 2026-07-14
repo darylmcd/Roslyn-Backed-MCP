@@ -102,7 +102,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_InvalidScope_Throws()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, @"x", "definitely-not-a-scope", projectFilter: null, limit: 10, CancellationToken.None));
     }
@@ -110,7 +110,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_EmptyPattern_Throws()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, "", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
     }
@@ -118,7 +118,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SemanticGrep_InvalidRegex_Throws()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, "(unclosed", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
     }

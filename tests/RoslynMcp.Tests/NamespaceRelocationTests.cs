@@ -193,7 +193,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         var wsId = await workspace.LoadAsync(CancellationToken.None);
 
         var service = CreateService();
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,
                 typeName: "Dog",
@@ -210,7 +210,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         var wsId = await workspace.LoadAsync(CancellationToken.None);
 
         var service = CreateService();
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,
                 typeName: "Dog",
@@ -238,7 +238,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
 
         // An absolute path outside the project directory must be rejected.
         var outsidePath = Path.Combine(Path.GetTempPath(), "Widget.cs");
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,
                 typeName: "Widget",

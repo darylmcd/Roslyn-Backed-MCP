@@ -109,7 +109,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
                 server: null!,
@@ -131,7 +131,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
                 server: null!,
@@ -309,7 +309,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     {
         var animalPath = FindDocumentPath("IAnimal.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await AnalysisTools.AnalyzeImpact(
                 gate: WorkspaceExecutionGate,
@@ -326,7 +326,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task FindTypeMutations_UnresolvedSymbolHandle_UsesCanonicalMessage()
     {
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
             AnalysisTools.FindTypeMutations(
                 gate: WorkspaceExecutionGate,
                 mutationAnalysisService: new NullMutationAnalysisService(),

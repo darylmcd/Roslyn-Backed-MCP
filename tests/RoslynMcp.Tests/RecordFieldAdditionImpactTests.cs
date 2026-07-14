@@ -221,7 +221,7 @@ public static class NonPositionalRecordConsumer
         // should know they invoked the wrong tool.
         var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await RecordFieldAdditionService.PreviewAdditionAsync(
                 workspaceId,
                 recordMetadataName: "SampleLib.Dog",
@@ -239,7 +239,7 @@ public static class NonPositionalRecordConsumer
         // typos.
         var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
-        await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await RecordFieldAdditionService.PreviewAdditionAsync(
                 workspaceId,
                 recordMetadataName: "SampleLib.NoSuchRecordType",

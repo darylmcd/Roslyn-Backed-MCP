@@ -141,7 +141,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             symbolHandle: null,
             ct: CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsNotNull(doc.RootElement);
+        Assert.AreEqual(JsonValueKind.Object, doc.RootElement.ValueKind);
     }
 
     // test-related-empty-for-valid-symbol: an interface MEMBER whose implementations are

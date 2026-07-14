@@ -6,7 +6,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkflowRecommendationToolsTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("find callers of AnimalService.CountAnimals", "find_references", "rg")]
     [DataRow("show a file outline", "document_symbols", "reading the entire file")]
     [DataRow("quick compile sanity after an edit", "compile_check", "dotnet build")]

@@ -119,7 +119,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                 WorkspaceManager.GetStaleReason(workspace.WorkspaceId),
                 "Precondition: watcher attributed the write as external-edit.");
 
-            var ex = Assert.ThrowsException<InvalidOperationException>(
+            var ex = Assert.ThrowsExactly<InvalidOperationException>(
                 () => WorkspaceManager.EnsureFreshForWritePreview(workspace.WorkspaceId),
                 "Write-preview gate must throw when staleReason is external-edit.");
 

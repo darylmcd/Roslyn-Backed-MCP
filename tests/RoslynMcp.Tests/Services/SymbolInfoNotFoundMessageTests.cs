@@ -39,7 +39,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<SymbolNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,
@@ -70,7 +70,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
         // value is deterministic across machines.
         var bogusFile = Path.Combine(Path.GetTempPath(), "definitely_not_in_workspace.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,
@@ -109,7 +109,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
         // reaches the SymbolTools.cs throw site we're testing.
         var validButMissingHandle = EncodeHandle("SampleLib.DefinitelyMissingType_Bogus");
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,
@@ -152,7 +152,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
         // input but MUST contain a leading prefix and the truncation marker.
         var hugeName = "SampleLib.Bogus_" + new string('X', 2000);
 
-        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<SymbolNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,

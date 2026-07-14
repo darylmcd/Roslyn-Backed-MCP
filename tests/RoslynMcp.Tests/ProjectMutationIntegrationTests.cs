@@ -89,7 +89,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        var selfReference = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var selfReference = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleLib"),
@@ -99,7 +99,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
 
         // SampleApp already references SampleLib in the fixture. Adding the reverse edge
         // SampleLib -> SampleApp would create a two-project cycle.
-        var cycle = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var cycle = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ProjectMutationService.PreviewAddProjectReferenceAsync(
                 workspace.WorkspaceId,
                 new AddProjectReferenceDto("SampleLib", "SampleApp"),
@@ -504,7 +504,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // as a PackageReference for every project, so it acts as the "transitive-present" repro.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ProjectMutationService.PreviewAddPackageReferenceAsync(
                 workspace.WorkspaceId,
                 new AddPackageReferenceDto("SampleLib", "Microsoft.CodeAnalysis.NetAnalyzers", "10.0.100"),
@@ -562,7 +562,7 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         // Pass a condition that omits MSBuild-style single-quoting (the common first-time caller mistake).
         const string invalidCondition = "$(Configuration) == Release";
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ProjectMutationService.PreviewSetConditionalPropertyAsync(
                 workspace.WorkspaceId,
                 new SetConditionalPropertyDto("SampleLib", "LangVersion", "preview", invalidCondition),

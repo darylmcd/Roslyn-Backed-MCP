@@ -27,28 +27,28 @@ public class IdentifierValidationTests
 
     [TestMethod]
     public void Empty_String_Throws()
-        => Assert.ThrowsException<InvalidOperationException>(
+        => Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier(""));
 
     [TestMethod]
     public void Null_Throws()
-        => Assert.ThrowsException<InvalidOperationException>(
+        => Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier(null!));
 
     [TestMethod]
     public void At_Sign_Alone_Throws()
-        => Assert.ThrowsException<InvalidOperationException>(
+        => Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier("@"));
 
     [TestMethod]
     public void Numeric_Prefix_Throws()
-        => Assert.ThrowsException<InvalidOperationException>(
+        => Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier("2InvalidName"));
 
     [TestMethod]
     public void Reserved_Keyword_Throws()
     {
-        var ex = Assert.ThrowsException<InvalidOperationException>(
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier("class"));
         StringAssert.Contains(ex.Message, "reserved");
     }
@@ -56,7 +56,7 @@ public class IdentifierValidationTests
     [TestMethod]
     public void Contextual_Keyword_Throws()
     {
-        var ex = Assert.ThrowsException<InvalidOperationException>(
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier("var"));
         StringAssert.Contains(ex.Message, "contextual");
     }
@@ -64,7 +64,7 @@ public class IdentifierValidationTests
     [TestMethod]
     public void Custom_Parameter_Label_Appears_In_Error()
     {
-        var ex = Assert.ThrowsException<InvalidOperationException>(
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
             () => IdentifierValidation.ThrowIfInvalidIdentifier("", "type name"));
         StringAssert.Contains(ex.Message, "type name");
     }

@@ -61,7 +61,7 @@ public sealed class StringLiteralReplaceServiceTests : SharedWorkspaceTestBase
         // Guard that the zero-match relaxation didn't weaken input validation. A caller
         // passing an empty replacements array is a programming error, distinct from a
         // well-formed replacement that simply doesn't match anything in scope.
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             Service.PreviewReplaceAsync(
                 WorkspaceId,
                 replacements: Array.Empty<StringLiteralReplacementDto>(),

@@ -90,7 +90,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(File.Exists(destinationPath),
             $"Test precondition violated: '{destinationPath}' must exist for this scenario.");
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                 workspace.WorkspaceId,
                 new ScaffoldFirstTestFileDto("SampleLib.AnimalService", "SampleLib.Tests"),
@@ -141,7 +141,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         // namespace.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                 workspace.WorkspaceId,
                 new ScaffoldFirstTestFileDto("SampleLib.NoSuchService", "SampleLib.Tests"),
@@ -232,7 +232,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
             await RestoreWorkspaceAsync(workspace, CancellationToken.None);
             await workspace.LoadAsync(CancellationToken.None);
 
-            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
                     workspace.WorkspaceId,
                     new ScaffoldFirstTestFileDto(

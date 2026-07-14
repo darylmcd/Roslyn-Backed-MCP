@@ -210,7 +210,7 @@ public class PreviewStoreTests
         var solution = workspace.CurrentSolution;
         _store.Store("workspace-1", solution, 1, "test");
 
-        Assert.ThrowsException<ArgumentNullException>(() => _store.InvalidateOnVersionBump(null!, 1));
-        Assert.ThrowsException<ArgumentException>(() => _store.InvalidateOnVersionBump(string.Empty, 1));
+        Assert.ThrowsExactly<ArgumentNullException>(() => _store.InvalidateOnVersionBump(null!, 1));
+        Assert.ThrowsExactly<ArgumentException>(() => _store.InvalidateOnVersionBump(string.Empty, 1));
     }
 }

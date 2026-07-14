@@ -339,7 +339,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 FilePath: null, Line: null, Column: null),
         };
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
             WorkspaceExecutionGate,
             ReferenceService,
             WorkspaceId,
@@ -497,7 +497,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
         await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => CodeActionTools.GetCodeActions(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() => CodeActionTools.GetCodeActions(
             harness.Server,
             WorkspaceExecutionGate,
             CodeActionService,
@@ -518,7 +518,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
         await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => CodeActionTools.PreviewCodeAction(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() => CodeActionTools.PreviewCodeAction(
             harness.Server,
             WorkspaceExecutionGate,
             CodeActionService,
@@ -540,7 +540,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
         await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeDataFlow(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeDataFlow(
             harness.Server,
             WorkspaceExecutionGate,
             FlowAnalysisService,
@@ -559,7 +559,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
         await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeControlFlow(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeControlFlow(
             harness.Server,
             WorkspaceExecutionGate,
             FlowAnalysisService,
@@ -578,7 +578,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
         await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => OperationTools.GetOperations(
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() => OperationTools.GetOperations(
             harness.Server,
             WorkspaceExecutionGate,
             OperationService,

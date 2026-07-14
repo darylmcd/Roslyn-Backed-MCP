@@ -13,7 +13,7 @@ public sealed class SuppressionServiceTests
     public async Task SetDiagnosticSeverityAsync_Throws_WhenDiagnosticId_Missing()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.SetDiagnosticSeverityAsync("ws", " ", "warning", "/tmp/a.cs", CancellationToken.None));
     }
 
@@ -21,7 +21,7 @@ public sealed class SuppressionServiceTests
     public async Task AddPragmaWarningDisableAsync_Throws_WhenLine_NotPositive()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
             sut.AddPragmaWarningDisableAsync("ws", "/tmp/a.cs", 0, "CS0168", CancellationToken.None));
     }
 
@@ -29,7 +29,7 @@ public sealed class SuppressionServiceTests
     public async Task AddPragmaWarningDisableAsync_Throws_WhenDiagnosticId_Missing()
     {
         var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             sut.AddPragmaWarningDisableAsync("ws", "/tmp/a.cs", 1, " ", CancellationToken.None));
     }
 

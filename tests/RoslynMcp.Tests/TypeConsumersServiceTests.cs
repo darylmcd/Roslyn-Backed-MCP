@@ -77,7 +77,7 @@ public sealed class TypeConsumersServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task FindTypeConsumers_NonExistentType_ThrowsKeyNotFound()
     {
-        await Assert.ThrowsExceptionAsync<KeyNotFoundException>(
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
             () => TypeConsumersService.FindTypeConsumersAsync(
                 WorkspaceId, "SampleLib.DefinitelyNotAType", limit: 100, CancellationToken.None));
     }
