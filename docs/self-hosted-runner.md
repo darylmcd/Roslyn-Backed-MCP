@@ -1,6 +1,6 @@
 # Self-hosted GitHub Actions runner
 
-This repo supports a hybrid CI model: maintainer PRs run on a self-hosted Windows runner; fork PRs continue to run on GitHub-hosted Linux runners. The hybrid model is set up but **not yet active in CI** — see [Activation](#activation) below.
+This repo runs a hybrid CI model (**active since 2026-05-08**): maintainer PRs run on a self-hosted Windows runner; fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs use GitHub-hosted Linux runners. See [Activation](#activation) for the exact conditional.
 
 ## Why hybrid
 
@@ -8,13 +8,13 @@ GitHub-hosted runners are 2-vcpu Linux machines that take ~10 min to run the ful
 
 ## Security model — read this first
 
-GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo:
+GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo (the authoritative expression lives in `.github/workflows/ci.yml`):
 
 ```yaml
-runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || ['self-hosted', 'roslynmcp-dev'] }}
+runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
 ```
 
-This conditional says: **fork PRs use GitHub-hosted Linux; non-fork PRs (maintainer's own branches) use the self-hosted runner**. A fork-PR attacker can never reach the self-hosted runner because their `head.repo.fork == true`.
+This conditional says: **only the maintainer's own non-fork, non-dependabot PRs use the self-hosted runner**. A fork-PR attacker can never reach it because their `head.repo.fork == true`. Dependabot PRs are also routed to hosted Linux: although they are non-fork branches, their diffs pull third-party package versions whose code executes during `dotnet test` — a supply-chain compromise of a bumped package must not run on the maintainer's box.
 
 **Residual risk:** if the maintainer ever clones a malicious branch into their own fork+PRs it (e.g., copying someone else's untrusted patch onto their own branch), it would run on the self-hosted runner. Maintainer discipline mitigates this.
 
@@ -27,7 +27,16 @@ As of 2026-05-08:
 - **Runner name:** `darylmcd-windows-dev`
 - **Labels:** `self-hosted`, `Windows`, `X64`, `roslynmcp-dev`, `windows-native`
 - **Registration status:** registered with `darylmcd/Roslyn-Backed-MCP` (visible via `gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners`)
-- **Current run-state:** **offline** — agent is configured but not yet running. See [Starting the runner](#starting-the-runner) below.
+- **Current run-state:** installed as a Windows service under `LocalSystem`; check live status with the [verify command](#verifying-its-running).
+
+## Availability — the single-runner queue
+
+There is exactly one runner, and it lives on the maintainer's interactive desktop. **When it is offline or busy, every maintainer PR queues indefinitely** — observed queue times of 2–14.5 hours happened because the box slept overnight and a wedged job held the slot. Keep it available:
+
+- **Power:** disable system sleep while on AC (`powercfg /change standby-timeout-ac 0`); display sleep is fine. A sleeping box looks *online* to GitHub for a few minutes, then jobs queue silently.
+- **Service recovery:** set the runner service to restart on failure (`sc.exe failure "actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev" reset= 86400 actions= restart/60000/restart/60000/restart/60000`).
+- **Wedged job:** cancel the run in the Actions UI (`gh run cancel <id>`); the runner frees the slot at job cleanup and picks up the next queued run.
+- **No hosted fallback exists:** `runs-on` is evaluated before any job runs, and probing runner health from a router job needs a PAT with repo-admin scope (the workflow `GITHUB_TOKEN` cannot read the runners API). Tracked in the backlog; until then, a hosted fallback for a stuck PR is manual — re-run the job after temporarily reverting the `runs-on` conditional, or just keep the runner alive.
 
 ## Starting the runner
 
@@ -117,10 +126,10 @@ When a job is running on it: `status: "online"`, `busy: true`.
 ```yaml
 jobs:
   validate:
-    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
 ```
 
-The conditional says: ONLY for non-fork pull_request events, route to self-hosted. Everything else (workflow_dispatch, schedule, fork PRs) stays on `ubuntu-latest`. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux) and the security boundary on fork PRs.
+The conditional says: ONLY maintainer non-fork, non-dependabot pull_request events route to self-hosted. Everything else (workflow_dispatch, schedule, fork PRs, dependabot PRs) stays on `ubuntu-latest`. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux), the security boundary on fork/dependabot PRs, and keeps dependabot's PR waves from queueing behind the single self-hosted slot.
 
 **Pre-activation checklist:**
 
@@ -156,7 +165,7 @@ If you decide to abandon the self-hosted approach:
 
 | | Hosted (today) | Self-hosted |
 |---|---|---|
-| Wall-clock per run | ~10 min | ~2-3 min (estimate; verify on first run) |
+| Wall-clock per run | ~10-12 min | ~9-11 min observed at ~1700 tests (the early ~2-3 min estimate predates suite growth); PR runs drop further with `-ExcludeNetworkTests` |
 | GitHub Actions minutes used | ~10/run | ~0/run (only the docs-detect step uses GitHub minutes) |
 | Setup effort | none | one-time service install |
 | Maintenance burden | none | runner agent auto-updates; .NET SDK updates manual |

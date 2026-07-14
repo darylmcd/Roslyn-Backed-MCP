@@ -1,7 +1,8 @@
 param(
     [string]$Configuration = "Release",
     [string]$OutputRoot = "artifacts",
-    [switch]$NoCoverage
+    [switch]$NoCoverage,
+    [switch]$ExcludeNetworkTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,6 +64,18 @@ Invoke-DotnetStep "dotnet restore (main solution)"
 dotnet restore $sampleSolutionPath --nologo
 Invoke-DotnetStep "dotnet restore (sample solution)"
 
+# The other two sample fixtures were never pre-restored, so the integration tests that
+# spawn `dotnet build` against them (SemanticExpansionTests, ValidationIntegrationTests)
+# paid a cold implicit restore INSIDE the timed child command — on a CI service account
+# with a cold NuGet cache that restore dominated the command timeout. Restore them up
+# front like SampleSolution so the in-test builds only compile.
+$generatedDocSolutionPath = Join-Path $repoRoot "samples\GeneratedDocumentSolution\GeneratedDocumentSolution.slnx"
+$buildFailureSolutionPath = Join-Path $repoRoot "samples\BuildFailureSolution\BuildFailureSolution.slnx"
+dotnet restore $generatedDocSolutionPath --nologo
+Invoke-DotnetStep "dotnet restore (generated-document solution)"
+dotnet restore $buildFailureSolutionPath --nologo
+Invoke-DotnetStep "dotnet restore (build-failure solution)"
+
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
 Invoke-DotnetStep "dotnet build"
 
@@ -78,6 +91,13 @@ Invoke-DotnetStep "dotnet build"
 # opt-in via `dotnet test --filter "TestCategory=Benchmark"` — this filter aligns
 # the default invocation with that contract.
 $testFilter = "TestCategory!=Benchmark"
+if ($ExcludeNetworkTests) {
+    # PR CI gates vulnerabilities via the dedicated 'Audit packages' workflow step, so the
+    # live api.nuget.org integration tests are redundant there and network-flaky on the
+    # self-hosted runner. workflow_dispatch and the weekly schedule stay unfiltered so the
+    # live scan still runs as a canary on hosted runners.
+    $testFilter += "&TestCategory!=Network"
+}
 if ($NoCoverage) {
     dotnet test $solutionPath -c $Configuration --no-build --nologo `
         --filter $testFilter `

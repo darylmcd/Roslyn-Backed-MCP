@@ -238,6 +238,10 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    // The package-version edit forces a real restore of a version that may not be in the
+    // local NuGet cache, so this test can hit nuget.org — excluded on the PR CI path like
+    // the other live-network tests (see CI_POLICY.md § Test Category Lanes).
+    [TestCategory("Network")]
     public async Task ReloadAsync_WithAutoRestore_ClearsRestoreRequiredAfterPackageVersionEdit()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
