@@ -604,7 +604,7 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
             NewName: null,
             DefaultValue: "default");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, request, CancellationToken.None));
 
@@ -763,35 +763,35 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
 
         // Missing NewOrder.
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "NewOrder",
             $"missing-NewOrder error must cite 'NewOrder'; got: {ex.Message}");
 
         // Wrong arity (2 tokens for 3-param method).
-        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "exactly once",
             $"wrong-arity error must explain that every parameter must appear exactly once; got: {ex.Message}");
 
         // Unknown name token.
-        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,zz"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "zz",
             $"unknown-token error must cite the offending token; got: {ex.Message}");
 
         // Duplicate token.
-        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,a,b"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "more than once",
             $"duplicate-token error must explain the parameter is listed twice; got: {ex.Message}");
 
         // Identity permutation (no-op).
-        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,c"), CancellationToken.None));
         StringAssert.Contains(ex.Message, "identity",
@@ -834,7 +834,7 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
         var request = new ChangeSignatureRequest(Op: "reorder", NewOrder: "c,a,b");
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
             await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspace.WorkspaceId, locator, request, CancellationToken.None));
         StringAssert.Contains(ex.Message, "mixes positional and named",

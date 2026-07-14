@@ -110,7 +110,7 @@ public sealed class WorkspaceManagerEvictionTests
             // Direct exception assertion — manager throws WorkspaceEvictedException, the
             // most-specific shape consumers can branch on without going through the
             // ToolErrorHandler dictionary.
-            var ex = Assert.ThrowsException<WorkspaceEvictedException>(() =>
+            var ex = Assert.ThrowsExactly<WorkspaceEvictedException>(() =>
                 manager.GetStatus(status.WorkspaceId));
 
             Assert.AreEqual(status.WorkspaceId, ex.WorkspaceId,
@@ -239,7 +239,7 @@ public sealed class WorkspaceManagerEvictionTests
         // recycled, so this is unambiguously a recycle eviction (the prior process
         // owned the now-missing id).
         const string priorWorkspaceId = "abc123def456ghi789";
-        var ex = Assert.ThrowsException<WorkspaceEvictedException>(() =>
+        var ex = Assert.ThrowsExactly<WorkspaceEvictedException>(() =>
             manager.GetStatus(priorWorkspaceId));
 
         Assert.AreEqual(priorWorkspaceId, ex.WorkspaceId);
@@ -265,7 +265,7 @@ public sealed class WorkspaceManagerEvictionTests
         using var manager = CreateManager();
 
         const string typoedWorkspaceId = "this-id-was-never-issued";
-        var ex = Assert.ThrowsException<KeyNotFoundException>(() =>
+        var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
             manager.GetStatus(typoedWorkspaceId));
 
         Assert.IsFalse(ex is WorkspaceEvictedException,
@@ -300,7 +300,7 @@ public sealed class WorkspaceManagerEvictionTests
                 "LoadAsync must return a non-empty id (sanity).");
 
             const string typoedId = "still-a-typo-because-there-is-a-live-session";
-            var ex = Assert.ThrowsException<KeyNotFoundException>(() =>
+            var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
                 manager.GetStatus(typoedId));
             Assert.IsFalse(ex is WorkspaceEvictedException,
                 "When a live session exists in the current process, a miss is a typo " +

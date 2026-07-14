@@ -31,7 +31,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task BulkReplaceType_NonExistentType_ThrowsInvalidOperation()
     {
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             BulkRefactoringService.PreviewBulkReplaceTypeAsync(
                 WorkspaceId, "NonExistentType123", "Shape", null, CancellationToken.None));
     }
@@ -39,7 +39,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task BulkReplaceType_InvalidScope_ThrowsArgument()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             BulkRefactoringService.PreviewBulkReplaceTypeAsync(
                 WorkspaceId, "IAnimal", "Shape", "invalid_scope", CancellationToken.None));
     }

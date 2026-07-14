@@ -107,7 +107,7 @@ public sealed class DiagnosticIdentitySetTests
     [TestMethod]
     public void FormatIdentity_NullDiagnostic_Throws()
     {
-        Assert.ThrowsException<ArgumentNullException>(
+        Assert.ThrowsExactly<ArgumentNullException>(
             () => DiagnosticIdentitySet.FormatIdentity(null!));
     }
 

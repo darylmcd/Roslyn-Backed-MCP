@@ -145,7 +145,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetSourceFile_Resource_Rejects_Relative_Path()
     {
-        var ex = await Assert.ThrowsExceptionAsync<McpToolException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<McpToolException>(() =>
             WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
         StringAssert.Contains(ex.Message, "Invalid operation");
         StringAssert.Contains(ex.Message, "absolute path");

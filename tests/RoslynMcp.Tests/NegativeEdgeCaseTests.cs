@@ -21,7 +21,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     [TestMethod]
     public void InvalidWorkspaceId_ThrowsKeyNotFoundException()
     {
-        Assert.ThrowsException<KeyNotFoundException>(() =>
+        Assert.ThrowsExactly<KeyNotFoundException>(() =>
             WorkspaceManager.GetStatus("nonexistent-workspace-id"));
     }
 
@@ -29,7 +29,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     public async Task MalformedSymbolHandle_InvalidBase64_ThrowsArgumentException()
     {
         var locator = SymbolLocator.ByHandle("not-valid-base64!!!");
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
         StringAssert.Contains(ex.Message, "base64", StringComparison.OrdinalIgnoreCase);
     }
@@ -39,7 +39,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     {
         var handle = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("this is not json"));
         var locator = SymbolLocator.ByHandle(handle);
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
         StringAssert.Contains(ex.Message, "JSON", StringComparison.OrdinalIgnoreCase);
     }
@@ -48,7 +48,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     public void SymbolLocator_NoFields_ThrowsArgumentException()
     {
         var locator = new SymbolLocator(null, null, null, null, null);
-        Assert.ThrowsException<ArgumentException>(() => locator.Validate());
+        Assert.ThrowsExactly<ArgumentException>(() => locator.Validate());
     }
 
     [TestMethod]
@@ -70,7 +70,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
             .Documents.First(d => d.FilePath?.EndsWith(".cs") == true);
 
         var locator = SymbolLocator.BySource(doc.FilePath!, -1, -1);
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
         StringAssert.Contains(ex.Message, "out of range");
     }

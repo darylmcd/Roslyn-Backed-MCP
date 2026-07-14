@@ -55,7 +55,7 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         StringAssert.Contains(text, "server");
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("navigation")]
     [DataRow("refactoring")]
     [DataRow("testing")]

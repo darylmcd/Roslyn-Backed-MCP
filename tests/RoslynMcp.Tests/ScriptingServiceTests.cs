@@ -287,7 +287,7 @@ public sealed class ScriptingServiceTests
         cts.CancelAfter(TimeSpan.FromMilliseconds(500));
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
             await service.EvaluateAsync("while(true){}", null, cts.Token, null, 30).ConfigureAwait(false))
             .ConfigureAwait(false);
         sw.Stop();

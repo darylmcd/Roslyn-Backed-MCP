@@ -23,7 +23,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         var beforeCount = WorkspaceManager.ListWorkspaces().Count;
         var missingPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.slnx");
 
-        await Assert.ThrowsExceptionAsync<FileNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(() =>
             WorkspaceManager.LoadAsync(missingPath, CancellationToken.None));
 
         Assert.AreEqual(beforeCount, WorkspaceManager.ListWorkspaces().Count);
@@ -45,7 +45,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         {
             await manager.LoadAsync(firstPath, CancellationToken.None);
 
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 manager.LoadAsync(secondPath, CancellationToken.None));
         }
         finally
@@ -63,7 +63,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
             .Select(index => Path.Combine(Path.GetTempPath(), $"File{index}.cs"))
             .ToArray();
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             TestDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, excessivePaths, 100, CancellationToken.None));
     }
 
@@ -86,7 +86,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
                 MaxRelatedFiles = 25
             });
 
-        await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
             service.BuildWorkspaceAsync("workspace-1", CancellationToken.None));
     }
 
@@ -101,7 +101,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             runner.RunAsync(
                 Environment.CurrentDirectory,
                 targetPath: "dotnet-info",
@@ -113,7 +113,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
             candidate.Message.Contains("Failed to kill dotnet process tree", StringComparison.Ordinal) &&
             candidate.Exception is InvalidOperationException);
 
-        Assert.IsNotNull(entry, "Cancellation kill failures should be observable without changing cancellation semantics.");
+        Assert.AreNotEqual(default, entry, "Cancellation kill failures should be observable without changing cancellation semantics.");
     }
 
     private sealed class HangingDotnetCommandRunner : IDotnetCommandRunner

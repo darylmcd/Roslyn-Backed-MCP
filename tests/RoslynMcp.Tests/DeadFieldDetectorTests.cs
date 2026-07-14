@@ -276,7 +276,7 @@ public sealed class DeadFieldDetectorTests
     // `never-written`. `Interlocked.*` callsites that take the field by `ref` are
     // covered by the existing `RefKeyword` arm; adding the member-access case
     // here ensures `Interlocked.Increment(ref acc.field)` works for qualified refs.
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("_count++;", DisplayName = "PostfixIncrement")]
     [DataRow("_count--;", DisplayName = "PostfixDecrement")]
     [DataRow("++_count;", DisplayName = "PrefixIncrement")]

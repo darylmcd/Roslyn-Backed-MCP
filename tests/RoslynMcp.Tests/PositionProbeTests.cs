@@ -170,7 +170,7 @@ public sealed class PositionProbeTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ProbePosition_LineOutOfRange_Throws()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             SymbolNavigationService.ProbePositionAsync(
                 _workspaceId, _animalServicePath, line: 99_999, column: 1, CancellationToken.None));
     }

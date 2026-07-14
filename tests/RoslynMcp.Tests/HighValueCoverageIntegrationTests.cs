@@ -81,7 +81,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             CodeActionService.PreviewCodeActionAsync(
                 SampleWorkspaceId,
                 filePath,
@@ -144,7 +144,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task DeadCode_PreviewRemoveDeadCode_Empty_Throws()
     {
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             DeadCodeService.PreviewRemoveDeadCodeAsync(
                 SampleWorkspaceId,
                 new DeadCodeRemovalDto([]),

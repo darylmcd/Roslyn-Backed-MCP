@@ -111,7 +111,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
         // Select lines 13-16 including "return doubled;"
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             ExtractMethodService.PreviewExtractMethodAsync(
                 workspace.WorkspaceId,
                 filePath,
@@ -132,7 +132,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             ExtractMethodService.PreviewExtractMethodAsync(
                 workspace.WorkspaceId,
                 filePath,

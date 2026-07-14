@@ -48,7 +48,7 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
 
     // ── symbol-search-empty-query-overflow: guard empty/whitespace queries ──
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("")]
     [DataRow(" ")]
     [DataRow("\t")]

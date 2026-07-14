@@ -71,7 +71,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var locator = SymbolLocator.BySource(filePath, 7, 26);
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(WorkspaceId, locator, "2foo", CancellationToken.None));
         StringAssert.Contains(ex.Message, "is not a valid C# identifier");
     }
@@ -81,7 +81,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var locator = SymbolLocator.BySource(filePath, 7, 26);
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(WorkspaceId, locator, "class", CancellationToken.None));
         StringAssert.Contains(ex.Message, "reserved C# keyword");
     }
@@ -91,7 +91,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var locator = SymbolLocator.BySource(filePath, 7, 26);
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(WorkspaceId, locator, "var", CancellationToken.None));
         StringAssert.Contains(ex.Message, "contextual C# keyword");
     }
@@ -112,7 +112,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var locator = SymbolLocator.BySource(filePath, 7, 26);
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(WorkspaceId, locator, string.Empty, CancellationToken.None));
         StringAssert.Contains(ex.Message, "is required");
     }
@@ -133,7 +133,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task RenamePreview_BareMemberMetadataName_Returns_Targeting_Guidance()
     {
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             RefactoringService.PreviewRenameAsync(
                 WorkspaceId,
                 SymbolLocator.ByMetadataName("GetAllAnimals"),

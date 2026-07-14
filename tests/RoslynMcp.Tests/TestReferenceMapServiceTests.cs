@@ -129,7 +129,7 @@ public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task BuildAsync_ProjectName_UnknownName_Throws()
     {
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             Service.BuildAsync(
                 WorkspaceId, projectName: "DefinitelyNotARealProject", offset: 0, limit: 10,
                 maxMockDriftWarnings: DefaultMaxMockDriftWarnings, CancellationToken.None));

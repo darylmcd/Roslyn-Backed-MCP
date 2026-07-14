@@ -338,7 +338,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             candidate.Message.Contains(process.Id.ToString(), StringComparison.Ordinal) &&
             ReferenceEquals(candidate.Exception, killException));
 
-        Assert.IsNotNull(entry,
+        Assert.AreNotEqual(default, entry,
             "A git kill failure must be observable at Warning level with the process id; "
             + $"got [{string.Join("; ", logger.Entries.Select(e => $"{e.Level}:{e.Message}"))}].");
     }

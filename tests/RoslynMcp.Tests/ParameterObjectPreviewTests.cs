@@ -113,7 +113,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 16),
@@ -145,7 +145,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(fixturePath, line: 5, column: 17),
@@ -243,7 +243,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
         var workspaceId = loadResult.WorkspaceId;
         try
         {
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
                 ParameterObjectService.PreviewParameterObjectAsync(
                     workspaceId,
                     SymbolLocator.BySource(libFile, line: 5, column: 16),

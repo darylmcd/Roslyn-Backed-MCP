@@ -190,7 +190,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     public async Task EvaluateMsBuildProperty_UnknownProject_ErrorListsLoadedProjects()
     {
         // Unknown project name must surface a loaded-projects list in the error.
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
             await MsBuildEvaluationService.EvaluatePropertyAsync(
                 WorkspaceId,
                 projectName: "DoesNotExist.Xyz",
@@ -205,7 +205,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task EvaluateMsBuildProperty_EmptyProject_ThrowsArgumentExceptionWithExample()
     {
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await MsBuildEvaluationService.EvaluatePropertyAsync(
                 WorkspaceId,
                 projectName: "",

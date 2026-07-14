@@ -38,7 +38,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 17, startColumn: 1,
@@ -53,7 +53,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 11, startColumn: 0,
@@ -68,7 +68,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         await using var workspace = await CreateIsolatedWorkspaceAsync();
         var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
 
-        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             RefactoringService.PreviewFormatRangeAsync(
                 workspace.WorkspaceId, filePath,
                 startLine: 99999, startColumn: 1,
