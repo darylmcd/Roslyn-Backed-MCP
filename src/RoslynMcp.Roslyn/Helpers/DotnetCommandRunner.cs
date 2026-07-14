@@ -29,6 +29,17 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private const int DefaultOutputLimit = 12_000;
     private const int ReadBufferSize = 4096;
 
+    /// <summary>
+    /// Grace window for draining stdout/stderr after the child process exits. MSBuild worker
+    /// nodes and VBCSCompiler spawned by build-ish commands inherit the redirected pipe write
+    /// handles and can outlive the child by many minutes (node idle timeout is 15 minutes, and
+    /// continuous reuse resets it) — pipe EOF never arrives while they hold the write end, so an
+    /// unbounded read deadlocks long after the command finished. The child's own buffered output
+    /// flushes within milliseconds of its exit, so a short bounded drain preserves complete
+    /// output without inheriting the descendants' lifetime.
+    /// </summary>
+    internal static readonly TimeSpan PostExitDrainGracePeriod = TimeSpan.FromSeconds(5);
+
     private static readonly Action<ILogger, int, string, string, Exception?> LogProcessTreeKillFailed =
         LoggerMessage.Define<int, string, string>(
             LogLevel.Warning,
@@ -81,20 +92,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
+        var startInfo = CreateStartInfo(workingDirectory, arguments);
 
         using var process = new Process { StartInfo = startInfo };
         var stopwatch = Stopwatch.StartNew();
@@ -112,10 +110,13 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             ? new EarlyKillCoordinator(this, process, targetPath, earlyKillPatterns)
             : null;
 
-        var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, ct);
-        var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, earlyKill, ct);
+        using var drainCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, drainCts.Token, ct);
+        var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, earlyKill, drainCts.Token, ct);
 
         await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        // The child has exited; only handle-inheriting descendants can still hold the pipe open.
+        drainCts.CancelAfter(PostExitDrainGracePeriod);
         var stdOut = await stdOutTask.ConfigureAwait(false);
         var stdErr = await stdErrTask.ConfigureAwait(false);
         stopwatch.Stop();
@@ -131,6 +132,32 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             StdOut: stdOut,
             StdErr: stdErr,
             EarlyKillReason: earlyKill?.KillReason);
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string workingDirectory, IReadOnlyList<string> arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        // Reusable MSBuild worker nodes inherit this process's redirected pipe handles and idle
+        // for 15 minutes after the build, holding the pipe open (see PostExitDrainGracePeriod)
+        // and accumulating orphaned dotnet processes on the host. Spawned commands are one-shot
+        // from the runner's perspective, so node reuse buys nothing here.
+        startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
     }
 
     private static void KillProcessTree(Process process) => process.Kill(entireProcessTree: true);
@@ -150,8 +177,14 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         }
     }
 
+    internal static async Task<string> ReadBoundedAsync(
+        StreamReader reader, int outputLimit,
+        CancellationToken drainCt, CancellationToken callerCt)
+        => await ReadBoundedAsync(reader, outputLimit, earlyKill: null, drainCt, callerCt).ConfigureAwait(false);
+
     private static async Task<string> ReadBoundedAsync(
-        StreamReader reader, int outputLimit, EarlyKillCoordinator? earlyKill, CancellationToken ct)
+        StreamReader reader, int outputLimit, EarlyKillCoordinator? earlyKill,
+        CancellationToken drainCt, CancellationToken callerCt)
     {
         var buffer = ArrayPool<char>.Shared.Rent(ReadBufferSize);
         var bounded = new BoundedTextBuffer(outputLimit);
@@ -160,7 +193,20 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         {
             while (true)
             {
-                var count = await reader.ReadAsync(buffer.AsMemory(0, ReadBufferSize), ct).ConfigureAwait(false);
+                int count;
+                try
+                {
+                    count = await reader.ReadAsync(buffer.AsMemory(0, ReadBufferSize), drainCt).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!callerCt.IsCancellationRequested)
+                {
+                    // Post-exit drain grace expired: a handle-inheriting descendant (MSBuild
+                    // worker node, VBCSCompiler) still holds the pipe write end open. The child
+                    // itself already exited, so everything it wrote has been read — stop waiting
+                    // for an EOF that only arrives when those descendants die.
+                    break;
+                }
+
                 if (count == 0)
                 {
                     break;
