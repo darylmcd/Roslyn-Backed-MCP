@@ -80,7 +80,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IEditorConfigService>(),
             sp.GetRequiredService<IEditService>(),
             sp.GetRequiredService<IWorkspaceManager>(),
-            sp.GetRequiredService<ICompileCheckService>()));
+            sp.GetRequiredService<ICompileCheckService>(),
+            sp.GetRequiredService<ILogger<SuppressionService>>()));
         services.AddSingleton<ICodePatternAnalyzer, CodePatternAnalyzer>();
         services.AddSingleton<EditService>();
         services.AddSingleton<IEditService>(sp => sp.GetRequiredService<EditService>());

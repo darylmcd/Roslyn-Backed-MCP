@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -13,9 +15,12 @@ public sealed class SuppressionService : ISuppressionService
     private readonly IEditService _editService;
     private readonly IWorkspaceManager? _workspace;
     private readonly ICompileCheckService? _compileCheck;
+    private readonly ILogger<SuppressionService> _logger;
     private const string ConfirmationServiceUnavailableReason = "confirmation-service-unavailable";
     private const string WorkspaceNotLoadedReason = "workspace-not-loaded";
     private const string ConfirmationFailedReason = "confirmation-failed";
+    private const string PragmaIdempotencyReadPhase = "pragma-idempotency-read";
+    private const string LineEndingReadPhase = "line-ending-read";
 
     /// <summary>
     /// Constructs a <see cref="SuppressionService"/>. The <paramref name="workspace"/> and
@@ -35,11 +40,22 @@ public sealed class SuppressionService : ISuppressionService
         IEditService editService,
         IWorkspaceManager? workspace = null,
         ICompileCheckService? compileCheck = null)
+        : this(editorConfig, editService, workspace, compileCheck, NullLogger<SuppressionService>.Instance)
+    {
+    }
+
+    internal SuppressionService(
+        IEditorConfigService editorConfig,
+        IEditService editService,
+        IWorkspaceManager? workspace,
+        ICompileCheckService? compileCheck,
+        ILogger<SuppressionService> logger)
     {
         _editorConfig = editorConfig;
         _editService = editService;
         _workspace = workspace;
         _compileCheck = compileCheck;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public Task<EditorConfigWriteResultDto> SetDiagnosticSeverityAsync(
@@ -110,15 +126,17 @@ public sealed class SuppressionService : ISuppressionService
                     Changes: Array.Empty<FileChangeDto>());
             }
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // File unreadable from disk — fall through to the normal insert path; the edit
             // service is the authority on whether the edit can be applied.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same fall-through rationale as IOException: if the file can't be read for the
-            // idempotency pre-check, defer to the edit service to surface any apply failure.
+            _logger.LogWarning(
+                ex,
+                "Failed to read suppression target '{FilePath}' during {Phase} for diagnostic '{DiagnosticId}' at line {Line}; deferring to the edit service.",
+                filePath,
+                PragmaIdempotencyReadPhase,
+                normalizedId,
+                line);
         }
 
         var newline = await DetectLineEndingAsync(filePath, ct).ConfigureAwait(false);
@@ -349,19 +367,20 @@ public sealed class SuppressionService : ISuppressionService
         return line > pair.DisableLine.Value && line < pair.RestoreLine.Value;
     }
 
-    private static async Task<string> DetectLineEndingAsync(string filePath, CancellationToken ct)
+    private async Task<string> DetectLineEndingAsync(string filePath, CancellationToken ct)
     {
         string text;
         try
         {
             text = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return Environment.NewLine;
-        }
-        catch (UnauthorizedAccessException)
-        {
+            _logger.LogWarning(
+                ex,
+                "Failed to read suppression target '{FilePath}' during {Phase}; using the environment line-ending fallback.",
+                filePath,
+                LineEndingReadPhase);
             return Environment.NewLine;
         }
 
