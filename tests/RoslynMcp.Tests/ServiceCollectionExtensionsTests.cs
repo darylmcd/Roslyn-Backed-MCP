@@ -36,6 +36,7 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.IsNotNull(sp.GetRequiredService<IClassSplitOrchestrator>());
         Assert.IsNotNull(sp.GetRequiredService<IExtractAndWireOrchestrator>());
         Assert.IsNotNull(sp.GetRequiredService<ICompositeApplyOrchestrator>());
+        Assert.IsNotNull(sp.GetRequiredService<ISuppressionService>());
     }
 
     [TestMethod]

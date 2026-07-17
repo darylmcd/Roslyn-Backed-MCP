@@ -1,8 +1,9 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Tests;
 
@@ -193,6 +194,62 @@ public sealed class SuppressionServiceTests
         {
             File.Delete(filePath);
         }
+    }
+
+    [TestMethod]
+    public async Task AddPragmaWarningDisableAsync_WhenFileIsMissing_LogsBothReadFallbacks_AndPreservesEditResult()
+    {
+        var filePath = Path.Combine(
+            Path.GetTempPath(),
+            "suppression-guaranteed-missing-" + Guid.NewGuid().ToString("N") + ".cs");
+        Assert.IsFalse(File.Exists(filePath), "The regression path must be missing before the service reads it.");
+
+        TextEditDto? capturedEdit = null;
+        var expectedResult = new TextEditResultDto(true, filePath, 1, []);
+        var edits = new StubEditService
+        {
+            OnApply = (_, _, editsToApply, _, _, _) =>
+            {
+                capturedEdit = editsToApply.Single();
+                return Task.FromResult(expectedResult);
+            }
+        };
+        var logger = new CaptureLogger<SuppressionService>();
+        var sut = new SuppressionService(
+            new StubEditorConfig(),
+            edits,
+            workspace: null,
+            compileCheck: null,
+            logger: logger);
+
+        var result = await sut.AddPragmaWarningDisableAsync(
+            "ws",
+            filePath,
+            7,
+            "CA1305",
+            CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreSame(expectedResult, result, "Read fallbacks must not alter the edit service result.");
+        Assert.IsNotNull(capturedEdit);
+        Assert.AreEqual(
+            $"#pragma warning disable CA1305{Environment.NewLine}",
+            capturedEdit.NewText,
+            "The unreadable-file path must retain the environment line-ending fallback.");
+
+        var warnings = logger.Entries.Where(entry => entry.Level == LogLevel.Warning).ToArray();
+        Assert.AreEqual(2, warnings.Length, "The idempotency and line-ending reads must emit distinct warnings.");
+
+        var idempotencyWarning = warnings.Single(entry =>
+            entry.Message.Contains("pragma-idempotency-read", StringComparison.Ordinal));
+        Assert.IsInstanceOfType<FileNotFoundException>(idempotencyWarning.Exception);
+        StringAssert.Contains(idempotencyWarning.Message, filePath);
+        StringAssert.Contains(idempotencyWarning.Message, "CA1305");
+        StringAssert.Contains(idempotencyWarning.Message, "line 7");
+
+        var lineEndingWarning = warnings.Single(entry =>
+            entry.Message.Contains("line-ending-read", StringComparison.Ordinal));
+        Assert.IsInstanceOfType<FileNotFoundException>(lineEndingWarning.Exception);
+        StringAssert.Contains(lineEndingWarning.Message, filePath);
     }
 
     [TestMethod]
