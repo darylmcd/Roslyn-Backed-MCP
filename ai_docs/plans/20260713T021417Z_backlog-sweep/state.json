@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-07-13T02:14:17Z",
-  "backlogSnapshot": "2026-07-09T07:09:56Z",
+  "backlogSnapshot": "2026-07-17T12:29:03Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -12,7 +12,7 @@
     {
       "id": "structuredcalltoolfilter-god-class-decompose",
       "order": 1,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "structuredcalltoolfilter-god-class-decompose"
       ],
@@ -47,7 +47,7 @@
     {
       "id": "workspace-infra-resource-cleanup-hygiene",
       "order": 2,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "workspace-infra-resource-cleanup-hygiene"
       ],
@@ -81,33 +81,32 @@
     {
       "id": "build-test-services-swallowed-exceptions-no-logging",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "build-test-services-swallowed-exceptions-no-logging"
       ],
-      "productionFilesTouched": 3,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs",
-        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
-        "src/RoslynMcp.Roslyn/Services/MsBuildEvaluationService.cs"
+        "src/RoslynMcp.Roslyn/Services/SuppressionService.cs",
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs"
       ],
-      "testFilesAdded": 3,
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 42000,
+      "estimatedContextTokens": 32000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": 3,
+      "fanoutEstimate": 2,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": true,
-        "anchorStale": false,
+        "anchorStale": true,
         "ruleOneBundleResolved": "n/a"
       },
-      "branch": null,
+      "branch": "remediation/build-test-services-swallowed-exceptions-no-logging",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1075",
+      "mergedAt": "2026-07-17T04:35:46Z",
       "notes": null,
       "fileSetHash": "8f297993584236352b45df7f98ae72cb6635b67f85a3b79f100373ef437ec752",
       "stanzaHash": "6f8378ca275cb68b078b3d1a4e5accda2ffb8a8f68052dbff61f3f4758d0904c",
@@ -116,7 +115,7 @@
     {
       "id": "refactor-services-non-atomic-write-rollback",
       "order": 4,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "refactor-services-non-atomic-write-rollback"
       ],
@@ -152,7 +151,7 @@
     {
       "id": "paramvalidation-pagination-upper-bound-clamp",
       "order": 5,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "paramvalidation-pagination-upper-bound-clamp"
       ],
@@ -185,7 +184,7 @@
     {
       "id": "solutiondiscoveryhelper-hotpath-perf",
       "order": 6,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "solutiondiscoveryhelper-hotpath-perf"
       ],
@@ -212,7 +211,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1053 already shipped the planned discovery cache, ancestor bound, and O(1) policy lookups after PR #1049's extraction.",
       "fileSetHash": "b1cf7bdae9e44d7db4e5c6ae91a1d106689fa544c5ed9827136dc5c89c83c5a1",
       "stanzaHash": "6db74d6a2a25625c07bb8328fa54d89b39f587defe0231786cc44d83a420a497",
       "reviewedStanzaHash": "6db74d6a2a25625c07bb8328fa54d89b39f587defe0231786cc44d83a420a497"
@@ -220,7 +219,7 @@
     {
       "id": "msbuild-evaluation-uncached-perf",
       "order": 7,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "msbuild-evaluation-uncached-perf"
       ],
@@ -245,7 +244,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1054 already shipped the MsBuild evaluation cache, invalidation hooks, and regression tests while preserving logging.",
       "fileSetHash": "05e584c3e86aa68ecb765c0a3353dfc53d45c9ee9dec0eab25ec8b7f30411307",
       "stanzaHash": "0a6960d7111142af25ce01b5a1ad482648da1bf4329d25b8305cb80e9fb1d01c",
       "reviewedStanzaHash": "0a6960d7111142af25ce01b5a1ad482648da1bf4329d25b8305cb80e9fb1d01c"
@@ -253,7 +252,7 @@
     {
       "id": "refactor-services-full-solution-scan-perf",
       "order": 8,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "refactor-services-full-solution-scan-perf"
       ],
@@ -279,7 +278,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1055 (closed by #1072) already removed the three planned full-solution scans with regression coverage.",
       "fileSetHash": "ed1a0dc55197c403923a763a85a356a6b4b92bde6fd4975f9cc12ca9ba1c78ec",
       "stanzaHash": "f2d1daa9dd0ac3bab62b20e559ad1cda3038c384b7509e918a2a22500e960a7f",
       "reviewedStanzaHash": "f2d1daa9dd0ac3bab62b20e559ad1cda3038c384b7509e918a2a22500e960a7f"
@@ -287,7 +286,7 @@
     {
       "id": "analysis-services-uncached-full-solution-scans",
       "order": 9,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "analysis-services-uncached-full-solution-scans"
       ],
@@ -313,7 +312,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1057 already shipped the compilation-cache and mapper-enumeration performance fixes with regression coverage.",
       "fileSetHash": "098e8a38612654f2ed38f6ead850cd7b798c0944d94b00b17d400655210ef3aa",
       "stanzaHash": "811aecf413f0d836439fec982d3298090a7685eedd7f88f3a16492cd281e1009",
       "reviewedStanzaHash": "811aecf413f0d836439fec982d3298090a7685eedd7f88f3a16492cd281e1009"
@@ -321,7 +320,7 @@
     {
       "id": "host-tools-layer-test-coverage-gap",
       "order": 10,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "host-tools-layer-test-coverage-gap"
       ],
@@ -346,7 +345,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1056 already shipped the Host tool-layer coverage and failure-envelope tests.",
       "fileSetHash": "6e52256ed699b29bcc81facf1492e5310f62fdb751c1a340467668ad6fa34962",
       "stanzaHash": "431e07f03508b15637cbb1bcc58dde472a4df68c51faa987540bd27c2f7d4351",
       "reviewedStanzaHash": "431e07f03508b15637cbb1bcc58dde472a4df68c51faa987540bd27c2f7d4351"
@@ -437,7 +436,9 @@
   ],
   "conflictGraphInputHash": "36540bc0f6c5946a19e509dba53d61cdc6e8d5b43839fd72e1991367208c43d6",
   "planHash": "8014fdb5087fa86f860eb44eb2184db84338534ffd4f63173f970e4b58818892",
-  "backlogSnapshotHash": "d2e3cd91a7046e7e66d4f5d7962384ba653ff18ec3082b2bfc5d020ac91ca474",
+  "backlogSnapshotHash": "6f86037828a1f16f25441df117ecc36eb215256881bbe9b00cab7ae49219d75d",
   "reviewedPlanHash": "8014fdb5087fa86f860eb44eb2184db84338534ffd4f63173f970e4b58818892",
-  "reviewedBacklogSnapshotHash": "d2e3cd91a7046e7e66d4f5d7962384ba653ff18ec3082b2bfc5d020ac91ca474"
+  "reviewedBacklogSnapshotHash": "d2e3cd91a7046e7e66d4f5d7962384ba653ff18ec3082b2bfc5d020ac91ca474",
+  "completed": true,
+  "completedAt": "2026-07-17T12:29:16.929Z"
 }
