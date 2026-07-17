@@ -1,22 +1,34 @@
-# core-dto-location-quartet-consolidation-primary — Compose LocationDto in SymbolDto/DiagnosticDto/TypeUsageDto
+# core-dto-location-quartet-consolidation-primary — Decide public LocationDto migration contract
 
-**row:** `core-dto-location-quartet-consolidation-primary` · **pri:** `Medium` · **size:** `M`
+**row:** `core-dto-location-quartet-consolidation-primary` · **pri:** `Defer` · **size:** `L`
 
 ## Anchors
 
-- `src/RoslynMcp.Core/Models/SymbolDto.cs:14-18`
+- `src/RoslynMcp.Core/Models/LocationDto.cs`
 - `src/RoslynMcp.Core/Models/SymbolDto.cs:6-27`
 - `src/RoslynMcp.Core/Models/DiagnosticDto.cs:6-15`
-- `src/RoslynMcp.Core/Models/TypeUsageDto.cs:35-39`
 - `src/RoslynMcp.Core/Models/TypeUsageDto.cs:34-42`
+- `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs`
+- `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs`
+- `src/RoslynMcp.Roslyn/Services/CompileCheckService.cs`
+- `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs`
+- `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs`
+- `docs/release-policy.md`
+
+## Decision gate
+
+The execute-time public-contract review rejected the proposed `[JsonIgnore]` computed `Location` view: external consumers could not adopt it, so it would not satisfy the migration intent. This public repository requires an explicit compatibility and semver decision before implementation.
 
 ## Acceptance
 
-- [ ] SymbolDto, DiagnosticDto, TypeUsageDto expose a single LocationDto-typed member instead of five discrete span fields
-- [ ] Existing serialization contract (JsonPropertyName output shape) is preserved or callers updated in the same change
-- [ ] Solution builds clean and existing Models tests still pass
+- [ ] Record an ADR choosing either an additive serialized nested field plus legacy-flat deprecation, or a major-version replacement.
+- [ ] Add migration guidance covering wire name/shape, null and partial-location semantics, the legacy-flat deprecation window, semver, record constructor compatibility, `with` expressions, and equality.
+- [ ] Treat a `[JsonIgnore]`-only property as insufficient adoption.
+- [ ] Split the selected migration into bounded producer/consumer groups before implementation planning.
+- [ ] Keep `core-dto-location-quartet-consolidation-secondary` blocked until the primary contract is decided and its first migration stage lands.
 
 ## Evidence
 
-- Refactor Harness 2.0 pass 1 (`/refactorv2`), Roslyn-backed scoring + adversarial verify where applicable. Full per-cell detail: `ai_docs/reports/20260708T234500Z_roslyn-backed-mcp_refactor-matrix-pass1.md`.
-- Contributing cells: S02a-core-dtos::DG1-design, S02a-core-dtos::DG2-cleanliness
+- The three DTOs feed stable public tool responses.
+- Direct removal currently spans at least 12 production files and 6 test files.
+- `docs/release-policy.md` requires deprecation and migration handling for public breaking changes.

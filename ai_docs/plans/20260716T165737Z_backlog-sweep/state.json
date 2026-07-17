@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-07-16T16:57:37.304Z",
-  "backlogSnapshot": "2026-07-14T16:05:00Z",
+  "backlogSnapshot": "2026-07-17T13:48:44Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -18,14 +18,12 @@
     {
       "id": "prompt-workflows-missing-test-coverage",
       "order": 1,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "prompt-workflows-missing-test-coverage"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 0,
       "productionFiles": [],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 30000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -42,7 +40,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical row-shape re-vet classified this row as shovel-ready and outside backlog-sweep. It remains open for a future fresh /top-n-remediation selection under normal repository-wide priority rules. No implementation PR was opened.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "6283e7b9a3e9d031b45029f1ebf6bff7333d78760923e16bbd345402e43572df",
       "reviewedStanzaHash": "6283e7b9a3e9d031b45029f1ebf6bff7333d78760923e16bbd345402e43572df"
@@ -50,10 +48,8 @@
     {
       "id": "scaffoldingservice-god-class-decompose",
       "order": 2,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "scaffoldingservice-god-class-decompose"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs",
@@ -62,7 +58,7 @@
         "src/RoslynMcp.Roslyn/Services/ScaffoldingService.TestBatchAndFirstTestPreview.cs"
       ],
       "testFilesAdded": 2,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -79,18 +75,16 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical re-vet found multiple independent regression shapes. The parent was transactionally replaced in the canonical backlog by scaffolding-type-collaborator-extraction, scaffolding-single-test-collaborator-extraction, scaffolding-batch-first-test-collaborator-extraction, and scaffolding-hotspot-complexity-reduction. No implementation PR was opened.",
       "fileSetHash": "ac1a508aa7bc4c73cc7e02f996d79cb7168e0e59811b88903c491af9379048c6",
-      "stanzaHash": "eaf0ad9b510e143e7a289b87176c2f4df7f83ad49a47e12adef09b3c004d97f3",
+      "stanzaHash": "213b815093c95cda3ca0e4a7d2c2b0b69b00efe8aa2c10cc5ea248a03767f0cf",
       "reviewedStanzaHash": "eaf0ad9b510e143e7a289b87176c2f4df7f83ad49a47e12adef09b3c004d97f3"
     },
     {
       "id": "analysis-services-dedup-type-traversal-helpers",
       "order": 3,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "analysis-services-dedup-type-traversal-helpers"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ImpactSweepService.cs",
@@ -99,7 +93,7 @@
         "src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs"
       ],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -116,18 +110,16 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical re-vet found two independently testable migrations and invalid service-local helper placement. The parent was transactionally replaced in the canonical backlog by analysis-type-traversal-enumeration-helper and analysis-containing-type-helper-adoption. No implementation PR was opened.",
       "fileSetHash": "9e8947df28ef2fc0817cb580c93e9b3c7d4d3a5db1816546bbdf5796522fe94e",
-      "stanzaHash": "a7cff397a22782b56774291ff555873260a4b5f235e5e94056a9cbff0ad92beb",
+      "stanzaHash": "bb97fd468df22dc9054adc7ee5ceca314c60e87f2058e643ed6fbc20d3ace8b7",
       "reviewedStanzaHash": "a7cff397a22782b56774291ff555873260a4b5f235e5e94056a9cbff0ad92beb"
     },
     {
       "id": "apply-with-verify-undo-thin-shim-extraction",
       "order": 4,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "apply-with-verify-undo-thin-shim-extraction"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/ApplyUndoWorkflowService.cs",
@@ -136,7 +128,7 @@
         "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs"
       ],
       "testFilesAdded": 3,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -153,15 +145,15 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical re-vet found bundled cancellation correctness and workflow-extraction work. The parent was transactionally replaced in the canonical backlog by apply-with-verify-cancelled-result-compensation and apply-undo-workflow-service-extraction. No implementation PR was opened.",
       "fileSetHash": "6efe4a5b604627ad8f68a2042f6e963ba8e70aeae368ca9bda310c282ef5f1d7",
-      "stanzaHash": "d489dfa1fe32265132c49ea81b1b2dd3ae25dbb3707b9b2c7a88450cef21b8c5",
+      "stanzaHash": "a88521ec09c32566ead91488a512666f0736c820afc8ec7e9f87af6821fbb3d1",
       "reviewedStanzaHash": "d489dfa1fe32265132c49ea81b1b2dd3ae25dbb3707b9b2c7a88450cef21b8c5"
     },
     {
       "id": "core-dto-location-quartet-consolidation-primary",
       "order": 5,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
@@ -188,18 +180,16 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred pending a public-contract decision. The proposed JsonIgnore view is not externally adoptable; a real LocationDto transition requires ADR, deprecation, migration guidance, and semver treatment. The backlog row remains open in Defer and no implementation PR was opened.",
       "fileSetHash": "5c22e9c0be9d716f785580d4525481d049a89ef72a1819e82b4c99c9b2fab237",
-      "stanzaHash": "124120a47e8d616a296958e445801708ae482d88522f19fb3142c6a3fd69309a",
+      "stanzaHash": "13102a3e3ef67e1eec113012b6cb6535af696b366113b577f9fa919f5e328fb7",
       "reviewedStanzaHash": "124120a47e8d616a296958e445801708ae482d88522f19fb3142c6a3fd69309a"
     },
     {
       "id": "workspace-fork-apply-extract-service",
       "order": 6,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "workspace-fork-apply-extract-service"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs",
@@ -208,7 +198,7 @@
         "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs"
       ],
       "testFilesAdded": 3,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -225,7 +215,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical row-shape re-vet classified this row as shovel-ready and outside backlog-sweep. It remains open for a future fresh /top-n-remediation selection under normal repository-wide priority rules. No implementation PR was opened.",
       "fileSetHash": "912e79c1cbe9940d870c64c82ef21da5ca056c72842bb22b90affb9aeded2119",
       "stanzaHash": "dae71a3b675f753b32b8d2af637ec3221d7ec0608c096cc4dbafe69098243ac0",
       "reviewedStanzaHash": "dae71a3b675f753b32b8d2af637ec3221d7ec0608c096cc4dbafe69098243ac0"
@@ -233,17 +223,15 @@
     {
       "id": "workspacetools-god-class-decomposition",
       "order": 7,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "workspacetools-god-class-decomposition"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 2,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
         "src/RoslynMcp.Host.Stdio/Tools/WorkspaceReportBuilder.cs"
       ],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 50000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -260,7 +248,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical row-shape re-vet classified this row as shovel-ready and outside backlog-sweep. It remains open for a future fresh /top-n-remediation selection under normal repository-wide priority rules. No implementation PR was opened.",
       "fileSetHash": "3e8c72000d8fc6245d8ccb196cf8c5ba8b9157e997248a584ab7b1d75653a125",
       "stanzaHash": "8f95dfc9682b5859c89b05b49383352169fd67b2830107dc15fdd5d7cbc6d215",
       "reviewedStanzaHash": "8f95dfc9682b5859c89b05b49383352169fd67b2830107dc15fdd5d7cbc6d215"
@@ -268,10 +256,8 @@
     {
       "id": "host-tools-complexity-hotspot-cleanup",
       "order": 8,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "host-tools-complexity-hotspot-cleanup"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs",
@@ -280,7 +266,7 @@
         "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
       ],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -297,22 +283,20 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical re-vet found four unrelated hotspot regressions. The parent was transactionally replaced in the canonical backlog by server-info-complexity-extraction, client-root-path-validator-complexity-extraction, prompt-shim-parameter-binding-complexity-extraction, and tool-error-handler-classification-complexity-extraction. No implementation PR was opened.",
       "fileSetHash": "e06fefb7f8506bd8a37b1d438bb56493fd738cfc5a6bd2e6398fb76bd0c42404",
-      "stanzaHash": "73ae019b3a77b431f64cd09e2e23eba577a10b56f59498f78d9f3f26214968ea",
+      "stanzaHash": "c624482d47b09443ad4838837f8b188b31d3415ebe89696ec50b9c766165ae24",
       "reviewedStanzaHash": "73ae019b3a77b431f64cd09e2e23eba577a10b56f59498f78d9f3f26214968ea"
     },
     {
       "id": "analyzer-catalog-untested-drift-suppression-branches",
       "order": 9,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "analyzer-catalog-untested-drift-suppression-branches"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 0,
       "productionFiles": [],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 25000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -329,7 +313,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical row-shape re-vet classified this row as shovel-ready and outside backlog-sweep. It remains open for a future fresh /top-n-remediation selection under normal repository-wide priority rules. No implementation PR was opened.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "4b515b6d8e0d90af849b73ae86ec2a6f1b99acea1f663bdfb7ec84ad8f0ef00f",
       "reviewedStanzaHash": "4b515b6d8e0d90af849b73ae86ec2a6f1b99acea1f663bdfb7ec84ad8f0ef00f"
@@ -337,10 +321,8 @@
     {
       "id": "dedupe-csharp-features-assembly-load-helper",
       "order": 10,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "dedupe-csharp-features-assembly-load-helper"
-      ],
+      "status": "deferred",
+      "backlogRowsClosed": [],
       "productionFilesTouched": 3,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Helpers/CSharpFeaturesAssemblyLoader.cs",
@@ -348,7 +330,7 @@
         "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
       ],
       "testFilesAdded": 0,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 40000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -365,13 +347,13 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred after canonical row-shape re-vet classified this row as shovel-ready and outside backlog-sweep. It remains open for a future fresh /top-n-remediation selection under normal repository-wide priority rules. No implementation PR was opened.",
       "fileSetHash": "e5788f1f6748017f91452d45c2ae0ea645e34739f1ff43f68de7390fadd020a9",
-      "stanzaHash": "3618955ccfadc66278fc4c9eeb3740b0c91ef336e70d27885d9f0d0e735f4ca6",
+      "stanzaHash": "fe7385f83d1dbc9662e63618a95aca8dc0aced1c1c5d572f36f8219aa2a5006c",
       "reviewedStanzaHash": "3618955ccfadc66278fc4c9eeb3740b0c91ef336e70d27885d9f0d0e735f4ca6"
     }
   ],
-  "anchorVerification": "skipped — Roslyn MCP was declared and documented but unavailable in reviewer session",
+  "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [
       {
@@ -406,8 +388,10 @@
     ]
   },
   "conflictGraphInputHash": "74c1ddd00fa04238be348ed4633677425d59c0815357e70dcadd52bcadef887e",
-  "planHash": "7a6d01bf6aae70d6297df4241a184ff5e38f62695283eab24e2e45914414eab8",
-  "backlogSnapshotHash": "6f86037828a1f16f25441df117ecc36eb215256881bbe9b00cab7ae49219d75d",
+  "planHash": "60084a20d33a84fccc70a7382ff7f57ef676efb4633f1106e2c079f3431492bc",
+  "backlogSnapshotHash": "e1dd40a9b7ce38f448d61de4f718d6a2ad60d11add03499c802e944812be3c3f",
   "reviewedPlanHash": "7a6d01bf6aae70d6297df4241a184ff5e38f62695283eab24e2e45914414eab8",
-  "reviewedBacklogSnapshotHash": "6f86037828a1f16f25441df117ecc36eb215256881bbe9b00cab7ae49219d75d"
+  "reviewedBacklogSnapshotHash": "6f86037828a1f16f25441df117ecc36eb215256881bbe9b00cab7ae49219d75d",
+  "completed": true,
+  "completedAt": "2026-07-17T13:48:44.735Z"
 }
