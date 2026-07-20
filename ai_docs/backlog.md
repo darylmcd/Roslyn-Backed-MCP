@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-17T13:48:44Z
+**updated_at:** 2026-07-20T04:01:57Z
 
 ## Agent contract
 
@@ -140,6 +140,7 @@
 | `apply-undo-tool-response-contract-docs` | Low | apply-undo-workflow-service-extraction | **Document apply and undo response variants** — enumerate discriminators, exact properties, explicit nulls, and recovery actions for all eight wire shapes. [type: docs] [source: backlog-sweep-20260716-review] | M | items/apply-undo-tool-response-contract-docs.md |
 | `prompt-smoke-tests-concern-split` | Low | prompt-workflows-missing-test-coverage,prompt-shim-parameter-binding-complexity-extraction | **Split prompt smoke-test concerns** — separate builder smoke, prompt-shim binding/error coverage, and shared sample/workspace fixtures. [type: test-refactor] [source: backlog-sweep-20260716-review] | S | items/prompt-smoke-tests-concern-split.md |
 | `client-root-path-validator-remaining-complexity` | Low | client-root-path-validator-complexity-extraction | **Reduce remaining path-validator hotspots** — simplify ValidatePathAgainstRootsAsync and ResolvePath while preserving symlink and filesystem behavior. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/client-root-path-validator-remaining-complexity.md |
+| `legacy-sln-slnx-parity-drift` | Low | — | **Retire the legacy `Roslyn-Backed-MCP.sln`** — delete it (preferred; only live ref is `docs/setup.md:23`) or gate it against `RoslynMcp.slnx`. Already drifted: the `.sln` lists `samples/**` projects the `.slnx` lacks, nothing enforces parity. [type: maintenance] [source: 2026-07-19 slnx session] | S | items/legacy-sln-slnx-parity-drift.md |
 
 ## Defer
 
