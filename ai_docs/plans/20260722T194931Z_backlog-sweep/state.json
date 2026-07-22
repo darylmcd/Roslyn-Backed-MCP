@@ -80,7 +80,7 @@
     {
       "id": "symbol-disambiguation-agent-first-default",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-disambiguation-agent-first-default"
       ],
@@ -102,10 +102,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/symbol-disambiguation-agent-first-default",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1093",
+      "mergedAt": "2026-07-22T23:03:27Z",
       "notes": null,
       "fileSetHash": "e7cc95b602ce86bbe0cd9ee3d57fe0df4a985acb669a2558c95a014f8ead99f4",
       "stanzaHash": "20883039a38769b4da24b0971b9d47e126bf863f42b6c0612d6a128666f479d0",

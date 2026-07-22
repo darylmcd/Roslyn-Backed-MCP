@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-22T22:38:55Z
+**updated_at:** 2026-07-22T23:03:39Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `structuredcalltoolfilter-hotspot-decomposition-followup` | High | — | **Finish StructuredCallToolFilter hotspot decomposition** — extract elicitation/retry orchestration and structured-content injection into focused collaborators with direct tests. [type: refactor] [source: backlog-sweep-20260713] | M | items/structuredcalltoolfilter-hotspot-decomposition-followup.md |
-| `symbol-disambiguation-agent-first-default` | High | — | **Make symbol candidate selection agent-first** — return structured candidates by default and reserve MCP elicitation for explicit operator opt-in. [type: bug] [source: 2026-07-20 Codex repro] | S | items/symbol-disambiguation-agent-first-default.md |
 
 ## Medium
 
@@ -139,6 +138,7 @@
 | `prompt-smoke-tests-concern-split` | Low | prompt-workflows-missing-test-coverage,prompt-shim-parameter-binding-complexity-extraction | **Split prompt smoke-test concerns** — separate builder smoke, prompt-shim binding/error coverage, and shared sample/workspace fixtures. [type: test-refactor] [source: backlog-sweep-20260716-review] | S | items/prompt-smoke-tests-concern-split.md |
 | `client-root-path-validator-remaining-complexity` | Low | client-root-path-validator-complexity-extraction | **Reduce remaining path-validator hotspots** — simplify ValidatePathAgainstRootsAsync and ResolvePath while preserving symlink and filesystem behavior. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/client-root-path-validator-remaining-complexity.md |
 | `legacy-sln-slnx-parity-drift` | Low | — | **Retire the legacy `Roslyn-Backed-MCP.sln`** — delete it (preferred; only live ref is `docs/setup.md:23`) or gate it against `RoslynMcp.slnx`. Already drifted: the `.sln` lists `samples/**` projects the `.slnx` lacks, nothing enforces parity. [type: maintenance] [source: 2026-07-19 slnx session] | S | items/legacy-sln-slnx-parity-drift.md |
+| `symbol-disambiguation-default-test-tautology` | Low | — | Pin agent-first disambiguation default with a real assertion — replace the tautological `const bool false` gate in AllowElicitationGate_* tests with one that reads the actual parameter default or asserts the agent-first envelope behaviorally. [type: test] [source: 2026-07-22 sweep #1093 cq] | S | items/symbol-disambiguation-default-test-tautology.md |
 
 ## Defer
 
