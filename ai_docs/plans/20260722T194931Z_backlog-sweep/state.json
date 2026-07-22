@@ -46,7 +46,7 @@
     {
       "id": "undo-revert-preserve-snapshot-on-failure-or-cancellation",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "undo-revert-preserve-snapshot-on-failure-or-cancellation"
       ],
@@ -68,10 +68,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/undo-revert-preserve-snapshot-on-failure-or-cancellation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1091",
+      "mergedAt": "2026-07-22T22:38:43Z",
       "notes": null,
       "fileSetHash": "1e9d848001a626548e64d88398eef07e7510c1b467e5cea3682d4e772124c6e4",
       "stanzaHash": "c729bf67e5a85af726a393b44266499d7f11ff94a083a5dea39965a00567b882",
