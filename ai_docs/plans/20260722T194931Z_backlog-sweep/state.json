@@ -12,7 +12,7 @@
     {
       "id": "apply-with-verify-cancelled-result-compensation",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "apply-with-verify-cancelled-result-compensation"
       ],
@@ -34,10 +34,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/apply-with-verify-cancelled-result-compensation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1085",
+      "mergedAt": "2026-07-22T22:10:59Z",
       "notes": null,
       "fileSetHash": "3143d37f85da8f4ecbe58ccfba5c6b3b66a7c621958e863f63d812a6c5653996",
       "stanzaHash": "2bab82228e5fe63e34e3ed5b6e8150f3e2d61bdd870564178c8168c847a74b6a",
