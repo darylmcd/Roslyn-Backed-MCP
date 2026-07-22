@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-22T23:03:39Z
+**updated_at:** 2026-07-22T23:31:57Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `structuredcalltoolfilter-hotspot-decomposition-followup` | High | — | **Finish StructuredCallToolFilter hotspot decomposition** — extract elicitation/retry orchestration and structured-content injection into focused collaborators with direct tests. [type: refactor] [source: backlog-sweep-20260713] | M | items/structuredcalltoolfilter-hotspot-decomposition-followup.md |
 
 ## Medium
 
