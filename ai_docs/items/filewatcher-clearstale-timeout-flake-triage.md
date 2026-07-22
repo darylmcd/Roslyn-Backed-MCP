@@ -20,3 +20,4 @@ System.TimeoutException at ExternalEditStalenessTests.cs:405. Confirmed non-dete
 3/3 local reruns passed in ~22ms each (self-hosted runner idle at the time). Matches the
 PR #1034 evidence exactly - timing-sensitive under CI load, not a regression. Strengthens
 the case to register in known-flakes.md per this row's acceptance criteria #2.
+Registered in known-flakes.md 2026-07-22 (acceptance criterion #2 done, via dedicated PR - three occurrences today: PR #1086, PR #1085 CI, both unrelated diffs; plus PR #1034 precedent; plus 3/3 local reruns passing). Criterion #1 (root-cause the timing / widen UnblockBoundMs / counter-based assertion) remains open - row stays open for that.
