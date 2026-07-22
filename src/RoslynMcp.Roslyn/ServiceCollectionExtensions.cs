@@ -107,6 +107,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBulkRefactoringService, BulkRefactoringService>();
         services.AddSingleton<ITypeExtractionService, TypeExtractionService>();
         services.AddSingleton<IUndoService, UndoService>();
+        services.AddSingleton<IApplyUndoWorkflowService, ApplyUndoWorkflowService>();
         services.AddSingleton<IFlowAnalysisService, FlowAnalysisService>();
         services.AddSingleton<ICompileCheckService, CompileCheckService>();
         services.AddSingleton<IAnalyzerInfoService, AnalyzerInfoService>();

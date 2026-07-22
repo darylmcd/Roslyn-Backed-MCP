@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -65,7 +66,7 @@ public static class UndoTools
      Description("Revert a specific earlier apply by its sequence number — the value reported by workspace_changes. Complements revert_last_apply: instead of LIFO, this revert targets any historical apply still in this session's revert history. Conservative dependency check: if a later apply touched any file that the target apply also touched, the revert is blocked and the offending later sequence numbers are returned in `blockingSequences` so the caller can revert them first. workspaceId is required. sequenceNumber must match a value returned by workspace_changes for this workspace. Returns `{reverted, revertedOperation, affectedFiles, reason?, blockingSequences?}` — `reason` is `unknown-sequence` when the sequence has no recorded snapshot, `dependency-blocked` when a later apply overlaps in files, and `revert-failed` when the snapshot exists but disk/workspace mechanics rejected the revert.")]
     public static Task<string> RevertApplyBySequence(
         IWorkspaceExecutionGate gate,
-        IUndoService undoService,
+        IApplyUndoWorkflowService workflowService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("The sequence number reported by workspace_changes for the apply you want to revert")] int sequenceNumber,
         CancellationToken ct = default)
@@ -80,7 +81,7 @@ public static class UndoTools
         }
         return gate.RunWriteAsync(workspaceId, async c =>
         {
-            var result = await undoService.RevertBySequenceAsync(workspaceId, sequenceNumber, c).ConfigureAwait(false);
+            var result = await workflowService.RevertBySequenceAsync(workspaceId, sequenceNumber, c).ConfigureAwait(false);
 
             // Shape the response: include `reason`/`blockingSequences` only when present so success
             // payloads stay clean. Failure payloads always carry `reason`.
