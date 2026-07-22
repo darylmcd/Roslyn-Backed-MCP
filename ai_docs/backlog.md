@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-20T04:01:57Z
+**updated_at:** 2026-07-20T14:32:12Z
 
 ## Agent contract
 
@@ -50,6 +50,7 @@
 | `structuredcalltoolfilter-hotspot-decomposition-followup` | High | — | **Finish StructuredCallToolFilter hotspot decomposition** — extract elicitation/retry orchestration and structured-content injection into focused collaborators with direct tests. [type: refactor] [source: backlog-sweep-20260713] | M | items/structuredcalltoolfilter-hotspot-decomposition-followup.md |
 | `apply-with-verify-cancelled-result-compensation` | High | — | **Compensate returned compile-check cancellation** — treat CompileCheckDto.Cancelled as cancellation so apply_with_verify never reports applied after cancelled verification. [type: bug] [source: backlog-sweep-20260716-review] | S | items/apply-with-verify-cancelled-result-compensation.md |
 | `undo-revert-preserve-snapshot-on-failure-or-cancellation` | High | — | **Preserve undo snapshots until restore succeeds** — make failed or cancelled ordinary and sequence reverts retryable without losing dependency order. [type: bug] [source: backlog-sweep-20260716-review] | S | items/undo-revert-preserve-snapshot-on-failure-or-cancellation.md |
+| `symbol-disambiguation-agent-first-default` | High | — | **Make symbol candidate selection agent-first** — return structured candidates by default and reserve MCP elicitation for explicit operator opt-in. [type: bug] [source: 2026-07-20 Codex repro] | S | items/symbol-disambiguation-agent-first-default.md |
 
 ## Medium
 
