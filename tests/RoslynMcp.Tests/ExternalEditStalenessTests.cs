@@ -349,9 +349,11 @@ public sealed class FileWatcherClearStaleAwaiterTests
     /// and synchronous-on-<c>ClearStale</c>, so a correct implementation completes in microseconds;
     /// this generous ceiling only guards against a hang. Deliberately far below the (absent) caller
     /// cancellation deadline so a stranded awaiter fails the test by timing out here, not by the
-    /// caller's token firing.
+    /// caller's token firing. 2000ms proved too tight under self-hosted CI runner thread-pool load
+    /// (registered flake, see ai_docs/known-flakes.md); widened to 10000ms — still far below the
+    /// 30s caller deadline, and a genuinely stranded awaiter still fails well inside this bound.
     /// </summary>
-    private const int UnblockBoundMs = 2000;
+    private const int UnblockBoundMs = 10_000;
 
     /// <summary>
     /// Regression for <c>filewatcher-waitforstale-clearstale-stranded-awaiter</c>: an awaiter parked

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-22T21:12:28Z
+**updated_at:** 2026-07-22T21:46:22Z
 
 ## Agent contract
 
@@ -134,7 +134,6 @@
 | forkapplylocks-semaphore-bound | Low | — | **Bound/evict ForkApplyLocks semaphore map** — static ConcurrentDictionary<string,SemaphoreSlim> accumulates one undisposed semaphore per source root for process lifetime. [type: refactor] [source: 2026-07-09 sweep #1037 cq] | S | items/forkapplylocks-semaphore-bound.md |
 | apply-with-verify-revertbudget-configurable | Low | — | **Make apply_with_verify's RevertBudget configurable** — the 30s best-effort revert timeout is a hardcoded literal; source from config/options instead. [type: refactor] [source: 2026-07-09 sweep #1038 cq] | S | items/apply-with-verify-revertbudget-configurable.md |
 | mcproots-test-harness-disposal | Low | — | **Dispose McpServer and transport streams in test harness teardown** — ServerWithSanctionedRootHarness leaves an IAsyncDisposable McpServer and duplex Pipe streams undisposed. [type: test] [source: 2026-07-09 sweep #1034 cq] | S | items/mcproots-test-harness-disposal.md |
-| filewatcher-clearstale-timeout-flake-triage | Low | — | **Triage FileWatcherClearStaleAwaiterTests timeout flake** — failed once under self-hosted CI load on an unrelated diff, passed unmodified on rerun; root-cause and register in known-flakes.md if confirmed pre-existing. [type: test] [source: 2026-07-09 sweep PR #1034 CI] | S | items/filewatcher-clearstale-timeout-flake-triage.md |
 | `capturelogger-shared-consumer-doc-drift` | Low | — | **Keep CaptureLogger documentation aligned with shared consumers** — replace the stale fixed consumer list with durable shared-helper wording. [type: test] [source: PR #1075 review] | S | items/capturelogger-shared-consumer-doc-drift.md |
 | `editservice-apply-verify-workflow-consolidation` | Low | apply-undo-workflow-service-extraction | **Consolidate edit/apply verification workflow** — share the domain diagnostic-baseline and rollback primitive after ApplyUndoWorkflowService lands. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/editservice-apply-verify-workflow-consolidation.md |
 | `dedupe-namespace-folder-segment-resolution` | Low | scaffolding-hotspot-complexity-reduction | **Share namespace folder-segment resolution** — consolidate duplicate namespace-to-relative-folder rules in scaffolding and parameter-object services. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/dedupe-namespace-folder-segment-resolution.md |
