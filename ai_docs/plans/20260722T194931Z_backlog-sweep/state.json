@@ -114,7 +114,7 @@
     {
       "id": "structuredcalltoolfilter-hotspot-decomposition-followup",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "structuredcalltoolfilter-hotspot-decomposition-followup"
       ],
@@ -138,10 +138,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/structuredcalltoolfilter-hotspot-decomposition-followup",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1095",
+      "mergedAt": "2026-07-22T23:31:49Z",
       "notes": null,
       "fileSetHash": "0f93f113259b5d3280e20d7c6ce593b2e89474b7e76acdd68190302478cfd97a",
       "stanzaHash": "e954b0e8d9651646a8c683e51f0ac9fd5646ba59602edae4d3256661ff1ba6e8",
