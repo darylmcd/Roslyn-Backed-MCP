@@ -26,6 +26,39 @@ public static class ApplyWithVerifyTool
     /// </summary>
     private static readonly TimeSpan RevertBudget = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// apply-with-verify-cancelled-result-compensation: best-effort revert issued when a
+    /// cancellation is observed after a successful apply, on a FRESH <see cref="RevertBudget"/>-scoped
+    /// token (the caller's own token is already cancelled and cannot drive the rollback). A
+    /// revert failure — either a <see langword="false"/> result or a thrown exception — is
+    /// logged at Error and never swallowed (Directive #3), and never masks the caller's
+    /// cancellation, which the caller rethrows after this returns. Shared by both the
+    /// thrown-OperationCanceledException catch path and the returned-Cancelled=true DTO checks
+    /// below so all three cancellation-observation points revert identically.
+    /// </summary>
+    private static async Task BestEffortRevertAfterCancellationAsync(
+        IUndoService undoService, string workspaceId, ILogger? logger)
+    {
+        using var revertCts = new CancellationTokenSource(RevertBudget);
+        try
+        {
+            var recovered = await undoService.RevertAsync(workspaceId, revertCts.Token).ConfigureAwait(false);
+            if (!recovered)
+            {
+                logger?.LogError(
+                    "apply_with_verify: best-effort revert after cancellation reported failure for workspace {WorkspaceId}; the applied edit may still be present.",
+                    workspaceId);
+            }
+        }
+        catch (Exception revertEx)
+        {
+            logger?.LogError(
+                revertEx,
+                "apply_with_verify: best-effort revert after cancellation threw for workspace {WorkspaceId}; the applied edit may still be present.",
+                workspaceId);
+        }
+    }
+
     [McpServerTool(Name = "apply_with_verify", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "experimental", false, true,
         "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
@@ -79,6 +112,20 @@ public static class ApplyWithVerifyTool
             // errors uniformly. See DiagnosticIdentitySet for the rationale and format.
             var preBaseline = await compileCheckService.CheckAsync(
                 workspaceId, checkOptions, c).ConfigureAwait(false);
+
+            // apply-with-verify-cancelled-result-compensation: CompileCheckService.CheckAsync
+            // catches OperationCanceledException internally and returns a normal (non-throwing)
+            // DTO with Cancelled=true instead of propagating the exception — so a caller-token
+            // cancellation that landed inside the pre-apply baseline check is otherwise invisible
+            // here. Nothing has been applied yet, so surface the cancellation directly with zero
+            // apply/revert calls, mirroring PreApplyCancellation_DoesNotAttemptRevert's
+            // thrown-exception shape.
+            if (preBaseline.Cancelled)
+            {
+                c.ThrowIfCancellationRequested();
+                throw new OperationCanceledException(c);
+            }
+
             var preErrors = DiagnosticIdentitySet.ExtractErrorIdentities(preBaseline);
 
             // Apply
@@ -102,6 +149,16 @@ public static class ApplyWithVerifyTool
             // only fire when the apply already succeeded (we are past the !Success early return),
             // so a pre-apply cancellation on the baseline compile still propagates untouched —
             // there is nothing applied to revert in that case.
+            //
+            // apply-with-verify-cancelled-result-compensation: `revertedForCancelledDto` guards
+            // against a DOUBLE revert. The postCheck.Cancelled branch below performs its own
+            // best-effort revert and then throws OperationCanceledException from INSIDE this same
+            // try block, which the catch immediately below would otherwise also revert for —
+            // exactly one best-effort revert is required per cancellation, matching the existing
+            // thrown-OCE tests. The flag is false on every path where compileCheckService threw
+            // directly (the catch's original, unchanged responsibility) and true only when this
+            // method already reverted before throwing.
+            var revertedForCancelledDto = false;
             try
             {
                 // Verify — extract post-apply error identities and subtract the pre-apply set.
@@ -110,6 +167,22 @@ public static class ApplyWithVerifyTool
                 // flipped, message changed, or column shifted no longer trigger rollback.
                 var postCheck = await compileCheckService.CheckAsync(
                     workspaceId, checkOptions, c).ConfigureAwait(false);
+
+                // apply-with-verify-cancelled-result-compensation: as above, a caller-token
+                // cancellation that landed inside the post-apply verify check returns a
+                // Cancelled=true DTO rather than throwing. The apply already succeeded and
+                // mutated the workspace, so — unlike the pre-apply check above — this must
+                // attempt exactly one best-effort revert (same fresh-token helper the thrown-OCE
+                // catch block below uses) before surfacing the cancellation. `newErrors` would
+                // otherwise be computed from a partial/incomplete diagnostic list.
+                if (postCheck.Cancelled)
+                {
+                    await BestEffortRevertAfterCancellationAsync(undoService, workspaceId, logger).ConfigureAwait(false);
+                    revertedForCancelledDto = true;
+                    c.ThrowIfCancellationRequested();
+                    throw new OperationCanceledException(c);
+                }
+
                 var postErrors = DiagnosticIdentitySet.ExtractErrorIdentities(postCheck);
 
                 // Project the introduced identities back to the diagnostic rows so the response
@@ -167,24 +240,13 @@ public static class ApplyWithVerifyTool
                 // token `c` is already cancelled and cannot drive the revert), then rethrow the
                 // original cancellation so the caller still observes it. A second failure in the
                 // revert itself is logged rather than swallowed (Directive #3) and does NOT mask
-                // the cancellation.
-                using var revertCts = new CancellationTokenSource(RevertBudget);
-                try
+                // the cancellation. Skip the revert here if the postCheck.Cancelled branch above
+                // already performed it (revertedForCancelledDto) — otherwise this genuinely is
+                // the first (and only) observation of the cancellation, e.g. a thrown OCE from
+                // compileCheckService itself or from the RevertAsync call in the new-errors branch.
+                if (!revertedForCancelledDto)
                 {
-                    var recovered = await undoService.RevertAsync(workspaceId, revertCts.Token).ConfigureAwait(false);
-                    if (!recovered)
-                    {
-                        logger?.LogError(
-                            "apply_with_verify: best-effort revert after cancellation reported failure for workspace {WorkspaceId}; the applied edit may still be present.",
-                            workspaceId);
-                    }
-                }
-                catch (Exception revertEx)
-                {
-                    logger?.LogError(
-                        revertEx,
-                        "apply_with_verify: best-effort revert after cancellation threw for workspace {WorkspaceId}; the applied edit may still be present.",
-                        workspaceId);
+                    await BestEffortRevertAfterCancellationAsync(undoService, workspaceId, logger).ConfigureAwait(false);
                 }
 
                 throw;

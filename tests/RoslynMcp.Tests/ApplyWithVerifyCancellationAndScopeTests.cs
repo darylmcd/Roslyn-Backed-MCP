@@ -28,6 +28,14 @@ namespace RoslynMcp.Tests;
 /// </list>
 /// These use hand-rolled fakes rather than the real workspace harness so the exact token
 /// identity and project-filter arguments are observable.
+///
+/// apply-with-verify-cancelled-result-compensation: the real <c>CompileCheckService.CheckAsync</c>
+/// never lets an <see cref="OperationCanceledException"/> escape — it catches it internally and
+/// returns a normal (non-throwing) <c>CompileCheckDto</c> with <c>Cancelled=true</c>. The three
+/// tests above simulate cancellation by having <c>FakeCompileCheck</c> throw directly, a shape
+/// the real service never produces, so they do not exercise that production failure mode. The
+/// two <c>*_CancelledDto_</c> tests below close that gap by returning a <c>Cancelled=true</c> DTO
+/// instead of throwing.
 /// </summary>
 [TestClass]
 public sealed class ApplyWithVerifyCancellationAndScopeTests
@@ -157,6 +165,96 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         Assert.AreEqual(0, refactoring.ApplyCalls, "Apply must not run when the baseline is cancelled.");
         Assert.AreEqual(0, undo.RevertCalls,
             "No revert may be attempted for a cancellation that happens before anything is applied.");
+    }
+
+    [TestMethod]
+    public async Task PreApplyCancellation_CancelledDto_DoesNotApplyOrRevert()
+    {
+        // apply-with-verify-cancelled-result-compensation: models the REAL CompileCheckService
+        // shape — a returned Cancelled=true DTO from the pre-apply baseline check, not a thrown
+        // OperationCanceledException. Nothing has been applied yet, so this must surface the
+        // cancellation with zero apply/revert calls, matching PreApplyCancellation_DoesNotAttemptRevert.
+        var cts = new CancellationTokenSource();
+        var compile = new FakeCompileCheck
+        {
+            CancelledAtCall = 0,
+            OnCall = i =>
+            {
+                if (i == 0)
+                {
+                    cts.Cancel();
+                }
+            },
+        };
+        var undo = new FakeUndo();
+        var refactoring = new FakeRefactoring();
+        var previewStore = new FakePreviewStore("ws");
+
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            ApplyWithVerifyTool.ApplyWithVerify(
+                new FakeGate(),
+                refactoring,
+                compile,
+                undo,
+                previewStore,
+                previewToken: "tok",
+                rollbackOnError: true,
+                loggerFactory: null,
+                ct: cts.Token));
+
+        Assert.AreEqual(cts.Token, thrown.CancellationToken,
+            "The thrown exception must carry the caller's own token.");
+        Assert.AreEqual(0, refactoring.ApplyCalls,
+            "Apply must not run when the pre-apply baseline check reports Cancelled=true.");
+        Assert.AreEqual(0, undo.RevertCalls,
+            "No revert may be attempted for a pre-apply cancellation — nothing was applied.");
+    }
+
+    [TestMethod]
+    public async Task PostApplyCancellation_CancelledDto_RevertsExactlyOnce_AndRethrows()
+    {
+        // apply-with-verify-cancelled-result-compensation: models the REAL CompileCheckService
+        // shape for the post-apply verify leg — a returned Cancelled=true DTO rather than a
+        // thrown exception. The apply already succeeded and mutated the workspace, so this must
+        // perform exactly ONE best-effort revert on a fresh (non-cancelled) token before
+        // surfacing the cancellation, matching Cancellation_AfterSuccessfulApply_RevertsOnFreshToken_AndRethrows.
+        var cts = new CancellationTokenSource();
+        var compile = new FakeCompileCheck
+        {
+            // Call 0 = pre-apply baseline (succeeds). Call 1 = post-apply verify: report
+            // Cancelled=true via the returned DTO instead of throwing.
+            CancelledAtCall = 1,
+            OnCall = i =>
+            {
+                if (i == 1)
+                {
+                    cts.Cancel();
+                }
+            },
+        };
+        var undo = new FakeUndo();
+        var previewStore = new FakePreviewStore("ws");
+
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            ApplyWithVerifyTool.ApplyWithVerify(
+                new FakeGate(),
+                new FakeRefactoring(),
+                compile,
+                undo,
+                previewStore,
+                previewToken: "tok",
+                rollbackOnError: true,
+                loggerFactory: null,
+                ct: cts.Token));
+
+        Assert.AreEqual(cts.Token, thrown.CancellationToken,
+            "The thrown exception must carry the caller's own token.");
+        Assert.AreEqual(1, undo.RevertCalls,
+            "A best-effort revert must run EXACTLY ONCE after a post-apply Cancelled=true DTO — not zero, not two.");
+        Assert.IsFalse(undo.LastRevertToken.IsCancellationRequested,
+            "The revert must use a FRESH, non-cancelled token — not the caller's cancelled token.");
+        Assert.AreNotEqual(cts.Token, undo.LastRevertToken,
+            "The revert token must not be the caller's (already-cancelled) token.");
     }
 
     // ── Project-scoped compile_check ──
@@ -297,14 +395,26 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
     {
         public readonly List<string?> RecordedFilters = new();
         public Action<int>? OnCall;
+
+        /// <summary>
+        /// apply-with-verify-cancelled-result-compensation: when set, the call at this 0-based
+        /// index returns a <c>Cancelled=true</c> DTO instead of a normal success DTO — modeling
+        /// the REAL <c>CompileCheckService.CheckAsync</c>'s cancellation shape (a returned DTO,
+        /// never a thrown exception). Distinct from <see cref="OnCall"/>, which simulates the
+        /// non-production thrown-exception shape used by the tests above.
+        /// </summary>
+        public int? CancelledAtCall;
+
         private int _n;
 
         public Task<CompileCheckDto> CheckAsync(string workspaceId, CompileCheckOptions options, CancellationToken ct)
         {
             RecordedFilters.Add(options.ProjectFilter);
-            OnCall?.Invoke(_n++);
+            var callIndex = _n++;
+            OnCall?.Invoke(callIndex);
+            var cancelled = CancelledAtCall == callIndex;
             return Task.FromResult(new CompileCheckDto(
-                Success: true,
+                Success: !cancelled,
                 ErrorCount: 0,
                 WarningCount: 0,
                 TotalDiagnostics: 0,
@@ -313,7 +423,8 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
                 Limit: 50,
                 HasMore: false,
                 Diagnostics: Array.Empty<DiagnosticDto>(),
-                ElapsedMs: 0));
+                ElapsedMs: 0,
+                Cancelled: cancelled));
         }
     }
 
