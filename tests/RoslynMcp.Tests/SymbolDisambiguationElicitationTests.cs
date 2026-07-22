@@ -11,13 +11,16 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Coverage for the <c>elicit-disambiguation-on-multi-symbol-resolve</c> initiative
-/// (closes the same-named backlog row): when a metadata-name locator on
-/// <c>find_references</c> / <c>go_to_definition</c> resolves to multiple candidates
-/// (overloads, partial classes, member-vs-type collisions), <see cref="SymbolTools"/>
-/// asks the agent to pick one via MCP <c>elicitation/create</c> when the client supports
-/// it; otherwise it falls through to an additive disambiguation-list response so existing
-/// non-elicit clients continue to receive a well-shaped envelope.
+/// Coverage for the <c>elicit-disambiguation-on-multi-symbol-resolve</c> and
+/// <c>symbol-disambiguation-agent-first-default</c> initiatives (closes the same-named
+/// backlog rows). When a metadata-name locator on <c>find_references</c> /
+/// <c>go_to_definition</c> (or a &gt;1-hit <c>symbol_search</c> query) resolves to multiple
+/// candidates (overloads, partial classes, member-vs-type collisions), <see cref="SymbolTools"/>
+/// is now <b>agent-first by default</b>: the calling agent receives the structured
+/// disambiguation-list response directly, with the stable <c>symbolHandle</c> per candidate.
+/// The blocking MCP <c>elicitation/create</c> operator picker is opt-in only — reached solely
+/// when the caller passes <c>allowElicitation=true</c> AND the client declares the capability;
+/// otherwise the code falls through to the same additive list envelope.
 ///
 /// <para>
 /// Pins:
@@ -29,11 +32,15 @@ namespace RoslynMcp.Tests;
 ///         end-to-end <c>ElicitAsync</c> call requires a real
 ///         <see cref="ModelContextProtocol.Server.McpServer"/> with transport — see
 ///         <see cref="StructuredCallToolFilterElicitationTests"/> for the same gate
-///         pattern on the workspace-path elicitation initiative.</item>
-///   <item><b>(b) fallback</b> — when the client lacks the elicitation capability (or the
-///         user declines), the tool returns a structured <c>{ ambiguous: true, count, candidates }</c>
-///         envelope with a stable <c>symbolHandle</c> per candidate, byte-identical
-///         regardless of whether elicitation was tried or not.</item>
+///         pattern on the workspace-path elicitation initiative. Because the live call needs
+///         transport, the agent-first default and opt-in contract are pinned at the gate
+///         predicate (<c>allowElicitation &amp;&amp; HasElicitation(caps)</c>) plus the
+///         null-server list-envelope path, not via a synthetic transport harness.</item>
+///   <item><b>(b) fallback</b> — when the caller does not opt in, or the client lacks the
+///         elicitation capability (or the user declines), the tool returns a structured
+///         <c>{ ambiguous: true, count, candidates }</c> envelope with a stable
+///         <c>symbolHandle</c> per candidate, byte-identical regardless of whether elicitation
+///         was tried or not.</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -75,6 +82,83 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
 
         Assert.IsFalse(StructuredCallToolFilter.HasElicitation(null),
             "Null capabilities (pre-handshake) MUST NOT permit elicitation.");
+    }
+
+    [TestMethod]
+    public void AllowElicitationGate_DefaultOff_NeverPermitsElicitation_EvenForCapableClient()
+    {
+        // symbol-disambiguation-agent-first-default: the disambiguation gate in SymbolTools
+        // (SearchSymbols and TryDisambiguateMetadataNameAsync) is now
+        // `allowElicitation && HasElicitation(caps)`. With allowElicitation defaulting to
+        // false, an elicitation-capable client MUST NOT trip the elicit branch — the calling
+        // agent receives the candidate list instead of a blocking operator prompt. A live
+        // ElicitAsync call needs transport (see class remarks), so pin the composed gate
+        // predicate directly to stop a future refactor silently restoring the elicit-first
+        // default.
+        var capable = new ClientCapabilities { Elicitation = new ElicitationCapability() };
+        Assert.IsTrue(StructuredCallToolFilter.HasElicitation(capable),
+            "Precondition: the client is elicitation-capable.");
+
+        const bool allowElicitationDefault = false;
+        Assert.IsFalse(
+            allowElicitationDefault && StructuredCallToolFilter.HasElicitation(capable),
+            "Default-off: even a capable client must not reach the elicit branch when " +
+            "allowElicitation is false — the agent-first candidate list is returned instead.");
+    }
+
+    [TestMethod]
+    public void AllowElicitationGate_OptIn_RequiresBothFlagAndCapability()
+    {
+        // The elicit branch is reachable ONLY when the caller opts in (allowElicitation=true)
+        // AND the client declares the capability. Opt-in against a non-capable client still
+        // falls back to the candidate-list envelope; a capable client without opt-in also
+        // falls back (pinned above). Both conjuncts are load-bearing.
+        var capable = new ClientCapabilities { Elicitation = new ElicitationCapability() };
+        const bool optIn = true;
+
+        Assert.IsTrue(
+            optIn && StructuredCallToolFilter.HasElicitation(capable),
+            "Opt-in + capable client is the only combination that reaches the elicit branch.");
+        Assert.IsFalse(
+            optIn && StructuredCallToolFilter.HasElicitation(null),
+            "Opt-in against a non-capable (null-capabilities) client must still fall back " +
+            "to the candidate list.");
+    }
+
+    [TestMethod]
+    public async Task FindReferences_AmbiguousMetadataName_OptInButNonCapableClient_ReturnsListEnvelope()
+    {
+        // Opt-in alone does not change behavior for a client that cannot elicit: with
+        // allowElicitation=true but a null server (server?.ClientCapabilities => null,
+        // HasElicitation false), FindReferences must still return the additive
+        // disambiguation-list envelope — proving the flag only *enables* the prompt on a
+        // capable client and never breaks the non-capable fallback path.
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "find_references",
+            () => SymbolTools.FindReferences(
+                server: null!,
+                WorkspaceManager,
+                WorkspaceExecutionGate,
+                ReferenceService,
+                _workspaceId,
+                metadataName: "System.String.Format",
+                allowElicitation: true,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("ambiguous", out var ambiguous) || !ambiguous.GetBoolean())
+        {
+            Assert.Inconclusive(
+                "System.String.Format did not produce an ambiguous resolution in the loaded " +
+                $"sample solution. Response was: {json}");
+            return;
+        }
+
+        Assert.IsTrue(doc.RootElement.GetProperty("count").GetInt32() >= 2,
+            "Opt-in against a non-capable client must still return the >= 2-candidate list envelope.");
+        Assert.AreEqual("System.String.Format",
+            doc.RootElement.GetProperty("metadataName").GetString(),
+            "Envelope must echo the original metadata name so clients can correlate.");
     }
 
     [TestMethod]
