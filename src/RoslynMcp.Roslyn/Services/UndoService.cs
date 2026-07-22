@@ -96,10 +96,33 @@ public sealed class UndoService : IUndoService, IDisposable
 
     public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
-        if (!_snapshots.TryRemove(workspaceId, out var snapshot))
+        // Peek — do NOT consume the snapshot until the restore confirms success. A failed
+        // (disk I/O) or cancelled restore must leave the snapshot and its history entry in
+        // place so the SAME call is retryable once the obstruction clears; consuming up front
+        // permanently destroys the retry target that the compensating callers depend on
+        // (ApplyWithVerifyTool's rollback and cancellation-recovery legs).
+        if (!_snapshots.TryGetValue(workspaceId, out var snapshot))
             return false;
 
         var workspace = _workspaceManager;
+
+        // Fast path: the caller provided an explicit file-snapshot list. Restore those
+        // files directly — authoritative, independent of the workspace solution state.
+        // Legacy (else) path: solution-based restore with a snapshot-wide walk so
+        // empty-GetChanges no longer silently wins. A thrown OperationCanceledException
+        // propagates out of here without reaching the consume block below, so cancellation
+        // also leaves _snapshots/_history untouched (retryable) by construction.
+        bool reverted = snapshot.FileSnapshots is { Count: > 0 }
+            ? await RevertFromFileSnapshotsAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false)
+            : await RevertFromSolutionSnapshotAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
+
+        if (!reverted)
+            return false;
+
+        // Restore succeeded — consume the snapshot exactly once. Use the atomic
+        // compare-and-remove overload so a newer CaptureBeforeApply that landed while the
+        // restore was in flight is not clobbered (only the exact snapshot we restored is removed).
+        _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, snapshot));
 
         // Also drop the matching history entry so the LIFO and by-sequence pathways agree
         // on what's been reverted. The pending snapshot is identified by sequence number
@@ -122,16 +145,7 @@ public sealed class UndoService : IUndoService, IDisposable
             }
         }
 
-        // Fast path: the caller provided an explicit file-snapshot list. Restore those
-        // files directly — authoritative, independent of the workspace solution state.
-        if (snapshot.FileSnapshots is { Count: > 0 })
-        {
-            return await RevertFromFileSnapshotsAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
-        }
-
-        // Legacy path: solution-based restore with a snapshot-wide walk so empty-GetChanges
-        // no longer silently wins.
-        return await RevertFromSolutionSnapshotAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<RevertBySequenceResult> RevertBySequenceAsync(
@@ -199,31 +213,56 @@ public sealed class UndoService : IUndoService, IDisposable
                 BlockingSequences: blocking);
         }
 
-        // Apply the revert. Drop the history entry first so concurrent callers can't double-revert.
+        // Claim the revert BEFORE running it so concurrent callers can't double-revert: remove
+        // the target history entry (recording its ordinal position so a failed/cancelled restore
+        // can reinsert it at the same spot) and, if it is also the pending LIFO snapshot, remove
+        // that too. Unlike the previous unconditional drop-first, a failed restore now UNDOES this
+        // claim (below) instead of permanently destroying the retry target and its dependency ordering.
+        int claimedIndex;
         lock (historyList)
         {
-            historyList.RemoveAll(s => s.SequenceNumber == sequenceNumber);
+            claimedIndex = historyList.FindIndex(s => s.SequenceNumber == sequenceNumber);
+            if (claimedIndex >= 0)
+            {
+                historyList.RemoveAt(claimedIndex);
+            }
         }
 
         // If this is also the pending LIFO snapshot, drop it from _snapshots too — keeps
-        // GetLastOperation / RevertAsync consistent.
+        // GetLastOperation / RevertAsync consistent. Use the compare-and-remove overload so a
+        // newer capture that raced in is not clobbered.
         if (_snapshots.TryGetValue(workspaceId, out var pending) && pending.SequenceNumber == sequenceNumber)
         {
-            _snapshots.TryRemove(workspaceId, out _);
+            _snapshots.TryRemove(new KeyValuePair<string, UndoSnapshot>(workspaceId, pending));
         }
 
         bool reverted;
-        if (target.FileSnapshots is { Count: > 0 })
+        try
         {
-            reverted = await RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+            if (target.FileSnapshots is { Count: > 0 })
+            {
+                reverted = await RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                reverted = await RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+            }
         }
-        else
+        catch (OperationCanceledException)
         {
-            reverted = await RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+            // A cancelled restore must not destroy the retry target: undo the claim so the same
+            // sequence stays retryable with its ordering preserved, then rethrow so cancellation
+            // still surfaces to the caller.
+            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
+            throw;
         }
 
         if (!reverted)
         {
+            // Restore failed (disk I/O). Undo the claim so the target sequence remains retryable
+            // and keeps its ordinal position in the dependency-ordered history for future overlap
+            // checks, then surface the failure.
+            RestoreSequenceClaim(workspaceId, historyList, claimedIndex, target);
             return new RevertBySequenceResult(
                 Reverted: false,
                 RevertedOperation: target.Description,
@@ -238,6 +277,34 @@ public sealed class UndoService : IUndoService, IDisposable
             AffectedFiles: target.AffectedFiles,
             Reason: null,
             BlockingSequences: null);
+    }
+
+    /// <summary>
+    /// Undoes a claimed-but-failed (or cancelled) sequence revert: reinserts the target history
+    /// entry at (or as close as bounds allow to) its original ordinal position so the
+    /// dependency-ordered overlap check stays correct, and best-effort restores it as the pending
+    /// LIFO snapshot (<see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/> won't overwrite a
+    /// newer capture that raced in during the restore). No-op when nothing was claimed
+    /// (<paramref name="claimedIndex"/> &lt; 0, e.g. a concurrent caller already claimed the entry).
+    /// </summary>
+    private void RestoreSequenceClaim(
+        string workspaceId,
+        List<UndoSnapshot> historyList,
+        int claimedIndex,
+        UndoSnapshot target)
+    {
+        if (claimedIndex < 0)
+            return;
+
+        lock (historyList)
+        {
+            // Re-derive the insert position with a bounds check — concurrent CommitPendingCapture
+            // calls may have grown the list while the restore was in flight.
+            var insertIndex = Math.Min(claimedIndex, historyList.Count);
+            historyList.Insert(insertIndex, target);
+        }
+
+        _snapshots.TryAdd(workspaceId, target);
     }
 
     public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles)
