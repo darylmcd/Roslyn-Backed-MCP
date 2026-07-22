@@ -249,129 +249,17 @@ internal static class StructuredCallToolFilter
         ElicitationAllowlistPolicy.IsElicitationAllowedFor(toolName, paramName);
 
     /// <summary>
-    /// Core of the elicitation-fallback path: when <paramref name="ex"/> is an
-    /// <c>InvalidArgument</c> for a missing required parameter on a tool whose
-    /// (toolName, paramName) pair is on the elicitation allowlist AND the client supports
-    /// elicitation, this method asks the user for the missing value via
-    /// <see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>, patches
-    /// the elicited value into the request's <c>Arguments</c> dictionary, and re-invokes
-    /// <paramref name="next"/>. Returns <see langword="null"/> when the recovery does not
-    /// apply (any layer of the gate fails) — the caller falls through to
-    /// <see cref="BuildErrorResult"/> with the existing schema-hint envelope.
+    /// Thin delegate preserving the historical static call surface. The elicitation/retry
+    /// orchestration lives in <see cref="StructuredCallElicitationCoordinator.TryElicitAndRetryAsync"/>;
+    /// kept here so <see cref="Create"/> and the existing filter test suites compile unchanged.
     /// </summary>
-    /// <remarks>
-    /// We do NOT hold any workspace lock or other resource during the elicit wait — that
-    /// wait is unbounded (user-paced) and would otherwise starve concurrent tool calls.
-    /// The original failure already released anything <c>next</c> had taken; the retry
-    /// re-acquires from a clean state.
-    /// </remarks>
-    internal static async Task<CallToolResult?> TryElicitAndRetryAsync(
+    internal static Task<CallToolResult?> TryElicitAndRetryAsync(
         RequestContext<CallToolRequestParams> context,
         Exception ex,
         McpRequestHandler<CallToolRequestParams, CallToolResult> next,
         ILogger? logger,
-        CancellationToken cancellationToken)
-    {
-        // Layer 0: only InvalidArgument-like exceptions with a known param name qualify.
-        if (!TryGetMissingParam(ex, out var missingParam) || string.IsNullOrEmpty(missingParam))
-        {
-            return null;
-        }
-
-        var toolName = context.Params?.Name;
-        if (string.IsNullOrEmpty(toolName))
-        {
-            return null;
-        }
-
-        // Layer 1 + 2: allowlist + sensitive-name refusal in one call. Either failure
-        // means "do not elicit" — the legacy schemaHint envelope is the right fallback.
-        if (!IsElicitationAllowedFor(toolName, missingParam))
-        {
-            // Defense-in-depth log: explicit "refused to elicit sensitive field" branch
-            // so a future audit can grep for it. Not an error — we refuse silently and
-            // fall through to the normal envelope.
-            if (IsSensitiveFieldName(missingParam))
-            {
-                logger?.LogWarning(
-                    "Refusing to elicit sensitive parameter '{Param}' on tool '{Tool}'. " +
-                    "MCP spec § Elicitation security: 'Servers MUST NOT request sensitive information'.",
-                    missingParam, toolName);
-            }
-            return null;
-        }
-
-        // Layer 3: client must support elicitation. server.ClientCapabilities.Elicitation
-        // is established at initialize-handshake time; this is a property read, not an RPC.
-        if (!HasElicitation(context.Server?.ClientCapabilities))
-        {
-            return null;
-        }
-
-        if (IsWorkspaceIdRecoveryAllowedFor(toolName, missingParam))
-        {
-            return await TryRecoverMissingWorkspaceIdAsync(
-                toolName,
-                CopyArguments(context.Params!.Arguments),
-                request => context.Server!.ElicitAsync(request, cancellationToken),
-                (dispatchToolName, arguments) =>
-                    DispatchWithTemporaryArgumentsAsync(context, next, dispatchToolName, arguments, cancellationToken),
-                logger,
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        // Build the strict elicit request. Single string field ('path'), required, with a
-        // descriptive prompt — the user sees a one-field form (in form mode) or navigates
-        // to the URL (in url mode); the client picks based on its declared sub-capability.
-        var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, missingParam);
-
-        ElicitResult elicitResult;
-        try
-        {
-            elicitResult = await context.Server!.ElicitAsync(elicitRequest, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception elicitEx)
-        {
-            // ElicitAsync can throw InvalidOperationException (client doesn't support
-            // elicitation despite the capability check, transport went away, etc.) or
-            // McpException (client returned an error). Either way we fall through to the
-            // existing envelope rather than masking the original error.
-            logger?.LogWarning(elicitEx,
-                "Elicitation request failed for {Tool}.{Param}; falling back to schemaHint envelope.",
-                toolName, missingParam);
-            return null;
-        }
-
-        // User declined or cancelled — surface the original error. Don't retry with empty
-        // input; that would just re-trigger the same InvalidArgument.
-        if (!elicitResult.IsAccepted || elicitResult.Content is null
-            || !elicitResult.Content.TryGetValue(missingParam, out var elicitedValue))
-        {
-            logger?.LogInformation(
-                "User declined or cancelled elicitation for {Tool}.{Param}", toolName, missingParam);
-            return null;
-        }
-
-        // Patch the missing parameter into the arguments dictionary and retry.
-        // CallToolRequestParams.Arguments is IReadOnlyDictionary<string, JsonElement>?;
-        // we materialize a new mutable copy, set the elicited value, and assign it back.
-        var existingArgs = context.Params!.Arguments;
-        var newArgs = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (existingArgs is not null)
-        {
-            foreach (var kvp in existingArgs)
-            {
-                newArgs[kvp.Key] = kvp.Value;
-            }
-        }
-        newArgs[missingParam] = elicitedValue;
-        context.Params.Arguments = newArgs;
-
-        // Re-dispatch. If this throws too, the exception bubbles back to the outer catch
-        // — we don't loop indefinitely.
-        return await next(context, cancellationToken).ConfigureAwait(false);
-    }
+        CancellationToken cancellationToken) =>
+        StructuredCallElicitationCoordinator.TryElicitAndRetryAsync(context, ex, next, logger, cancellationToken);
 
     /// <summary>
     /// Thin delegate preserving the historical static call surface. See
@@ -514,9 +402,9 @@ internal static class StructuredCallToolFilter
                 {
                     [PathParameterName] = JsonSerializer.SerializeToElement(discovery.UniquePath!),
                 };
-                var loadResult = await DispatchWithTemporaryArgumentsAsync(
+                var loadResult = await StructuredCallElicitationCoordinator.DispatchWithTemporaryArgumentsAsync(
                     context, next, WorkspaceLoadToolName, loadArguments, cancellationToken).ConfigureAwait(false);
-                var workspaceId = TryExtractWorkspaceId(loadResult);
+                var workspaceId = StructuredCallElicitationCoordinator.TryExtractWorkspaceId(loadResult);
                 stopwatch.Stop();
 
                 if (string.IsNullOrWhiteSpace(workspaceId))
@@ -557,197 +445,21 @@ internal static class StructuredCallToolFilter
         }
     }
 
-    internal static async Task<CallToolResult?> TryRecoverMissingWorkspaceIdAsync(
+    /// <summary>
+    /// Thin delegate preserving the historical static call surface. The recover-load-retry
+    /// loop lives in
+    /// <see cref="StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync"/>;
+    /// kept here so the existing filter test suites compile unchanged.
+    /// </summary>
+    internal static Task<CallToolResult?> TryRecoverMissingWorkspaceIdAsync(
         string toolName,
         IReadOnlyDictionary<string, JsonElement>? originalArguments,
         Func<ElicitRequestParams, ValueTask<ElicitResult>> elicitAsync,
         Func<string, IReadOnlyDictionary<string, JsonElement>, Task<CallToolResult>> dispatchAsync,
         ILogger? logger,
-        CancellationToken cancellationToken)
-    {
-        var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, WorkspaceIdParameterName);
-        ElicitResult elicitResult;
-        try
-        {
-            elicitResult = await elicitAsync(elicitRequest).ConfigureAwait(false);
-        }
-        catch (Exception elicitEx)
-        {
-            logger?.LogWarning(elicitEx,
-                "WorkspaceId recovery elicitation failed for {Tool}; falling back to schemaHint envelope.",
-                toolName);
-            return null;
-        }
-
-        if (!elicitResult.IsAccepted || elicitResult.Content is null
-            || !elicitResult.Content.TryGetValue(PathParameterName, out var pathValue))
-        {
-            logger?.LogInformation(
-                "User declined or cancelled workspaceId recovery elicitation for {Tool}", toolName);
-            return null;
-        }
-
-        if (pathValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(pathValue.GetString()))
-        {
-            return null;
-        }
-
-        var loadArgs = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
-        {
-            [PathParameterName] = pathValue,
-        };
-        CallToolResult loadResult;
-        try
-        {
-            loadResult = await dispatchAsync(WorkspaceLoadToolName, loadArgs).ConfigureAwait(false);
-        }
-        catch (Exception loadEx)
-        {
-            logger?.LogWarning(loadEx,
-                "workspace_load dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
-                toolName);
-            return null;
-        }
-
-        var workspaceId = TryExtractWorkspaceId(loadResult);
-        if (string.IsNullOrWhiteSpace(workspaceId))
-        {
-            logger?.LogWarning(
-                "workspace_load did not return a workspaceId during recovery for {Tool}; falling back to schemaHint envelope.",
-                toolName);
-            return null;
-        }
-
-        var retryArgs = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (originalArguments is not null)
-        {
-            foreach (var kvp in originalArguments)
-            {
-                retryArgs[kvp.Key] = kvp.Value;
-            }
-        }
-
-        retryArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
-        try
-        {
-            return await dispatchAsync(toolName, retryArgs).ConfigureAwait(false);
-        }
-        catch (Exception retryEx)
-        {
-            logger?.LogWarning(retryEx,
-                "Retried tool dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
-                toolName);
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Inspects <paramref name="ex"/> for the InvalidArgument-shaped binding-failure
-    /// exceptions the SDK delivers when a required parameter is missing. Returns
-    /// <see langword="true"/> with the parameter name on success, otherwise
-    /// <see langword="false"/> (caller skips the elicit path).
-    /// </summary>
-    private static bool TryGetMissingParam(Exception ex, out string? paramName)
-    {
-        // The SDK delivers two shapes (see ToolErrorHandler.ClassifyError comments):
-        //   1. Direct ArgumentException / ArgumentNullException carrying ParamName.
-        //   2. Wrapped in TargetInvocationException or InvalidOperationException whose
-        //      InnerException is the real ArgumentException.
-        if (ex is ArgumentException directArg && !string.IsNullOrEmpty(directArg.ParamName))
-        {
-            paramName = directArg.ParamName;
-            return true;
-        }
-        if (ex.InnerException is ArgumentException innerArg && !string.IsNullOrEmpty(innerArg.ParamName))
-        {
-            paramName = innerArg.ParamName;
-            return true;
-        }
-        paramName = null;
-        return false;
-    }
-
-    /// <summary>
-    /// Builds the strict path-only elicit request for the
-    /// <c>elicit-workspace-path-on-missing-required-arg</c> initiative. Single string field,
-    /// required, descriptive prompt naming the tool so the user knows what they're being
-    /// asked for. Form mode is the canonical shape; clients that only support url mode can
-    /// still complete via out-of-band navigation.
-    /// </summary>
-    private static ElicitRequestParams BuildWorkspacePathElicitationRequest(string toolName, string missingParamName)
-    {
-        var message = string.Equals(missingParamName, WorkspaceIdParameterName, StringComparison.Ordinal)
-            ? $"The {toolName} tool was called without a 'workspaceId' argument. " +
-              "Provide an absolute path to a .sln, .slnx, or .csproj file; the server will call workspace_load and retry with the recovered workspaceId."
-            : $"The {toolName} tool was called without a '{missingParamName}' argument. " +
-              "Provide an absolute path to a .sln, .slnx, or .csproj file to continue.";
-
-        return new ElicitRequestParams
-        {
-            Message = message,
-            RequestedSchema = new ElicitRequestParams.RequestSchema
-            {
-                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
-                {
-                    [PathParameterName] = new ElicitRequestParams.StringSchema
-                    {
-                        Title = "Workspace path",
-                        Description =
-                            "Absolute path to a .sln, .slnx, or .csproj file on the local filesystem.",
-                    },
-                },
-                Required = [PathParameterName],
-            },
-        };
-    }
-
-    private static async Task<CallToolResult> DispatchWithTemporaryArgumentsAsync(
-        RequestContext<CallToolRequestParams> context,
-        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
-        string toolName,
-        IReadOnlyDictionary<string, JsonElement> arguments,
-        CancellationToken cancellationToken)
-    {
-        var originalToolName = context.Params!.Name;
-        var originalArgs = context.Params.Arguments;
-        try
-        {
-            context.Params.Name = toolName;
-            context.Params.Arguments = new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
-            return await next(context, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            context.Params.Name = originalToolName;
-            context.Params.Arguments = originalArgs;
-        }
-    }
-
-    private static IReadOnlyDictionary<string, JsonElement>? CopyArguments(
-        IDictionary<string, JsonElement>? arguments)
-    {
-        if (arguments is null) return null;
-        return new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
-    }
-
-    private static string? TryExtractWorkspaceId(CallToolResult result)
-    {
-        if (result.Content is null || result.Content.Count == 0) return null;
-        if (result.Content[0] is not TextContentBlock text || string.IsNullOrWhiteSpace(text.Text)) return null;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(text.Text);
-            return doc.RootElement.TryGetProperty(WorkspaceIdParameterName, out var id)
-                   && id.ValueKind == JsonValueKind.String
-                ? id.GetString()
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+        CancellationToken cancellationToken) =>
+        StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+            toolName, originalArguments, elicitAsync, dispatchAsync, logger, cancellationToken);
 
     /// <summary>
     /// elicit-disambiguation-on-multi-symbol-resolve: shared select-from-N elicitation
@@ -771,67 +483,15 @@ internal static class StructuredCallToolFilter
     /// </param>
     /// <param name="cancellationToken">Cancellation token (request-scoped).</param>
     /// <returns>The chosen <c>Key</c> on accept; <see langword="null"/> on decline / cancel / unsupported / error.</returns>
-    public static async Task<string?> TryElicitChoiceAsync(
+    public static Task<string?> TryElicitChoiceAsync(
         McpServer? server,
         string paramName,
         string title,
         string description,
         IReadOnlyList<(string Key, string Label)> options,
-        CancellationToken cancellationToken)
-    {
-        if (server is null) return null;
-        if (!HasElicitation(server.ClientCapabilities)) return null;
-        if (string.IsNullOrEmpty(paramName) || options is null || options.Count == 0) return null;
-
-        var oneOf = new List<ElicitRequestParams.EnumSchemaOption>(options.Count);
-        for (var i = 0; i < options.Count; i++)
-        {
-            var (key, label) = options[i];
-            if (string.IsNullOrEmpty(key)) continue;
-            oneOf.Add(new ElicitRequestParams.EnumSchemaOption
-            {
-                Const = key,
-                Title = string.IsNullOrEmpty(label) ? key : label,
-            });
-        }
-        if (oneOf.Count == 0) return null;
-
-        var request = new ElicitRequestParams
-        {
-            Message = description,
-            RequestedSchema = new ElicitRequestParams.RequestSchema
-            {
-                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
-                {
-                    [paramName] = new ElicitRequestParams.TitledSingleSelectEnumSchema
-                    {
-                        Title = title,
-                        Description = description,
-                        OneOf = oneOf,
-                    },
-                },
-                Required = [paramName],
-            },
-        };
-
-        ElicitResult result;
-        try
-        {
-            result = await server.ElicitAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // ElicitAsync can throw InvalidOperationException (transport gone, capability
-            // mismatch) or McpException (client-side error). Either way, the disambiguation
-            // path falls through to the additive list response — never masks a real failure.
-            return null;
-        }
-
-        if (!result.IsAccepted || result.Content is null) return null;
-        if (!result.Content.TryGetValue(paramName, out var chosen)) return null;
-        var chosenKey = chosen.ValueKind == JsonValueKind.String ? chosen.GetString() : null;
-        return string.IsNullOrEmpty(chosenKey) ? null : chosenKey;
-    }
+        CancellationToken cancellationToken) =>
+        StructuredCallElicitationCoordinator.TryElicitChoiceAsync(
+            server, paramName, title, description, options, cancellationToken);
 
     /// <summary>
     /// Produces the <see cref="CallToolResult"/> envelope the filter emits when a tool call
@@ -850,101 +510,22 @@ internal static class StructuredCallToolFilter
     }
 
     /// <summary>
-    /// Injects the gate-metrics snapshot as a top-level <c>_meta</c> property on the first
-    /// text content block when the tool's JSON response is object-rooted. Arrays,
-    /// primitives, and non-text content are returned unchanged — preserving the
-    /// historical contract that e.g. <c>source_generated_documents</c>'s bare-array
-    /// response shape remains stable across the filter migration. Exposed <c>internal</c>
-    /// so tests can assert meta-injection behavior directly.
-    ///
-    /// <para><b>tool-output-schema-infrastructure (MCP 2025-06-18 § Tools / Structured Content):</b></para>
-    /// <para>
-    /// When the tool has a registered <c>outputSchema</c> via
-    /// <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/>, this method ALSO populates
-    /// <see cref="CallToolResult.StructuredContent"/> with the same payload (sans <c>_meta</c>) so
-    /// the structured-content channel is non-empty. Per spec, when <c>structuredContent</c> is
-    /// emitted the server MUST also emit a serialized JSON copy in the <c>content[].text</c>
-    /// channel — both channels coexist; <c>_meta</c> lives only in the text channel so clients
-    /// never see two observability blobs (defense against the dedupe risk noted in the
-    /// initiative plan).
-    /// </para>
+    /// Thin delegate preserving the historical static call surface. The structured-content /
+    /// <c>_meta</c> projection lives in
+    /// <see cref="StructuredCallContentProjector.InjectMetaIntoContent(CallToolResult, string)"/>;
+    /// kept here so <see cref="Create"/> and the existing filter/content test suites compile unchanged.
     /// </summary>
     internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName) =>
-        InjectMetaIntoContent(result, toolName, ToolOutputSchemaIndex.GetSchema);
+        StructuredCallContentProjector.InjectMetaIntoContent(result, toolName);
 
     /// <summary>
-    /// Test seam: same as <see cref="InjectMetaIntoContent(CallToolResult, string)"/> but lets
-    /// the caller supply a custom schema resolver so dual-channel behavior can be exercised
-    /// without needing a live <c>[McpToolMetadata(outputSchemaTypeRef:)]</c> opt-in. The
-    /// production path always uses the static <see cref="ToolOutputSchemaIndex"/>.
+    /// Thin delegate preserving the historical static call surface (test seam with a custom
+    /// schema resolver). See
+    /// <see cref="StructuredCallContentProjector.InjectMetaIntoContent(CallToolResult, string, Func{string, JsonNode})"/>.
     /// </summary>
     internal static CallToolResult InjectMetaIntoContent(
-        CallToolResult result, string toolName, Func<string, JsonNode?> schemaResolver)
-    {
-        if (result.Content is null || result.Content.Count == 0)
-        {
-            return result;
-        }
-
-        if (result.Content[0] is not TextContentBlock text || string.IsNullOrEmpty(text.Text))
-        {
-            return result;
-        }
-
-        // Parse once so both the meta-injection path and the structuredContent path can share
-        // a single JsonNode tree. Non-JSON / array-rooted responses bail out early as before.
-        JsonNode? parsedRoot = null;
-        try
-        {
-            parsedRoot = JsonNode.Parse(text.Text);
-        }
-        catch (JsonException)
-        {
-            // Fall through to the original best-effort path; non-JSON responses pass through.
-        }
-
-        var schema = schemaResolver(toolName);
-        // structuredContent is only emitted when (a) the tool opted in via OutputSchemaTypeRef
-        // and (b) the response is an object-rooted JSON document we can mirror. Arrays, scalars,
-        // and non-JSON responses leave structuredContent absent — matching the spec's "MAY"
-        // semantics rather than fabricating a structured shape that doesn't match the schema.
-        // CallToolResult.StructuredContent is a JsonElement? — convert from JsonNode via the
-        // round-trip text. The body is small (already serialized once for the text channel)
-        // so the extra parse is bounded; deep-clone to detach from the parsed tree.
-        JsonElement? structuredFromBody = null;
-        if (schema is not null && parsedRoot is JsonObject bodyObj)
-        {
-            structuredFromBody = JsonDocument.Parse(bodyObj.ToJsonString()).RootElement.Clone();
-        }
-
-        var injected = ToolErrorHandler.InjectMetaIfPossible(text.Text, toolName);
-        var textChanged = !(ReferenceEquals(injected, text.Text) || injected == text.Text);
-
-        if (!textChanged && structuredFromBody is null)
-        {
-            // Nothing to change — skip the allocation so array-rooted and non-JSON
-            // responses pass through byte-for-byte identical.
-            return result;
-        }
-
-        var newContent = new List<ContentBlock>(result.Content.Count)
-        {
-            new TextContentBlock { Text = textChanged ? injected : text.Text }
-        };
-        for (var i = 1; i < result.Content.Count; i++)
-        {
-            newContent.Add(result.Content[i]);
-        }
-
-        return new CallToolResult
-        {
-            IsError = result.IsError,
-            Content = newContent,
-            // Preserve any pre-existing StructuredContent (a tool may have set it directly);
-            // otherwise emit the schema-mirrored body when the tool has opted in.
-            StructuredContent = result.StructuredContent ?? structuredFromBody,
-        };
-    }
+        CallToolResult result, string toolName, Func<string, JsonNode?> schemaResolver) =>
+        StructuredCallContentProjector.InjectMetaIntoContent(result, toolName, schemaResolver);
 
     /// <summary>
     /// Predicate for logger severity: anything that <see cref="ToolErrorHandler"/>
