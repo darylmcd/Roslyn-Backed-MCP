@@ -71,6 +71,41 @@ public sealed class CompositeApplyOrchestratorTests
     }
 
     [TestMethod]
+    public async Task AtomicFileWriter_Logs_Warning_When_Temp_Cleanup_Fails_After_Write_Failure()
+    {
+        // Windows-only: an exclusive FileShare.None lock on the pre-created .tmp forces BOTH the
+        // initial write (File.WriteAllTextAsync to the locked .tmp) AND the subsequent cleanup
+        // delete to fail — so we exercise the swallowed-cleanup catch with a genuine failure, not a
+        // no-op. On non-Windows, a held handle does not block delete the same way, so we skip.
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Deterministic temp-lock only reproduces on Windows (FileShare.None semantics).");
+            return;
+        }
+
+        var path = Path.Combine(_tempDir, "target.cs");
+        var tmp = path + ".tmp";
+
+        // Pre-create and hold the .tmp with an exclusive lock so the write to it throws IOException
+        // and the cleanup delete also throws (still locked) — the path the fix must observe.
+        using var hold = new FileStream(tmp, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+
+        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
+
+        // (a) The original write failure must still propagate — primary failure is not masked.
+        await Assert.ThrowsExceptionAsync<IOException>(
+            () => AtomicFileWriter.WriteAllTextAsync(path, "// content", CancellationToken.None, logger));
+
+        // (b) Exactly one Warning naming the .tmp path is recorded.
+        var warnings = logger.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
+        Assert.AreEqual(1, warnings.Count, "Exactly one Warning should be logged for the failed temp cleanup.");
+        StringAssert.Contains(warnings[0].Message, tmp, "The warning must name the orphaned .tmp path.");
+
+        // (c) The .tmp still exists — cleanup genuinely failed (it is still locked open), not a no-op.
+        Assert.IsTrue(File.Exists(tmp), "The locked .tmp must remain on disk because its cleanup delete failed.");
+    }
+
+    [TestMethod]
     public async Task ApplyComposite_MidLoop_Failure_Applies_Prior_Writes_Marks_Partial_And_Logs()
     {
         // Arrange: a first valid write, then a second mutation whose parent path is an existing
