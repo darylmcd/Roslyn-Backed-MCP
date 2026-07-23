@@ -296,7 +296,7 @@
     {
       "id": "scaffolding-hotspot-complexity-reduction",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffolding-hotspot-complexity-reduction"
       ],
@@ -320,10 +320,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scaffolding-hotspot-complexity-reduction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1105",
+      "mergedAt": "2026-07-23T02:01:10Z",
       "notes": null,
       "fileSetHash": "77ad5c7dc22f0686ef5ca98d6ec7c6e07a74f9154be0f153a50a07d7b69c2f10",
       "stanzaHash": "ef9ce370139ab6e31ea41f1d3c090a0831af8abe5fdaf8aa4090a9c2d1b71318",
