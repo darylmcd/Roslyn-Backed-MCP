@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-22T23:31:57Z
+**updated_at:** 2026-07-23T00:06:17Z
 
 ## Agent contract
 
@@ -71,7 +71,6 @@
 | `scaffolding-hotspot-complexity-reduction` | Medium | scaffolding-batch-first-test-collaborator-extraction | **Reduce remaining scaffolding hotspots** — replace BuildTestContent positional parameters with a request record and split TrimUsings/BuildArgExpression branches. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/scaffolding-hotspot-complexity-reduction.md |
 | `analysis-type-traversal-enumeration-helper` | Medium | — | **Share complete Roslyn type enumeration** — add RoslynSymbolTraversal and migrate impact, coupling, and symbol search to its lazy arbitrary-depth walk. [type: bug] [source: backlog-sweep-20260716-review] | M | items/analysis-type-traversal-enumeration-helper.md |
 | `analysis-containing-type-helper-adoption` | Medium | analysis-type-traversal-enumeration-helper | **Share containing-type resolution** — add one nearest-enclosing type helper and migrate coupling/consumer analysis off duplicate ancestor walks. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/analysis-containing-type-helper-adoption.md |
-| `apply-undo-workflow-service-extraction` | Medium | apply-with-verify-cancelled-result-compensation | **Extract apply/undo workflow service** — move diagnostic diff, apply/rollback, and sequence-revert decisions into Roslyn while Host retains exact JSON shaping. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/apply-undo-workflow-service-extraction.md |
 | `client-root-path-validator-complexity-extraction` | Medium | — | **Simplify sanctioned-root matching** — extract lazy allowed-root enumeration, one-level parent widening, and separator-bounded root matching. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/client-root-path-validator-complexity-extraction.md |
 | `prompt-shim-parameter-binding-complexity-extraction` | Medium | — | **Simplify prompt parameter binding** — replace the no-op async binder with synchronous parse, required, service/default, and deserialize helpers. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/prompt-shim-parameter-binding-complexity-extraction.md |
 | `server-info-complexity-extraction` | Medium | — | **Simplify server_info assembly** — extract focused version, workspace-hint, surface-count, and update-block builders from GetServerInfo. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/server-info-complexity-extraction.md |
