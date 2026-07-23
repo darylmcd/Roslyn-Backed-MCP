@@ -260,7 +260,7 @@
     {
       "id": "scaffolding-batch-first-test-collaborator-extraction",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffolding-batch-first-test-collaborator-extraction"
       ],
@@ -284,10 +284,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scaffolding-batch-first-test-collaborator-extraction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1103",
+      "mergedAt": "2026-07-23T01:34:32Z",
       "notes": null,
       "fileSetHash": "6e7a7ba56284b036de6d9036d784b33632d918c616950ae161984a3f37d765ec",
       "stanzaHash": "8e26b8b64f3f50deda3529d80dd7135ab639cbdc36eda02843f93c1fcaab9b06",
