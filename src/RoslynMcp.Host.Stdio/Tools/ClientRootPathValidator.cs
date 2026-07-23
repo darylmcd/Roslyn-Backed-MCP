@@ -123,43 +123,80 @@ internal static class ClientRootPathValidator
             return false;
         }
 
-        var allowedRoots = new List<string>(rootPaths.Count * (expandSanctionedRoots ? 2 : 1));
-        foreach (var rootPath in rootPaths)
+        foreach (var rootPath in EnumerateAllowedRoots(rootPaths, expandSanctionedRoots))
         {
-            allowedRoots.Add(rootPath);
-
-            if (expandSanctionedRoots)
-            {
-                // Widen by exactly one level — the parent directory of each sanctioned
-                // root. This permits sibling worktrees (e.g. parent/main is sanctioned and
-                // the worktree is at parent/.worktrees/foo) without exposing arbitrary
-                // grandparent or unrelated filesystem locations. Drive-root parents are
-                // skipped to avoid widening to the entire drive.
-                var parent = Path.GetDirectoryName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                if (!string.IsNullOrEmpty(parent) && Path.GetPathRoot(parent) != parent)
-                {
-                    allowedRoots.Add(parent);
-                }
-            }
-        }
-
-        foreach (var rootPath in allowedRoots)
-        {
-            if (string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
-                ? rootPath
-                : rootPath + Path.DirectorySeparatorChar;
-            if (fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            if (IsPathUnderRoot(fullPath, rootPath))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Lazily yields each sanctioned root, and — when <paramref name="expandSanctionedRoots"/>
+    /// is <c>true</c> — the one-level-widened parent of each root (drive roots excluded).
+    /// Extracted from <see cref="IsPathUnderAnyRoot"/> so root-set construction is a pure
+    /// iterator rather than an eagerly materialized list.
+    /// </summary>
+    /// <remarks>
+    /// Must be enumerated exactly once per call (the single <c>foreach</c> in
+    /// <see cref="IsPathUnderAnyRoot"/> satisfies this) — a caller that enumerates it twice
+    /// would silently re-run <see cref="Path.GetDirectoryName(string?)"/> /
+    /// <see cref="Path.GetPathRoot(string?)"/> per pass.
+    /// </remarks>
+    private static IEnumerable<string> EnumerateAllowedRoots(IReadOnlyList<string> rootPaths, bool expandSanctionedRoots)
+    {
+        foreach (var rootPath in rootPaths)
+        {
+            yield return rootPath;
+
+            if (expandSanctionedRoots)
+            {
+                var parent = GetWidenedParent(rootPath);
+                if (parent is not null)
+                {
+                    yield return parent;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Widens by exactly one level — the parent directory of <paramref name="rootPath"/>.
+    /// This permits sibling worktrees (e.g. parent/main is sanctioned and the worktree is at
+    /// parent/.worktrees/foo) without exposing arbitrary grandparent or unrelated filesystem
+    /// locations. Returns <c>null</c> when there is no parent, or when the parent is a drive
+    /// root (to avoid widening to the entire drive).
+    /// </summary>
+    private static string? GetWidenedParent(string rootPath)
+    {
+        var parent = Path.GetDirectoryName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (!string.IsNullOrEmpty(parent) && Path.GetPathRoot(parent) != parent)
+        {
+            return parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tests whether <paramref name="fullPath"/> equals <paramref name="rootPath"/> exactly,
+    /// or falls under it as a separator-bounded child. Both checks are
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/> to match Windows path semantics.
+    /// </summary>
+    private static bool IsPathUnderRoot(string fullPath, string rootPath)
+    {
+        if (string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
+            ? rootPath
+            : rootPath + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
