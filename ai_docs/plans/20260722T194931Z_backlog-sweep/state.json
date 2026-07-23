@@ -187,7 +187,7 @@
     {
       "id": "scaffolding-type-collaborator-extraction",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffolding-type-collaborator-extraction"
       ],
@@ -211,10 +211,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scaffolding-type-collaborator-extraction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1099",
+      "mergedAt": "2026-07-23T00:29:48Z",
       "notes": null,
       "fileSetHash": "8fe24cad58f26f40fbb940aa0f31d6bd0c43c0815a9a0d3da7588f08c89a7ecf",
       "stanzaHash": "cd29bae61f9d17b35cbac31eed433c67d136b70d9c9882426fd63f1714219110",
