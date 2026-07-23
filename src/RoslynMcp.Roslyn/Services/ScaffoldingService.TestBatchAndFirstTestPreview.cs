@@ -61,7 +61,7 @@ public sealed partial class ScaffoldingService
             ProjectDirectory: projectDirectory,
             TestNamespace: project.Name,
             Framework: ResolveTestFramework(request.TestFramework, project.FilePath),
-            NSubstituteAvailable: IsNSubstituteAvailable(testProject));
+            NSubstituteAvailable: TestScaffoldRenderer.IsNSubstituteAvailable(testProject));
     }
 
     private static async Task<List<Compilation>> LoadBatchCompilationsAsync(
@@ -111,7 +111,7 @@ public sealed partial class ScaffoldingService
 
         // See PreviewScaffoldTestAsync — accept dotted FQN input, resolve via simple name,
         // and let the matched symbol supply the authoritative class identifier.
-        var lookupName = StripToSimpleTypeName(target.TargetTypeName);
+        var lookupName = TestScaffoldRenderer.StripToSimpleTypeName(target.TargetTypeName);
         var typeInfo = ResolveTargetTypeAndMethodFromCache(
             cachedCompilations,
             lookupName,
@@ -145,7 +145,7 @@ public sealed partial class ScaffoldingService
         // Batch scaffolding intentionally does NOT apply sibling-pattern inference — a batch
         // run typically targets a homogenous set of production types and callers want the
         // generic scaffold. Sibling inference is available via per-target scaffold_test_preview.
-        var content = BuildTestContent(
+        var content = TestScaffoldRenderer.BuildTestContent(
             context.TestNamespace,
             dto,
             simpleTypeName,
@@ -209,15 +209,15 @@ public sealed partial class ScaffoldingService
         INamedTypeSymbol? matchedType = null;
         foreach (var compilation in compilations)
         {
-            var candidates = GetMatchingTargetTypeCandidates(compilation, targetTypeName, CancellationToken.None).ToList();
+            var candidates = TestScaffoldRenderer.GetMatchingTargetTypeCandidates(compilation, targetTypeName, CancellationToken.None).ToList();
             if (candidates.Count == 1) { matchedType = candidates[0]; break; }
             if (candidates.Count > 1)
             {
-                return CreateAmbiguousTargetTypeResult(targetTypeName);
+                return TestScaffoldRenderer.CreateAmbiguousTargetTypeResult(targetTypeName);
             }
         }
 
-        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false, nsubstituteAvailable);
+        return TestScaffoldRenderer.CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false, nsubstituteAvailable);
     }
 
     /// <summary>
@@ -274,8 +274,8 @@ public sealed partial class ScaffoldingService
         var serviceNamespace = serviceSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : serviceSymbol.ContainingNamespace.ToDisplayString();
-        var nsubstituteAvailable = IsNSubstituteAvailable(testRoslynProject);
-        var constructorArgs = BuildConstructorArgs(serviceSymbol, nsubstituteAvailable);
+        var nsubstituteAvailable = TestScaffoldRenderer.IsNSubstituteAvailable(testRoslynProject);
+        var constructorArgs = TestScaffoldRenderer.BuildConstructorArgs(serviceSymbol, nsubstituteAvailable);
         var publicMethods = CollectPublicTestableMethods(serviceSymbol);
 
         var content = BuildFirstTestFileContent(
@@ -521,7 +521,7 @@ public sealed partial class ScaffoldingService
         {
             var primary = siblings[0];
             var sourceText = File.ReadAllText(primary.FullName);
-            var pattern = ExtractPatternFromSource(sourceText, primary.Name, compilation, primary.FullName);
+            var pattern = TestScaffoldRenderer.ExtractPatternFromSource(sourceText, primary.Name, compilation, primary.FullName);
             return new SiblingInferenceResult(pattern, warnings);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -557,7 +557,7 @@ public sealed partial class ScaffoldingService
         // Collect namespaces from constructor parameter types that differ from the service's own
         // namespace — these are not captured by the single usingDirective above and would cause
         // CS0246 when the generated file is compiled as-is (scaffold-test-preview-missing-usings).
-        var ctorParamUsings = BuildCtorParamUsings(serviceSymbol, serviceNamespace, testNamespace);
+        var ctorParamUsings = TestScaffoldRenderer.BuildCtorParamUsings(serviceSymbol, serviceNamespace, testNamespace);
 
         var ctorCall = string.IsNullOrWhiteSpace(constructorArgs)
             ? $"new {serviceTypeName}()"
@@ -581,7 +581,7 @@ public sealed partial class ScaffoldingService
         SiblingTestPattern? siblingPattern)
     {
         var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
-            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+            TestScaffoldRenderer.BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
 
         // First-test-file skips the sibling ctor-block: ClassInitialize takes the role of
         // shared setup, and we don't want to inherit a fixture-injection ctor from a sibling
@@ -643,7 +643,7 @@ public sealed partial class ScaffoldingService
         SiblingTestPattern? siblingPattern)
     {
         var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
-            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+            TestScaffoldRenderer.BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
 
         var fixtureName = serviceTypeName + "Tests";
         var sb = new System.Text.StringBuilder();
@@ -699,7 +699,7 @@ public sealed partial class ScaffoldingService
         SiblingTestPattern? siblingPattern)
     {
         var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
-            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+            TestScaffoldRenderer.BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
 
         var fixtureName = serviceTypeName + "Tests";
         var sb = new System.Text.StringBuilder();
