@@ -25,6 +25,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     private readonly Contracts.IPreviewStore _previewStore;
     private readonly ILogger<ScaffoldingService>? _logger;
     private readonly TypeScaffolder _typeScaffolder;
+    private readonly BatchTestScaffolder _batchTestScaffolder;
 
     public ScaffoldingService(
         IWorkspaceManager workspace,
@@ -37,6 +38,11 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         _previewStore = previewStore;
         _logger = logger;
         _typeScaffolder = new TypeScaffolder(workspace, fileOperationService);
+        // Logger-bound resolution helpers stay on the facade (their only logging paths); the
+        // collaborator receives them as delegates rather than re-declaring copies.
+        _batchTestScaffolder = new BatchTestScaffolder(
+            workspace, fileOperationService, previewStore,
+            ResolveProject, ValidateIsTestProject, ResolveTestFramework);
     }
 
     /// <summary>
@@ -45,32 +51,6 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     /// </summary>
     public Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(string workspaceId, ScaffoldTypeDto request, CancellationToken ct) =>
         _typeScaffolder.PreviewScaffoldTypeAsync(workspaceId, request, ct);
-
-    private sealed record BatchScaffoldContext(
-        ProjectStatusDto Project,
-        Project TestProject,
-        Solution Solution,
-        string ProjectDirectory,
-        string TestNamespace,
-        string Framework,
-        bool NSubstituteAvailable);
-
-    private sealed class BatchScaffoldState
-    {
-        public BatchScaffoldState(Solution originalSolution)
-        {
-            OriginalSolution = originalSolution;
-            Accumulator = originalSolution;
-        }
-
-        public Solution OriginalSolution { get; }
-
-        public Solution Accumulator { get; set; }
-
-        public List<string> Warnings { get; } = [];
-
-        public List<string> CreatedFiles { get; } = [];
-    }
 
     private string ResolveTestFramework(string? requested, string? projectFilePath)
     {
