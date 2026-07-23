@@ -150,7 +150,7 @@
     {
       "id": "apply-undo-workflow-service-extraction",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "apply-undo-workflow-service-extraction"
       ],
@@ -175,10 +175,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/apply-undo-workflow-service-extraction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1097",
+      "mergedAt": "2026-07-23T00:06:06Z",
       "notes": null,
       "fileSetHash": "6efe4a5b604627ad8f68a2042f6e963ba8e70aeae368ca9bda310c282ef5f1d7",
       "stanzaHash": "5665b0083449abd3769a81a69505069ef946bf83ab029d753c0fb4d012d5de8d",
