@@ -24,15 +24,32 @@ public static class ConsumerAnalysisTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
         [Description("Optional: case-sensitive Project.Name filter to scope the consumer walk; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
+        [Description("Number of consumers to skip before returning results (default: 0).")] int offset = 0,
+        [Description("Maximum number of consumers to return (default: 100). Consumers are ordered by ascending type name; the `totals` block and `hasMore` flag let callers page high-fan-out types.")] int limit = 100,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            ParameterValidation.ValidatePagination(offset, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var filterSet = SymbolTools.ParseProjectFilter(projectFilter);
             var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, c, filterSet);
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+
+            var totalConsumers = result.Consumers.Count;
+            var pagedConsumers = result.Consumers.Skip(offset).Take(limit).ToList();
+            var hasMore = offset + pagedConsumers.Count < totalConsumers;
+
+            return JsonSerializer.Serialize(new
+            {
+                targetSymbol = result.TargetSymbol,
+                consumers = pagedConsumers,
+                summary = result.Summary,
+                offset,
+                limit,
+                hasMore,
+                totals = new { consumers = totalConsumers }
+            }, JsonDefaults.Indented);
         }, ct);
     }
 }

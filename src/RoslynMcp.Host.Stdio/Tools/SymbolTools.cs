@@ -653,6 +653,8 @@ public static class SymbolTools
             if (maxItemsPerSymbol < 1)
                 throw new ArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
 
+            ParameterValidation.ValidateBulkSize(symbols.Length, 50, nameof(symbols));
+
             var results = await referenceService.FindReferencesBulkAsync(workspaceId, symbols, includeDefinition, c);
 
             // Apply the per-symbol cap + summary stripping BEFORE assembling the outer envelope.

@@ -351,6 +351,94 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FindReferencesBulk_MoreThan50Symbols_Throws()
+    {
+        var symbols = Enumerable.Range(0, 51)
+            .Select(_ => new BulkSymbolLocator(SymbolHandle: null, MetadataName: "SampleLib.IAnimal",
+                FilePath: null, Line: null, Column: null))
+            .ToArray();
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: false,
+            summary: false,
+            maxItemsPerSymbol: 100,
+            ct: CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task GetComplexityMetrics_NegativeLimit_Throws()
+    {
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => AdvancedAnalysisTools.GetComplexityMetrics(
+            WorkspaceExecutionGate,
+            CodeMetricsService,
+            WorkspaceId,
+            filePath: null,
+            filePaths: null,
+            projectName: "SampleLib",
+            minComplexity: 1,
+            limit: -5,
+            ct: CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task FindConsumers_Limit_Caps_And_Reports_HasMore()
+    {
+        var pagedJson = await ConsumerAnalysisTools.FindConsumers(
+            WorkspaceExecutionGate,
+            ConsumerAnalysisService,
+            WorkspaceId,
+            metadataName: "SampleLib.IAnimal",
+            offset: 0,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        using var pagedDoc = JsonDocument.Parse(pagedJson);
+        var root = pagedDoc.RootElement;
+        Assert.AreEqual(1, root.GetProperty("consumers").GetArrayLength(),
+            "limit=1 must cap the returned consumers array to a single entry.");
+        Assert.AreEqual(1, root.GetProperty("limit").GetInt32());
+        Assert.AreEqual(0, root.GetProperty("offset").GetInt32());
+        var total = root.GetProperty("totals").GetProperty("consumers").GetInt32();
+        Assert.IsTrue(total >= 3, $"IAnimal should report >=3 total consumers, got {total}.");
+        Assert.IsTrue(root.GetProperty("hasMore").GetBoolean(),
+            "With >1 total consumers and limit=1, hasMore must be true.");
+    }
+
+    [TestMethod]
+    public async Task FindConsumers_Offset_Skips_Correctly()
+    {
+        var firstPage = await ConsumerAnalysisTools.FindConsumers(
+            WorkspaceExecutionGate,
+            ConsumerAnalysisService,
+            WorkspaceId,
+            metadataName: "SampleLib.IAnimal",
+            offset: 0,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        var secondPage = await ConsumerAnalysisTools.FindConsumers(
+            WorkspaceExecutionGate,
+            ConsumerAnalysisService,
+            WorkspaceId,
+            metadataName: "SampleLib.IAnimal",
+            offset: 1,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        using var firstDoc = JsonDocument.Parse(firstPage);
+        using var secondDoc = JsonDocument.Parse(secondPage);
+
+        var firstName = firstDoc.RootElement.GetProperty("consumers")[0].GetProperty("typeName").GetString();
+        var secondName = secondDoc.RootElement.GetProperty("consumers")[0].GetProperty("typeName").GetString();
+        Assert.AreNotEqual(firstName, secondName,
+            "offset=1 must skip the first consumer returned at offset=0.");
+    }
+
+    [TestMethod]
     public async Task Relationship_And_Cohesion_Tools_Expose_New_Limit_And_Interface_Flags()
     {
         var iAnimalPath = FindDocumentPath("IAnimal.cs");
