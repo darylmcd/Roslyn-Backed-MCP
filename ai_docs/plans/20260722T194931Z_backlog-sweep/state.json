@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-07-22T19:49:31.622Z",
-  "backlogSnapshot": "2026-07-20T14:32:12Z",
+  "backlogSnapshot": "2026-07-23T02:27:16Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -332,7 +332,7 @@
     {
       "id": "analysis-type-traversal-enumeration-helper",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "analysis-type-traversal-enumeration-helper"
       ],
@@ -357,10 +357,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/analysis-type-traversal-enumeration-helper",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1107",
+      "mergedAt": "2026-07-23T02:27:07Z",
       "notes": null,
       "fileSetHash": "24ccb65af7fda7a8430434d2418e101f799886809418c84501a0b1fca14456e6",
       "stanzaHash": "cdea525de935b0354da87cfe1b033547dd8661691190f90df0d975b9d8ce6530",
@@ -496,5 +496,7 @@
   "planHash": "0ce0a296fee10768f92cb7d779b00e87cbc6919744e708ebc25e7b0178111841",
   "backlogSnapshotHash": "d3512dbc00c9c2385e3ef9d280e576b782bfd2b10fb9509f93c97a2877c3973b",
   "reviewedPlanHash": "0ce0a296fee10768f92cb7d779b00e87cbc6919744e708ebc25e7b0178111841",
-  "reviewedBacklogSnapshotHash": "d3512dbc00c9c2385e3ef9d280e576b782bfd2b10fb9509f93c97a2877c3973b"
+  "reviewedBacklogSnapshotHash": "d3512dbc00c9c2385e3ef9d280e576b782bfd2b10fb9509f93c97a2877c3973b",
+  "completed": true,
+  "completedAt": "2026-07-23T02:27:33.478Z"
 }

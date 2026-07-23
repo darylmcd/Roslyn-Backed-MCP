@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-23T02:01:22Z
+**updated_at:** 2026-07-23T02:27:16Z
 
 ## Agent contract
 
@@ -65,7 +65,6 @@
 | refactoringservice-persistence-extraction | Medium | — | **Extract RefactoringService's document-set persistence logic** — move the ~210-line PersistDocumentSetChangesAsync block into a standalone type; wire for reuse by EditService/ProjectMutationService if needed. [type: refactor] [source: 2026-07-09 sweep #1039 follow-on] | M | items/refactoringservice-persistence-extraction.md |
 | `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 | `workspace-restore-race-network-test-determinism` | Medium | — | **Stabilize the network restore-race regression** — derive package-version mutations from the live fixture and prevent temp-copy lifetime races. [type: test] [source: backlog-sweep-20260713] | S | items/workspace-restore-race-network-test-determinism.md |
-| `analysis-type-traversal-enumeration-helper` | Medium | — | **Share complete Roslyn type enumeration** — add RoslynSymbolTraversal and migrate impact, coupling, and symbol search to its lazy arbitrary-depth walk. [type: bug] [source: backlog-sweep-20260716-review] | M | items/analysis-type-traversal-enumeration-helper.md |
 | `analysis-containing-type-helper-adoption` | Medium | analysis-type-traversal-enumeration-helper | **Share containing-type resolution** — add one nearest-enclosing type helper and migrate coupling/consumer analysis off duplicate ancestor walks. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/analysis-containing-type-helper-adoption.md |
 | `client-root-path-validator-complexity-extraction` | Medium | — | **Simplify sanctioned-root matching** — extract lazy allowed-root enumeration, one-level parent widening, and separator-bounded root matching. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/client-root-path-validator-complexity-extraction.md |
 | `prompt-shim-parameter-binding-complexity-extraction` | Medium | — | **Simplify prompt parameter binding** — replace the no-op async binder with synchronous parse, required, service/default, and deserialize helpers. [type: refactor] [source: backlog-sweep-20260716-review] | S | items/prompt-shim-parameter-binding-complexity-extraction.md |
