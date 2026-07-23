@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-23T00:30:29Z
+**updated_at:** 2026-07-23T01:07:02Z
 
 ## Agent contract
 
@@ -65,7 +65,6 @@
 | refactoringservice-persistence-extraction | Medium | — | **Extract RefactoringService's document-set persistence logic** — move the ~210-line PersistDocumentSetChangesAsync block into a standalone type; wire for reuse by EditService/ProjectMutationService if needed. [type: refactor] [source: 2026-07-09 sweep #1039 follow-on] | M | items/refactoringservice-persistence-extraction.md |
 | `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 | `workspace-restore-race-network-test-determinism` | Medium | — | **Stabilize the network restore-race regression** — derive package-version mutations from the live fixture and prevent temp-copy lifetime races. [type: test] [source: backlog-sweep-20260713] | S | items/workspace-restore-race-network-test-determinism.md |
-| `scaffolding-single-test-collaborator-extraction` | Medium | scaffolding-type-collaborator-extraction | **Extract single-test scaffolding collaborator** — move single-test orchestration/sampling into SingleTestScaffolder and establish shared rendering support for batch code. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/scaffolding-single-test-collaborator-extraction.md |
 | `scaffolding-batch-first-test-collaborator-extraction` | Medium | scaffolding-single-test-collaborator-extraction | **Extract batch and first-test scaffolding collaborator** — move batch/first-test workflows and state into BatchTestScaffolder while preserving one compilation per project. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/scaffolding-batch-first-test-collaborator-extraction.md |
 | `scaffolding-hotspot-complexity-reduction` | Medium | scaffolding-batch-first-test-collaborator-extraction | **Reduce remaining scaffolding hotspots** — replace BuildTestContent positional parameters with a request record and split TrimUsings/BuildArgExpression branches. [type: refactor] [source: backlog-sweep-20260716-review] | M | items/scaffolding-hotspot-complexity-reduction.md |
 | `analysis-type-traversal-enumeration-helper` | Medium | — | **Share complete Roslyn type enumeration** — add RoslynSymbolTraversal and migrate impact, coupling, and symbol search to its lazy arbitrary-depth walk. [type: bug] [source: backlog-sweep-20260716-review] | M | items/analysis-type-traversal-enumeration-helper.md |
