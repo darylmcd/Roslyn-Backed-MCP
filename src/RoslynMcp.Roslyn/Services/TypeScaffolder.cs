@@ -9,8 +9,24 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed partial class ScaffoldingService
+/// <summary>
+/// Type-scaffolding collaborator extracted from <see cref="ScaffoldingService"/>: owns the
+/// <c>scaffold_type</c> preview path — interface-candidate collection, interface-member
+/// resolution, member-stub rendering, and type-file content assembly. Constructed and held
+/// privately by the <see cref="ScaffoldingService"/> facade (not DI-registered); its
+/// dependencies are <see cref="IWorkspaceManager"/> and <see cref="IFileOperationService"/>.
+/// </summary>
+internal sealed class TypeScaffolder
 {
+    private readonly IWorkspaceManager _workspace;
+    private readonly IFileOperationService _fileOperationService;
+
+    public TypeScaffolder(IWorkspaceManager workspace, IFileOperationService fileOperationService)
+    {
+        _workspace = workspace;
+        _fileOperationService = fileOperationService;
+    }
+
     public async Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(string workspaceId, ScaffoldTypeDto request, CancellationToken ct)
     {
         IdentifierValidation.ThrowIfInvalidIdentifier(request.TypeName, "type name");
@@ -33,6 +49,42 @@ public sealed partial class ScaffoldingService
             return preview with { Warnings = interfaceResolution.Warnings };
         }
         return preview;
+    }
+
+    /// <summary>
+    /// Facade-independent copy of <c>ScaffoldingService.ResolveProject</c> so the collaborator
+    /// does not back-reference the facade. Kept as a deliberate ~4-line duplication (flagged in
+    /// the extraction plan) rather than a shared helper.
+    /// </summary>
+    private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
+    {
+        return _workspace.GetStatus(workspaceId).Projects.FirstOrDefault(project =>
+                   string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
+               ?? throw new InvalidOperationException($"Project not found: {projectName}");
+    }
+
+    /// <summary>
+    /// Picks the folder segments under the project root for a scaffolded file. When the
+    /// namespace starts with the project name (the conventional case), strip that prefix and
+    /// use the rest as folder names. Otherwise, use the full namespace path so that an
+    /// explicit \"SomeOther.Sub\" namespace lands in \"SomeOther/Sub/\" instead of the project
+    /// root. Previously the namespace-doesn't-start-with-project-name case fell through to
+    /// the project root, which mismatched the expectation that scaffolded files live under
+    /// a folder matching their namespace.
+    /// </summary>
+    private static IReadOnlyList<string> ResolveFolderSegmentsForNamespace(string typeNamespace, string projectName)
+    {
+        if (string.IsNullOrWhiteSpace(typeNamespace) || string.Equals(typeNamespace, projectName, StringComparison.Ordinal))
+        {
+            return Array.Empty<string>();
+        }
+
+        var workingNamespace = typeNamespace.StartsWith(projectName + ".", StringComparison.Ordinal)
+            ? typeNamespace[(projectName.Length + 1)..]
+            : typeNamespace;
+
+        return workingNamespace.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     /// <summary>
@@ -215,9 +267,9 @@ public sealed partial class ScaffoldingService
 
         if (member is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary)
         {
-            CollectNamespaces(method.ReturnType, requiredUsings);
+            ScaffoldingService.CollectNamespaces(method.ReturnType, requiredUsings);
             foreach (var p in method.Parameters)
-                CollectNamespaces(p.Type, requiredUsings);
+                ScaffoldingService.CollectNamespaces(p.Type, requiredUsings);
 
             var typeParams = method.TypeParameters.Length == 0
                 ? string.Empty
@@ -238,7 +290,7 @@ public sealed partial class ScaffoldingService
 
         if (member is IPropertySymbol property && !property.IsIndexer)
         {
-            CollectNamespaces(property.Type, requiredUsings);
+            ScaffoldingService.CollectNamespaces(property.Type, requiredUsings);
             var type = property.Type.ToMinimalDisplay();
             var accessors = new List<string>();
             if (property.GetMethod is not null) accessors.Add("get => throw new NotImplementedException();");
@@ -254,7 +306,7 @@ public sealed partial class ScaffoldingService
 
         if (member is IEventSymbol evt)
         {
-            CollectNamespaces(evt.Type, requiredUsings);
+            ScaffoldingService.CollectNamespaces(evt.Type, requiredUsings);
             var type = evt.Type.ToMinimalDisplay();
             return
                 $"    public event {type}? {evt.Name}\n" +
@@ -349,5 +401,19 @@ public sealed partial class ScaffoldingService
             : interfaceResolution.MemberStubs;
 
         return $"{usingsBlock}namespace {typeNamespace};\n\n{modifier} {typeKeyword} {request.TypeName}{inheritanceClause}\n{{\n{body}}}\n";
+    }
+
+    /// <summary>
+    /// Resolution result for interface auto-implementation: the textual member stubs to inject
+    /// into the class body, plus the <c>using</c> namespaces referenced by those stubs, plus
+    /// any warnings emitted during resolution.
+    /// </summary>
+    private sealed record InterfaceResolutionResult(
+        string MemberStubs,
+        IReadOnlyCollection<string> RequiredUsings,
+        IReadOnlyList<string> Warnings)
+    {
+        public static InterfaceResolutionResult Empty { get; } =
+            new(string.Empty, Array.Empty<string>(), Array.Empty<string>());
     }
 }

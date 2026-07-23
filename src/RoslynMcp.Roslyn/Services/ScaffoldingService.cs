@@ -26,6 +26,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     private readonly IFileOperationService _fileOperationService;
     private readonly Contracts.IPreviewStore _previewStore;
     private readonly ILogger<ScaffoldingService>? _logger;
+    private readonly TypeScaffolder _typeScaffolder;
 
     public ScaffoldingService(
         IWorkspaceManager workspace,
@@ -37,30 +38,15 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         _fileOperationService = fileOperationService;
         _previewStore = previewStore;
         _logger = logger;
+        _typeScaffolder = new TypeScaffolder(workspace, fileOperationService);
     }
 
     /// <summary>
-    /// Picks the folder segments under the project root for a scaffolded file. When the
-    /// namespace starts with the project name (the conventional case), strip that prefix and
-    /// use the rest as folder names. Otherwise, use the full namespace path so that an
-    /// explicit \"SomeOther.Sub\" namespace lands in \"SomeOther/Sub/\" instead of the project
-    /// root. Previously the namespace-doesn't-start-with-project-name case fell through to
-    /// the project root, which mismatched the expectation that scaffolded files live under
-    /// a folder matching their namespace.
+    /// Delegates <c>scaffold_type</c> preview to the <see cref="TypeScaffolder"/> collaborator.
+    /// The <see cref="IScaffoldingService"/> facade contract and DI lifetime are unchanged.
     /// </summary>
-    private static IReadOnlyList<string> ResolveFolderSegmentsForNamespace(string typeNamespace, string projectName)
-    {
-        if (string.IsNullOrWhiteSpace(typeNamespace) || string.Equals(typeNamespace, projectName, StringComparison.Ordinal))
-        {
-            return Array.Empty<string>();
-        }
-
-        var workingNamespace = typeNamespace.StartsWith(projectName + ".", StringComparison.Ordinal)
-            ? typeNamespace[(projectName.Length + 1)..]
-            : typeNamespace;
-
-        return workingNamespace.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
+    public Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(string workspaceId, ScaffoldTypeDto request, CancellationToken ct) =>
+        _typeScaffolder.PreviewScaffoldTypeAsync(workspaceId, request, ct);
 
     private sealed record BatchScaffoldContext(
         ProjectStatusDto Project,
@@ -527,20 +513,12 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     }
 
     /// <summary>
-    /// Resolution result for interface auto-implementation: the textual member stubs to inject
-    /// into the class body, plus the <c>using</c> namespaces referenced by those stubs, plus
-    /// any warnings emitted during resolution.
+    /// Collects the namespaces referenced by <paramref name="type"/> (its containing namespace,
+    /// plus generic type-argument and array-element namespaces) into <paramref name="requiredUsings"/>.
+    /// Widened to <c>internal</c> so the extracted <see cref="TypeScaffolder"/> collaborator can
+    /// reuse it without back-referencing the facade.
     /// </summary>
-    private sealed record InterfaceResolutionResult(
-        string MemberStubs,
-        IReadOnlyCollection<string> RequiredUsings,
-        IReadOnlyList<string> Warnings)
-    {
-        public static InterfaceResolutionResult Empty { get; } =
-            new(string.Empty, Array.Empty<string>(), Array.Empty<string>());
-    }
-
-    private static void CollectNamespaces(ITypeSymbol type, HashSet<string> requiredUsings)
+    internal static void CollectNamespaces(ITypeSymbol type, HashSet<string> requiredUsings)
     {
         if (type is null) return;
         var ns = type.ContainingNamespace;
