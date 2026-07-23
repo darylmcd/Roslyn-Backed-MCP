@@ -260,23 +260,11 @@ public sealed class CodeActionService : ICodeActionService
         return TextSpan.FromBounds(startPosition, Math.Max(startPosition, lineEnd));
     }
 
-    private static Assembly? LoadCSharpFeaturesAssembly()
-    {
-        try
-        {
-            return Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features");
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return null;
-        }
-    }
-
     private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()
     {
         try
         {
-            var featuresAssembly = LoadCSharpFeaturesAssembly();
+            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
             if (featuresAssembly is null)
             {
                 _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code fix providers");
@@ -308,7 +296,7 @@ public sealed class CodeActionService : ICodeActionService
     {
         try
         {
-            var featuresAssembly = LoadCSharpFeaturesAssembly();
+            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
             if (featuresAssembly is null)
             {
                 _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code refactoring providers");

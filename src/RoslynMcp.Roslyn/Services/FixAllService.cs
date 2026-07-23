@@ -419,23 +419,11 @@ public sealed class FixAllService : IFixAllService
         return [..set];
     }
 
-    private static Assembly? LoadFeaturesAssembly()
-    {
-        try
-        {
-            return Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features");
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return null;
-        }
-    }
-
     private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()
     {
         try
         {
-            var featuresAssembly = LoadFeaturesAssembly();
+            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
             if (featuresAssembly is null)
             {
                 _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly");
@@ -473,7 +461,7 @@ public sealed class FixAllService : IFixAllService
     {
         try
         {
-            var featuresAssembly = LoadFeaturesAssembly();
+            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
             if (featuresAssembly is null) return [];
 
             var analyzers = featuresAssembly.GetTypes()
