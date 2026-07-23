@@ -252,6 +252,93 @@ public sealed class Bar { }
     }
 
     [TestMethod]
+    public void BuildArgExpression_CollectionArgs_EmitEmptyArray()
+    {
+        // Pins the generic-collection branch of BuildArgExpression (extracted into
+        // TryBuildCollectionArgExpression): IEnumerable<T>/ICollection<T>/IReadOnlyCollection<T>/
+        // IList<T>/IReadOnlyList<T> ctor params must emit `System.Array.Empty<T>()`, not
+        // `default(T)` (which throws NRE on first use for a non-null collection interface).
+        var source = """
+namespace Acme;
+
+using System.Collections.Generic;
+
+public sealed class Consumer
+{
+    public Consumer(
+        IEnumerable<int> a,
+        ICollection<string> b,
+        IReadOnlyCollection<int> c,
+        IList<string> d,
+        IReadOnlyList<int> e) { }
+}
+""";
+        var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source);
+        var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
+            "Test",
+            [tree],
+            [
+                Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Collections.Generic.IEnumerable<>).Assembly.Location),
+            ]);
+        var consumer = compilation.GetTypeByMetadataName("Acme.Consumer")!;
+        var p = consumer.InstanceConstructors.Single(c => c.Parameters.Length == 5).Parameters;
+
+        Assert.AreEqual("System.Array.Empty<int>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[0].Type),
+            "IEnumerable<int> should emit System.Array.Empty<int>().");
+        Assert.AreEqual("System.Array.Empty<string>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[1].Type),
+            "ICollection<string> should emit System.Array.Empty<string>().");
+        Assert.AreEqual("System.Array.Empty<int>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[2].Type),
+            "IReadOnlyCollection<int> should emit System.Array.Empty<int>().");
+        Assert.AreEqual("System.Array.Empty<string>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[3].Type),
+            "IList<string> should emit System.Array.Empty<string>().");
+        Assert.AreEqual("System.Array.Empty<int>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[4].Type),
+            "IReadOnlyList<int> should emit System.Array.Empty<int>().");
+    }
+
+    [TestMethod]
+    public void BuildArgExpression_DictionaryArgs_EmitNewDictionary()
+    {
+        // Pins the generic-dictionary branch of BuildArgExpression (extracted into
+        // TryBuildDictionaryArgExpression): IDictionary<K,V>/IReadOnlyDictionary<K,V> ctor params
+        // must emit `new System.Collections.Generic.Dictionary<K, V>()`, not `default(T)`.
+        var source = """
+namespace Acme;
+
+using System.Collections.Generic;
+
+public sealed class Consumer
+{
+    public Consumer(
+        IDictionary<string, int> a,
+        IReadOnlyDictionary<string, int> b) { }
+}
+""";
+        var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source);
+        var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
+            "Test",
+            [tree],
+            [
+                Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(System.Collections.Generic.IDictionary<,>).Assembly.Location),
+            ]);
+        var consumer = compilation.GetTypeByMetadataName("Acme.Consumer")!;
+        var p = consumer.InstanceConstructors.Single(c => c.Parameters.Length == 2).Parameters;
+
+        Assert.AreEqual("new System.Collections.Generic.Dictionary<string, int>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[0].Type),
+            "IDictionary<string, int> should emit new Dictionary<string, int>().");
+        Assert.AreEqual("new System.Collections.Generic.Dictionary<string, int>()",
+            RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(p[1].Type),
+            "IReadOnlyDictionary<string, int> should emit new Dictionary<string, int>().");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Type_NamespaceNotMatchingProject_GetsFolderStructure()
     {
         // BUG fix (scaffold-defaults-improvements / b): when the namespace does not start

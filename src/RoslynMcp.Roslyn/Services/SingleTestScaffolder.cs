@@ -84,10 +84,10 @@ internal sealed class SingleTestScaffolder
             testNameSuggestionProvider,
             ct).ConfigureAwait(false);
 
-        var content = TestScaffoldRenderer.BuildTestContent(
+        var content = TestScaffoldRenderer.BuildTestContent(new BuildTestContentRequest(
             testNamespace, request, simpleTypeName, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
             typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern, sampledTestName.MethodName,
-            isTargetInaccessible: typeInfo.IsTargetInaccessible);
+            IsTargetInaccessible: typeInfo.IsTargetInaccessible));
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
         var combinedWarnings = CombineWarnings(typeInfo.Warnings, siblingWarnings, sampledTestName.Warning);
@@ -710,33 +710,72 @@ internal static class TestScaffoldRenderer
             return "string.Empty";
         }
 
-        if (parameterType is INamedTypeSymbol named && named.IsGenericType)
+        return TryBuildCollectionArgExpression(parameterType)
+            ?? TryBuildDictionaryArgExpression(parameterType)
+            ?? BuildInterfaceOrAbstractArgExpression(parameterType, displayName, constructibleDisplayName, nsubstituteAvailable)
+            ?? BuildConcreteArgExpression(parameterType, displayName, constructibleDisplayName, nsubstituteAvailable)
+            ?? $"default({displayName})";
+    }
+
+    /// <summary>
+    /// Empty collection interfaces (<c>IEnumerable&lt;T&gt;</c>, <c>ICollection&lt;T&gt;</c>,
+    /// <c>IReadOnlyCollection&lt;T&gt;</c>, <c>IList&lt;T&gt;</c>, <c>IReadOnlyList&lt;T&gt;</c>) get
+    /// <c>Array.Empty&lt;T&gt;()</c>. Returns <c>null</c> when the type is not one of those families.
+    /// </summary>
+    private static string? TryBuildCollectionArgExpression(ITypeSymbol parameterType)
+    {
+        if (parameterType is not INamedTypeSymbol named || !named.IsGenericType)
         {
-            var openGenericName = named.ConstructedFrom.ToDisplayString();
-
-            if (openGenericName is "System.Collections.Generic.IEnumerable<T>"
-                or "System.Collections.Generic.ICollection<T>"
-                or "System.Collections.Generic.IReadOnlyCollection<T>"
-                or "System.Collections.Generic.IList<T>"
-                or "System.Collections.Generic.IReadOnlyList<T>")
-            {
-                var elementType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-                return $"System.Array.Empty<{elementType}>()";
-            }
-
-            if (openGenericName is "System.Collections.Generic.IDictionary<TKey, TValue>"
-                or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
-            {
-                var keyType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-                var valueType = named.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-                return $"new System.Collections.Generic.Dictionary<{keyType}, {valueType}>()";
-            }
+            return null;
         }
 
-        // Interfaces and abstract classes cannot be instantiated via `default(T)` in a way that
-        // produces a usable collaborator — `default` gives null and the first call throws NRE.
-        // When the test project references NSubstitute we emit `Substitute.For<T>()`; otherwise
-        // we emit a TODO placeholder so the caller notices and supplies a real/faked instance.
+        var openGenericName = named.ConstructedFrom.ToDisplayString();
+        if (openGenericName is "System.Collections.Generic.IEnumerable<T>"
+            or "System.Collections.Generic.ICollection<T>"
+            or "System.Collections.Generic.IReadOnlyCollection<T>"
+            or "System.Collections.Generic.IList<T>"
+            or "System.Collections.Generic.IReadOnlyList<T>")
+        {
+            var elementType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+            return $"System.Array.Empty<{elementType}>()";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Dictionary interfaces (<c>IDictionary&lt;K,V&gt;</c>, <c>IReadOnlyDictionary&lt;K,V&gt;</c>)
+    /// get <c>new Dictionary&lt;K,V&gt;()</c>. Returns <c>null</c> when the type is not a dictionary.
+    /// </summary>
+    private static string? TryBuildDictionaryArgExpression(ITypeSymbol parameterType)
+    {
+        if (parameterType is not INamedTypeSymbol named || !named.IsGenericType)
+        {
+            return null;
+        }
+
+        var openGenericName = named.ConstructedFrom.ToDisplayString();
+        if (openGenericName is "System.Collections.Generic.IDictionary<TKey, TValue>"
+            or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+        {
+            var keyType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+            var valueType = named.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+            return $"new System.Collections.Generic.Dictionary<{keyType}, {valueType}>()";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Interfaces and abstract classes cannot be instantiated via <c>default(T)</c> in a way that
+    /// produces a usable collaborator — <c>default</c> gives null and the first call throws NRE.
+    /// When the test project references NSubstitute we emit <c>Substitute.For&lt;T&gt;()</c>;
+    /// otherwise we emit a TODO placeholder so the caller notices and supplies a real/faked
+    /// instance. Returns <c>null</c> when the type is neither an interface nor an abstract class.
+    /// </summary>
+    private static string? BuildInterfaceOrAbstractArgExpression(
+        ITypeSymbol parameterType, string displayName, string constructibleDisplayName, bool nsubstituteAvailable)
+    {
         if (parameterType.TypeKind == TypeKind.Interface ||
             (parameterType.TypeKind == TypeKind.Class && parameterType.IsAbstract))
         {
@@ -745,28 +784,34 @@ internal static class TestScaffoldRenderer
                 : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
         }
 
-        // Concrete class with an accessible parameterless ctor → safe to `new T()`. Structs go
-        // through `default(T)` (the existing fallback).
-        if (parameterType is INamedTypeSymbol concrete &&
-            concrete.TypeKind == TypeKind.Class &&
-            !concrete.IsAbstract &&
-            HasAccessibleParameterlessCtor(concrete))
+        return null;
+    }
+
+    /// <summary>
+    /// Concrete class with an accessible parameterless ctor → safe to <c>new T()</c>. A concrete
+    /// class WITHOUT a parameterless ctor can't be safely constructed, so it emits a
+    /// <c>Substitute.For&lt;T&gt;()</c> or a TODO placeholder (previously emitted <c>default(T)</c>
+    /// silently). Returns <c>null</c> for anything that is not a concrete class (e.g. structs),
+    /// leaving the caller's terminal <c>default(T)</c> fallback in charge.
+    /// </summary>
+    private static string? BuildConcreteArgExpression(
+        ITypeSymbol parameterType, string displayName, string constructibleDisplayName, bool nsubstituteAvailable)
+    {
+        if (parameterType is not INamedTypeSymbol concrete ||
+            concrete.TypeKind != TypeKind.Class ||
+            concrete.IsAbstract)
+        {
+            return null;
+        }
+
+        if (HasAccessibleParameterlessCtor(concrete))
         {
             return $"new {constructibleDisplayName}()";
         }
 
-        // Concrete class without a parameterless ctor: can't safely construct. Emit a TODO so
-        // the caller swaps in the right factory. Previously emitted `default(T)` silently.
-        if (parameterType is INamedTypeSymbol concreteNoCtor &&
-            concreteNoCtor.TypeKind == TypeKind.Class &&
-            !concreteNoCtor.IsAbstract)
-        {
-            return nsubstituteAvailable
-                ? $"NSubstitute.Substitute.For<{constructibleDisplayName}>()"
-                : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
-        }
-
-        return $"default({displayName})";
+        return nsubstituteAvailable
+            ? $"NSubstitute.Substitute.For<{constructibleDisplayName}>()"
+            : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
     }
 
     private static bool HasAccessibleParameterlessCtor(INamedTypeSymbol type)
@@ -958,18 +1003,7 @@ internal static class TestScaffoldRenderer
         if (compilation is null || allUsings.Count == 0)
             return allUsings;
 
-        // Locate the syntax tree in the compilation. Match by absolute file path. If the
-        // sibling source isn't part of the compilation (e.g. a referenceTestFile pointing
-        // outside the loaded workspace), we conservatively keep all usings.
-        SyntaxTree? siblingTree = null;
-        if (!string.IsNullOrEmpty(sourceFilePath))
-        {
-            var fullPath = Path.GetFullPath(sourceFilePath);
-            siblingTree = compilation.SyntaxTrees.FirstOrDefault(t =>
-                !string.IsNullOrEmpty(t.FilePath) &&
-                string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
-        }
-
+        var siblingTree = TryResolveSiblingSyntaxTree(compilation, sourceFilePath);
         if (siblingTree is null)
             return allUsings;
 
@@ -986,12 +1020,39 @@ internal static class TestScaffoldRenderer
         if (compilationClassDecl is null)
             return allUsings;
 
-        // Collect every identifier-name reference in the captured surface (BaseList + ctor
-        // parameter types). Resolve each to a symbol via the semantic model and pull its
-        // ContainingNamespace. The resulting set of namespace strings is what the scaffolded
-        // file needs to bring into scope to compile.
-        var referencedNamespaces = new HashSet<string>(StringComparer.Ordinal);
+        var surfaceNodes = CollectSurfaceTypeNodes(compilationClassDecl);
+        var referencedNamespaces = ResolveReferencedNamespaces(semanticModel, surfaceNodes);
 
+        // Keep only usings whose name matches one of the referenced namespaces. Framework
+        // usings are also filtered downstream in BuildSiblingFragments — the trim here just
+        // narrows the set to namespaces semantic resolution proved are needed.
+        return allUsings.Where(u => referencedNamespaces.Contains(u)).ToList();
+    }
+
+    /// <summary>
+    /// Locates the sibling source file's syntax tree inside <paramref name="compilation"/> by
+    /// absolute file path. Returns <c>null</c> when no path is supplied or the sibling source
+    /// isn't part of the compilation (e.g. a referenceTestFile pointing outside the loaded
+    /// workspace), in which case the caller conservatively keeps all usings.
+    /// </summary>
+    private static SyntaxTree? TryResolveSiblingSyntaxTree(Compilation compilation, string? sourceFilePath)
+    {
+        if (string.IsNullOrEmpty(sourceFilePath))
+            return null;
+
+        var fullPath = Path.GetFullPath(sourceFilePath);
+        return compilation.SyntaxTrees.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(t.FilePath) &&
+            string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Collects the captured surface's type-reference nodes: the class declaration's
+    /// <c>BaseList</c> types plus the first instance constructor's parameter types. These are
+    /// the nodes semantic resolution walks to determine which namespaces the scaffold needs.
+    /// </summary>
+    private static List<SyntaxNode> CollectSurfaceTypeNodes(ClassDeclarationSyntax compilationClassDecl)
+    {
         var surfaceNodes = new List<SyntaxNode>();
         if (compilationClassDecl.BaseList is not null)
             surfaceNodes.AddRange(compilationClassDecl.BaseList.Types.Select(t => t.Type));
@@ -1008,12 +1069,23 @@ internal static class TestScaffoldRenderer
             }
         }
 
+        return surfaceNodes;
+    }
+
+    /// <summary>
+    /// Resolves every identifier-name reference in the captured <paramref name="surfaceNodes"/>
+    /// to a symbol via <paramref name="semanticModel"/> and pulls its <c>ContainingNamespace</c>.
+    /// This catches both the outer type and any generic type arguments (e.g.
+    /// <c>IClassFixture&lt;CustomWebApplicationFactory&gt;</c> resolves both
+    /// <c>IClassFixture</c> and <c>CustomWebApplicationFactory</c>). The resulting set of
+    /// namespace strings is what the scaffolded file needs to bring into scope to compile.
+    /// </summary>
+    private static HashSet<string> ResolveReferencedNamespaces(SemanticModel semanticModel, List<SyntaxNode> surfaceNodes)
+    {
+        var referencedNamespaces = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var node in surfaceNodes)
         {
-            // For each type-reference node (TypeSyntax), resolve every IdentifierNameSyntax /
-            // GenericNameSyntax descendant. This catches both the outer type and any generic
-            // type arguments (e.g. IClassFixture<CustomWebApplicationFactory> resolves both
-            // IClassFixture and CustomWebApplicationFactory).
             foreach (var nameNode in node.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
             {
                 var typeInfo = semanticModel.GetTypeInfo(nameNode).Type
@@ -1029,25 +1101,14 @@ internal static class TestScaffoldRenderer
             }
         }
 
-        // Keep only usings whose name matches one of the referenced namespaces. Framework
-        // usings are also filtered downstream in BuildSiblingFragments — the trim here just
-        // narrows the set to namespaces semantic resolution proved are needed.
-        return allUsings.Where(u => referencedNamespaces.Contains(u)).ToList();
+        return referencedNamespaces;
     }
 
-    internal static string BuildTestContent(
-        string testNamespace,
-        ScaffoldTestDto request,
-        string simpleTypeName,
-        string targetNamespace,
-        string constructorArgs,
-        string framework,
-        IMethodSymbol? targetMethod,
-        INamedTypeSymbol? matchedType,
-        SiblingTestPattern? siblingPattern,
-        string? suggestedMethodName = null,
-        bool isTargetInaccessible = false)
+    internal static string BuildTestContent(BuildTestContentRequest content)
     {
+        var (testNamespace, request, simpleTypeName, targetNamespace, constructorArgs, framework,
+            targetMethod, matchedType, siblingPattern, suggestedMethodName, isTargetInaccessible) = content;
+
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
             : suggestedMethodName ?? $"{request.TargetMethodName}_Needs_Test";
@@ -1572,3 +1633,23 @@ internal sealed record SiblingInferenceResult(
 {
     public static SiblingInferenceResult None { get; } = new(null, Array.Empty<string>());
 }
+
+/// <summary>
+/// Request bundle for <see cref="TestScaffoldRenderer.BuildTestContent(BuildTestContentRequest)"/>.
+/// Replaces the previous 11 positional parameters — the two call sites (single-test and batch)
+/// were already leaning on trailing named-argument workarounds because the positional order was
+/// unmanageable. Positional-record shape so the renderer can deconstruct it into the original
+/// locals, keeping the rendering body byte-identical.
+/// </summary>
+internal sealed record BuildTestContentRequest(
+    string TestNamespace,
+    ScaffoldTestDto Request,
+    string SimpleTypeName,
+    string TargetNamespace,
+    string ConstructorArgs,
+    string Framework,
+    IMethodSymbol? TargetMethod,
+    INamedTypeSymbol? MatchedType,
+    SiblingTestPattern? SiblingPattern,
+    string? SuggestedMethodName = null,
+    bool IsTargetInaccessible = false);

@@ -183,7 +183,7 @@ internal sealed class BatchTestScaffolder
         // Batch scaffolding intentionally does NOT apply sibling-pattern inference — a batch
         // run typically targets a homogenous set of production types and callers want the
         // generic scaffold. Sibling inference is available via per-target scaffold_test_preview.
-        var content = TestScaffoldRenderer.BuildTestContent(
+        var content = TestScaffoldRenderer.BuildTestContent(new BuildTestContentRequest(
             context.TestNamespace,
             dto,
             simpleTypeName,
@@ -192,8 +192,8 @@ internal sealed class BatchTestScaffolder
             context.Framework,
             typeInfo.TargetMethod,
             typeInfo.MatchedType,
-            siblingPattern: null,
-            isTargetInaccessible: typeInfo.IsTargetInaccessible);
+            SiblingPattern: null,
+            IsTargetInaccessible: typeInfo.IsTargetInaccessible));
 
         var testProject = state.Accumulator.GetProject(context.TestProject.Id)
             ?? throw new InvalidOperationException("Test project disappeared from working solution snapshot.");
