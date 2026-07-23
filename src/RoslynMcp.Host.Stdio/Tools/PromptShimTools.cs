@@ -41,7 +41,7 @@ public static class PromptShimTools
                 nameof(promptName));
         }
 
-        var parameterValues = await BuildParameterValuesAsync(method, services, parametersJson, ct).ConfigureAwait(false);
+        var parameterValues = BuildParameterValues(method, services, parametersJson, ct);
 
         object? result;
         try
@@ -109,17 +109,32 @@ public static class PromptShimTools
         return names;
     }
 
-    private static async Task<object?[]> BuildParameterValuesAsync(
+    private static object?[] BuildParameterValues(
         MethodInfo method, IServiceProvider services, string parametersJson, CancellationToken ct)
     {
-        await Task.CompletedTask.ConfigureAwait(false);
+        using var doc = ParseParametersDocument(parametersJson);
+        var rootObj = doc.RootElement;
 
-        // dr-9-7-bug-json-parse-surfaces-stack-trace: a raw JsonException bubbling out of this
-        // method lands in ToolErrorHandler.ClassifyError without the InvocationWrapper guard,
-        // so it falls through to "InternalError" and the client sees a stack trace. Wrap the
-        // top-level parse + each per-parameter deserialize and re-throw as ArgumentException —
-        // that maps to "InvalidArgument" via the exact-type handler dictionary and the message
-        // tells the agent exactly which parameter broke.
+        var parameters = method.GetParameters();
+        EnsureRequiredParametersPresent(method.Name, parameters, rootObj);
+
+        var values = new object?[parameters.Length];
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            values[i] = ResolveParameterValue(parameters[i], services, rootObj, ct);
+        }
+        return values;
+    }
+
+    // dr-9-7-bug-json-parse-surfaces-stack-trace: a raw JsonException bubbling out of the binder
+    // lands in ToolErrorHandler.ClassifyError without the InvocationWrapper guard, so it falls
+    // through to "InternalError" and the client sees a stack trace. Wrap the top-level parse (and
+    // each per-parameter deserialize, in DeserializeParameterValue) and re-throw as
+    // ArgumentException — that maps to "InvalidArgument" via the exact-type handler dictionary and
+    // the message tells the agent exactly which parameter broke. Callers own disposal of the
+    // returned JsonDocument on the success path; the non-object branch disposes before throwing.
+    private static JsonDocument ParseParametersDocument(string parametersJson)
+    {
         JsonDocument doc;
         try
         {
@@ -129,71 +144,66 @@ public static class PromptShimTools
         {
             throw new ArgumentException(
                 $"parametersJson is not valid JSON: {ex.Message}. Supply a JSON object (e.g. {{\"workspaceId\":\"…\"}}); use \"{{}}\" to omit all parameters.",
-                nameof(parametersJson),
+                "parametersJson",
                 ex);
         }
 
-        using (doc)
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
         {
-            var rootObj = doc.RootElement;
-            if (rootObj.ValueKind != JsonValueKind.Object)
-                throw new ArgumentException("parametersJson must be a JSON object.", nameof(parametersJson));
+            doc.Dispose();
+            throw new ArgumentException("parametersJson must be a JSON object.", "parametersJson");
+        }
 
-            var parameters = method.GetParameters();
-            var missingRequired = parameters
-                .Where(p => p.ParameterType != typeof(CancellationToken))
-                .Where(p => !IsServiceType(p.ParameterType))
-                .Where(p => !p.HasDefaultValue)
-                .Where(p => !rootObj.TryGetProperty(p.Name!, out _))
-                .Select(p => p.Name!)
-                .ToArray();
-            if (missingRequired.Length > 0)
-            {
-                throw new ArgumentException(
-                    $"Prompt '{method.Name}' is missing required parameters in parametersJson: {string.Join(", ", missingRequired)}.",
-                    nameof(parametersJson));
-            }
+        return doc;
+    }
 
-            var values = new object?[parameters.Length];
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var p = parameters[i];
-                if (p.ParameterType == typeof(CancellationToken))
-                {
-                    values[i] = ct;
-                    continue;
-                }
-                if (IsServiceType(p.ParameterType))
-                {
-                    values[i] = services.GetRequiredService(p.ParameterType);
-                    continue;
-                }
-                if (rootObj.TryGetProperty(p.Name!, out var element))
-                {
-                    try
-                    {
-                        values[i] = JsonSerializer.Deserialize(element.GetRawText(), p.ParameterType);
-                    }
-                    catch (JsonException ex)
-                    {
-                        throw new ArgumentException(
-                            $"parametersJson property '{p.Name}' could not be deserialized into {p.ParameterType.Name}: {ex.Message}.",
-                            nameof(parametersJson),
-                            ex);
-                    }
-                }
-                else if (p.HasDefaultValue)
-                {
-                    values[i] = p.DefaultValue;
-                }
-                else
-                {
-                    throw new ArgumentException(
-                        $"Prompt parameter '{p.Name}' (type {p.ParameterType.Name}) is required but missing from parametersJson.",
-                        nameof(parametersJson));
-                }
-            }
-            return values;
+    private static void EnsureRequiredParametersPresent(
+        string methodName, ParameterInfo[] parameters, JsonElement rootObj)
+    {
+        var missingRequired = parameters
+            .Where(p => p.ParameterType != typeof(CancellationToken))
+            .Where(p => !IsServiceType(p.ParameterType))
+            .Where(p => !p.HasDefaultValue)
+            .Where(p => !rootObj.TryGetProperty(p.Name!, out _))
+            .Select(p => p.Name!)
+            .ToArray();
+        if (missingRequired.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Prompt '{methodName}' is missing required parameters in parametersJson: {string.Join(", ", missingRequired)}.",
+                "parametersJson");
+        }
+    }
+
+    private static object? ResolveParameterValue(
+        ParameterInfo p, IServiceProvider services, JsonElement rootObj, CancellationToken ct)
+    {
+        if (p.ParameterType == typeof(CancellationToken))
+            return ct;
+        if (IsServiceType(p.ParameterType))
+            return services.GetRequiredService(p.ParameterType);
+        if (rootObj.TryGetProperty(p.Name!, out var element))
+            return DeserializeParameterValue(p, element);
+        if (p.HasDefaultValue)
+            return p.DefaultValue;
+
+        throw new ArgumentException(
+            $"Prompt parameter '{p.Name}' (type {p.ParameterType.Name}) is required but missing from parametersJson.",
+            "parametersJson");
+    }
+
+    private static object? DeserializeParameterValue(ParameterInfo p, JsonElement element)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(element.GetRawText(), p.ParameterType);
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException(
+                $"parametersJson property '{p.Name}' could not be deserialized into {p.ParameterType.Name}: {ex.Message}.",
+                "parametersJson",
+                ex);
         }
     }
 
