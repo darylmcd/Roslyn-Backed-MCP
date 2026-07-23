@@ -185,6 +185,7 @@ public static class AdvancedAnalysisTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            ParameterValidation.ValidatePagination(0, limit);
             var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
             return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
         }, ct);

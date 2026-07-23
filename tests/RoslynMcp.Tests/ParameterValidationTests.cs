@@ -90,4 +90,19 @@ public class ParameterValidationTests
     public void ValidatePagination_Limit_Above_Max_Throws()
         => Assert.ThrowsExactly<ArgumentException>(
             () => ParameterValidation.ValidatePagination(0, 1001));
+
+    // ── ValidateBulkSize ──
+
+    [TestMethod]
+    public void ValidateBulkSize_Below_Max_Does_Not_Throw()
+        => ParameterValidation.ValidateBulkSize(10, 50, "symbols");
+
+    [TestMethod]
+    public void ValidateBulkSize_At_Max_Does_Not_Throw()
+        => ParameterValidation.ValidateBulkSize(50, 50, "symbols");
+
+    [TestMethod]
+    public void ValidateBulkSize_Above_Max_Throws()
+        => Assert.ThrowsExactly<ArgumentException>(
+            () => ParameterValidation.ValidateBulkSize(51, 50, "symbols"));
 }

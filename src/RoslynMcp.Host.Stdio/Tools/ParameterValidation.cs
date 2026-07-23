@@ -65,4 +65,16 @@ internal static class ParameterValidation
         if (limit > MaxLimit)
             throw new ArgumentException($"Invalid limit '{limit}'. Limit must not exceed {MaxLimit}.");
     }
+
+    /// <summary>
+    /// Validates a batch/array-size bound. Unlike <see cref="ValidatePagination"/> (an offset/limit
+    /// pair), this guards the length of a caller-supplied collection against a per-tool maximum so a
+    /// documented batch cap (e.g. "max 50") is actually enforced instead of silently accepted.
+    /// </summary>
+    public static void ValidateBulkSize(int count, int maxCount, string paramName)
+    {
+        if (count > maxCount)
+            throw new ArgumentException(
+                $"Too many items ({count}) for '{paramName}'. Must not exceed {maxCount}.", paramName);
+    }
 }
