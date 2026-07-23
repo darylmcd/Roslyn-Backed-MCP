@@ -137,7 +137,7 @@ public sealed class ImpactSweepService : IImpactSweepService
         {
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
-            foreach (var dto in compilation.GlobalNamespace.GetAllTypes(allowedKinds: TypeKind.Class))
+            foreach (var dto in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.GlobalNamespace, TypeKind.Class))
             {
                 if (SymbolEqualityComparer.Default.Equals(dto, property.ContainingType)) continue;
                 if (!IsLikelyDtoType(dto)) continue;
@@ -253,7 +253,7 @@ public sealed class ImpactSweepService : IImpactSweepService
         {
             var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
-            foreach (var type in compilation.GlobalNamespace.GetAllTypes(allowedKinds: TypeKind.Class))
+            foreach (var type in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.GlobalNamespace, TypeKind.Class))
             {
                 var name = type.Name;
                 if (!(name.EndsWith("Mapper", StringComparison.Ordinal) ||
@@ -391,33 +391,5 @@ public sealed class ImpactSweepService : IImpactSweepService
             }
         }
         return tasks;
-    }
-}
-
-internal static class NamespaceTypeEnumeration
-{
-    /// <summary>Recursive walker that yields every named type in a global namespace tree, optionally filtered by kind.</summary>
-    public static IEnumerable<INamedTypeSymbol> GetAllTypes(this INamespaceSymbol root, TypeKind? allowedKinds = null)
-    {
-        var stack = new Stack<INamespaceSymbol>();
-        stack.Push(root);
-        while (stack.Count > 0)
-        {
-            var ns = stack.Pop();
-            foreach (var member in ns.GetMembers())
-            {
-                if (member is INamespaceSymbol child) stack.Push(child);
-                else if (member is INamedTypeSymbol type)
-                {
-                    if (allowedKinds.HasValue && type.TypeKind != allowedKinds.Value) continue;
-                    yield return type;
-                    foreach (var nested in type.GetTypeMembers())
-                    {
-                        if (allowedKinds.HasValue && nested.TypeKind != allowedKinds.Value) continue;
-                        yield return nested;
-                    }
-                }
-            }
-        }
     }
 }
