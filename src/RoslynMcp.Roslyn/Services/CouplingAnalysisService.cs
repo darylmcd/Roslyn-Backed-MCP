@@ -55,7 +55,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
-            foreach (var symbol in EnumerateDeclaredTypes(compilation.Assembly.GlobalNamespace))
+            foreach (var symbol in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.Assembly.GlobalNamespace))
             {
                 if (ct.IsCancellationRequested) break;
                 if (!ShouldAnalyze(symbol, includeInterfaces)) continue;
@@ -116,35 +116,6 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             .ThenBy(r => r.FullyQualifiedName, StringComparer.Ordinal)
             .Take(limit)
             .ToList();
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateDeclaredTypes(INamespaceSymbol ns)
-    {
-        foreach (var member in ns.GetMembers())
-        {
-            if (member is INamespaceSymbol child)
-            {
-                foreach (var t in EnumerateDeclaredTypes(child))
-                    yield return t;
-            }
-            else if (member is INamedTypeSymbol type)
-            {
-                yield return type;
-                // Nested types count too — they own their own afferent/efferent graph.
-                foreach (var nested in EnumerateNestedTypes(type))
-                    yield return nested;
-            }
-        }
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateNestedTypes(INamedTypeSymbol type)
-    {
-        foreach (var nested in type.GetTypeMembers())
-        {
-            yield return nested;
-            foreach (var deeper in EnumerateNestedTypes(nested))
-                yield return deeper;
-        }
     }
 
     private static bool ShouldAnalyze(INamedTypeSymbol type, bool includeInterfaces)

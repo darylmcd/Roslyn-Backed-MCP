@@ -141,7 +141,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
         HashSet<string> seenKeys,
         CancellationToken ct)
     {
-        foreach (var typeSymbol in EnumerateNamedTypes(compilation.GlobalNamespace))
+        foreach (var typeSymbol in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.GlobalNamespace))
         {
             if (ct.IsCancellationRequested) return false;
             if (results.Count >= limit) return false;
@@ -206,24 +206,6 @@ public sealed class SymbolSearchService : ISymbolSearchService
 
         results.Add(SymbolMapper.ToDto(symbol, solution));
         return true;
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamespaceSymbol ns)
-    {
-        foreach (var member in ns.GetMembers())
-        {
-            if (member is INamespaceSymbol child)
-            {
-                foreach (var nested in EnumerateNamedTypes(child))
-                    yield return nested;
-            }
-            else if (member is INamedTypeSymbol type)
-            {
-                yield return type;
-                foreach (var nested in type.GetTypeMembers())
-                    yield return nested;
-            }
-        }
     }
 
     public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false)
