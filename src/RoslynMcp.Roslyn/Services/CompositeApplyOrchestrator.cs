@@ -77,7 +77,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                     Directory.CreateDirectory(directory);
                 }
 
-                await AtomicFileWriter.WriteAllTextAsync(mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct).ConfigureAwait(false);
+                await AtomicFileWriter.WriteAllTextAsync(mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct, _logger).ConfigureAwait(false);
                 appliedFiles.Add(mutation.FilePath);
             }
 
@@ -123,11 +123,14 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 /// so it lives on the same directory/volume as the target — a precondition for <c>File.Move</c>
 /// being atomic (a cross-volume move degrades to a non-atomic copy+delete). On any failure the
 /// orphaned <c>.tmp</c> is best-effort deleted so a failed write leaves no artifact, then the
-/// original exception is re-thrown for the caller's catch filter.
+/// original exception is re-thrown for the caller's catch filter. If an optional
+/// <paramref name="logger"/> is supplied, a failure to delete the orphaned <c>.tmp</c> is logged
+/// at Warning level (the primary write failure is still re-thrown either way) so a stray artifact
+/// left on disk leaves an observability trail instead of being silently discarded.
 /// </summary>
 internal static class AtomicFileWriter
 {
-    public static async Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+    public static async Task WriteAllTextAsync(string path, string content, CancellationToken ct, ILogger? logger = null)
     {
         var tmp = path + ".tmp";
         try
@@ -137,12 +140,12 @@ internal static class AtomicFileWriter
         }
         catch
         {
-            TryDeleteTemp(tmp);
+            TryDeleteTemp(tmp, path, logger);
             throw;
         }
     }
 
-    private static void TryDeleteTemp(string tmp)
+    private static void TryDeleteTemp(string tmp, string path, ILogger? logger)
     {
         try
         {
@@ -154,6 +157,13 @@ internal static class AtomicFileWriter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Best-effort cleanup — a stray .tmp is non-fatal and must not mask the original failure.
+            // The primary write exception is still re-thrown by the caller; this only records that the
+            // orphaned temp artifact could not be removed so it is not left on disk silently.
+            logger?.LogWarning(
+                ex,
+                "AtomicFileWriter: failed to delete orphaned temp file {TempPath} after a failed write to {TargetPath}; a stray .tmp artifact may remain on disk.",
+                tmp,
+                path);
         }
     }
 }
