@@ -462,6 +462,125 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "Prompt must direct callers to get_namespace_dependencies for full graph inspection.");
     }
 
+    // prompt-workflows-missing-test-coverage: the analysis/guided/refactoring prompt workflows
+    // below (review_complexity, cohesion_analysis, consumer_impact, guided_extract_method,
+    // refactor_and_validate, fix_all_diagnostics, guided_package_migration) had no direct test
+    // invocation — they were only exercised transitively (or, for cohesion, only at the service
+    // layer via CohesionAnalysisTests). These smoke tests call each RoslynPrompts method directly
+    // against the shared sample workspace and assert exactly one non-empty rendered PromptMessage,
+    // mirroring SuggestRefactoring_Returns_Text. No production code changes.
+
+    [TestMethod]
+    public async Task ReviewComplexity_Returns_Text()
+    {
+        var messages = (await RoslynPrompts.ReviewComplexity(
+            CodeMetricsService,
+            WorkspaceId,
+            projectName: null,
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task CohesionAnalysis_Returns_Text()
+    {
+        var messages = (await RoslynPrompts.CohesionAnalysis(
+            CohesionAnalysisService,
+            WorkspaceId,
+            projectName: null,
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task ConsumerImpact_Returns_Text()
+    {
+        // Target the `AnimalService` type-name token at AnimalService.cs:5, col 14
+        // (`public class AnimalService` — the identifier, not the `class` keyword).
+        var path = FindDocumentPath("AnimalService.cs");
+        var messages = (await RoslynPrompts.ConsumerImpact(
+            ConsumerAnalysisService,
+            WorkspaceId,
+            filePath: path,
+            line: 5,
+            column: 14,
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task GuidedExtractMethod_Returns_Text()
+    {
+        // Any small in-file statement span works — the prompt only renders instructions and
+        // formats source context; it does not perform the extraction.
+        var path = FindDocumentPath("AnimalService.cs");
+        var messages = (await RoslynPrompts.GuidedExtractMethod(
+            WorkspaceManager,
+            WorkspaceId,
+            filePath: path,
+            startLine: 27,
+            startColumn: 9,
+            endLine: 27,
+            endColumn: 30,
+            methodName: "ExtractedMethod",
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task RefactorAndValidate_Returns_Text()
+    {
+        // The prompt renders code-action + diagnostic summaries for the span; it does not apply a
+        // refactor. A single-position start with null end range is sufficient.
+        var path = FindDocumentPath("AnimalService.cs");
+        var messages = (await RoslynPrompts.RefactorAndValidate(
+            WorkspaceManager,
+            CodeActionService,
+            DiagnosticService,
+            WorkspaceId,
+            filePath: path,
+            startLine: 27,
+            startColumn: 9,
+            endLine: null,
+            endColumn: null,
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task FixAllDiagnostics_Returns_Text()
+    {
+        var messages = (await RoslynPrompts.FixAllDiagnostics(
+            DiagnosticService,
+            WorkspaceId,
+            projectName: null,
+            severityFilter: null,
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    [TestMethod]
+    public async Task GuidedPackageMigration_Returns_Text()
+    {
+        // GetNuGetDependenciesAsync is a pure MSBuild-metadata read (no network); passing a
+        // package id that no project references simply renders the empty-matches branch.
+        var messages = (await RoslynPrompts.GuidedPackageMigration(
+            NuGetDependencyService,
+            WorkspaceId,
+            oldPackageId: "Some.Package",
+            newPackageId: "Some.NewPackage",
+            newVersion: "1.0.0",
+            CancellationToken.None)).ToList();
+        Assert.AreEqual(1, messages.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
     private static string GetText(PromptMessage message) =>
         (message.Content as TextContentBlock)?.Text
         ?? throw new AssertFailedException("Expected text content.");
