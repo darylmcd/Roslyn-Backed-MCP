@@ -22,10 +22,6 @@ public static class WorkspaceTools
     private const int MaxSupportBundleChangeCap = 50;
     private const int DefaultSupportBundleDriftCap = 25;
     private const int MaxSupportBundleDriftCap = 100;
-    private const string ReadinessVerdictReady = "ready";
-    private const string ReadinessVerdictRestoreNeeded = "restore-needed";
-    private const string ReadinessVerdictBuildNeeded = "build-needed";
-    private const string ReadinessVerdictAnalyzerLimited = "analyzer-limited";
 
     [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error. Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.")]
     [McpToolMetadata("workspace", "stable", false, false,
@@ -403,13 +399,13 @@ public static class WorkspaceTools
             var status = loadedSummaries.Length == 0
                 ? "no-workspace-loaded"
                 : "workspace-id-required";
-            var report = CreateReadinessReportWithoutTarget(status, workspaceId, loadedSummaries);
+            var report = WorkspaceReadinessReportBuilder.CreateWithoutTarget(status, workspaceId, loadedSummaries);
             return Task.FromResult(JsonSerializer.Serialize(report, JsonDefaults.Indented));
         }
 
         if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
         {
-            var report = CreateReadinessReportWithoutTarget(
+            var report = WorkspaceReadinessReportBuilder.CreateWithoutTarget(
                 "workspace-not-found",
                 resolvedWorkspaceId,
                 loadedSummaries);
@@ -436,7 +432,7 @@ public static class WorkspaceTools
                     $"source_generated_documents probe was skipped after {ex.GetType().Name}; run source_generated_documents directly after resolving readiness blockers.";
             }
 
-            var report = CreateReadinessReport(
+            var report = WorkspaceReadinessReportBuilder.Create(
                 requestedWorkspaceId: workspaceId,
                 loadedWorkspaces: loadedSummaries,
                 status: status,
@@ -475,7 +471,7 @@ public static class WorkspaceTools
             var status = loadedSummaries.Length == 0
                 ? "no-workspace-loaded"
                 : "workspace-id-required";
-            var bundle = CreateSupportBundleWithoutTarget(
+            var bundle = WorkspaceSupportBundleBuilder.CreateWithoutTarget(
                 status,
                 workspaceId,
                 loadedSummaries,
@@ -486,7 +482,7 @@ public static class WorkspaceTools
 
         if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
         {
-            var bundle = CreateSupportBundleWithoutTarget(
+            var bundle = WorkspaceSupportBundleBuilder.CreateWithoutTarget(
                 "workspace-not-found",
                 resolvedWorkspaceId,
                 loadedSummaries,
@@ -511,7 +507,7 @@ public static class WorkspaceTools
                 c).ConfigureAwait(false);
             var changes = changeTracker.GetChanges(resolvedWorkspaceId);
 
-            var bundle = CreateSupportBundle(
+            var bundle = WorkspaceSupportBundleBuilder.Create(
                 requestedWorkspaceId: workspaceId,
                 loadedWorkspaces: loadedSummaries,
                 readiness: readiness,
@@ -700,411 +696,8 @@ public static class WorkspaceTools
         return loadedWorkspaces.Count == 1 ? loadedWorkspaces[0].WorkspaceId : null;
     }
 
-    private static WorkspaceReadinessReportDto CreateReadinessReport(
-        string? requestedWorkspaceId,
-        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
-        WorkspaceStatusDto status,
-        WorkspaceStatusSummaryDto summary,
-        int? sourceGeneratedDocumentCount,
-        string? sourceGeneratedProbeLimitation)
-    {
-        var verdict = ResolveReadinessVerdict(summary, status.WorkspaceDiagnostics);
-        var limitations = BuildReadinessLimitations(summary, sourceGeneratedProbeLimitation);
-        var target = new WorkspaceReadinessTargetDto(
-            WorkspaceId: summary.WorkspaceId,
-            LoadedPath: summary.LoadedPath,
-            Verdict: verdict,
-            ReadinessSummary: summary,
-            ProjectCount: status.ProjectCount,
-            DocumentCount: status.DocumentCount,
-            TestProjectCount: status.Projects.Count(project => project.IsTestProject),
-            SourceGeneratedDocumentCount: sourceGeneratedDocumentCount,
-            Signals: BuildReadinessSignals(summary, status.WorkspaceDiagnostics));
-
-        return new WorkspaceReadinessReportDto(
-            ReportKind: "first-run-readiness",
-            Status: "reported",
-            GeneratedAtUtc: DateTimeOffset.UtcNow,
-            RequestedWorkspaceId: requestedWorkspaceId,
-            LoadedWorkspaces: loadedWorkspaces,
-            Workspace: target,
-            Limitations: limitations,
-            NextRecommendedWorkflows: BuildReadinessWorkflows(verdict, summary));
-    }
-
-    private static WorkspaceReadinessReportDto CreateReadinessReportWithoutTarget(
-        string status,
-        string? requestedWorkspaceId,
-        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces)
-    {
-        WorkspaceRecommendedWorkflowDto[] workflows = status switch
-        {
-            "no-workspace-loaded" =>
-            [
-                new("workspace_load", "Load a .sln, .slnx, or .csproj path before requesting a readiness report.")
-            ],
-            "workspace-id-required" =>
-            [
-                new("workspace_readiness_report", "Pass workspaceId because multiple workspaces are loaded.")
-            ],
-            "workspace-not-found" =>
-            [
-                new("workspace_list", "Pick a current workspaceId, or call workspace_load again if the host restarted or the workspace was closed or evicted.")
-            ],
-            _ =>
-            [
-                new("workspace_readiness_report", "Retry with a valid workspaceId.")
-            ]
-        };
-
-        return new WorkspaceReadinessReportDto(
-            ReportKind: "first-run-readiness",
-            Status: status,
-            GeneratedAtUtc: DateTimeOffset.UtcNow,
-            RequestedWorkspaceId: requestedWorkspaceId,
-            LoadedWorkspaces: loadedWorkspaces,
-            Workspace: null,
-            Limitations:
-            [
-                "No tests, dotnet build, or dotnet restore were run by this report."
-            ],
-            NextRecommendedWorkflows: workflows);
-    }
-
-    private static string ResolveReadinessVerdict(
-        WorkspaceStatusSummaryDto summary,
-        IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
-    {
-        if (HasBuildRequiredDiagnostic(workspaceDiagnostics))
-        {
-            return ReadinessVerdictBuildNeeded;
-        }
-
-        if (summary.RestoreRequired)
-        {
-            return ReadinessVerdictRestoreNeeded;
-        }
-
-        if (!summary.AnalyzersReady)
-        {
-            return ReadinessVerdictAnalyzerLimited;
-        }
-
-        if (summary.IsReady)
-        {
-            return ReadinessVerdictReady;
-        }
-
-        return summary.WorkspaceErrorCount > 0 || summary.IsStale
-            ? ReadinessVerdictBuildNeeded
-            : ReadinessVerdictAnalyzerLimited;
-    }
-
-    private static IReadOnlyList<string> BuildReadinessLimitations(
-        WorkspaceStatusSummaryDto summary,
-        string? sourceGeneratedProbeLimitation)
-    {
-        var limitations = new List<string>
-        {
-            "No tests, dotnet build, or dotnet restore were run by this report.",
-            "The report reflects the current MSBuildWorkspace snapshot; run workspace_reload after external file edits.",
-            "source_generated_documents is capped by the host setting ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS."
-        };
-
-        if (!summary.AnalyzersReady)
-        {
-            limitations.Add("Analyzer-driven tools may under-report until analyzer warnings are resolved.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(sourceGeneratedProbeLimitation))
-        {
-            limitations.Add(sourceGeneratedProbeLimitation);
-        }
-
-        return limitations.Distinct(StringComparer.Ordinal).ToArray();
-    }
-
-    private static IReadOnlyList<string> BuildReadinessSignals(
-        WorkspaceStatusSummaryDto summary,
-        IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
-    {
-        var signals = new List<string>
-        {
-            $"projects={summary.ProjectCount}",
-            $"documents={summary.DocumentCount}",
-            $"workspaceDiagnostics={summary.WorkspaceDiagnosticCount}",
-            $"workspaceErrors={summary.WorkspaceErrorCount}",
-            $"workspaceWarnings={summary.WorkspaceWarningCount}",
-            $"restoreRequired={summary.RestoreRequired.ToString().ToLowerInvariant()}",
-            $"analyzersReady={summary.AnalyzersReady.ToString().ToLowerInvariant()}",
-            $"isStale={summary.IsStale.ToString().ToLowerInvariant()}"
-        };
-
-        if (HasBuildRequiredDiagnostic(workspaceDiagnostics))
-        {
-            signals.Add("buildRequired=true");
-        }
-
-        if (!string.IsNullOrWhiteSpace(summary.RestoreHint))
-        {
-            signals.Add($"hint={summary.RestoreHint}");
-        }
-
-        return signals;
-    }
-
-    private static IReadOnlyList<WorkspaceRecommendedWorkflowDto> BuildReadinessWorkflows(
-        string verdict,
-        WorkspaceStatusSummaryDto summary)
-    {
-        return verdict switch
-        {
-            ReadinessVerdictReady =>
-            [
-                new("recommend_workflow", "Choose the next task-specific workflow now that the workspace is ready."),
-                new("symbol_search", "Start semantic navigation against the loaded solution."),
-                new("compile_check", "Run a read-side compile check when you need build diagnostics; this report did not run one."),
-                new("test_discover", "Inspect test discoverability when onboarding needs test entry points; this report did not run tests.")
-            ],
-            ReadinessVerdictRestoreNeeded =>
-            [
-                new("dotnet restore + workspace_reload", "Restore package assets for the loaded solution or project, then refresh the workspace snapshot."),
-                new("workspace_load(autoRestore=true)", "Use this on the next load if the client is allowed to run dotnet restore automatically.")
-            ],
-            ReadinessVerdictBuildNeeded =>
-            [
-                new("dotnet build + workspace_reload", "Build missing analyzer or project outputs, then refresh the workspace snapshot."),
-                new("compile_check", "After reload, inspect remaining compiler diagnostics without running tests.")
-            ],
-            ReadinessVerdictAnalyzerLimited =>
-            [
-                new("workspace_status(verbose=true)", "Inspect workspace diagnostics and project metadata before trusting analyzer-driven tools."),
-                new("project_diagnostics", "Use diagnostics with analyzer limitations in mind until analyzer readiness is resolved.")
-            ],
-            _ =>
-            [
-                new("workspace_status", "Re-check the workspace status before continuing.")
-            ]
-        };
-    }
-
-    private static bool HasBuildRequiredDiagnostic(IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
-    {
-        foreach (var diagnostic in workspaceDiagnostics)
-        {
-            var message = diagnostic.Message ?? string.Empty;
-            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase) &&
-                (message.Contains("dotnet build", StringComparison.OrdinalIgnoreCase) ||
-                 message.Contains("build output", StringComparison.OrdinalIgnoreCase) ||
-                 message.Contains("missing analyzer build", StringComparison.OrdinalIgnoreCase)))
-            {
-                return true;
-            }
-
-            if (message.Contains("Run `dotnet build`", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("Run dotnet build", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static WorkspaceSupportBundleDto CreateSupportBundle(
-        string? requestedWorkspaceId,
-        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
-        WorkspaceStatusSummaryDto readiness,
-        WorkspaceDriftResult drift,
-        DiagnosticsResultDto diagnostics,
-        IReadOnlyList<WorkspaceChangeDto> changes,
-        int changeCap,
-        int driftCap)
-    {
-        var returnedChanges = TakeRecentChanges(changes, changeCap);
-        var returnedDriftedFiles = drift.FilesDrifted.Take(driftCap).ToArray();
-        var target = new WorkspaceSupportTargetDto(
-            WorkspaceId: readiness.WorkspaceId,
-            LoadedPath: readiness.LoadedPath,
-            ReadinessSummary: readiness,
-            Drift: new WorkspaceSupportDriftDto(
-                Stale: drift.Stale,
-                TotalDriftedFiles: drift.FilesDrifted.Count,
-                ReturnedDriftedFiles: returnedDriftedFiles.Length,
-                HasMore: drift.FilesDrifted.Count > returnedDriftedFiles.Length,
-                FilesDrifted: returnedDriftedFiles,
-                Recommended: drift.Recommended),
-            Version: new WorkspaceSupportVersionDto(
-                WorkspaceVersion: readiness.WorkspaceVersion,
-                SnapshotToken: readiness.SnapshotToken,
-                ServerVersion: ResolveServerVersion(),
-                CatalogVersion: ServerSurfaceCatalog.CatalogVersion));
-
-        var diagnosticTotals = new WorkspaceSupportDiagnosticsTotalsDto(
-            TotalErrors: diagnostics.TotalErrors,
-            TotalWarnings: diagnostics.TotalWarnings,
-            TotalInfo: diagnostics.TotalInfo,
-            CompilerErrors: diagnostics.CompilerErrors,
-            AnalyzerErrors: diagnostics.AnalyzerErrors,
-            WorkspaceErrors: diagnostics.WorkspaceErrors);
-
-        var ledger = new WorkspaceSupportChangeLedgerDto(
-            TotalChanges: changes.Count,
-            ReturnedChanges: returnedChanges.Count,
-            HasMore: changes.Count > returnedChanges.Count,
-            Changes: returnedChanges);
-
-        var nextActions = BuildSupportBundleNextActions(
-            readiness,
-            drift,
-            diagnosticTotals,
-            ledger);
-
-        return new WorkspaceSupportBundleDto(
-            BundleKind: "incident-support",
-            Status: ResolveSupportBundleStatus(readiness, drift, diagnosticTotals, ledger),
-            GeneratedAtUtc: DateTimeOffset.UtcNow,
-            RequestedWorkspaceId: requestedWorkspaceId,
-            LoadedWorkspaces: loadedWorkspaces,
-            Workspace: target,
-            DiagnosticsTotals: diagnosticTotals,
-            ChangeLedger: ledger,
-            Limits: new WorkspaceSupportLimitsDto(changeCap, driftCap, SourceSnippetsIncluded: false),
-            NextActions: nextActions);
-    }
-
-    private static WorkspaceSupportBundleDto CreateSupportBundleWithoutTarget(
-        string status,
-        string? requestedWorkspaceId,
-        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
-        int changeCap,
-        int driftCap)
-    {
-        string[] nextActions = status switch
-        {
-            "no-workspace-loaded" =>
-            [
-                "Call workspace_load with a .sln, .slnx, or .csproj path before requesting a workspace support bundle."
-            ],
-            "workspace-id-required" =>
-            [
-                "Pass the workspaceId to workspace_support_bundle because multiple workspaces are loaded."
-            ],
-            "workspace-not-found" =>
-            [
-                "Call workspace_list to pick a current workspaceId, or call workspace_load again if the host restarted or the workspace was closed or evicted."
-            ],
-            _ => ["Retry workspace_support_bundle with a valid workspaceId."]
-        };
-
-        return new WorkspaceSupportBundleDto(
-            BundleKind: "incident-support",
-            Status: status,
-            GeneratedAtUtc: DateTimeOffset.UtcNow,
-            RequestedWorkspaceId: requestedWorkspaceId,
-            LoadedWorkspaces: loadedWorkspaces,
-            Workspace: null,
-            DiagnosticsTotals: null,
-            ChangeLedger: new WorkspaceSupportChangeLedgerDto(0, 0, HasMore: false, Changes: []),
-            Limits: new WorkspaceSupportLimitsDto(changeCap, driftCap, SourceSnippetsIncluded: false),
-            NextActions: nextActions);
-    }
-
-    private static IReadOnlyList<WorkspaceChangeDto> TakeRecentChanges(
-        IReadOnlyList<WorkspaceChangeDto> changes,
-        int cap)
-    {
-        if (cap == 0 || changes.Count == 0)
-        {
-            return [];
-        }
-
-        var skip = Math.Max(0, changes.Count - cap);
-        return changes.Skip(skip).ToArray();
-    }
-
-    private static IReadOnlyList<string> BuildSupportBundleNextActions(
-        WorkspaceStatusSummaryDto readiness,
-        WorkspaceDriftResult drift,
-        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
-        WorkspaceSupportChangeLedgerDto ledger)
-    {
-        var actions = new List<string>();
-        if (drift.Stale || readiness.IsStale)
-        {
-            actions.Add($"Run workspace_reload for {readiness.WorkspaceId}; the workspace snapshot is stale or drifted from disk.");
-        }
-
-        if (readiness.RestoreRequired)
-        {
-            actions.Add("Run dotnet restore on the loaded solution or project, then workspace_reload.");
-        }
-
-        if (!readiness.AnalyzersReady)
-        {
-            actions.Add("Resolve analyzer-load warnings before trusting analyzer-driven tools such as project_diagnostics or find_unused_symbols.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(readiness.RestoreHint))
-        {
-            actions.Add(readiness.RestoreHint);
-        }
-
-        if (diagnostics.TotalErrors > 0)
-        {
-            actions.Add("Run compile_check or project_diagnostics to inspect the error diagnostics.");
-        }
-        else if (diagnostics.TotalWarnings > 0)
-        {
-            actions.Add("Run project_diagnostics with filters if warning details are needed.");
-        }
-        else if (diagnostics.TotalInfo > 0)
-        {
-            actions.Add("Run project_diagnostics with severity=\"Info\" if informational diagnostic details are needed.");
-        }
-
-        if (ledger.TotalChanges > 0)
-        {
-            actions.Add("Run validate_recent_git_changes before handing off or continuing after session mutations.");
-        }
-
-        if (actions.Count == 0)
-        {
-            actions.Add("Workspace support bundle is clean; proceed with read-side tools or the intended workflow.");
-        }
-
-        return actions.Distinct(StringComparer.Ordinal).ToArray();
-    }
-
-    private static string ResolveSupportBundleStatus(
-        WorkspaceStatusSummaryDto readiness,
-        WorkspaceDriftResult drift,
-        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
-        WorkspaceSupportChangeLedgerDto ledger)
-    {
-        if (drift.Stale || readiness.IsStale)
-        {
-            return "stale";
-        }
-
-        if (!readiness.IsReady || diagnostics.TotalErrors > 0 || diagnostics.TotalWarnings > 0 || diagnostics.TotalInfo > 0)
-        {
-            return "attention-needed";
-        }
-
-        return ledger.TotalChanges > 0 ? "changed" : "clean";
-    }
-
     private static int NormalizeCap(int requested, int max) =>
         Math.Clamp(requested, 0, max);
-
-    private static string ResolveServerVersion()
-    {
-        var assembly = typeof(WorkspaceTools).Assembly;
-        return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-               ?? assembly.GetName().Version?.ToString()
-               ?? "unknown";
-    }
 
     private static ILogger? CreateLogger(ILoggerFactory? loggerFactory) =>
         loggerFactory?.CreateLogger(typeof(WorkspaceTools).FullName ?? nameof(WorkspaceTools));
