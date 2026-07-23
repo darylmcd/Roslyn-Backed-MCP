@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-07-23T02:56:21.028Z",
-  "backlogSnapshot": "2026-07-23T02:27:16Z",
+  "backlogSnapshot": "2026-07-23T04:56:54Z",
   "addendaLoaded": false,
   "phase": "complete",
   "cycleCount": 0,
@@ -418,5 +418,7 @@
   "planHash": "198b2a62fc52eeaca3e872e448c5d0f06c7303a2630349b9bbcfbad1797c725f",
   "backlogSnapshotHash": "97fba7627de6d99c0206fe967059eeebc03d53a6d855036d2ccc581122a6020c",
   "reviewedPlanHash": "198b2a62fc52eeaca3e872e448c5d0f06c7303a2630349b9bbcfbad1797c725f",
-  "reviewedBacklogSnapshotHash": "97fba7627de6d99c0206fe967059eeebc03d53a6d855036d2ccc581122a6020c"
+  "reviewedBacklogSnapshotHash": "97fba7627de6d99c0206fe967059eeebc03d53a6d855036d2ccc581122a6020c",
+  "completed": true,
+  "completedAt": "2026-07-23T04:58:42.814Z"
 }
