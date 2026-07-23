@@ -186,7 +186,15 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             projectFilter = changedProjects.Count == 1 ? changedProjects[0] : null;
         }
 
-        var checkOptions = new CompileCheckOptions(ProjectFilter: projectFilter);
+        // apply-with-verify-complete-diagnostic-baseline: request the COMPLETE error-identity set per
+        // leg (SeverityFilter "error" + Limit int.MaxValue) instead of the default 50-diagnostic page.
+        // CompileCheckService.CheckAsync always materializes the full diagnostic set internally before
+        // paginating, so this adds zero extra compiles — it only widens the RETURNED page that
+        // ExtractErrorIdentities iterates. Without it, in a project with >50 pre-existing errors a
+        // newly introduced error whose identity sorts past slot 50 in either page is silently excluded
+        // from postErrors, never diffed, and apply_with_verify reports "applied" with a live regression.
+        var checkOptions = new CompileCheckOptions(
+            ProjectFilter: projectFilter, SeverityFilter: "error", Limit: int.MaxValue);
 
         // apply-with-verify-diff-not-counts: snapshot pre-apply error IDENTITIES (id+file+line) so we
         // can tell NEW errors from pre-existing ones. Identity-diff replaces the prior count-delta +

@@ -280,6 +280,58 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
             "A zero-project diff must fall back to a full-solution compile (null filter).");
     }
 
+    // ── Complete-diagnostic-baseline (regression sorting past the default page) ──
+
+    [TestMethod]
+    public async Task Verify_RegressionBeyondDefaultPage_IsCaught_AndRolledBack()
+    {
+        // apply-with-verify-complete-diagnostic-baseline: seed >50 pre-existing Error diagnostics
+        // present in BOTH legs, plus one newly-introduced Error positioned PAST slot 50 in the
+        // post-apply full list. The paginating fake mirrors the real CompileCheckService's
+        // Skip(Offset).Take(Limit) truncation. Pre-fix (the record default Limit:50) the new error
+        // is truncated out of the post-apply page → excluded from postErrors → never diffed →
+        // apply_with_verify reports "applied" with a live regression. Post-fix (Limit:int.MaxValue)
+        // the COMPLETE error set is compared → the regression is caught and rolled back.
+        const int preExistingCount = 55;
+        var preExisting = Enumerable.Range(0, preExistingCount)
+            .Select(i => new DiagnosticDto(
+                "CS9999", $"pre-existing error {i}", "Error", "Compiler", "Existing.cs", i, 1, i, 10))
+            .ToList();
+
+        // The single introduced error — distinct identity (id|file|line), appended LAST so it sits
+        // at index 55, comfortably beyond the default 50-item page.
+        var introduced = new DiagnosticDto(
+            "CS0103", "The name 'X' does not exist in the current context", "Error", "Compiler",
+            "New.cs", 999, 1, 999, 5);
+
+        var preLegFull = new List<DiagnosticDto>(preExisting);                    // pre-apply: 55 errors
+        var postLegFull = new List<DiagnosticDto>(preExisting) { introduced };    // post-apply: 55 + 1 new
+
+        var compile = new PaginatingFakeCompileCheck(preLegFull, postLegFull);
+        var previewStore = new FakePreviewStore("ws"); // Retrieve → null → null project filter
+        var service = CreateService(compile, new FakeUndo(), previewStore);
+
+        var outcome = await service.ApplyWithVerifyAsync(
+            previewToken: "tok", rollbackOnError: true, ct: CancellationToken.None);
+
+        var rolledBack = outcome as ApplyVerifyOutcome.RolledBack;
+        Assert.IsNotNull(rolledBack,
+            "A regression sorting past the default 50-diagnostic page must still be caught and rolled " +
+            "back. This assertion FAILS against the pre-fix Limit:50 default (the new error is truncated " +
+            "out of the post-apply page, so the outcome is a false 'applied').");
+        Assert.IsTrue(
+            rolledBack.IntroducedErrors.Any(d => d.Id == "CS0103" && d.FilePath == "New.cs"),
+            "The introduced error must surface in IntroducedErrors, not be silently dropped.");
+
+        // Regression guard: both legs must request a page large enough to cover the COMPLETE
+        // synthetic set. A finite cap ≤ the pre-existing error count silently reintroduces the bug.
+        Assert.AreEqual(2, compile.RecordedLimits.Count, "Both pre- and post-apply legs must run.");
+        Assert.IsTrue(
+            compile.RecordedLimits.All(limit => limit > preExistingCount + 1),
+            $"Both legs must request the COMPLETE diagnostic set (Limit > {preExistingCount + 1}); a " +
+            $"finite cap reintroduces the truncation bug. Got: [{string.Join(", ", compile.RecordedLimits)}]");
+    }
+
     // ── helpers ──
 
     /// <summary>
@@ -352,6 +404,50 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
                 Diagnostics: Array.Empty<DiagnosticDto>(),
                 ElapsedMs: 0,
                 Cancelled: cancelled));
+        }
+    }
+
+    /// <summary>
+    /// apply-with-verify-complete-diagnostic-baseline: a fake that mirrors the REAL
+    /// <c>CompileCheckService.CheckAsync</c> pagination — it holds the COMPLETE diagnostic set per
+    /// call and returns only <c>full.Skip(options.Offset).Take(options.Limit)</c>, exactly like the
+    /// real service truncates its materialized <c>acc.Diagnostics</c> before building the DTO. This
+    /// is what lets the test prove that a regression sorting past the requested page is missed when
+    /// the caller under-requests. Each constructor argument is the full list for the corresponding
+    /// 0-based call (call 0 = pre-apply baseline, call 1 = post-apply verify); the last entry is
+    /// reused for any further calls.
+    /// </summary>
+    private sealed class PaginatingFakeCompileCheck : ICompileCheckService
+    {
+        private readonly IReadOnlyList<DiagnosticDto>[] _fullListsPerCall;
+        public readonly List<int> RecordedLimits = new();
+        private int _n;
+
+        public PaginatingFakeCompileCheck(params IReadOnlyList<DiagnosticDto>[] fullListsPerCall)
+            => _fullListsPerCall = fullListsPerCall;
+
+        public Task<CompileCheckDto> CheckAsync(string workspaceId, CompileCheckOptions options, CancellationToken ct)
+        {
+            RecordedLimits.Add(options.Limit);
+            var full = _fullListsPerCall[Math.Min(_n, _fullListsPerCall.Length - 1)];
+            _n++;
+
+            var page = full.Skip(options.Offset).Take(options.Limit).ToList();
+            var errorCount = full.Count(d =>
+                string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase));
+
+            return Task.FromResult(new CompileCheckDto(
+                Success: true,
+                ErrorCount: errorCount,
+                WarningCount: 0,
+                TotalDiagnostics: full.Count,
+                ReturnedDiagnostics: page.Count,
+                Offset: options.Offset,
+                Limit: options.Limit,
+                HasMore: page.Count < full.Count,
+                Diagnostics: page,
+                ElapsedMs: 0,
+                Cancelled: false));
         }
     }
 
