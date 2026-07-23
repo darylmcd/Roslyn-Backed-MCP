@@ -237,9 +237,9 @@ public sealed class Bar { }
         var foo = compilation.GetTypeByMetadataName("Acme.IFoo")!;
         var bar = compilation.GetTypeByMetadataName("Acme.Bar")!;
 
-        var withSub = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(foo, nsubstituteAvailable: true);
-        var withoutSub = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(foo, nsubstituteAvailable: false);
-        var concrete = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(bar, nsubstituteAvailable: false);
+        var withSub = RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(foo, nsubstituteAvailable: true);
+        var withoutSub = RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(foo, nsubstituteAvailable: false);
+        var concrete = RoslynMcp.Roslyn.Services.TestScaffoldRenderer.BuildArgExpression(bar, nsubstituteAvailable: false);
 
         StringAssert.Contains(withSub, "NSubstitute.Substitute.For<IFoo>()",
             "Interface arg with NSubstitute available should emit Substitute.For<T>().");
