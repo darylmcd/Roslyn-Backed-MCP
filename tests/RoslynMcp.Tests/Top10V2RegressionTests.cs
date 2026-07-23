@@ -2,6 +2,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -151,8 +152,10 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var preview = await RefactoringService.PreviewOrganizeUsingsAsync(
             workspace.WorkspaceId, animalServicePath, CancellationToken.None);
 
+        var workflowService = new ApplyUndoWorkflowService(
+            RefactoringService, CompileCheckService, UndoService, PreviewStore);
         var json = await ApplyWithVerifyTool.ApplyWithVerify(
-            WorkspaceExecutionGate, RefactoringService, CompileCheckService, UndoService, PreviewStore,
+            WorkspaceExecutionGate, workflowService, PreviewStore,
             preview.PreviewToken, rollbackOnError: true, ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
@@ -207,8 +210,10 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         // pair. Post-fix (id+file+line identity), the pre-existing error has the SAME
         // identity in pre and post sets — so it is filtered out and the innocent apply
         // returns status="applied".
+        var workflowService = new ApplyUndoWorkflowService(
+            RefactoringService, CompileCheckService, UndoService, PreviewStore);
         var json = await ApplyWithVerifyTool.ApplyWithVerify(
-            WorkspaceExecutionGate, RefactoringService, CompileCheckService, UndoService, PreviewStore,
+            WorkspaceExecutionGate, workflowService, PreviewStore,
             preview.PreviewToken, rollbackOnError: true, ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);

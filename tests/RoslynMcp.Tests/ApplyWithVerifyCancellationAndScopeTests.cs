@@ -1,17 +1,17 @@
-using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// apply-with-verify-cancellation-and-compile-scope: fake-driven coverage for the two
-/// bug fixes in <see cref="ApplyWithVerifyTool"/>:
+/// apply-with-verify-cancellation-and-compile-scope: fake-driven coverage for the two behaviors
+/// that now live in <see cref="ApplyUndoWorkflowService"/> (extracted from <c>ApplyWithVerifyTool</c>
+/// by apply-undo-workflow-service-extraction):
 /// <list type="number">
 /// <item><description>
 /// Cancellation that fires AFTER a successful apply but before the verify/revert leg
@@ -27,19 +27,28 @@ namespace RoslynMcp.Tests;
 /// </description></item>
 /// </list>
 /// These use hand-rolled fakes rather than the real workspace harness so the exact token
-/// identity and project-filter arguments are observable.
+/// identity and project-filter arguments are observable, and call
+/// <see cref="ApplyUndoWorkflowService.ApplyWithVerifyAsync"/> directly (no gate / no Host JSON
+/// wrapper) since the cancellation, fresh-token, and compile-scope logic all live in the service.
 ///
 /// apply-with-verify-cancelled-result-compensation: the real <c>CompileCheckService.CheckAsync</c>
 /// never lets an <see cref="OperationCanceledException"/> escape — it catches it internally and
 /// returns a normal (non-throwing) <c>CompileCheckDto</c> with <c>Cancelled=true</c>. The three
-/// tests above simulate cancellation by having <c>FakeCompileCheck</c> throw directly, a shape
-/// the real service never produces, so they do not exercise that production failure mode. The
-/// two <c>*_CancelledDto_</c> tests below close that gap by returning a <c>Cancelled=true</c> DTO
-/// instead of throwing.
+/// tests that simulate cancellation by having <c>FakeCompileCheck</c> throw directly use a shape
+/// the real service never produces; the two <c>*_CancelledDto_</c> tests close that gap by
+/// returning a <c>Cancelled=true</c> DTO instead of throwing.
 /// </summary>
 [TestClass]
 public sealed class ApplyWithVerifyCancellationAndScopeTests
 {
+    private static ApplyUndoWorkflowService CreateService(
+        ICompileCheckService compile,
+        IUndoService undo,
+        IPreviewStore previewStore,
+        IRefactoringService? refactoring = null,
+        ILoggerFactory? loggerFactory = null)
+        => new(refactoring ?? new FakeRefactoring(), compile, undo, previewStore, loggerFactory);
+
     // ── Cancellation-safe revert ──
 
     [TestMethod]
@@ -63,18 +72,10 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         };
         var undo = new FakeUndo();
         var previewStore = new FakePreviewStore("ws"); // Retrieve returns null → filter skipped
+        var service = CreateService(compile, undo, previewStore);
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ApplyWithVerifyTool.ApplyWithVerify(
-                new FakeGate(),
-                new FakeRefactoring(),
-                compile,
-                undo,
-                previewStore,
-                previewToken: "tok",
-                rollbackOnError: true,
-                loggerFactory: null,
-                ct: cts.Token));
+            service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreSame(originalCancellation, thrown,
             "The ORIGINAL cancellation must surface, not a wrapped/replacement exception.");
@@ -108,18 +109,10 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var undo = new FakeUndo { RevertThrows = new InvalidOperationException("revert boom") };
         var loggerFactory = new CapturingLoggerFactory();
         var previewStore = new FakePreviewStore("ws");
+        var service = CreateService(compile, undo, previewStore, loggerFactory: loggerFactory);
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ApplyWithVerifyTool.ApplyWithVerify(
-                new FakeGate(),
-                new FakeRefactoring(),
-                compile,
-                undo,
-                previewStore,
-                previewToken: "tok",
-                rollbackOnError: true,
-                loggerFactory: loggerFactory,
-                ct: cts.Token));
+            service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreSame(originalCancellation, thrown,
             "A failing best-effort revert must not mask the original cancellation.");
@@ -149,18 +142,10 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var undo = new FakeUndo();
         var refactoring = new FakeRefactoring();
         var previewStore = new FakePreviewStore("ws");
+        var service = CreateService(compile, undo, previewStore, refactoring);
 
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ApplyWithVerifyTool.ApplyWithVerify(
-                new FakeGate(),
-                refactoring,
-                compile,
-                undo,
-                previewStore,
-                previewToken: "tok",
-                rollbackOnError: true,
-                loggerFactory: null,
-                ct: cts.Token));
+            service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreEqual(0, refactoring.ApplyCalls, "Apply must not run when the baseline is cancelled.");
         Assert.AreEqual(0, undo.RevertCalls,
@@ -189,18 +174,10 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var undo = new FakeUndo();
         var refactoring = new FakeRefactoring();
         var previewStore = new FakePreviewStore("ws");
+        var service = CreateService(compile, undo, previewStore, refactoring);
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ApplyWithVerifyTool.ApplyWithVerify(
-                new FakeGate(),
-                refactoring,
-                compile,
-                undo,
-                previewStore,
-                previewToken: "tok",
-                rollbackOnError: true,
-                loggerFactory: null,
-                ct: cts.Token));
+            service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreEqual(cts.Token, thrown.CancellationToken,
             "The thrown exception must carry the caller's own token.");
@@ -234,18 +211,10 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         };
         var undo = new FakeUndo();
         var previewStore = new FakePreviewStore("ws");
+        var service = CreateService(compile, undo, previewStore);
 
         var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-            ApplyWithVerifyTool.ApplyWithVerify(
-                new FakeGate(),
-                new FakeRefactoring(),
-                compile,
-                undo,
-                previewStore,
-                previewToken: "tok",
-                rollbackOnError: true,
-                loggerFactory: null,
-                ct: cts.Token));
+            service.ApplyWithVerifyAsync(previewToken: "tok", rollbackOnError: true, ct: cts.Token));
 
         Assert.AreEqual(cts.Token, thrown.CancellationToken,
             "The thrown exception must carry the caller's own token.");
@@ -265,19 +234,12 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var (original, modified, _) = BuildSolution(("ProjA", true), ("ProjB", false));
         var compile = new FakeCompileCheck();
         var previewStore = new FakePreviewStore("ws", original, modified);
+        var service = CreateService(compile, new FakeUndo(), previewStore);
 
-        var json = await ApplyWithVerifyTool.ApplyWithVerify(
-            new FakeGate(),
-            new FakeRefactoring(),
-            compile,
-            new FakeUndo(),
-            previewStore,
-            previewToken: "tok",
-            rollbackOnError: true,
-            loggerFactory: null,
-            ct: CancellationToken.None);
+        var outcome = await service.ApplyWithVerifyAsync(
+            previewToken: "tok", rollbackOnError: true, ct: CancellationToken.None);
 
-        AssertStatus(json, "applied");
+        Assert.IsInstanceOfType<ApplyVerifyOutcome.Applied>(outcome);
         Assert.AreEqual(2, compile.RecordedFilters.Count, "Both pre- and post-apply legs must run.");
         Assert.IsTrue(compile.RecordedFilters.All(f => f == "ProjA"),
             $"Both legs must scope to the single touched project. Got: [{string.Join(", ", compile.RecordedFilters)}]");
@@ -289,19 +251,12 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var (original, modified, _) = BuildSolution(("ProjA", true), ("ProjB", true));
         var compile = new FakeCompileCheck();
         var previewStore = new FakePreviewStore("ws", original, modified);
+        var service = CreateService(compile, new FakeUndo(), previewStore);
 
-        var json = await ApplyWithVerifyTool.ApplyWithVerify(
-            new FakeGate(),
-            new FakeRefactoring(),
-            compile,
-            new FakeUndo(),
-            previewStore,
-            previewToken: "tok",
-            rollbackOnError: true,
-            loggerFactory: null,
-            ct: CancellationToken.None);
+        var outcome = await service.ApplyWithVerifyAsync(
+            previewToken: "tok", rollbackOnError: true, ct: CancellationToken.None);
 
-        AssertStatus(json, "applied");
+        Assert.IsInstanceOfType<ApplyVerifyOutcome.Applied>(outcome);
         Assert.AreEqual(2, compile.RecordedFilters.Count);
         Assert.IsTrue(compile.RecordedFilters.All(f => f is null),
             $"A multi-project touch must fall back to a full-solution compile (null filter). Got: [{string.Join(", ", compile.RecordedFilters.Select(f => f ?? "null"))}]");
@@ -314,32 +269,18 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
         var (original, _, sameAsOriginal) = BuildSolution(("ProjA", false));
         var compile = new FakeCompileCheck();
         var previewStore = new FakePreviewStore("ws", original, sameAsOriginal);
+        var service = CreateService(compile, new FakeUndo(), previewStore);
 
-        var json = await ApplyWithVerifyTool.ApplyWithVerify(
-            new FakeGate(),
-            new FakeRefactoring(),
-            compile,
-            new FakeUndo(),
-            previewStore,
-            previewToken: "tok",
-            rollbackOnError: true,
-            loggerFactory: null,
-            ct: CancellationToken.None);
+        var outcome = await service.ApplyWithVerifyAsync(
+            previewToken: "tok", rollbackOnError: true, ct: CancellationToken.None);
 
-        AssertStatus(json, "applied");
+        Assert.IsInstanceOfType<ApplyVerifyOutcome.Applied>(outcome);
         Assert.AreEqual(2, compile.RecordedFilters.Count);
         Assert.IsTrue(compile.RecordedFilters.All(f => f is null),
             "A zero-project diff must fall back to a full-solution compile (null filter).");
     }
 
     // ── helpers ──
-
-    private static void AssertStatus(string json, string expected)
-    {
-        using var doc = JsonDocument.Parse(json);
-        var status = doc.RootElement.GetProperty("status").GetString();
-        Assert.AreEqual(expected, status, $"Unexpected status. Full JSON: {json}");
-    }
 
     /// <summary>
     /// Builds an in-memory (Adhoc) solution pair. Each tuple names a project and whether the
@@ -376,20 +317,6 @@ public sealed class ApplyWithVerifyCancellationAndScopeTests
     }
 
     // ── fakes ──
-
-    private sealed class FakeGate : IWorkspaceExecutionGate
-    {
-        public Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct, bool applyStalenessPolicy = true)
-            => action(ct);
-
-        public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => action(ct);
-
-        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
-            => action(ct);
-
-        public void RemoveGate(string workspaceId) { }
-    }
 
     private sealed class FakeCompileCheck : ICompileCheckService
     {
