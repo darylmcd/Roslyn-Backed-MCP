@@ -1,5 +1,0 @@
----
-category: Maintenance
----
-
-- **Maintenance:** Right-sized the CI profile after root-causing the hang class (see the `DotnetCommandRunner` fix): PR runs now exclude the live api.nuget.org tests (`-ExcludeNetworkTests`; the dedicated audit step still gates vulnerabilities, and dispatch/weekly-schedule runs keep the live scan as a canary), all three sample fixtures are pre-restored so in-test `dotnet build` spawns never pay a cold restore inside their timed window, integration tests honor `ROSLYNMCP_*_TIMEOUT_SECONDS` (CI sets fail-fast 150/300/120s), and the `validate` job timeout returns from the temporary 40 minutes to 20. Also: dependabot PRs now run on hosted ubuntu instead of the maintainer's self-hosted runner (supply-chain boundary + queue relief), MSTest packages move as one dependabot group across all update types (framework/adapter/analyzers are version-paired), the NuGet cache step is skipped on the persistent self-hosted runner, and `publish-nuget.yml` jobs gained explicit timeouts.
