@@ -100,6 +100,46 @@ internal static class ToolErrorHandler
         },
     };
 
+    // mcp-parameter-validation-error-messages: the five known parameter-binding exception
+    // shapes, dispatched by an insertion-order IsAssignableFrom walk (mirrors _errorHandlers).
+    // Order MUST stay JsonException, ArgumentNullException, ArgumentOutOfRangeException,
+    // ArgumentException, FormatException so the two ArgumentException-derived types match
+    // before their base — exactly reproducing the former switch-arm precedence. Each lambda
+    // casts to the typed exception internally to preserve ParamName extraction.
+    private static readonly Dictionary<Type, Func<Exception, ErrorInfo>> _bindingLikeHandlers = new()
+    {
+        [typeof(System.Text.Json.JsonException)] = ex => new("InvalidArgument",
+            $"Parameter binding failed (JSON deserialization): {ex.Message}. " +
+            "Check that JSON property names match the tool schema exactly (camelCase)."),
+        [typeof(ArgumentNullException)] = ex =>
+        {
+            var nullArgEx = (ArgumentNullException)ex;
+            return new("InvalidArgument",
+                $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
+                "Provide a value for this parameter and retry.",
+                ParamName: nullArgEx.ParamName);
+        },
+        [typeof(ArgumentOutOfRangeException)] = ex =>
+        {
+            var rangeEx = (ArgumentOutOfRangeException)ex;
+            return new("InvalidArgument",
+                $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
+                "Check the tool schema for the accepted range.",
+                ParamName: rangeEx.ParamName);
+        },
+        [typeof(ArgumentException)] = ex =>
+        {
+            var argEx = (ArgumentException)ex;
+            return new("InvalidArgument",
+                $"Parameter '{argEx.ParamName ?? "<unknown>"}' is invalid: {argEx.Message}. " +
+                "Check that all required parameters are provided and values match the expected types.",
+                ParamName: argEx.ParamName);
+        },
+        [typeof(FormatException)] = ex => new("InvalidArgument",
+            $"Parameter format error: {ex.Message}. " +
+            "Check that values match the expected format (e.g., integers, booleans, paths)."),
+    };
+
     private static string FormatNotFoundMessage(string message)
     {
         if (message.StartsWith("No identifier at this position", StringComparison.Ordinal))
@@ -256,6 +296,24 @@ internal static class ToolErrorHandler
             return rawInfo;
         }
 
+        if (TryClassifyReloadRace(ex, out var reloadRaceInfo))
+            return reloadRaceInfo;
+
+        if (TryClassifyRegisteredHandler(ex, toolName, out var registeredInfo))
+            return registeredInfo;
+
+        return BuildUnexpectedErrorFallback(ex, toolName);
+    }
+
+    /// <summary>
+    /// Classifies a mid-call auto-reload race: a <see cref="KeyNotFoundException"/> raised while
+    /// the request's gate reported it had to auto-reload the workspace, surfacing a race-specific
+    /// envelope instead of the generic "NotFound" that implies the symbol itself is gone. Returns
+    /// <see langword="false"/> for every other exception so the caller falls through to the
+    /// dictionary walk.
+    /// </summary>
+    private static bool TryClassifyReloadRace(Exception ex, out ErrorInfo info)
+    {
         // symbol-impact-sweep-race-with-auto-reload: when a symbol fails to resolve AND the
         // request's gate reported it had to auto-reload the workspace mid-call, surface a
         // race-specific envelope instead of the generic "NotFound" that implies the symbol
@@ -266,10 +324,10 @@ internal static class ToolErrorHandler
         //
         // mcp-error-category-workspace-evicted-on-host-recycle: WorkspaceEvictedException
         // derives from KeyNotFoundException for catch-site compatibility, so the generic
-        // `is KeyNotFoundException` test above would otherwise re-classify a recycle-eviction
+        // `is KeyNotFoundException` test would otherwise re-classify a recycle-eviction
         // as WorkspaceReloadedDuringCall whenever the in-call gate reported a stale auto-
         // reload. Exclude the more-specific eviction type here so the dictionary handler
-        // below (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
+        // (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
         //
         // workspace-reloaded-during-call-conflates-notfound: when the gate retried after
         // the auto-reload and the second attempt also failed with "Document not found", the
@@ -280,21 +338,46 @@ internal static class ToolErrorHandler
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
-            return new("WorkspaceReloadedDuringCall",
+            info = new("WorkspaceReloadedDuringCall",
                 $"Workspace was auto-reloaded during this call; {ex.Message} The symbol handle " +
                 "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +
                 "(e.g. via symbol_search, symbol_info, or a fresh position-based locator) and retry. " +
                 "See _meta.staleReloadMs for how long the reload held the request.");
+            return true;
         }
 
-        // Walk the handler dictionary for exact or assignable type match
+        info = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Walks the <see cref="_errorHandlers"/> dictionary in insertion order and returns the
+    /// first entry whose registered type is assignable from <paramref name="ex"/>'s runtime
+    /// type. Insertion order encodes precedence (more-specific types registered first), so this
+    /// must stay a linear walk rather than an exact-type lookup. Returns <see langword="false"/>
+    /// when no registered handler matches.
+    /// </summary>
+    private static bool TryClassifyRegisteredHandler(Exception ex, string toolName, out ErrorInfo info)
+    {
         foreach (var (type, handler) in _errorHandlers)
         {
             if (type.IsAssignableFrom(ex.GetType()))
-                return handler(ex, toolName);
+            {
+                info = handler(ex, toolName);
+                return true;
+            }
         }
 
-        // Fallback: unexpected error — include inner exception chain for diagnosis
+        info = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Builds the terminal <c>InternalError</c> envelope for an unexpected exception, including
+    /// up to three levels of inner-exception chain for diagnosis.
+    /// </summary>
+    private static ErrorInfo BuildUnexpectedErrorFallback(Exception ex, string toolName)
+    {
         var innerMessages = GetInnerExceptionChain(ex);
         var detail = string.IsNullOrEmpty(innerMessages)
             ? $"{ex.GetType().Name}: {ex.Message}"
@@ -316,40 +399,13 @@ internal static class ToolErrorHandler
     /// </summary>
     private static bool TryClassifyBindingLike(Exception ex, out ErrorInfo info)
     {
-        switch (ex)
+        foreach (var (type, handler) in _bindingLikeHandlers)
         {
-            case System.Text.Json.JsonException jsonEx:
-                info = new("InvalidArgument",
-                    $"Parameter binding failed (JSON deserialization): {jsonEx.Message}. " +
-                    "Check that JSON property names match the tool schema exactly (camelCase).");
+            if (type.IsAssignableFrom(ex.GetType()))
+            {
+                info = handler(ex);
                 return true;
-
-            case ArgumentNullException nullArgEx:
-                info = new("InvalidArgument",
-                    $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
-                    "Provide a value for this parameter and retry.",
-                    ParamName: nullArgEx.ParamName);
-                return true;
-
-            case ArgumentOutOfRangeException rangeEx:
-                info = new("InvalidArgument",
-                    $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
-                    "Check the tool schema for the accepted range.",
-                    ParamName: rangeEx.ParamName);
-                return true;
-
-            case ArgumentException argEx:
-                info = new("InvalidArgument",
-                    $"Parameter '{argEx.ParamName ?? "<unknown>"}' is invalid: {argEx.Message}. " +
-                    "Check that all required parameters are provided and values match the expected types.",
-                    ParamName: argEx.ParamName);
-                return true;
-
-            case FormatException fmtEx:
-                info = new("InvalidArgument",
-                    $"Parameter format error: {fmtEx.Message}. " +
-                    "Check that values match the expected format (e.g., integers, booleans, paths).");
-                return true;
+            }
         }
 
         info = default;
