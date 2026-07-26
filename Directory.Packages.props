@@ -27,7 +27,7 @@
     <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="17.11.48" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="MSTest.TestAdapter" Version="3.8.3" />
-    <PackageVersion Include="MSTest.TestFramework" Version="3.8.3" />
+    <PackageVersion Include="MSTest.TestFramework" Version="4.3.2" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <!-- Analyzer-testing infrastructure for ServerSurfaceCatalogAnalyzer (RMCP001/RMCP002).
          The harness consumes the centrally-pinned Microsoft.CodeAnalysis.* 5.6.0 family so
