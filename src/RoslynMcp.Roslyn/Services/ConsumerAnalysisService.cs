@@ -87,7 +87,7 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
             if (item.SyntaxRoot is null || item.SemanticModel is null) continue;
 
             var node = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
-            var containingType = FindContainingType(node, item.SemanticModel, ct);
+            var containingType = RoslynSymbolTraversal.FindContainingType(node, item.SemanticModel, ct);
             if (containingType is null) continue;
 
             // Don't include self-references
@@ -130,20 +130,6 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
             SymbolMapper.ToDto(symbol, solution),
             consumers,
             summary);
-    }
-
-    private static INamedTypeSymbol? FindContainingType(SyntaxNode node, SemanticModel semanticModel, CancellationToken ct)
-    {
-        var current = node;
-        while (current is not null)
-        {
-            if (current is TypeDeclarationSyntax typeDecl)
-            {
-                return semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
-            }
-            current = current.Parent;
-        }
-        return null;
     }
 
     private static string ClassifyDependencyKind(SyntaxNode refNode)

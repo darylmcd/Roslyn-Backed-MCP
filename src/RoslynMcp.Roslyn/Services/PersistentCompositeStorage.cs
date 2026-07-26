@@ -40,6 +40,8 @@ public sealed class PersistentCompositeStorage
 
     public void Write(string token, CompositePreviewStore.Entry entry)
     {
+        ValidateToken(token);
+
         var dir = Path.Combine(_rootDirectory, entry.WorkspaceVersion.ToString());
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, token + ".json");
@@ -58,6 +60,11 @@ public sealed class PersistentCompositeStorage
 
     public CompositePreviewStore.Entry? TryRead(string token)
     {
+        if (!IsValidToken(token))
+        {
+            return null;
+        }
+
         // Search across workspaceVersion subdirectories — caller doesn't know the version
         // when redeeming a token from a separate process.
         if (!Directory.Exists(_rootDirectory)) return null;
@@ -98,7 +105,7 @@ public sealed class PersistentCompositeStorage
                         dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
                         dto.CreatedAt);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is IOException or JsonException or NotSupportedException)
                 {
                     // Corrupt entry — drop it and return null so the in-memory miss path takes over.
                     _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable entry at {Path}.", path);
@@ -118,6 +125,11 @@ public sealed class PersistentCompositeStorage
 
     public void Delete(string token)
     {
+        if (!IsValidToken(token))
+        {
+            return;
+        }
+
         if (!Directory.Exists(_rootDirectory)) return;
         foreach (var subdir in Directory.EnumerateDirectories(_rootDirectory))
         {
@@ -132,11 +144,24 @@ public sealed class PersistentCompositeStorage
         {
             File.Delete(path);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Best-effort cleanup — a stale file will simply fail to deserialize on the
             // next read and be cleaned up there.
             _logger?.LogDebug(ex, "PersistentCompositeStorage: failed to delete entry at {Path}.", path);
+        }
+    }
+
+    private static bool IsValidToken(string token)
+        => Guid.TryParseExact(token, "N", out _);
+
+    private static void ValidateToken(string token)
+    {
+        if (!IsValidToken(token))
+        {
+            throw new ArgumentException(
+                "Persistent preview tokens must be 32 hexadecimal GUID characters.",
+                nameof(token));
         }
     }
 

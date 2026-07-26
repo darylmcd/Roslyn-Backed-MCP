@@ -199,7 +199,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
                 var semanticModel = compilation.GetSemanticModel(tree);
 
                 var node = root.FindNode(loc.Location.SourceSpan);
-                var containing = FindContainingTopLevelType(node, semanticModel, ct);
+                var containing = RoslynSymbolTraversal.FindContainingType(node, semanticModel, ct);
                 if (containing is null) continue;
 
                 if (SymbolEqualityComparer.Default.Equals(containing, type)) continue;
@@ -313,26 +313,6 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         // (BCL, NuGet packages) are noise for coupling — Martin's metric is about module
         // boundaries within the SUT, not transitive library usage.
         return candidate.Locations.Any(l => l.IsInSource);
-    }
-
-    /// <summary>
-    /// Walks up the syntax tree from <paramref name="node"/> to find the enclosing top-level
-    /// named type (or nested type) and returns its symbol. Returns <c>null</c> when the
-    /// reference is outside any type (top-level statements, file-scoped using, etc.).
-    /// </summary>
-    private static INamedTypeSymbol? FindContainingTopLevelType(
-        SyntaxNode node, SemanticModel semanticModel, CancellationToken ct)
-    {
-        var current = node;
-        while (current is not null)
-        {
-            if (current is TypeDeclarationSyntax typeDecl)
-            {
-                return semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
-            }
-            current = current.Parent;
-        }
-        return null;
     }
 
     private static double ComputeInstability(int afferent, int efferent)

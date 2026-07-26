@@ -241,6 +241,28 @@ public sealed class ValidationBundleToolsTests
     }
 
     [TestMethod]
+    [DataRow(double.PositiveInfinity)]
+    [DataRow(double.NaN)]
+    public void SweepExpiredForks_NonFiniteTtl_DisablesSweepWithoutOverflow(double ttlHours)
+    {
+        var forkRoot = Path.Combine(Path.GetTempPath(), "roslyn-mcp-fork-ttl-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(forkRoot);
+            var now = DateTimeOffset.UtcNow;
+            var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
+
+            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours, now);
+
+            Assert.IsTrue(Directory.Exists(ancient));
+        }
+        finally
+        {
+            TryDeleteTree(forkRoot);
+        }
+    }
+
+    [TestMethod]
     public void ResolveForkTtlHours_HonorsEnvOverrideAndFallsBack()
     {
         const string var = "ROSLYNMCP_FORK_TTL_HOURS";
@@ -261,6 +283,12 @@ public sealed class ValidationBundleToolsTests
 
             Environment.SetEnvironmentVariable(var, "-5");
             Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Negative must fall back to the default.");
+
+            Environment.SetEnvironmentVariable(var, "Infinity");
+            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Infinity must fall back to the default.");
+
+            Environment.SetEnvironmentVariable(var, "NaN");
+            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "NaN must fall back to the default.");
         }
         finally
         {
@@ -287,6 +315,10 @@ public sealed class ValidationBundleToolsTests
 
             Environment.SetEnvironmentVariable(var, "garbage");
             Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Invalid must fall back.");
+
+            Environment.SetEnvironmentVariable(var, "Infinity");
+            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(),
+                "Infinity is not a bounded timeout and must fall back.");
         }
         finally
         {
@@ -328,17 +360,7 @@ public sealed class ValidationBundleToolsTests
     }
 
     private static void TryDeleteTree(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
-        }
-        catch
-        {
-            // Best-effort test cleanup.
-        }
-    }
+        => TestFixtureFileSystem.DeleteDirectoryIfExists(path);
 
     private static void AssertStructuredEnvelope(string result, string expectedTool)
     {

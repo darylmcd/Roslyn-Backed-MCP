@@ -16,7 +16,7 @@ namespace RoslynMcp.Host.Stdio;
 /// </summary>
 /// <remarks>
 /// di-graph-triple-registration-cleanup: prior to this refactor, the same six
-/// option singletons + <c>HttpClient</c> + <c>NuGetVersionChecker</c> +
+/// option singletons + the named NuGet <c>HttpClient</c> + <c>NuGetVersionChecker</c> +
 /// <see cref="ILatestVersionProvider"/> registrations were copy-pasted across
 /// <c>Program.cs</c>, <c>StartupDiagnosticsTests.BuildTestHost</c>, and
 /// <c>ToolDiResolutionTests.BuildHostServiceProvider</c>. The copy-paste pattern
@@ -67,8 +67,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(securityOptions);
         services.AddSingleton(scriptingServiceOptions);
 
-        services.AddSingleton<HttpClient>();
-        services.AddSingleton<NuGetVersionChecker>();
+        services.AddHttpClient(NuGetVersionChecker.HttpClientName);
+        services.AddSingleton(sp => new NuGetVersionChecker(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetService<ILogger<NuGetVersionChecker>>()));
         services.AddSingleton<ILatestVersionProvider>(
             sp => sp.GetRequiredService<NuGetVersionChecker>());
 

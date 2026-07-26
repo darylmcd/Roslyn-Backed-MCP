@@ -28,10 +28,6 @@ public sealed class WorkspaceForkApplyCancellationTests
         "DeleteDirectoryIfExists", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("DeleteDirectoryIfExists method not found via reflection.");
 
-    private static readonly FieldInfo ForkApplyLocksField = ToolsType.GetField(
-        "ForkApplyLocks", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ForkApplyLocks field not found via reflection.");
-
     private string _tempRoot = null!;
 
     [TestInitialize]
@@ -44,10 +40,7 @@ public sealed class WorkspaceForkApplyCancellationTests
     [TestCleanup]
     public void Teardown()
     {
-        if (Directory.Exists(_tempRoot))
-        {
-            try { Directory.Delete(_tempRoot, recursive: true); } catch { /* best-effort cleanup */ }
-        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_tempRoot);
     }
 
     [TestMethod]
@@ -121,33 +114,44 @@ public sealed class WorkspaceForkApplyCancellationTests
     }
 
     [TestMethod]
-    public void ForkApplyLocks_SameNormalizedSourceRoot_SharesOneSemaphoreAcrossConcurrentCallers()
+    public async Task ForkApplyLocks_SameRootSerializesAndEvictsAfterLastCaller()
     {
-        // Mirrors exactly what WorkspaceForkApply does: ForkApplyLocks.GetOrAdd(Path.GetFullPath(sourceRoot), ...).
-        // Same source root (even with different casing / relative segments that normalize to the
-        // same full path) must resolve to the same SemaphoreSlim instance so concurrent
-        // workspace_fork_apply calls against it are serialized rather than racing.
-        var locks = (System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim>)
-            ForkApplyLocksField.GetValue(null)!;
-
         var sourceRoot = Path.Combine(_tempRoot, "SourceRoot");
         Directory.CreateDirectory(sourceRoot);
-        var variantCasing = Path.Combine(_tempRoot, "sourceroot");
+        var firstLease = await ValidationBundleTools.AcquireForkApplyLockAsync(
+            sourceRoot,
+            CancellationToken.None);
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondTask = Task.Run(async () =>
+        {
+            using var secondLease = await ValidationBundleTools.AcquireForkApplyLockAsync(
+                Path.Combine(_tempRoot, "sourceroot"),
+                CancellationToken.None);
+            secondEntered.TrySetResult();
+            await releaseSecond.Task;
+        });
 
-        var lock1 = locks.GetOrAdd(Path.GetFullPath(sourceRoot), _ => new SemaphoreSlim(1, 1));
-        var lock2 = locks.GetOrAdd(Path.GetFullPath(sourceRoot), _ => new SemaphoreSlim(1, 1));
-        Assert.AreSame(lock1, lock2, "Identical source root must resolve to the same semaphore instance.");
+        try
+        {
+            await Task.Delay(50);
+            Assert.IsFalse(
+                secondEntered.Task.IsCompleted,
+                "Same-root callers must serialize on one lock.");
+            Assert.IsTrue(ValidationBundleTools.HasForkApplyLock(sourceRoot));
+        }
+        finally
+        {
+            firstLease.Dispose();
+        }
 
-        var otherRoot = Path.Combine(_tempRoot, "OtherRoot");
-        Directory.CreateDirectory(otherRoot);
-        var lock3 = locks.GetOrAdd(Path.GetFullPath(otherRoot), _ => new SemaphoreSlim(1, 1));
-        Assert.AreNotSame(lock1, lock3, "A distinct source root must not share the same semaphore.");
+        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        releaseSecond.TrySetResult();
+        await secondTask;
 
-        // The dictionary itself is case-insensitive (Windows path semantics), matching how
-        // ValidationBundleTools constructs it.
-        Assert.IsTrue(locks.TryGetValue(variantCasing, out var caseInsensitiveHit),
-            "ForkApplyLocks must be keyed case-insensitively so 'SourceRoot' and 'sourceroot' collide on Windows.");
-        Assert.AreSame(lock1, caseInsensitiveHit);
+        Assert.IsFalse(
+            ValidationBundleTools.HasForkApplyLock(sourceRoot),
+            "The keyed lock must be evicted and disposed after the last caller exits.");
     }
 
     private static void InvokeCopyDirectory(string sourceDir, string destinationDir, CancellationToken ct) =>

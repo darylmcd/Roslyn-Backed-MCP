@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -91,6 +92,43 @@ public sealed class GatedCommandExecutorTests
         Assert.AreEqual(0, GetGateCount(executor));
     }
 
+    [TestMethod]
+    public async Task ExecuteAsync_GlobalGateSaturated_CountsQueueWaitAgainstTimeout()
+    {
+        var ws = new FakeWorkspaceManager();
+        var runner = new StubCommandRunner();
+        using var executor = new GatedCommandExecutor(ws, runner, NullLogger<GatedCommandExecutor>.Instance);
+        var globalGate = GetGlobalGate(executor);
+        var acquiredPermits = globalGate.CurrentCount;
+
+        for (var i = 0; i < acquiredPermits; i++)
+        {
+            await globalGate.WaitAsync();
+        }
+
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                executor.ExecuteAsync(
+                    "ws-queued",
+                    @"C:\tmp\Queued.sln",
+                    new[] { "build" },
+                    TimeSpan.FromMilliseconds(100),
+                    CancellationToken.None));
+            stopwatch.Stop();
+
+            StringAssert.Contains(exception.Message, "including queue wait");
+            Assert.IsTrue(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+                $"Queue wait should be bounded by the 100 ms budget; elapsed {stopwatch.Elapsed}.");
+        }
+        finally
+        {
+            globalGate.Release(acquiredPermits);
+        }
+    }
+
     private static int GetGateCount(GatedCommandExecutor executor)
         => ((ICollection)GetGateDictionary(executor)).Count;
 
@@ -105,6 +143,15 @@ public sealed class GatedCommandExecutorTests
             "_workspaceCommandGates", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(field, "Expected private field _workspaceCommandGates to exist.");
         return field!.GetValue(executor)!;
+    }
+
+    private static SemaphoreSlim GetGlobalGate(GatedCommandExecutor executor)
+    {
+        var field = typeof(GatedCommandExecutor).GetField(
+            "_globalCommandGate",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(field, "Expected private field _globalCommandGate to exist.");
+        return (SemaphoreSlim)field.GetValue(executor)!;
     }
 
     /// <summary>

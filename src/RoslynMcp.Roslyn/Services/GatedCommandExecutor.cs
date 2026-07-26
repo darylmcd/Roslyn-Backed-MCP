@@ -71,43 +71,43 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         CancellationToken ct)
     {
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
-        await _globalCommandGate.WaitAsync(ct).ConfigureAwait(false);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+        var globalGateAcquired = false;
+        var workspaceGateAcquired = false;
 
         try
         {
-            await workspaceGate.WaitAsync(ct).ConfigureAwait(false);
+            await _globalCommandGate.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            globalGateAcquired = true;
+            await workspaceGate.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            workspaceGateAcquired = true;
 
-            try
-            {
-                var workingDirectory = GetWorkingDirectory(targetPath);
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(timeout);
+            var workingDirectory = GetWorkingDirectory(targetPath);
+            var execution = await _commandRunner
+                .RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, timeoutCts.Token)
+                .ConfigureAwait(false);
 
-                CommandExecutionDto execution;
-                try
-                {
-                    execution = await _commandRunner
-                        .RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, timeoutCts.Token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
-                {
-                    throw new TimeoutException(
-                        $"The command 'dotnet {string.Join(" ", arguments)}' exceeded the timeout of {timeout.TotalMinutes:F1} minute(s).");
-                }
+            LogCommandExecuted(_logger, targetPath, string.Join(" ", arguments), execution.ExitCode, null);
 
-                LogCommandExecuted(_logger, targetPath, string.Join(" ", arguments), execution.ExitCode, null);
-
-                return execution;
-            }
-            finally
-            {
-                workspaceGate.Release();
-            }
+            return execution;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"The command 'dotnet {string.Join(" ", arguments)}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.");
         }
         finally
         {
-            _globalCommandGate.Release();
+            if (workspaceGateAcquired)
+            {
+                workspaceGate.Release();
+            }
+
+            if (globalGateAcquired)
+            {
+                _globalCommandGate.Release();
+            }
         }
     }
 

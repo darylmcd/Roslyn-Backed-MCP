@@ -210,25 +210,25 @@ public sealed class RestoreStalenessDetectorTests
     }
 
     [TestMethod]
-    public void HasBuildRequiredWorkspaceDiagnostics_UnresolvedAnalyzerDiagnostic_ReturnsTrue()
+    public void WorkspaceDiagnosticClassifier_UnresolvedAnalyzerDiagnostic_ReturnsTrue()
     {
         var diagnostics = new[]
         {
             MakeDiagnostic("WORKSPACE_UNRESOLVED_ANALYZER", "stripped"),
         };
 
-        Assert.IsTrue(RestoreStalenessDetector.HasBuildRequiredWorkspaceDiagnostics(diagnostics));
+        Assert.IsTrue(WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics));
     }
 
     [TestMethod]
-    public void HasBuildRequiredWorkspaceDiagnostics_NoMatchingDiagnostic_ReturnsFalse()
+    public void WorkspaceDiagnosticClassifier_NoMatchingDiagnostic_ReturnsFalse()
     {
         var diagnostics = new[]
         {
             MakeDiagnostic("CS0246", "unrelated"),
         };
 
-        Assert.IsFalse(RestoreStalenessDetector.HasBuildRequiredWorkspaceDiagnostics(diagnostics));
+        Assert.IsFalse(WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics));
     }
 
     private static DiagnosticDto MakeDiagnostic(string id, string message) =>

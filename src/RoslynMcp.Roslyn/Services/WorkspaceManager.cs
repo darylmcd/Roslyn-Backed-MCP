@@ -903,7 +903,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // BUILD output, distinct from a missing NuGet package. Track it separately so the
             // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
             // rather than a no-op `dotnet restore`.
-            var buildRequired = RestoreStalenessDetector.HasBuildRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
+            var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnosticsSink.Queue);
 
             if (_cacheCoordinator is not null && cachedProbe is not null)
             {

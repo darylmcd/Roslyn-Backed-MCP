@@ -54,11 +54,13 @@ public enum VersionCheckStatus
 public sealed class NuGetVersionChecker : ILatestVersionProvider
 {
     private const string PackageId = "darylmcd.roslynmcp";
+    internal const string HttpClientName = nameof(NuGetVersionChecker);
     private static readonly Uri FlatContainerUri = new($"https://api.nuget.org/v3-flatcontainer/{PackageId}/index.json");
     private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
 
-    private readonly HttpClient _http;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly bool _disposeCreatedClients;
     private readonly ILogger<NuGetVersionChecker> _logger;
     private readonly object _lock = new();
     private string? _latestVersion;
@@ -67,14 +69,46 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     private VersionCheckStatus _lastCheckStatus = VersionCheckStatus.NeverChecked;
     private DateTime? _lastCheckedAtUtc;
 
-    /// <param name="http">HTTP client used to query the NuGet flat container.</param>
+    /// <param name="httpClientFactory">
+    /// Factory for short-lived clients backed by pooled, rotating handlers.
+    /// </param>
     /// <param name="logger">
     /// Optional logger. Defaults to <see cref="NullLogger{T}"/> so unit tests can construct
     /// the checker directly without wiring a logging provider.
     /// </param>
-    public NuGetVersionChecker(HttpClient http, ILogger<NuGetVersionChecker>? logger = null)
+    public NuGetVersionChecker(
+        IHttpClientFactory httpClientFactory,
+        ILogger<NuGetVersionChecker>? logger = null)
+        : this(httpClientFactory, disposeCreatedClients: true, logger)
     {
-        _http = http;
+    }
+
+    /// <summary>
+    /// Creates a checker that uses a caller-owned HTTP client.
+    /// </summary>
+    /// <remarks>
+    /// Compatibility overload for existing consumers. Host applications should prefer
+    /// <see cref="NuGetVersionChecker(IHttpClientFactory, ILogger{NuGetVersionChecker}?)"/>
+    /// so handler pooling and rotation are managed by <c>Microsoft.Extensions.Http</c>.
+    /// The supplied client is never disposed by this checker.
+    /// </remarks>
+    /// <param name="http">Caller-owned HTTP client used to query NuGet.</param>
+    /// <param name="logger">Optional logger.</param>
+    public NuGetVersionChecker(
+        HttpClient http,
+        ILogger<NuGetVersionChecker>? logger = null)
+        : this(new CallerOwnedHttpClientFactory(http), disposeCreatedClients: false, logger)
+    {
+    }
+
+    private NuGetVersionChecker(
+        IHttpClientFactory httpClientFactory,
+        bool disposeCreatedClients,
+        ILogger<NuGetVersionChecker>? logger)
+    {
+        _httpClientFactory = httpClientFactory
+            ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _disposeCreatedClients = disposeCreatedClients;
         _logger = logger ?? NullLogger<NuGetVersionChecker>.Instance;
     }
 
@@ -147,7 +181,19 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
         try
         {
             using var cts = new CancellationTokenSource(HttpTimeout);
-            var json = await _http.GetStringAsync(FlatContainerUri, cts.Token).ConfigureAwait(false);
+            var http = _httpClientFactory.CreateClient(HttpClientName);
+            string json;
+            try
+            {
+                json = await http.GetStringAsync(FlatContainerUri, cts.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (_disposeCreatedClients)
+                {
+                    http.Dispose();
+                }
+            }
 
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("versions", out var versions))
@@ -214,5 +260,12 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
             _lastCheckStatus = status;
             _lastCheckedAtUtc = DateTime.UtcNow;
         }
+    }
+
+    private sealed class CallerOwnedHttpClientFactory(HttpClient http) : IHttpClientFactory
+    {
+        private readonly HttpClient _http = http ?? throw new ArgumentNullException(nameof(http));
+
+        public HttpClient CreateClient(string name) => _http;
     }
 }
