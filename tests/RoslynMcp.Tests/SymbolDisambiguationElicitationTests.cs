@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -85,25 +86,24 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     }
 
     [TestMethod]
-    public void AllowElicitationGate_DefaultOff_NeverPermitsElicitation_EvenForCapableClient()
+    [DataRow(nameof(SymbolTools.SearchSymbols))]
+    [DataRow(nameof(SymbolTools.GoToDefinition))]
+    [DataRow(nameof(SymbolTools.FindReferences))]
+    public void AllowElicitationParameter_DefaultsToFalse(string methodName)
     {
-        // symbol-disambiguation-agent-first-default: the disambiguation gate in SymbolTools
-        // (SearchSymbols and TryDisambiguateMetadataNameAsync) is now
-        // `allowElicitation && HasElicitation(caps)`. With allowElicitation defaulting to
-        // false, an elicitation-capable client MUST NOT trip the elicit branch — the calling
-        // agent receives the candidate list instead of a blocking operator prompt. A live
-        // ElicitAsync call needs transport (see class remarks), so pin the composed gate
-        // predicate directly to stop a future refactor silently restoring the elicit-first
-        // default.
-        var capable = new ClientCapabilities { Elicitation = new ElicitationCapability() };
-        Assert.IsTrue(StructuredCallToolFilter.HasElicitation(capable),
-            "Precondition: the client is elicitation-capable.");
+        var method = typeof(SymbolTools).GetMethod(
+            methodName,
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, $"Expected SymbolTools.{methodName} to exist.");
 
-        const bool allowElicitationDefault = false;
-        Assert.IsFalse(
-            allowElicitationDefault && StructuredCallToolFilter.HasElicitation(capable),
-            "Default-off: even a capable client must not reach the elicit branch when " +
-            "allowElicitation is false — the agent-first candidate list is returned instead.");
+        var parameter = method.GetParameters()
+            .Single(candidate => string.Equals(candidate.Name, "allowElicitation", StringComparison.Ordinal));
+
+        Assert.IsTrue(parameter.HasDefaultValue);
+        Assert.AreEqual(
+            false,
+            parameter.DefaultValue,
+            $"{methodName}.allowElicitation must remain agent-first by default.");
     }
 
     [TestMethod]

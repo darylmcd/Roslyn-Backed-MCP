@@ -129,8 +129,7 @@ public sealed class NuGetVersionCheckerTests
     public async Task GetLatestVersion_WhileFetchInFlight_RecordsPendingStatus()
     {
         using var handler = new BlockingHandler();
-        using var http = new HttpClient(handler);
-        var checker = new NuGetVersionChecker(http);
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call returns null while the check runs.");
 
@@ -147,8 +146,7 @@ public sealed class NuGetVersionCheckerTests
     public async Task GetLatestVersion_RefreshInFlight_ClearsPreviousCompletionTime()
     {
         using var handler = new RefreshBlockingHandler();
-        using var http = new HttpClient(handler);
-        var checker = new NuGetVersionChecker(http);
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call returns null while the check runs.");
         await WaitForCompletionAsync(checker);
@@ -175,8 +173,8 @@ public sealed class NuGetVersionCheckerTests
     [TestMethod]
     public async Task GetLatestVersion_OnFetchFailure_StaysNonThrowingAndRecordsFailedStatus()
     {
-        using var http = new HttpClient(new ThrowingHandler());
-        var checker = new NuGetVersionChecker(http);
+        using var handler = new ThrowingHandler();
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         // (a) Non-blocking contract: returns null immediately, never throws.
         string? result = checker.GetLatestVersion();
@@ -193,8 +191,8 @@ public sealed class NuGetVersionCheckerTests
     [TestMethod]
     public async Task GetLatestVersion_OnTimeout_StaysNonThrowingAndRecordsTimedOutStatus()
     {
-        using var http = new HttpClient(new TimeoutHandler());
-        var checker = new NuGetVersionChecker(http);
+        using var handler = new TimeoutHandler();
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call should return null while the check is in flight.");
 
@@ -209,8 +207,8 @@ public sealed class NuGetVersionCheckerTests
     public async Task GetLatestVersion_OnSuccess_RecordsSucceededStatusAndLatestStableVersion()
     {
         const string body = """{"versions":["1.0.0","1.2.0","1.2.0-beta","1.1.0"]}""";
-        using var http = new HttpClient(new StubHandler(body));
-        var checker = new NuGetVersionChecker(http);
+        using var handler = new StubHandler(body);
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call returns null while the check runs.");
 
@@ -219,6 +217,23 @@ public sealed class NuGetVersionCheckerTests
         Assert.AreEqual(VersionCheckStatus.Succeeded, checker.LastCheckStatus);
         Assert.IsNotNull(checker.LastCheckedAt);
         Assert.AreEqual("1.2.0", checker.GetLatestVersion(), "Should pick the latest stable (non-prerelease) version.");
+    }
+
+    [TestMethod]
+    public async Task LegacyHttpClientConstructor_PreservesCallerOwnership()
+    {
+        using var handler = new StubHandler("""{"versions":["1.0.0"]}""");
+        using var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new NuGetVersionChecker(http);
+
+        Assert.IsNull(checker.GetLatestVersion());
+        await WaitForCompletionAsync(checker);
+
+        using var response = await http.GetAsync("https://example.invalid/");
+        Assert.AreEqual(
+            HttpStatusCode.OK,
+            response.StatusCode,
+            "The compatibility constructor must not dispose its caller-owned HttpClient.");
     }
 
     private static void ForceCacheExpired(NuGetVersionChecker checker)

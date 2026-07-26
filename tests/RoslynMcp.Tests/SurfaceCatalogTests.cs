@@ -305,7 +305,9 @@ public sealed class SurfaceCatalogTests
     [TestMethod]
     public async Task ServerInfo_IncludesSurfaceSupportSummary()
     {
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new NuGetVersionChecker(new TestHttpClientFactory()));
         using var doc = JsonDocument.Parse(json);
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("surface", out var surface));
@@ -318,7 +320,9 @@ public sealed class SurfaceCatalogTests
     [TestMethod]
     public async Task ServerInfo_IncludesResourceServerNameHints()
     {
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new NuGetVersionChecker(new TestHttpClientFactory()));
         using var doc = JsonDocument.Parse(json);
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("resourceServerNames", out var hints));

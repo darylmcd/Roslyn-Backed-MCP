@@ -169,8 +169,8 @@ public sealed class ServerInfoUpdateLatestTests
     [TestMethod]
     public async Task ServerInfo_RealFailedChecker_DoesNotResetStatusToPending()
     {
-        using var http = new HttpClient(new ThrowingHandler());
-        var checker = new NuGetVersionChecker(http);
+        using var handler = new ThrowingHandler();
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call starts the background check.");
         await WaitForTerminalStatusAsync(checker);
@@ -189,8 +189,8 @@ public sealed class ServerInfoUpdateLatestTests
     [TestMethod]
     public async Task ServerInfo_RealCheckerFailedRefreshAfterSuccess_DoesNotResetStatusToPending()
     {
-        using var http = new HttpClient(new SuccessThenThrowingHandler());
-        var checker = new NuGetVersionChecker(http);
+        using var handler = new SuccessThenThrowingHandler();
+        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
 
         Assert.IsNull(checker.GetLatestVersion(), "First call starts the successful background check.");
         await WaitForTerminalStatusAsync(checker);

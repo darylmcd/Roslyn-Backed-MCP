@@ -91,10 +91,14 @@ public sealed class ServiceCollectionExtensionsTests
         AssertSingleRegistration<ExecutionGateOptions>(services);
         AssertSingleRegistration<SecurityOptions>(services);
         AssertSingleRegistration<ScriptingServiceOptions>(services);
-        AssertSingleRegistration<HttpClient>(services);
         AssertSingleRegistration<NuGetVersionChecker>(services);
         AssertSingleRegistration<ILatestVersionProvider>(services);
         AssertSingleRegistration<IWorkspaceCacheStore>(services);
+        Assert.IsFalse(
+            services.Any(descriptor =>
+                descriptor.ServiceType == typeof(HttpClient)
+                && descriptor.ImplementationInstance is HttpClient),
+            "NuGetVersionChecker must obtain clients through IHttpClientFactory, not a bare HttpClient singleton.");
     }
 
     /// <summary>
@@ -118,6 +122,7 @@ public sealed class ServiceCollectionExtensionsTests
             new ScriptingServiceOptions());
 
         using var sp = services.BuildServiceProvider();
+        Assert.IsNotNull(sp.GetRequiredService<IHttpClientFactory>());
         var viaInterface = sp.GetRequiredService<ILatestVersionProvider>();
         var viaConcrete = sp.GetRequiredService<NuGetVersionChecker>();
 

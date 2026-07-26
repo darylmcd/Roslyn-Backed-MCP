@@ -240,6 +240,55 @@ public sealed class ServerSurfaceCatalogAnalyzerTests
         await VerifyAsync(source, expected);
     }
 
+    [TestMethod]
+    public async Task RMCP001_IsSuppressedOnlyForKindWithNonLiteralCatalogEntry()
+    {
+        var source = """
+            using System.Collections.Generic;
+            using ModelContextProtocol.Server;
+
+            namespace RoslynMcp.Host.Stdio.Catalog
+            {
+                public sealed record SurfaceEntry(string Kind, string Name);
+
+                public static class ServerSurfaceCatalog
+                {
+                    private static readonly string ToolName = "alpha";
+
+                    public static IReadOnlyList<SurfaceEntry> Tools { get; } =
+                        new SurfaceEntry[]
+                        {
+                            Tool(ToolName),
+                        };
+
+                    public static IReadOnlyList<SurfaceEntry> Resources { get; } =
+                        System.Array.Empty<SurfaceEntry>();
+
+                    public static IReadOnlyList<SurfaceEntry> Prompts { get; } =
+                        System.Array.Empty<SurfaceEntry>();
+
+                    private static SurfaceEntry Tool(string name) => new("tool", name);
+                    private static SurfaceEntry Resource(string name) => new("resource", name);
+                }
+            }
+
+            namespace RoslynMcp.Host.Stdio.Tools
+            {
+                public static class Host
+                {
+                    [McpServerTool(Name = "alpha")] public static void Alpha() { }
+                    [{|#0:McpServerResource(Name = "missing_resource")|}] public static void MissingResource() { }
+                }
+            }
+            """ + McpAttributeStubs;
+
+        var expected = new DiagnosticResult("RMCP001", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("missing_resource", "McpServerResource", "Resources");
+
+        await VerifyAsync(source, expected);
+    }
+
     private static async Task VerifyAsync(string source, params DiagnosticResult[] expected)
     {
         var test = new CSharpAnalyzerTest<ServerSurfaceCatalogAnalyzer, DefaultVerifier>

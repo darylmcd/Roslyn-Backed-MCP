@@ -55,7 +55,7 @@ public static class ValidationBundleTools
     // workspace_fork_apply calls for the same workspace race on CopyDirectory /
     // DeleteDirectoryIfExists against the same <sourceRoot>/.roslynmcp/forks tree.
     // Keyed by the normalized (full-path, case-insensitive-on-Windows) source root.
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ForkApplyLocks =
+    private static readonly ConcurrentDictionary<string, ForkApplyLock> ForkApplyLocks =
         new(StringComparer.OrdinalIgnoreCase);
 
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -174,10 +174,7 @@ public static class ValidationBundleTools
             var retained = false;
             var success = false;
 
-            var sourceRootLock = ForkApplyLocks.GetOrAdd(
-                Path.GetFullPath(sourceRoot),
-                _ => new SemaphoreSlim(1, 1));
-            await sourceRootLock.WaitAsync(c).ConfigureAwait(false);
+            using var sourceRootLock = await AcquireForkApplyLockAsync(sourceRoot, c).ConfigureAwait(false);
             try
             {
                 CopyDirectory(sourceRoot, forkPath, c);
@@ -243,10 +240,6 @@ public static class ValidationBundleTools
                     CleanupFork(workspaceManager, forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
                 }
                 throw;
-            }
-            finally
-            {
-                sourceRootLock.Release();
             }
         }, ct, applyStalenessPolicy: false);
     }
@@ -333,7 +326,7 @@ public static class ValidationBundleTools
 
     internal static void SweepExpiredForks(string forkRoot, double ttlHours, DateTimeOffset now)
     {
-        if (ttlHours <= 0 || !Directory.Exists(forkRoot))
+        if (!double.IsFinite(ttlHours) || ttlHours <= 0 || !Directory.Exists(forkRoot))
         {
             return;
         }
@@ -391,12 +384,111 @@ public static class ValidationBundleTools
         }
 
         if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && double.IsFinite(parsed)
             && (parsed > 0 || (allowZero && parsed == 0)))
         {
             return parsed;
         }
 
         return fallback;
+    }
+
+    internal static async ValueTask<IDisposable> AcquireForkApplyLockAsync(
+        string sourceRoot,
+        CancellationToken ct)
+    {
+        var key = Path.GetFullPath(sourceRoot);
+        while (true)
+        {
+            var entry = ForkApplyLocks.GetOrAdd(key, static _ => new ForkApplyLock());
+            if (!entry.TryAddReference())
+            {
+                ForkApplyLocks.TryRemove(new KeyValuePair<string, ForkApplyLock>(key, entry));
+                continue;
+            }
+
+            try
+            {
+                await entry.Semaphore.WaitAsync(ct).ConfigureAwait(false);
+                return new ForkApplyLockLease(key, entry);
+            }
+            catch
+            {
+                ReleaseForkApplyLockReference(key, entry);
+                throw;
+            }
+        }
+    }
+
+    internal static bool HasForkApplyLock(string sourceRoot)
+        => ForkApplyLocks.ContainsKey(Path.GetFullPath(sourceRoot));
+
+    private static void ReleaseForkApplyLockReference(string key, ForkApplyLock entry)
+    {
+        if (!entry.ReleaseReference())
+        {
+            return;
+        }
+
+        ForkApplyLocks.TryRemove(new KeyValuePair<string, ForkApplyLock>(key, entry));
+        entry.Dispose();
+    }
+
+    private sealed class ForkApplyLock : IDisposable
+    {
+        private readonly object _sync = new();
+        private int _referenceCount;
+        private bool _retired;
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public bool TryAddReference()
+        {
+            lock (_sync)
+            {
+                if (_retired)
+                {
+                    return false;
+                }
+
+                _referenceCount++;
+                return true;
+            }
+        }
+
+        public bool ReleaseReference()
+        {
+            lock (_sync)
+            {
+                _referenceCount--;
+                if (_referenceCount > 0)
+                {
+                    return false;
+                }
+
+                _retired = true;
+                return true;
+            }
+        }
+
+        public void Dispose() => Semaphore.Dispose();
+    }
+
+    private sealed class ForkApplyLockLease(string key, ForkApplyLock entry) : IDisposable
+    {
+        private ForkApplyLock? _entry = entry;
+
+        public void Dispose()
+        {
+            var current = Interlocked.Exchange(ref _entry, null);
+            if (current is null)
+            {
+                return;
+            }
+
+            current.Semaphore.Release();
+            ReleaseForkApplyLockReference(key, current);
+        }
     }
 
     private static string SanitizeForkName(string? forkName)

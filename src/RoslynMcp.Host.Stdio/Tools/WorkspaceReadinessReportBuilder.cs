@@ -23,7 +23,9 @@ internal static class WorkspaceReadinessReportBuilder
         int? sourceGeneratedDocumentCount,
         string? sourceGeneratedProbeLimitation)
     {
-        var verdict = ResolveReadinessVerdict(summary, status.WorkspaceDiagnostics);
+        var buildRequired = summary.BuildRequired
+            || WorkspaceDiagnosticClassifier.HasBuildRequired(status.WorkspaceDiagnostics);
+        var verdict = ResolveReadinessVerdict(summary, buildRequired);
         var limitations = BuildReadinessLimitations(summary, sourceGeneratedProbeLimitation);
         var target = new WorkspaceReadinessTargetDto(
             WorkspaceId: summary.WorkspaceId,
@@ -34,7 +36,7 @@ internal static class WorkspaceReadinessReportBuilder
             DocumentCount: status.DocumentCount,
             TestProjectCount: status.Projects.Count(project => project.IsTestProject),
             SourceGeneratedDocumentCount: sourceGeneratedDocumentCount,
-            Signals: BuildReadinessSignals(summary, status.WorkspaceDiagnostics));
+            Signals: BuildReadinessSignals(summary, buildRequired));
 
         return new WorkspaceReadinessReportDto(
             ReportKind: "first-run-readiness",
@@ -88,9 +90,9 @@ internal static class WorkspaceReadinessReportBuilder
 
     private static string ResolveReadinessVerdict(
         WorkspaceStatusSummaryDto summary,
-        IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
+        bool buildRequired)
     {
-        if (HasBuildRequiredDiagnostic(workspaceDiagnostics))
+        if (buildRequired)
         {
             return ReadinessVerdictBuildNeeded;
         }
@@ -141,7 +143,7 @@ internal static class WorkspaceReadinessReportBuilder
 
     private static IReadOnlyList<string> BuildReadinessSignals(
         WorkspaceStatusSummaryDto summary,
-        IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
+        bool buildRequired)
     {
         var signals = new List<string>
         {
@@ -151,14 +153,10 @@ internal static class WorkspaceReadinessReportBuilder
             $"workspaceErrors={summary.WorkspaceErrorCount}",
             $"workspaceWarnings={summary.WorkspaceWarningCount}",
             $"restoreRequired={summary.RestoreRequired.ToString().ToLowerInvariant()}",
+            $"buildRequired={buildRequired.ToString().ToLowerInvariant()}",
             $"analyzersReady={summary.AnalyzersReady.ToString().ToLowerInvariant()}",
             $"isStale={summary.IsStale.ToString().ToLowerInvariant()}"
         };
-
-        if (HasBuildRequiredDiagnostic(workspaceDiagnostics))
-        {
-            signals.Add("buildRequired=true");
-        }
 
         if (!string.IsNullOrWhiteSpace(summary.RestoreHint))
         {
@@ -203,26 +201,4 @@ internal static class WorkspaceReadinessReportBuilder
         };
     }
 
-    private static bool HasBuildRequiredDiagnostic(IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
-    {
-        foreach (var diagnostic in workspaceDiagnostics)
-        {
-            var message = diagnostic.Message ?? string.Empty;
-            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase) &&
-                (message.Contains("dotnet build", StringComparison.OrdinalIgnoreCase) ||
-                 message.Contains("build output", StringComparison.OrdinalIgnoreCase) ||
-                 message.Contains("missing analyzer build", StringComparison.OrdinalIgnoreCase)))
-            {
-                return true;
-            }
-
-            if (message.Contains("Run `dotnet build`", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("Run dotnet build", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

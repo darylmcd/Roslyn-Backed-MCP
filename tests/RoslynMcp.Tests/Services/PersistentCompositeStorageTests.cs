@@ -30,17 +30,7 @@ public sealed class PersistentCompositeStorageTests
     [TestCleanup]
     public void Teardown()
     {
-        try
-        {
-            if (Directory.Exists(_root))
-            {
-                Directory.Delete(_root, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup; a leaked temp dir under GetTempPath is harmless.
-        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
     }
 
     [TestMethod]
@@ -52,8 +42,9 @@ public sealed class PersistentCompositeStorageTests
             new[] { new CompositeFileMutation(@"C:\proj\File.cs", "// updated", false) },
             DateTime.UtcNow);
 
-        store.Write("token-abc", entry);
-        var read = store.TryRead("token-abc");
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(token, entry);
+        var read = store.TryRead(token);
 
         Assert.IsNotNull(read, "A freshly-written, unexpired entry must round-trip through TryRead.");
         Assert.AreEqual("ws-1", read!.WorkspaceId);
@@ -99,7 +90,7 @@ public sealed class PersistentCompositeStorageTests
                 {
                     Directory.Delete(_root, recursive: true);
                 }
-                catch
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     // The delete itself may race the reader (sharing violation); irrelevant to
                     // what we're asserting, which is that the READER never throws.
@@ -109,7 +100,7 @@ public sealed class PersistentCompositeStorageTests
             CompositePreviewStore.Entry? result = null;
             try
             {
-                result = store.TryRead("token-under-race");
+                result = store.TryRead(Guid.NewGuid().ToString("N"));
             }
             catch (Exception ex)
             {
@@ -119,5 +110,82 @@ public sealed class PersistentCompositeStorageTests
             Assert.IsNull(result, "A token that was never written must read as a miss, even mid-race.");
             await deleter;
         }
+    }
+
+    [TestMethod]
+    public void TryReadAndDelete_PathTraversalToken_CannotAccessOutsideRoot()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var versionDirectory = Path.Combine(_root, "1");
+        Directory.CreateDirectory(versionDirectory);
+
+        var outsidePath = Path.Combine(
+            Directory.GetParent(_root)!.FullName,
+            $"outside-{Guid.NewGuid():N}.json");
+        File.WriteAllText(outsidePath, """{"workspaceId":"outside"}""");
+
+        try
+        {
+            var traversalToken = $"../../{Path.GetFileNameWithoutExtension(outsidePath)}";
+
+            Assert.IsNull(store.TryRead(traversalToken));
+            store.Delete(traversalToken);
+
+            Assert.IsTrue(
+                File.Exists(outsidePath),
+                "An invalid token must be rejected before file-system access.");
+        }
+        finally
+        {
+            File.Delete(outsidePath);
+        }
+    }
+
+    [TestMethod]
+    public void Write_InvalidToken_ThrowsBeforeCreatingVersionDirectory()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var entry = new CompositePreviewStore.Entry(
+            "ws-1",
+            7,
+            "invalid token",
+            [],
+            DateTime.UtcNow);
+
+        Assert.ThrowsExactly<ArgumentException>(() => store.Write("../escape", entry));
+        Assert.IsFalse(Directory.Exists(Path.Combine(_root, "7")));
+    }
+
+    [TestMethod]
+    public void Write_FinalMoveFails_RemovesTemporaryPayload()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        var versionDirectory = Path.Combine(_root, "7");
+        var destinationPath = Path.Combine(versionDirectory, token + ".json");
+        Directory.CreateDirectory(destinationPath);
+        var entry = new CompositePreviewStore.Entry(
+            "ws-1",
+            7,
+            "failed atomic move",
+            [],
+            DateTime.UtcNow);
+
+        Exception? writeFailure = null;
+        try
+        {
+            store.Write(token, entry);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            writeFailure = ex;
+        }
+
+        Assert.IsNotNull(
+            writeFailure,
+            "The destination-directory collision must make the final atomic move fail.");
+        Assert.IsFalse(
+            File.Exists(destinationPath + ".tmp"),
+            "A failed atomic move must not leave an orphaned temporary payload.");
     }
 }

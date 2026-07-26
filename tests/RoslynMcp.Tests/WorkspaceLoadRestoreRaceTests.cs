@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -48,9 +49,10 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        using var manager = CreateIsolatedManager(restoreRaceWaitMs: 30000);
         try
         {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 30000);
+
             // Scrub any obj/ directories that other test classes may have seeded into the
             // source samples tree before the copy ran. Without this, running the race tests
             // after an integration-style test that triggered a restore would include stale
@@ -95,9 +97,10 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        using var manager = CreateIsolatedManager(restoreRaceWaitMs: 5000);
         try
         {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 5000);
+
             // Start from a clean slate — unrelated obj/ artefacts copied over from the
             // shared samples tree would also enter the wait window and blur the measurement
             // of the single asset file we're about to touch.
@@ -191,9 +194,10 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
         try
         {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
+
             ScrubObjDirectories(copiedRoot);
 
             var writerProjectDir = Path.Combine(copiedRoot, "SampleLib");
@@ -246,25 +250,29 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
         var commandRunner = new DotnetCommandRunner();
 
         try
         {
+            using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
+
             await RunRestoreAsync(commandRunner, copiedSolutionPath, CancellationToken.None);
 
             var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
             Assert.IsFalse(status.RestoreRequired, "Freshly restored workspace should not report restore drift.");
 
             var packagesPropsPath = Path.Combine(copiedRoot, "Directory.Packages.props");
-            var originalProps = await File.ReadAllTextAsync(packagesPropsPath, CancellationToken.None);
-            const string originalVersion = "<PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.14.0\" />";
-            const string updatedVersion = "<PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.14.1\" />";
-            StringAssert.Contains(originalProps, originalVersion, "Test fixture drifted; update the expected central package version.");
-            await File.WriteAllTextAsync(
+            var originalVersion = ReadCentralPackageVersionFromProps(
                 packagesPropsPath,
-                originalProps.Replace(originalVersion, updatedVersion, StringComparison.Ordinal),
-                CancellationToken.None);
+                "Microsoft.NET.Test.Sdk");
+            Assert.IsFalse(
+                string.IsNullOrWhiteSpace(originalVersion),
+                "Copied Directory.Packages.props must define Microsoft.NET.Test.Sdk.");
+            var updatedVersion = SelectAlternateTestSdkVersion(originalVersion!);
+            SetCentralPackageVersion(
+                packagesPropsPath,
+                "Microsoft.NET.Test.Sdk",
+                updatedVersion);
 
             status = await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
             Assert.IsTrue(status.RestoreRequired, "Reload must signal restoreRequired after a package-version edit without restore.");
@@ -283,7 +291,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
             Assert.IsFalse(status.RestoreRequired, "Auto-restore should clear restoreRequired after rerunning restore and reload.");
             Assert.AreEqual(
-                "17.14.1",
+                updatedVersion,
                 ReadCentralPackageVersion(
                     Path.Combine(copiedRoot, "SampleLib.Tests", "obj", "project.assets.json"),
                     "Microsoft.NET.Test.Sdk"),
@@ -306,18 +314,7 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
     {
         foreach (var objDir in Directory.EnumerateDirectories(copiedRoot, "obj", SearchOption.AllDirectories).ToArray())
         {
-            try
-            {
-                Directory.Delete(objDir, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Tolerate transient IO errors — a concurrent build may hold a handle.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Same — best effort only.
-            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(objDir);
         }
     }
 
@@ -375,4 +372,60 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 
         return null;
     }
+
+    private static string? ReadCentralPackageVersionFromProps(string packagesPropsPath, string packageId)
+    {
+        var packageElement = FindCentralPackageElement(packagesPropsPath, packageId);
+        return packageElement.Attribute("Version")?.Value
+            ?? packageElement.Elements().FirstOrDefault(element =>
+                string.Equals(element.Name.LocalName, "Version", StringComparison.OrdinalIgnoreCase))?.Value;
+    }
+
+    private static void SetCentralPackageVersion(
+        string packagesPropsPath,
+        string packageId,
+        string version)
+    {
+        var document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        var packageElement = FindCentralPackageElement(document, packageId);
+        var versionAttribute = packageElement.Attribute("Version");
+        if (versionAttribute is not null)
+        {
+            versionAttribute.Value = version;
+        }
+        else
+        {
+            var versionElement = packageElement.Elements().FirstOrDefault(element =>
+                string.Equals(element.Name.LocalName, "Version", StringComparison.OrdinalIgnoreCase));
+            if (versionElement is null)
+            {
+                throw new InvalidOperationException(
+                    $"Central package '{packageId}' does not declare a Version.");
+            }
+
+            versionElement.Value = version;
+        }
+
+        document.Save(packagesPropsPath, SaveOptions.DisableFormatting);
+    }
+
+    private static XElement FindCentralPackageElement(string packagesPropsPath, string packageId)
+        => FindCentralPackageElement(
+            XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace),
+            packageId);
+
+    private static XElement FindCentralPackageElement(XDocument document, string packageId)
+        => document
+            .Descendants()
+            .Single(element =>
+                string.Equals(element.Name.LocalName, "PackageVersion", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(
+                    element.Attribute("Include")?.Value,
+                    packageId,
+                    StringComparison.OrdinalIgnoreCase));
+
+    private static string SelectAlternateTestSdkVersion(string originalVersion)
+        => string.Equals(originalVersion, "17.14.1", StringComparison.Ordinal)
+            ? "17.14.0"
+            : "17.14.1";
 }

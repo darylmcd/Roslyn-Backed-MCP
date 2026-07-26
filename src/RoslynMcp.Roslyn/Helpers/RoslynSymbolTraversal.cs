@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -9,6 +10,28 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 internal static class RoslynSymbolTraversal
 {
+    /// <summary>
+    /// Resolves the nearest type declaration containing <paramref name="node"/>.
+    /// Returns <see langword="null"/> for namespace-level and top-level-statement nodes.
+    /// </summary>
+    public static INamedTypeSymbol? FindContainingType(
+        SyntaxNode node,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        var typeDeclaration = node
+            .AncestorsAndSelf()
+            .OfType<TypeDeclarationSyntax>()
+            .FirstOrDefault();
+
+        return typeDeclaration is null
+            ? null
+            : semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol;
+    }
+
     /// <summary>
     /// Yields every <see cref="INamedTypeSymbol"/> reachable from <paramref name="root"/> —
     /// descending through child namespaces and into nested types to ARBITRARY depth — in

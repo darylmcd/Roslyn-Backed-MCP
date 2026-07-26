@@ -53,20 +53,58 @@ public sealed class WorkspaceReloadedEventTests : TestBase
     {
         var workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
 
-        // A misbehaving subscriber must not break a subsequent reload. The manager is expected
-        // to log the exception and swallow it — same contract as WorkspaceClosed.
+        var observed = false;
         void ThrowingHandler(string _) => throw new InvalidOperationException("deliberately thrown in test");
+        void ObservingHandler(string id) => observed = id == workspaceId;
         WorkspaceManager.WorkspaceReloaded += ThrowingHandler;
+        WorkspaceManager.WorkspaceReloaded += ObservingHandler;
         try
         {
-            // Should not throw even though the handler does.
             var status = await WorkspaceManager.ReloadAsync(workspaceId, CancellationToken.None);
             Assert.IsNotNull(status, "Reload must still return a valid status when a handler throws.");
         }
         finally
         {
             WorkspaceManager.WorkspaceReloaded -= ThrowingHandler;
+            WorkspaceManager.WorkspaceReloaded -= ObservingHandler;
         }
+
+        Assert.IsTrue(
+            observed,
+            "A throwing subscriber must not suppress later WorkspaceReloaded subscribers.");
+    }
+
+    [TestMethod]
+    public async Task Close_Handler_Exception_Does_Not_Suppress_Later_Subscribers()
+    {
+        var workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+
+        var observed = false;
+        void ThrowingHandler(string _) => throw new InvalidOperationException("deliberately thrown in test");
+        void ObservingHandler(string id) => observed = id == workspaceId;
+        WorkspaceManager.WorkspaceClosed += ThrowingHandler;
+        WorkspaceManager.WorkspaceClosed += ObservingHandler;
+        try
+        {
+            Assert.IsTrue(WorkspaceManager.Close(workspaceId));
+        }
+        finally
+        {
+            WorkspaceManager.WorkspaceClosed -= ThrowingHandler;
+            WorkspaceManager.WorkspaceClosed -= ObservingHandler;
+        }
+
+        Assert.IsTrue(
+            observed,
+            "A throwing subscriber must not suppress later WorkspaceClosed subscribers.");
+
+        var reloadedWorkspaceId = await GetOrLoadWorkspaceIdAsync(
+            SampleSolutionPath,
+            CancellationToken.None);
+        Assert.AreNotEqual(
+            workspaceId,
+            reloadedWorkspaceId,
+            "The shared fixture cache must replace an evicted workspace id after close.");
     }
 
     [TestMethod]

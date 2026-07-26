@@ -493,7 +493,7 @@ internal class RestoreStalenessDetector
     // missing BUILD output (e.g. an analyzer dll not yet produced by `dotnet build`), NOT a
     // missing NuGet package. It must NOT set restoreRequired (which routes callers to a no-op
     // `dotnet restore` loop and arms autoRestore for a pointless restore). It is detected
-    // separately by HasBuildRequiredWorkspaceDiagnostics and surfaced via the BuildRequired flag.
+    // separately by WorkspaceDiagnosticClassifier and surfaced via the BuildRequired flag.
     public static bool HasRestoreRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
     {
         var suspiciousDiagnostics = 0;
@@ -520,23 +520,6 @@ internal class RestoreStalenessDetector
         }
 
         return suspiciousDiagnostics >= 3;
-    }
-
-    // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning means a build
-    // output (analyzer dll) is missing — the remedy is `dotnet build`, not `dotnet restore`. Kept
-    // distinct from HasRestoreRequiredWorkspaceDiagnostics so callers can route to the correct hint
-    // and verdict (build-needed vs restore-needed).
-    public static bool HasBuildRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
-    {
-        foreach (var diagnostic in diagnostics)
-        {
-            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private readonly record struct PackageExpectation(string? RequestedVersion, bool UsesCentralVersion);

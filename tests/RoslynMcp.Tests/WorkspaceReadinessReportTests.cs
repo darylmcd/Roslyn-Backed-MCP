@@ -76,6 +76,28 @@ public sealed class WorkspaceReadinessReportTests
     }
 
     [TestMethod]
+    public async Task ReadinessReport_UnresolvedAnalyzerWithoutMagicWording_UsesSharedClassifier()
+    {
+        DiagnosticDto[] diagnostics =
+        [
+            new(
+                "WORKSPACE_UNRESOLVED_ANALYZER",
+                "Analyzer reference unavailable.",
+                "Warning",
+                "Workspace",
+                null, null, null, null, null)
+        ];
+        var buildRequired = WorkspaceDiagnosticClassifier.HasBuildRequired(diagnostics);
+        var json = await CreateReportAsync(CreateStatus(diagnostics, buildRequired: false));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(buildRequired);
+        Assert.AreEqual("build-needed", GetVerdict(doc));
+        StringAssert.Contains(ReadSignals(doc), "buildRequired=true");
+        StringAssert.Contains(ReadWorkflows(doc), "dotnet build");
+    }
+
+    [TestMethod]
     public async Task ReadinessReport_NuGetRestoreWithoutAnalyzerWarning_ReturnsRestoreNeededAndNotBuildRequired()
     {
         // restore-required-vs-build-conflation regression: a genuine missing-NuGet-package case

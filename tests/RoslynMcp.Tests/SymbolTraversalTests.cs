@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -134,6 +135,76 @@ namespace Sample
         // ...yet every class, at every depth, must still be present.
         foreach (var included in new[] { "Alpha", "Beta", "Gamma", "Parent", "Child", "Grandchild", "Buried", "MatchingLeaf" })
             Assert.IsTrue(classes.Contains(included), $"Class '{included}' must survive the filter.");
+    }
+
+    [TestMethod]
+    public async Task FindContainingType_ReturnsNearestNestedType()
+    {
+        const string source = """
+            namespace Sample;
+
+            public class Outer
+            {
+                public class Inner
+                {
+                    public void Target()
+                    {
+                        var value = 1;
+                    }
+                }
+            }
+            """;
+        var compilation = await CompileAsync(source);
+        var tree = compilation.SyntaxTrees.Single();
+        var root = await tree.GetRootAsync();
+        var targetNode = root.DescendantTokens().Single(token => token.ValueText == "value").Parent!;
+
+        var containingType = RoslynSymbolTraversal.FindContainingType(
+            targetNode,
+            compilation.GetSemanticModel(tree),
+            CancellationToken.None);
+
+        Assert.IsNotNull(containingType);
+        Assert.AreEqual("Inner", containingType.Name);
+    }
+
+    [TestMethod]
+    public async Task FindContainingType_OutsideType_ReturnsNull()
+    {
+        const string source = """
+            using System;
+
+            Console.WriteLine("top level");
+            """;
+        var compilation = await CompileAsync(source);
+        var tree = compilation.SyntaxTrees.Single();
+        var root = await tree.GetRootAsync();
+        var usingNode = root.DescendantNodes().OfType<UsingDirectiveSyntax>().Single();
+
+        var containingType = RoslynSymbolTraversal.FindContainingType(
+            usingNode,
+            compilation.GetSemanticModel(tree),
+            CancellationToken.None);
+
+        Assert.IsNull(containingType);
+    }
+
+    [TestMethod]
+    public async Task FindContainingType_PropagatesCancellation()
+    {
+        const string source = "namespace Sample; public class Target { }";
+        var compilation = await CompileAsync(source);
+        var tree = compilation.SyntaxTrees.Single();
+        var root = await tree.GetRootAsync();
+        var typeNode = root.DescendantNodes().OfType<TypeDeclarationSyntax>().Single();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.ThrowsExactly<OperationCanceledException>(() =>
+            RoslynSymbolTraversal.FindContainingType(
+                typeNode,
+                compilation.GetSemanticModel(tree),
+                cts.Token));
     }
 
     // Root the walk at the source `Sample` namespace rather than the merged global namespace —
