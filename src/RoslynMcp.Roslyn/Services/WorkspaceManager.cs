@@ -429,17 +429,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// </summary>
     private void RaiseWorkspaceClosed(string workspaceId)
     {
-        var handler = WorkspaceClosed;
-        if (handler is null) return;
-
-        try
-        {
-            handler(workspaceId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "WorkspaceClosed handler threw for {WorkspaceId}", workspaceId);
-        }
+        RaiseWorkspaceLifecycleEvent(WorkspaceClosed, nameof(WorkspaceClosed), workspaceId);
     }
 
     /// <summary>
@@ -448,16 +438,30 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// </summary>
     private void RaiseWorkspaceReloaded(string workspaceId)
     {
-        var handler = WorkspaceReloaded;
-        if (handler is null) return;
+        RaiseWorkspaceLifecycleEvent(WorkspaceReloaded, nameof(WorkspaceReloaded), workspaceId);
+    }
 
-        try
+    private void RaiseWorkspaceLifecycleEvent(
+        Action<string>? handlers,
+        string eventName,
+        string workspaceId)
+    {
+        if (handlers is null) return;
+
+        foreach (var handler in handlers.GetInvocationList())
         {
-            handler(workspaceId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "WorkspaceReloaded handler threw for {WorkspaceId}", workspaceId);
+            try
+            {
+                ((Action<string>)handler)(workspaceId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "{EventName} handler threw for {WorkspaceId}",
+                    eventName,
+                    workspaceId);
+            }
         }
     }
 

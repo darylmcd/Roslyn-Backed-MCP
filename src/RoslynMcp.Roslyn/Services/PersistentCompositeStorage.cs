@@ -54,8 +54,21 @@ public sealed class PersistentCompositeStorage
             entry.Mutations.Select(m => new PersistedMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
             entry.CreatedAt);
 
-        File.WriteAllText(tmp, JsonSerializer.Serialize(dto, JsonOpts));
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmp, JsonSerializer.Serialize(dto, JsonOpts));
+            File.Move(tmp, path, overwrite: true);
+        }
+        finally
+        {
+            // A failed write/move must not leave an orphaned payload that is never eligible
+            // for normal token retrieval or TTL cleanup. TryDelete is best-effort and preserves
+            // the primary write exception.
+            if (File.Exists(tmp))
+            {
+                TryDelete(tmp);
+            }
+        }
     }
 
     public CompositePreviewStore.Entry? TryRead(string token)
