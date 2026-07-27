@@ -1,14 +1,14 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -306,32 +306,32 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         switch (symbol)
         {
             case IMethodSymbol { IsOverride: true } method:
-            {
-                var current = method;
-                while (current.OverriddenMethod is { } baseMethod)
                 {
-                    current = baseMethod;
+                    var current = method;
+                    while (current.OverriddenMethod is { } baseMethod)
+                    {
+                        current = baseMethod;
+                    }
+                    return current;
                 }
-                return current;
-            }
             case IPropertySymbol { IsOverride: true } property:
-            {
-                var current = property;
-                while (current.OverriddenProperty is { } baseProperty)
                 {
-                    current = baseProperty;
+                    var current = property;
+                    while (current.OverriddenProperty is { } baseProperty)
+                    {
+                        current = baseProperty;
+                    }
+                    return current;
                 }
-                return current;
-            }
             case IEventSymbol { IsOverride: true } ev:
-            {
-                var current = ev;
-                while (current.OverriddenEvent is { } baseEvent)
                 {
-                    current = baseEvent;
+                    var current = ev;
+                    while (current.OverriddenEvent is { } baseEvent)
+                    {
+                        current = baseEvent;
+                    }
+                    return current;
                 }
-                return current;
-            }
             case IMethodSymbol { ExplicitInterfaceImplementations.Length: > 0 } m:
                 return m.ExplicitInterfaceImplementations[0];
             case IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 } p:
@@ -339,20 +339,20 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             case IEventSymbol { ExplicitInterfaceImplementations.Length: > 0 } e:
                 return e.ExplicitInterfaceImplementations[0];
             case IMethodSymbol method:
-            {
-                var iface = TryFindImplicitlyImplementedInterfaceMember(method);
-                return iface ?? symbol;
-            }
+                {
+                    var iface = TryFindImplicitlyImplementedInterfaceMember(method);
+                    return iface ?? symbol;
+                }
             case IPropertySymbol prop:
-            {
-                var iface = TryFindImplicitlyImplementedInterfaceMember(prop);
-                return iface ?? symbol;
-            }
+                {
+                    var iface = TryFindImplicitlyImplementedInterfaceMember(prop);
+                    return iface ?? symbol;
+                }
             case IEventSymbol evt:
-            {
-                var iface = TryFindImplicitlyImplementedInterfaceMember(evt);
-                return iface ?? symbol;
-            }
+                {
+                    var iface = TryFindImplicitlyImplementedInterfaceMember(evt);
+                    return iface ?? symbol;
+                }
             default:
                 return symbol;
         }
@@ -423,27 +423,6 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
     }
 
     /// <summary>
-    /// Heuristic for "framework/corlib assembly" — the assemblies whose interface/type roots the
-    /// metadata-name <see cref="SymbolFinder.FindImplementationsAsync"/> path enumerates
-    /// unreliably. The primary signal is a recognized <see cref="SpecialType"/> on the type
-    /// (mirrors the <see cref="IsCorlibVirtualMember"/> gate): the C# compiler only stamps a
-    /// non-<see cref="SpecialType.None"/> value on the canonical runtime corlib types
-    /// (<c>System.IDisposable</c>, <c>System.IComparable</c>, <c>System.Collections.IEnumerable</c>,
-    /// etc.), so this is precise and never over-matches a third-party assembly. The caller
-    /// (<see cref="IsCorlibImplementationRoot"/>) resolves <see cref="SpecialType"/> from the type.
-    /// </summary>
-    /// <remarks>
-    /// The <c>StartsWith("System.")</c> name signal is kept ONLY as a DOCUMENTED secondary fallback
-    /// for BCL types that carry no <see cref="SpecialType"/> (e.g. <c>System.IComparable</c> on some
-    /// target frameworks). It is gated behind BOTH the name signal (exact allowlist OR
-    /// <c>System.*</c> prefix) AND a well-known .NET/BCL strong-name public-key token, so a
-    /// third-party <c>System.MyCompany.Foo</c> assembly — which is not signed with a BCL key — is NOT
-    /// misclassified as a corlib implementation root (the over-match this method previously had).
-    /// A real BCL assembly is always strong-named with one of the well-known runtime tokens.
-    /// </remarks>
-    private static bool IsCorlibAssembly(IAssemblySymbol? assembly) => IsCorlibAssembly(assembly, SpecialType.None);
-
-    /// <summary>
     /// Well-known strong-name public-key tokens for the .NET runtime / BCL. A genuine corlib/BCL
     /// assembly is signed with one of these; a third-party assembly that merely names itself
     /// <c>System.*</c> is not. Lower-case hex, matching <see cref="ImmutableArray{T}"/> byte rendering.
@@ -456,6 +435,22 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         "cc7b13ffcd2ddd51", // netstandard
     ];
 
+    /// <summary>
+    /// Heuristic for "framework/corlib assembly" — the assemblies whose interface/type roots the
+    /// metadata-name <see cref="SymbolFinder.FindImplementationsAsync"/> path enumerates
+    /// unreliably. The primary signal is a recognized <see cref="SpecialType"/> on the type
+    /// (mirrors the <see cref="IsCorlibVirtualMember"/> gate): the C# compiler only stamps a
+    /// non-<see cref="SpecialType.None"/> value on the canonical runtime corlib types
+    /// (<c>System.IDisposable</c>, <c>System.IComparable</c>, <c>System.Collections.IEnumerable</c>,
+    /// etc.), so this is precise and never over-matches a third-party assembly. The caller
+    /// (<see cref="IsCorlibImplementationRoot"/>) resolves <see cref="SpecialType"/> from the type.
+    /// </summary>
+    /// <remarks>
+    /// The <c>StartsWith("System.")</c> name signal is kept only as a documented secondary fallback
+    /// for BCL types that carry no <see cref="SpecialType"/>. It is gated behind both the name
+    /// signal and a well-known .NET/BCL strong-name public-key token, so a third-party
+    /// <c>System.MyCompany.Foo</c> assembly is not misclassified as a corlib implementation root.
+    /// </remarks>
     private static bool IsCorlibAssembly(IAssemblySymbol? assembly, SpecialType specialType)
     {
         if (assembly is null)

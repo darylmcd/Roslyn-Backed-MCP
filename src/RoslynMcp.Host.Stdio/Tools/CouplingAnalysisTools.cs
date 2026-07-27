@@ -26,8 +26,9 @@ public static class CouplingAnalysisTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var results = await couplingAnalysisService.GetCouplingMetricsAsync(
+            var result = await couplingAnalysisService.GetCouplingMetricsResultAsync(
                 workspaceId, projectName, limit, excludeTestProjects, includeInterfaces, c);
+            var results = result.Metrics;
 
             // Summary mode: per-project rollup with classification buckets, no per-type detail rows.
             // 10-100x smaller payload for multi-project solutions (gh #763).
@@ -51,13 +52,23 @@ public static class CouplingAnalysisTools
                 return JsonSerializer.Serialize(new
                 {
                     summary = true,
+                    partial = result.IsPartial,
+                    failedTypeCount = result.FailedTypeCount,
+                    warnings = result.Warnings,
                     projectCount = projectGroups.Count,
                     totalTypes = results.Count,
                     projects = projectGroups,
                 }, JsonDefaults.Indented);
             }
 
-            return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new
+            {
+                count = results.Count,
+                partial = result.IsPartial,
+                failedTypeCount = result.FailedTypeCount,
+                warnings = result.Warnings,
+                metrics = results,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 }

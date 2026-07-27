@@ -51,18 +51,8 @@ internal sealed class TypeScaffolder
         return preview;
     }
 
-    /// <summary>
-    /// Facade-independent copy of <c>ScaffoldingService.ResolveProject</c> so the collaborator
-    /// does not back-reference the facade. Kept as a deliberate ~4-line duplication (flagged in
-    /// the extraction plan) rather than a shared helper.
-    /// </summary>
-    private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
-    {
-        return _workspace.GetStatus(workspaceId).Projects.FirstOrDefault(project =>
-                   string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new InvalidOperationException($"Project not found: {projectName}");
-    }
+    private ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+        WorkspaceProjectResolver.Resolve(_workspace, workspaceId, projectName);
 
     /// <summary>
     /// Picks the folder segments under the project root for a scaffolded file. When the

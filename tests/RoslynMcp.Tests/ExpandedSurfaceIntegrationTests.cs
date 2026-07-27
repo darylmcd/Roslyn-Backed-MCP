@@ -705,15 +705,24 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
+        var clientToServerReadStream = clientToServer.Reader.AsStream();
+        var clientToServerWriteStream = clientToServer.Writer.AsStream();
+        var serverToClientReadStream = serverToClient.Reader.AsStream();
+        var serverToClientWriteStream = serverToClient.Writer.AsStream();
 
         var serverTransport = new StreamServerTransport(
-            clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream(), "test-server", NullLoggerFactory.Instance);
+            clientToServerReadStream,
+            serverToClientWriteStream,
+            "test-server",
+            NullLoggerFactory.Instance);
         var server = McpServer.Create(serverTransport, new McpServerOptions(), NullLoggerFactory.Instance, null);
         var cts = new CancellationTokenSource();
         var serverRunTask = server.RunAsync(cts.Token);
 
         var clientTransport = new StreamClientTransport(
-            clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream(), NullLoggerFactory.Instance);
+            clientToServerWriteStream,
+            serverToClientReadStream,
+            NullLoggerFactory.Instance);
         var rootUri = new Uri(sanctionedRoot).AbsoluteUri;
 
         var client = await McpClient.CreateAsync(
@@ -732,17 +741,32 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             NullLoggerFactory.Instance,
             ct).ConfigureAwait(false);
 
-        return new ServerWithSanctionedRootHarness(server, client, cts, serverRunTask);
+        return new ServerWithSanctionedRootHarness(
+            server,
+            client,
+            cts,
+            serverRunTask,
+            [
+                clientToServerReadStream,
+                clientToServerWriteStream,
+                serverToClientReadStream,
+                serverToClientWriteStream,
+            ]);
     }
 
     private sealed class ServerWithSanctionedRootHarness(
-        McpServer server, McpClient client, CancellationTokenSource cts, Task serverRunTask) : IAsyncDisposable
+        McpServer server,
+        McpClient client,
+        CancellationTokenSource cts,
+        Task serverRunTask,
+        IReadOnlyList<Stream> transportStreams) : IAsyncDisposable
     {
         public McpServer Server { get; } = server;
 
         public async ValueTask DisposeAsync()
         {
-            await client.DisposeAsync().ConfigureAwait(false);
+            var failures = new List<Exception>();
+            await DisposeCapturingAsync(client, failures).ConfigureAwait(false);
             cts.Cancel();
             try
             {
@@ -754,7 +778,31 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             }
             finally
             {
+                await DisposeCapturingAsync(Server, failures).ConfigureAwait(false);
+                foreach (var stream in transportStreams)
+                {
+                    await DisposeCapturingAsync(stream, failures).ConfigureAwait(false);
+                }
                 cts.Dispose();
+            }
+
+            if (failures.Count > 0)
+            {
+                throw new AggregateException("Failed to dispose the sanctioned-root MCP test harness.", failures);
+            }
+        }
+
+        private static async ValueTask DisposeCapturingAsync(
+            IAsyncDisposable disposable,
+            ICollection<Exception> failures)
+        {
+            try
+            {
+                await disposable.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                failures.Add(ex);
             }
         }
     }

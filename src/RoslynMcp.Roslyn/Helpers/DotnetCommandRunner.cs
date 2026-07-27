@@ -85,14 +85,29 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         CancellationToken ct)
         => RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns: null, ct);
 
-    public async Task<CommandExecutionDto> RunAsync(
+    public Task<CommandExecutionDto> RunAsync(
         string workingDirectory,
         string targetPath,
         IReadOnlyList<string> arguments,
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
+        => RunAsync(
+            workingDirectory,
+            targetPath,
+            arguments,
+            earlyKillPatterns,
+            executablePath: "dotnet",
+            ct);
+
+    public async Task<CommandExecutionDto> RunAsync(
+        string workingDirectory,
+        string targetPath,
+        IReadOnlyList<string> arguments,
+        IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+        string executablePath,
+        CancellationToken ct)
     {
-        var startInfo = CreateStartInfo(workingDirectory, arguments);
+        var startInfo = CreateStartInfo(workingDirectory, arguments, executablePath);
 
         using var process = new Process { StartInfo = startInfo };
         var stopwatch = Stopwatch.StartNew();
@@ -122,7 +137,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         stopwatch.Stop();
 
         return new CommandExecutionDto(
-            Command: "dotnet",
+            Command: executablePath,
             Arguments: arguments,
             WorkingDirectory: workingDirectory,
             TargetPath: targetPath,
@@ -134,11 +149,19 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             EarlyKillReason: earlyKill?.KillReason);
     }
 
-    internal static ProcessStartInfo CreateStartInfo(string workingDirectory, IReadOnlyList<string> arguments)
+    internal static ProcessStartInfo CreateStartInfo(
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        string executablePath = "dotnet")
     {
+        if (string.IsNullOrWhiteSpace(executablePath))
+        {
+            throw new ArgumentException("Executable path must not be empty.", nameof(executablePath));
+        }
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = executablePath,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,

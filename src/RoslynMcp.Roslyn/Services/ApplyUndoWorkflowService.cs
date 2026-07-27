@@ -98,19 +98,11 @@ public sealed record SequenceRevertOutcome(
 /// <inheritdoc cref="IApplyUndoWorkflowService"/>
 public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
 {
-    /// <summary>
-    /// apply-with-verify-cancellation-and-compile-scope: budget for the best-effort revert issued
-    /// when the caller's <see cref="CancellationToken"/> fires AFTER a successful apply but before
-    /// the normal verify/revert leg completes. The original (already-cancelled) token cannot drive
-    /// the rollback, so a fresh short-lived token is used so the workspace is not left mutated with
-    /// no rollback. Bounded so a wedged revert cannot hang the caller.
-    /// </summary>
-    private static readonly TimeSpan RevertBudget = TimeSpan.FromSeconds(30);
-
     private readonly IRefactoringService _refactoringService;
     private readonly ICompileCheckService _compileCheckService;
     private readonly IUndoService _undoService;
     private readonly IPreviewStore _previewStore;
+    private readonly TimeSpan _revertBudget;
     private readonly ILogger? _logger;
 
     public ApplyUndoWorkflowService(
@@ -118,18 +110,23 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
         ICompileCheckService compileCheckService,
         IUndoService undoService,
         IPreviewStore previewStore,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        ValidationServiceOptions? options = null)
     {
         _refactoringService = refactoringService;
         _compileCheckService = compileCheckService;
         _undoService = undoService;
         _previewStore = previewStore;
+        var configuredRevertBudget = options?.ApplyRevertTimeout ?? TimeSpan.FromSeconds(30);
+        _revertBudget = configuredRevertBudget > TimeSpan.Zero
+            ? configuredRevertBudget
+            : TimeSpan.FromSeconds(30);
         _logger = loggerFactory?.CreateLogger(typeof(ApplyUndoWorkflowService).FullName ?? nameof(ApplyUndoWorkflowService));
     }
 
     /// <summary>
     /// apply-with-verify-cancelled-result-compensation: best-effort revert issued when a
-    /// cancellation is observed after a successful apply, on a FRESH <see cref="RevertBudget"/>-scoped
+    /// cancellation is observed after a successful apply, on a fresh configuration-bounded
     /// token (the caller's own token is already cancelled and cannot drive the rollback). A revert
     /// failure — either a <see langword="false"/> result or a thrown exception — is logged at Error
     /// and never swallowed (Directive #3), and never masks the caller's cancellation, which the
@@ -139,7 +136,7 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
     /// </summary>
     private async Task BestEffortRevertAfterCancellationAsync(string workspaceId)
     {
-        using var revertCts = new CancellationTokenSource(RevertBudget);
+        using var revertCts = new CancellationTokenSource(_revertBudget);
         try
         {
             var recovered = await _undoService.RevertAsync(workspaceId, revertCts.Token).ConfigureAwait(false);

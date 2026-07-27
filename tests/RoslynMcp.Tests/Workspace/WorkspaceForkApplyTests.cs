@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
@@ -28,10 +29,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var json = await ValidationBundleTools.WorkspaceForkApply(
             WorkspaceExecutionGate,
-            WorkspaceManager,
-            PreviewStore,
-            validationService,
-            TestRunnerService,
+            CreateForkApplyService(validationService),
             workspace.WorkspaceId,
             token,
             retention: "keep",
@@ -73,10 +71,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 
         var json = await ValidationBundleTools.WorkspaceForkApply(
             WorkspaceExecutionGate,
-            WorkspaceManager,
-            PreviewStore,
-            validationService,
-            TestRunnerService,
+            CreateForkApplyService(validationService),
             workspace.WorkspaceId,
             token,
             retention: "drop-on-success",
@@ -117,6 +112,16 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             TestRunnerService,
             WorkspaceManager,
             ChangeTracker);
+
+    private static WorkspaceForkApplyService CreateForkApplyService(
+        WorkspaceValidationService validationService) =>
+        new(
+            WorkspaceManager,
+            PreviewStore,
+            validationService,
+            TestRunnerService,
+            new DotnetCommandRunner(),
+            NullLogger<WorkspaceForkApplyService>.Instance);
 
     private static async Task<string> StoreDogPreviewAsync(string workspaceId, Func<string, string> mutate)
     {

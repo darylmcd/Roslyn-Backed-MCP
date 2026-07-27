@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -21,11 +20,18 @@ public static class SuggestionTools
         [Description("Maximum number of suggestions to return (default: 20)")] int limit = 20,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var suggestions = await suggestionService.SuggestRefactoringsAsync(
-                workspaceId, projectName, limit, c);
-            return JsonSerializer.Serialize(new { count = suggestions.Count, suggestions }, JsonDefaults.Indented);
-        }, ct);
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            async c =>
+            {
+                var suggestions = await suggestionService.SuggestRefactoringsAsync(
+                    workspaceId,
+                    projectName,
+                    limit,
+                    c).ConfigureAwait(false);
+                return new { count = suggestions.Count, suggestions };
+            },
+            ct);
     }
 }

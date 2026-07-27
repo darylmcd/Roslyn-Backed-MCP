@@ -17,21 +17,52 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 public sealed class CouplingAnalysisService : ICouplingAnalysisService
 {
+    private const int MaxFailureWarnings = 10;
+
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<CouplingAnalysisService> _logger;
+    private readonly Func<INamedTypeSymbol, Exception?>? _failureInjector;
 
     public CouplingAnalysisService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
         ILogger<CouplingAnalysisService> logger)
+        : this(workspace, compilationCache, logger, failureInjector: null)
+    {
+    }
+
+    internal CouplingAnalysisService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<CouplingAnalysisService> logger,
+        Func<INamedTypeSymbol, Exception?>? failureInjector)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _failureInjector = failureInjector;
     }
 
     public async Task<IReadOnlyList<CouplingMetricsDto>> GetCouplingMetricsAsync(
+        string workspaceId,
+        string? projectFilter,
+        int limit,
+        bool excludeTestProjects,
+        bool includeInterfaces,
+        CancellationToken ct)
+    {
+        var result = await GetCouplingMetricsResultAsync(
+            workspaceId,
+            projectFilter,
+            limit,
+            excludeTestProjects,
+            includeInterfaces,
+            ct).ConfigureAwait(false);
+        return result.Metrics;
+    }
+
+    public async Task<CouplingAnalysisResultDto> GetCouplingMetricsResultAsync(
         string workspaceId,
         string? projectFilter,
         int limit,
@@ -51,13 +82,13 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         var candidates = new List<(INamedTypeSymbol Type, Project Project, Compilation Compilation)>();
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var symbol in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.Assembly.GlobalNamespace))
             {
-                if (ct.IsCancellationRequested) break;
+                ct.ThrowIfCancellationRequested();
                 if (!ShouldAnalyze(symbol, includeInterfaces)) continue;
                 candidates.Add((symbol, project, compilation));
             }
@@ -71,6 +102,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         // logger is thread-safe, and the only shared mutable state is the result accumulator —
         // which is now a ConcurrentBag.
         var results = new ConcurrentBag<CouplingMetricsDto>();
+        var failures = new ConcurrentBag<string>();
 
         // Cap parallelism at the lower of (CPU count, candidate count) — over-subscribing the
         // SymbolFinder pipeline yields no win and burns thread-pool slots that the rest of the
@@ -82,40 +114,50 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             MaxDegreeOfParallelism = maxDop,
         };
 
-        try
+        await Parallel.ForEachAsync(candidates, parallelOptions, async (candidate, token) =>
         {
-            await Parallel.ForEachAsync(candidates, parallelOptions, async (candidate, token) =>
+            var (type, project, compilation) = candidate;
+            try
             {
-                var (type, project, compilation) = candidate;
-                try
+                if (_failureInjector?.Invoke(type) is { } injectedFailure)
                 {
-                    var metrics = await ComputeMetricsAsync(type, workspaceId, project, compilation, solution, token).ConfigureAwait(false);
-                    results.Add(metrics);
+                    throw injectedFailure;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogWarning(
-                        ex,
-                        "Failed to compute coupling metrics for type '{TypeName}', skipping",
-                        type.ToDisplayString());
-                }
-            }).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Surface cancellation, but return the partial results gathered so far. This matches
-            // the prior serial behaviour where mid-loop cancellation broke out and let callers
-            // observe whatever had been computed before the break.
-        }
+
+                var metrics = await ComputeMetricsAsync(
+                    type,
+                    workspaceId,
+                    project,
+                    compilation,
+                    solution,
+                    token).ConfigureAwait(false);
+                results.Add(metrics);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var typeName = type.ToDisplayString();
+                failures.Add($"{typeName}: {ex.GetType().Name}");
+                _logger.LogWarning(
+                    ex,
+                    "Failed to compute coupling metrics for type '{TypeName}', skipping",
+                    typeName);
+            }
+        }).ConfigureAwait(false);
 
         // Order: highest instability first (the "unstable" types most at risk of upstream churn),
         // then Ce desc as a stable tiebreaker so the heavy outgoing-dependency types bubble up.
-        return results
+        var orderedResults = results
             .OrderByDescending(r => r.Instability)
             .ThenByDescending(r => r.EfferentCoupling)
             .ThenBy(r => r.FullyQualifiedName, StringComparer.Ordinal)
             .Take(limit)
             .ToList();
+        var warnings = failures
+            .OrderBy(static failure => failure, StringComparer.Ordinal)
+            .Take(MaxFailureWarnings)
+            .ToList();
+
+        return new CouplingAnalysisResultDto(orderedResults, failures.Count, warnings);
     }
 
     private static bool ShouldAnalyze(INamedTypeSymbol type, bool includeInterfaces)

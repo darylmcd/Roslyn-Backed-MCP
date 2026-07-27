@@ -47,4 +47,22 @@ public interface IDotnetCommandRunner
         IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct) =>
         RunAsync(workingDirectory, targetPath, arguments, ct);
+
+    /// <summary>
+    /// Runs a dotnet-compatible executable selected by the caller. The default implementation
+    /// preserves compatibility for external runners that only support the standard
+    /// <c>dotnet</c> executable.
+    /// </summary>
+    Task<CommandExecutionDto> RunAsync(
+        string workingDirectory,
+        string targetPath,
+        IReadOnlyList<string> arguments,
+        IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
+        string executablePath,
+        CancellationToken ct) =>
+        string.Equals(executablePath, "dotnet", StringComparison.OrdinalIgnoreCase)
+            ? RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, ct)
+            : Task.FromException<CommandExecutionDto>(
+                new NotSupportedException(
+                    $"{GetType().Name} does not support a custom dotnet executable path."));
 }

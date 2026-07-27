@@ -1,15 +1,15 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
-using McpServer = ModelContextProtocol.Server.McpServer;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -171,20 +171,6 @@ public static class SymbolTools
         }, ct);
     }
 
-    // workspace-id-optional-readonly-surface-flip: the read-path middleware
-    // (StructuredCallToolFilter) resolves or auto-loads an omitted workspaceId before these
-    // now-optional tools dispatch. This guard covers the residual case the middleware cannot
-    // resolve — workspaceId omitted, zero workspaces loaded, and no solution discoverable — by
-    // returning a structured InvalidArgument (the filter classifies the throw) that points the
-    // caller at workspace_load. It also narrows workspaceId to non-null for the call below.
-    private static string RequireResolvedWorkspaceId(string? workspaceId) =>
-        string.IsNullOrEmpty(workspaceId)
-            ? throw new ArgumentException(
-                "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
-                "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
-                nameof(workspaceId))
-            : workspaceId;
-
     [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position. When a metadataName resolves to multiple candidates the calling agent receives the structured candidate list directly by default; pass allowElicitation=true to instead open a blocking MCP operator picker on elicitation-capable clients.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Navigate to the symbol definition.")]
@@ -202,7 +188,7 @@ public static class SymbolTools
         [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports MCP elicitation, a multi-candidate resolve instead opens a blocking operator picker; elicitation-unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
-        workspaceId = RequireResolvedWorkspaceId(workspaceId);
+        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -274,7 +260,7 @@ public static class SymbolTools
         [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports MCP elicitation, a multi-candidate resolve instead opens a blocking operator picker; elicitation-unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
-        workspaceId = RequireResolvedWorkspaceId(workspaceId);
+        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             ParameterValidation.ValidatePagination(offset, limit);
@@ -381,7 +367,7 @@ public static class SymbolTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        workspaceId = RequireResolvedWorkspaceId(workspaceId);
+        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, symbolHandle, metadataName, deprecation: null, ct);
     }
 

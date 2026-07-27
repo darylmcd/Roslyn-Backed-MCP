@@ -111,8 +111,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
                                 var catchSite = TryBuildCatchSite(catchClause, semanticModel, targetType, systemException, ct);
                                 if (catchSite is not null)
                                 {
-                                    if (catchSites.Count < AbsoluteMaxResults) catchSites.Add(catchSite);
-                                    else overflowBeyondCeiling++;
+                                    AddBounded(catchSites, catchSite, ref overflowBeyondCeiling);
                                 }
                                 break;
 
@@ -120,8 +119,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
                                 var fromStatement = TryBuildThrowSite(throwStatement, throwStatement.Expression, semanticModel, targetType, ct);
                                 if (fromStatement is not null)
                                 {
-                                    if (throwSites.Count < AbsoluteMaxResults) throwSites.Add(fromStatement);
-                                    else overflowBeyondCeiling++;
+                                    AddBounded(throwSites, fromStatement, ref overflowBeyondCeiling);
                                 }
                                 break;
 
@@ -129,8 +127,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
                                 var fromExpression = TryBuildThrowSite(throwExpression, throwExpression.Expression, semanticModel, targetType, ct);
                                 if (fromExpression is not null)
                                 {
-                                    if (throwSites.Count < AbsoluteMaxResults) throwSites.Add(fromExpression);
-                                    else overflowBeyondCeiling++;
+                                    AddBounded(throwSites, fromExpression, ref overflowBeyondCeiling);
                                 }
                                 break;
                         }
@@ -169,6 +166,18 @@ public sealed class ExceptionFlowService : IExceptionFlowService
             clippedThrowSites,
             clippedThrowSites.Count,
             countOmitted);
+    }
+
+    private static void AddBounded<T>(List<T> items, T item, ref int overflowBeyondCeiling)
+    {
+        if (items.Count < AbsoluteMaxResults)
+        {
+            items.Add(item);
+        }
+        else
+        {
+            overflowBeyondCeiling++;
+        }
     }
 
     private static int NormalizeMaxResults(int? requested)

@@ -1,9 +1,8 @@
 using System.ComponentModel;
-using System.Text.Json;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
-using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -38,19 +37,24 @@ public static class ParameterObjectTools
         [Description("Optional name for the new single record-typed parameter on the rewritten method. Defaults to the camelCased newTypeName.")] string? parameterName = null,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
-            locator.Validate();
-            var request = new ParameterObjectPreviewRequest(
-                parameterNames,
-                newTypeName,
-                dtoProjectName,
-                dtoNamespace,
-                dtoFolders,
-                parameterName);
-            var dto = await parameterObjectService.PreviewParameterObjectAsync(workspaceId, locator, request, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            async c =>
+            {
+                var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
+                locator.Validate();
+                var request = new ParameterObjectPreviewRequest(
+                    parameterNames,
+                    newTypeName,
+                    dtoProjectName,
+                    dtoNamespace,
+                    dtoFolders,
+                    parameterName);
+                return await parameterObjectService
+                    .PreviewParameterObjectAsync(workspaceId, locator, request, c)
+                    .ConfigureAwait(false);
+            },
+            ct);
     }
 }

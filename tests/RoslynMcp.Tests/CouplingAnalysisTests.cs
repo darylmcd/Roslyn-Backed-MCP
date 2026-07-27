@@ -1,6 +1,8 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -53,6 +55,51 @@ public sealed class CouplingAnalysisTests : SharedWorkspaceTestBase
             result.All(m => m.FilePath is null ||
                 !m.FilePath.Contains("SampleLib.Tests", StringComparison.OrdinalIgnoreCase)),
             "Types from MSBuild test projects should be omitted when excludeTestProjects is true.");
+    }
+
+    [TestMethod]
+    public async Task GetCouplingMetricsResult_PerTypeFailure_IsSurfacedAsPartial()
+    {
+        using var compilationCache = new CompilationCache(WorkspaceManager);
+        var service = new CouplingAnalysisService(
+            WorkspaceManager,
+            compilationCache,
+            NullLogger<CouplingAnalysisService>.Instance,
+            type => string.Equals(type.Name, "Dog", StringComparison.Ordinal)
+                ? new InvalidOperationException("forced coupling failure")
+                : null);
+
+        var result = await service.GetCouplingMetricsResultAsync(
+            WorkspaceId,
+            projectFilter: "SampleLib",
+            limit: 500,
+            excludeTestProjects: false,
+            includeInterfaces: false,
+            CancellationToken.None);
+
+        Assert.IsTrue(result.IsPartial);
+        Assert.AreEqual(1, result.FailedTypeCount);
+        Assert.IsTrue(
+            result.Warnings.Any(warning =>
+                warning.Contains("SampleLib.Dog", StringComparison.Ordinal)
+                && warning.Contains(nameof(InvalidOperationException), StringComparison.Ordinal)));
+        Assert.IsFalse(result.Metrics.Any(metric => metric.FullyQualifiedName == "SampleLib.Dog"));
+    }
+
+    [TestMethod]
+    public async Task GetCouplingMetricsResult_Cancellation_Propagates()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            CouplingAnalysisService.GetCouplingMetricsResultAsync(
+                WorkspaceId,
+                projectFilter: "SampleLib",
+                limit: 500,
+                excludeTestProjects: false,
+                includeInterfaces: false,
+                cts.Token));
     }
 
     [TestMethod]

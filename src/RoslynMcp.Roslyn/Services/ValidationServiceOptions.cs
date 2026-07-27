@@ -36,4 +36,11 @@ public sealed record ValidationServiceOptions
     /// a genuinely hung process.
     /// </summary>
     public TimeSpan VulnerabilityScanTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Gets the maximum time allowed for the best-effort revert issued when
+    /// <c>apply_with_verify</c> observes cancellation after a successful apply.
+    /// Defaults to 30 seconds.
+    /// </summary>
+    public TimeSpan ApplyRevertTimeout { get; init; } = TimeSpan.FromSeconds(30);
 }

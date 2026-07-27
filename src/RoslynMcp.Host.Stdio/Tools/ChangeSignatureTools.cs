@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Text.Json;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Host.Stdio.Catalog;
-using ModelContextProtocol.Server;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -39,13 +38,18 @@ public static class ChangeSignatureTools
         [Description("op='reorder' only: comma-separated permutation of parameter names or 0-based indices (e.g. 'b,a,c' or '1,0,2'). Must list every parameter exactly once.")] string? newOrder = null,
         CancellationToken ct = default)
     {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
-            locator.Validate();
-            var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position, newOrder);
-            var dto = await changeSignatureService.PreviewChangeSignatureAsync(workspaceId, locator, request, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            async c =>
+            {
+                var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
+                locator.Validate();
+                var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position, newOrder);
+                return await changeSignatureService
+                    .PreviewChangeSignatureAsync(workspaceId, locator, request, c)
+                    .ConfigureAwait(false);
+            },
+            ct);
     }
 }

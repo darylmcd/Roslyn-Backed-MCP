@@ -269,6 +269,44 @@ public sealed class ExceptionFlowServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task TraceExceptionFlow_ThrowSites_IncludeSubtypesAndExcludeUnrelatedTypes()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var sourceCode = """
+            using System;
+
+            namespace SampleLib;
+
+            public sealed class DerivedInvalidOperationException : InvalidOperationException
+            {
+            }
+
+            public static class ThrowTypeFilter
+            {
+                public static void ThrowDerived() => throw new DerivedInvalidOperationException();
+                public static void ThrowUnrelated() => throw new ArgumentException("unrelated");
+            }
+            """;
+        await WriteFileAsync(workspace, "SampleLib/ThrowTypeFilter.cs", sourceCode);
+
+        var result = await ExceptionFlowService.TraceExceptionFlowAsync(
+            workspace.WorkspaceId,
+            "System.InvalidOperationException",
+            scopeProjectFilter: "SampleLib",
+            maxResults: null,
+            CancellationToken.None);
+
+        Assert.IsTrue(
+            result.ThrowSites.Any(site =>
+                site.ContainingMethod?.Contains("ThrowTypeFilter.ThrowDerived", StringComparison.Ordinal) == true),
+            "A subtype throw must be included for the traced base exception type.");
+        Assert.IsFalse(
+            result.ThrowSites.Any(site =>
+                site.ContainingMethod?.Contains("ThrowTypeFilter.ThrowUnrelated", StringComparison.Ordinal) == true),
+            "A throw whose type is unrelated to the traced exception must be excluded.");
+    }
+
+    [TestMethod]
     public async Task TraceExceptionFlow_TypeSpecificCatchRanksAboveBaseException()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

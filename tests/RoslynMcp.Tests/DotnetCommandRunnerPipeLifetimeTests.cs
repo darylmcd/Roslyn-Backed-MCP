@@ -40,6 +40,17 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [TestMethod]
+    public void CreateStartInfo_UsesConfiguredDotnetCompatibleExecutable()
+    {
+        var startInfo = DotnetCommandRunner.CreateStartInfo(
+            "work",
+            ["restore", "x.slnx"],
+            @"C:\sdk\dotnet.exe");
+
+        Assert.AreEqual(@"C:\sdk\dotnet.exe", startInfo.FileName);
+    }
+
+    [TestMethod]
     public async Task Bounded_Drain_Returns_Buffered_Output_When_Pipe_Never_Reaches_EOF()
     {
         // Deterministic stand-in for the inherited-handle case: the stream yields the
