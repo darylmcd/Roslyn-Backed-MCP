@@ -129,6 +129,22 @@ public sealed class StructuredCallToolFilterTests
     }
 
     [TestMethod]
+    public void BuildErrorResult_ValidateRecentGitChanges_UsesCanonicalStructuredEnvelope()
+    {
+        using var scope = AmbientGateMetrics.BeginRequest();
+        var result = StructuredCallToolFilter.BuildErrorResult(
+            "validate_recent_git_changes",
+            new InvalidOperationException("injected validation failure"));
+
+        Assert.IsTrue(result.IsError);
+        var text = ((TextContentBlock)result.Content![0]).Text;
+        var payload = JsonDocument.Parse(text).RootElement;
+        Assert.AreEqual("validate_recent_git_changes", payload.GetProperty("tool").GetString());
+        Assert.AreEqual("InvalidOperation", payload.GetProperty("category").GetString());
+        Assert.IsTrue(payload.TryGetProperty("_meta", out _));
+    }
+
+    [TestMethod]
     public void BuildErrorResult_NotConnectedInvalidOperationException_EmitsDisconnectedEnvelope()
     {
         // compile-check-not-connected-raw-transport-error-envelope: verifies that an

@@ -128,7 +128,7 @@ public sealed class SkillFrontmatterInstalledAsTests
             if (string.IsNullOrWhiteSpace(line)) { continue; }
             var colon = line.IndexOf(':');
             if (colon < 0) { continue; }
-            var key   = line[..colon].Trim();
+            var key = line[..colon].Trim();
             var value = line[(colon + 1)..].Trim();
             // Strip surrounding double quotes.
             if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')

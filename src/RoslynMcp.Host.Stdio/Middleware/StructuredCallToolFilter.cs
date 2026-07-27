@@ -159,23 +159,23 @@ internal static class StructuredCallToolFilter
                                     new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
 
                             case WorkspaceIdAutoResolution.NotApplicable:
-                            {
-                                // workspace-auto-load-on-demand: zero workspaces loaded — try to
-                                // discover the implied solution and load it on demand before
-                                // dispatch. A unique discovery patches the id and falls through to
-                                // next(); an ambiguous one returns a structured fast-fail; nothing
-                                // discovered falls through to the binder/elicitation path.
-                                var autoLoadFastFail = await TryAutoLoadWorkspaceAsync(
-                                    context, next, toolName, logger, cancellationToken).ConfigureAwait(false);
-                                if (autoLoadFastFail is not null)
                                 {
-                                    stopwatch.Stop();
-                                    CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
-                                    return autoLoadFastFail;
-                                }
+                                    // workspace-auto-load-on-demand: zero workspaces loaded — try to
+                                    // discover the implied solution and load it on demand before
+                                    // dispatch. A unique discovery patches the id and falls through to
+                                    // next(); an ambiguous one returns a structured fast-fail; nothing
+                                    // discovered falls through to the binder/elicitation path.
+                                    var autoLoadFastFail = await TryAutoLoadWorkspaceAsync(
+                                        context, next, toolName, logger, cancellationToken).ConfigureAwait(false);
+                                    if (autoLoadFastFail is not null)
+                                    {
+                                        stopwatch.Stop();
+                                        CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                        return autoLoadFastFail;
+                                    }
 
-                                break;
-                            }
+                                    break;
+                                }
 
                             case WorkspaceIdAutoResolution.Explicit:
                                 // Cannot occur here (explicit id is short-circuited before
@@ -396,48 +396,48 @@ internal static class StructuredCallToolFilter
         switch (discovery.Status)
         {
             case SolutionDiscoveryHelper.DiscoveryStatus.Unique:
-            {
-                var stopwatch = Stopwatch.StartNew();
-                var loadArguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                 {
-                    [PathParameterName] = JsonSerializer.SerializeToElement(discovery.UniquePath!),
-                };
-                var loadResult = await StructuredCallElicitationCoordinator.DispatchWithTemporaryArgumentsAsync(
-                    context, next, WorkspaceLoadToolName, loadArguments, cancellationToken).ConfigureAwait(false);
-                var workspaceId = StructuredCallElicitationCoordinator.TryExtractWorkspaceId(loadResult);
-                stopwatch.Stop();
+                    var stopwatch = Stopwatch.StartNew();
+                    var loadArguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                    {
+                        [PathParameterName] = JsonSerializer.SerializeToElement(discovery.UniquePath!),
+                    };
+                    var loadResult = await StructuredCallElicitationCoordinator.DispatchWithTemporaryArgumentsAsync(
+                        context, next, WorkspaceLoadToolName, loadArguments, cancellationToken).ConfigureAwait(false);
+                    var workspaceId = StructuredCallElicitationCoordinator.TryExtractWorkspaceId(loadResult);
+                    stopwatch.Stop();
 
-                if (string.IsNullOrWhiteSpace(workspaceId))
-                {
-                    logger?.LogWarning(
-                        "Auto-load discovered {Path} for {Tool} but workspace_load returned no id; " +
-                        "falling back to the recovery path.", discovery.UniquePath, toolName);
+                    if (string.IsNullOrWhiteSpace(workspaceId))
+                    {
+                        logger?.LogWarning(
+                            "Auto-load discovered {Path} for {Tool} but workspace_load returned no id; " +
+                            "falling back to the recovery path.", discovery.UniquePath, toolName);
+                        return null;
+                    }
+
+                    context.Params!.Arguments = WithWorkspaceId(context.Params.Arguments, workspaceId);
+                    CallMetricsRecorder.RecordAutoResolution("auto-loaded");
+                    CallMetricsRecorder.RecordAutoLoadElapsed(stopwatch.ElapsedMilliseconds);
+                    logger?.LogInformation(
+                        "Tool {ToolName} called without workspaceId and none loaded; auto-loaded {Path} " +
+                        "as {WorkspaceId} in {ElapsedMs}ms.",
+                        toolName, discovery.UniquePath, workspaceId, stopwatch.ElapsedMilliseconds);
                     return null;
                 }
 
-                context.Params!.Arguments = WithWorkspaceId(context.Params.Arguments, workspaceId);
-                CallMetricsRecorder.RecordAutoResolution("auto-loaded");
-                CallMetricsRecorder.RecordAutoLoadElapsed(stopwatch.ElapsedMilliseconds);
-                logger?.LogInformation(
-                    "Tool {ToolName} called without workspaceId and none loaded; auto-loaded {Path} " +
-                    "as {WorkspaceId} in {ElapsedMs}ms.",
-                    toolName, discovery.UniquePath, workspaceId, stopwatch.ElapsedMilliseconds);
-                return null;
-            }
-
             case SolutionDiscoveryHelper.DiscoveryStatus.Ambiguous:
-            {
-                CallMetricsRecorder.RecordAutoResolution("fast-fail");
-                var candidates = string.Join(", ", discovery.Candidates);
-                logger?.LogWarning(
-                    "Tool {ToolName} called without workspaceId and none loaded; {Count} candidate " +
-                    "solutions discovered ({Candidates}).", toolName, discovery.Candidates.Count, candidates);
-                return BuildErrorResult(toolName, new ArgumentException(
-                    $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
-                    $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
-                    "one of them, then retry — or pass workspaceId explicitly.",
-                    WorkspaceIdParameterName));
-            }
+                {
+                    CallMetricsRecorder.RecordAutoResolution("fast-fail");
+                    var candidates = string.Join(", ", discovery.Candidates);
+                    logger?.LogWarning(
+                        "Tool {ToolName} called without workspaceId and none loaded; {Count} candidate " +
+                        "solutions discovered ({Candidates}).", toolName, discovery.Candidates.Count, candidates);
+                    return BuildErrorResult(toolName, new ArgumentException(
+                        $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
+                        $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
+                        "one of them, then retry — or pass workspaceId explicitly.",
+                        WorkspaceIdParameterName));
+                }
 
             case SolutionDiscoveryHelper.DiscoveryStatus.None:
             default:

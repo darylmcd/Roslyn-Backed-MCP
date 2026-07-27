@@ -1,3 +1,4 @@
+using System.Text;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 
@@ -49,6 +50,8 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </remarks>
 internal static class CsprojSemanticEquality
 {
+    internal sealed record ProjectFileSnapshot(string Content, byte[] Bytes);
+
     /// <summary>
     /// Returns <see langword="true"/> when <paramref name="originalContent"/> and
     /// <paramref name="currentContent"/> represent XML trees with identical element / attribute
@@ -196,12 +199,12 @@ internal static class CsprojSemanticEquality
     /// trivia-restore guarantee for the affected file but do not propagate to the caller.
     /// Returns a path-keyed dictionary (ordinal-ignore-case) with one entry per readable csproj.
     /// </remarks>
-    public static async Task<Dictionary<string, string>> SnapshotProjectsAsync(
+    public static async Task<Dictionary<string, ProjectFileSnapshot>> SnapshotProjectsAsync(
         IEnumerable<string> csprojPaths,
         ILogger logger,
         CancellationToken ct)
     {
-        var snapshots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var snapshots = new Dictionary<string, ProjectFileSnapshot>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in csprojPaths)
         {
             if (string.IsNullOrWhiteSpace(path) || snapshots.ContainsKey(path) || !File.Exists(path))
@@ -211,7 +214,8 @@ internal static class CsprojSemanticEquality
 
             try
             {
-                snapshots[path] = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+                var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+                snapshots[path] = new ProjectFileSnapshot(DecodeText(bytes), bytes);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -223,6 +227,17 @@ internal static class CsprojSemanticEquality
             }
         }
         return snapshots;
+    }
+
+    private static string DecodeText(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var reader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: false);
+        return reader.ReadToEnd();
     }
 
     /// <summary>
@@ -240,13 +255,14 @@ internal static class CsprojSemanticEquality
     /// (e.g. <c>"csproj-reserialization-msbuildworkspace"</c>).</param>
     /// <param name="ct">Cancellation token.</param>
     public static async Task RestoreTriviaOnlyDriftAsync(
-        IReadOnlyDictionary<string, string> snapshots,
+        IReadOnlyDictionary<string, ProjectFileSnapshot> snapshots,
         IReadOnlySet<string> skipPaths,
         ILogger logger,
         string operationTag,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool throwOnFailure = false)
     {
-        foreach (var (csprojPath, originalContent) in snapshots)
+        foreach (var (csprojPath, original) in snapshots)
         {
             if (skipPaths.Contains(csprojPath))
             {
@@ -263,17 +279,17 @@ internal static class CsprojSemanticEquality
                     continue;
                 }
 
-                var currentContent = await File.ReadAllTextAsync(csprojPath, ct).ConfigureAwait(false);
-                if (string.Equals(currentContent, originalContent, StringComparison.Ordinal))
+                var currentBytes = await File.ReadAllBytesAsync(csprojPath, ct).ConfigureAwait(false);
+                if (currentBytes.AsSpan().SequenceEqual(original.Bytes))
                 {
                     // Byte-identical; no restoration needed. Fast path for the common case where
                     // MSBuildWorkspace didn't touch this csproj at all.
                     continue;
                 }
 
-                if (AreXmlEquivalent(originalContent, currentContent))
+                if (AreXmlEquivalent(original.Content, DecodeText(currentBytes)))
                 {
-                    await File.WriteAllTextAsync(csprojPath, originalContent, ct).ConfigureAwait(false);
+                    await File.WriteAllBytesAsync(csprojPath, original.Bytes, ct).ConfigureAwait(false);
                     logger.LogDebug(
                         "{OperationTag}: restored {Path} after TryApplyChanges reserialized it with only trivia differences (BOM / line endings / blank lines).",
                         operationTag, csprojPath);
@@ -287,6 +303,10 @@ internal static class CsprojSemanticEquality
                 logger.LogWarning(ex,
                     "{OperationTag}: failed to restore trivia-only csproj snapshot for {Path}; the file may show whitespace / BOM drift in source control.",
                     operationTag, csprojPath);
+                if (throwOnFailure)
+                {
+                    throw;
+                }
             }
         }
     }

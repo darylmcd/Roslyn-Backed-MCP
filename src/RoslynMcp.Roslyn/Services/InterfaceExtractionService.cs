@@ -339,24 +339,24 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             switch (member)
             {
                 case IMethodSymbol method:
-                    TypeNamespaceWalker.Collect(namespaces,method.ReturnType, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces, method.ReturnType, ownNamespace);
                     foreach (var parameter in method.Parameters)
                     {
-                        TypeNamespaceWalker.Collect(namespaces,parameter.Type, ownNamespace);
+                        TypeNamespaceWalker.Collect(namespaces, parameter.Type, ownNamespace);
                     }
                     foreach (var typeParameter in method.TypeParameters)
                     {
                         foreach (var constraint in typeParameter.ConstraintTypes)
                         {
-                            TypeNamespaceWalker.Collect(namespaces,constraint, ownNamespace);
+                            TypeNamespaceWalker.Collect(namespaces, constraint, ownNamespace);
                         }
                     }
                     break;
                 case IPropertySymbol property:
-                    TypeNamespaceWalker.Collect(namespaces,property.Type, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces, property.Type, ownNamespace);
                     break;
                 case IEventSymbol evt:
-                    TypeNamespaceWalker.Collect(namespaces,evt.Type, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces, evt.Type, ownNamespace);
                     break;
             }
         }

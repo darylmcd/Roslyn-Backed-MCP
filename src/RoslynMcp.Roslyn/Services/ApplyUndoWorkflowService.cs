@@ -183,24 +183,18 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             projectFilter = changedProjects.Count == 1 ? changedProjects[0] : null;
         }
 
-        // apply-with-verify-complete-diagnostic-baseline: request the COMPLETE error-identity set per
-        // leg (SeverityFilter "error" + Limit int.MaxValue) instead of the default 50-diagnostic page.
-        // CompileCheckService.CheckAsync always materializes the full diagnostic set internally before
-        // paginating, so this adds zero extra compiles — it only widens the RETURNED page that
-        // ExtractErrorIdentities iterates. Without it, in a project with >50 pre-existing errors a
-        // newly introduced error whose identity sorts past slot 50 in either page is silently excluded
-        // from postErrors, never diffed, and apply_with_verify reports "applied" with a live regression.
-        var checkOptions = new CompileCheckOptions(
-            ProjectFilter: projectFilter, SeverityFilter: "error", Limit: int.MaxValue);
-
         // apply-with-verify-diff-not-counts: snapshot pre-apply error IDENTITIES (id+file+line) so we
         // can tell NEW errors from pre-existing ones. Identity-diff replaces the prior count-delta +
         // message-fingerprint heuristic that produced false-positive rollbacks when a pre-existing
         // diagnostic flipped severity class or had its message text shift on the post-apply build
-        // path. Shared with EditService's verify=true path so both verify entry points subtract
-        // pre-existing errors uniformly. See DiagnosticIdentitySet for the rationale and format.
-        var preBaseline = await _compileCheckService.CheckAsync(
-            workspaceId, checkOptions, ct).ConfigureAwait(false);
+        // path. CompilationVerification owns the complete, unpaginated check options and is shared
+        // with EditService so neither workflow can silently make a correctness decision from a
+        // truncated diagnostic page.
+        var preBaseline = await CompilationVerification.CaptureAsync(
+            _compileCheckService,
+            workspaceId,
+            projectFilter,
+            ct).ConfigureAwait(false);
 
         // apply-with-verify-cancelled-result-compensation: CompileCheckService.CheckAsync catches
         // OperationCanceledException internally and returns a normal (non-throwing) DTO with
@@ -212,8 +206,6 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             ct.ThrowIfCancellationRequested();
             throw new OperationCanceledException(ct);
         }
-
-        var preErrors = DiagnosticIdentitySet.ExtractErrorIdentities(preBaseline);
 
         // Apply
         var applyResult = await _refactoringService.ApplyRefactoringAsync(previewToken, "apply_with_verify", ct).ConfigureAwait(false);
@@ -244,8 +236,11 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
             // remaining identities are "introduced" errors that did not exist at any (id+file+line)
             // location before the apply. Pre-existing errors whose severity flipped, message changed,
             // or column shifted no longer trigger rollback.
-            var postCheck = await _compileCheckService.CheckAsync(
-                workspaceId, checkOptions, ct).ConfigureAwait(false);
+            var postCheck = await CompilationVerification.CaptureAsync(
+                _compileCheckService,
+                workspaceId,
+                projectFilter,
+                ct).ConfigureAwait(false);
 
             // apply-with-verify-cancelled-result-compensation: as above, a caller-token cancellation
             // that landed inside the post-apply verify check returns a Cancelled=true DTO rather than
@@ -261,16 +256,9 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
                 throw new OperationCanceledException(ct);
             }
 
-            var postErrors = DiagnosticIdentitySet.ExtractErrorIdentities(postCheck);
-
-            // Project the introduced identities back to the diagnostic rows so the outcome surfaces
-            // the actual errors (id, message, location) rather than opaque identity strings. Use the
-            // post-apply diagnostic list as the source of truth for the introduced rows.
-            var newIdentities = new HashSet<string>(postErrors.Except(preErrors), StringComparer.Ordinal);
-            var newErrors = postCheck.Diagnostics
-                .Where(d => string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase)
-                    && newIdentities.Contains(DiagnosticIdentitySet.FormatIdentity(d)))
-                .ToList();
+            var newErrors = CompilationVerification.FindIntroducedDiagnostics(
+                preBaseline,
+                postCheck);
 
             if (newErrors.Count == 0)
             {

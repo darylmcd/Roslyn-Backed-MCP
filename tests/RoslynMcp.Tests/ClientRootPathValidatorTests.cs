@@ -230,4 +230,42 @@ public class ClientRootPathValidatorTests
         Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
             @"C:\repo\main\src\file.cs", roots, expandSanctionedRoots: false));
     }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Case_Sensitive_Outside_Windows()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            "/repo/main/src/file.cs",
+            ["/repo/Main"],
+            expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public async Task ResolvePathAsync_MatchesCanonicalSyncResult()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "RoslynMcp", "..", "RoslynMcp", "future.cs");
+
+        var resolved = await ClientRootPathValidator.ResolvePathAsync(
+            path,
+            CancellationToken.None);
+
+        Assert.AreEqual(ClientRootPathValidator.ResolvePath(path), resolved);
+    }
+
+    [TestMethod]
+    public async Task ResolvePathAsync_PreCancelled_DoesNotStartFilesystemWork()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+            () => ClientRootPathValidator.ResolvePathAsync(
+                Path.Combine(Path.GetTempPath(), "future.cs"),
+                cancellation.Token));
+    }
 }

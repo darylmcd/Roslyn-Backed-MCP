@@ -12,38 +12,38 @@ namespace RoslynMcp.Tests;
 /// <c>validate_recent_git_changes</c> returning the bare SDK string
 /// <c>"An error occurred invoking 'validate_recent_git_changes'."</c> instead of the
 /// <c>{category, tool, message, exceptionType, _meta}</c> structured envelope that
-/// <c>validate_workspace</c> produces. The handler is now wrapped in an in-body
-/// try/catch that routes failures through <see cref="ToolErrorHandler.ClassifyAndFormat"/> +
-/// <see cref="ToolErrorHandler.InjectMetaIfPossible"/>, guaranteeing the structured
-/// envelope regardless of whether the <c>StructuredCallToolFilter</c> catch path fires.
+/// <c>validate_workspace</c> produces. The tool body now propagates failures to the
+/// canonical <see cref="StructuredCallToolFilter"/> boundary instead of maintaining a
+/// second in-body classifier.
 /// </summary>
 [TestClass]
 public sealed class ValidationBundleToolsTests
 {
     [TestMethod]
-    public async Task ValidateRecentGitChanges_ServiceThrowsFileNotFound_ReturnsStructuredEnvelope()
+    public async Task ValidateRecentGitChanges_ServiceThrowsFileNotFound_PropagatesToHostBoundary()
     {
         // Simulates the "git not on PATH" class of failure: the subprocess launch is expected
         // to be caught inside the service and surfaced as a Warnings entry — but if for any
         // reason the exception escapes (e.g. a downstream Path.GetFullPath throw on malformed
-        // output), the handler must still produce the structured envelope.
+        // output), the tool body must let it reach the host filter. Filter-level tests pin the
+        // resulting structured envelope.
         var gate = new PassThroughGate();
         var service = new ThrowingValidationService(new FileNotFoundException("git: No such file or directory"));
 
-        using var scope = AmbientGateMetrics.BeginRequest();
-        var result = await ValidationBundleTools.ValidateRecentGitChanges(
-            gate, service, workspaceId: "ws-1", runTests: false, summary: false, ct: default);
+        var exception = await Assert.ThrowsExactlyAsync<FileNotFoundException>(
+            () => ValidationBundleTools.ValidateRecentGitChanges(
+                gate,
+                service,
+                workspaceId: "ws-1",
+                runTests: false,
+                summary: false,
+                ct: default));
 
-        AssertStructuredEnvelope(result, expectedTool: "validate_recent_git_changes");
-        var doc = JsonDocument.Parse(result);
-        Assert.AreEqual("FileNotFound", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("FileNotFoundException", doc.RootElement.GetProperty("exceptionType").GetString());
-        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString(), "git",
-            "Envelope message should carry the inner-exception detail so the caller can correct the problem.");
+        StringAssert.Contains(exception.Message, "git");
     }
 
     [TestMethod]
-    public async Task ValidateRecentGitChanges_ServiceThrowsInvalidOperation_ReturnsStructuredEnvelope()
+    public async Task ValidateRecentGitChanges_ServiceThrowsInvalidOperation_PropagatesToHostBoundary()
     {
         // Simulates the "solution outside a git repo" failure mode where the workspace
         // status has no LoadedPath and ResolveSolutionDirectory throws InvalidOperationException.
@@ -51,22 +51,23 @@ public sealed class ValidationBundleToolsTests
         var service = new ThrowingValidationService(
             new InvalidOperationException("Workspace 'ws-1' is not loaded."));
 
-        using var scope = AmbientGateMetrics.BeginRequest();
-        var result = await ValidationBundleTools.ValidateRecentGitChanges(
-            gate, service, workspaceId: "ws-1", runTests: false, summary: false, ct: default);
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => ValidationBundleTools.ValidateRecentGitChanges(
+                gate,
+                service,
+                workspaceId: "ws-1",
+                runTests: false,
+                summary: false,
+                ct: default));
 
-        AssertStructuredEnvelope(result, expectedTool: "validate_recent_git_changes");
-        var doc = JsonDocument.Parse(result);
-        Assert.AreEqual("InvalidOperation", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("InvalidOperationException", doc.RootElement.GetProperty("exceptionType").GetString());
+        Assert.AreEqual("Workspace 'ws-1' is not loaded.", exception.Message);
     }
 
     [TestMethod]
     public async Task ValidateRecentGitChanges_SuccessPath_ReturnsDtoJson_NotErrorEnvelope()
     {
-        // The envelope-wrapper must pass through success results byte-for-byte (modulo _meta
-        // injection). This test pins the contract that we didn't accidentally wrap every
-        // response as an error envelope.
+        // The direct tool body must pass through successful DTO JSON without treating it as
+        // an error. Host-level metadata injection is covered by the structured filter tests.
         var gate = new PassThroughGate();
         var dto = new WorkspaceValidationDto(
             OverallStatus: "clean",
@@ -381,27 +382,6 @@ public sealed class ValidationBundleToolsTests
 
     private static void TryDeleteTree(string path)
         => TestFixtureFileSystem.DeleteDirectoryIfExists(path);
-
-    private static void AssertStructuredEnvelope(string result, string expectedTool)
-    {
-        Assert.IsFalse(string.IsNullOrWhiteSpace(result), "Handler must always return a non-empty JSON string.");
-        var doc = JsonDocument.Parse(result);
-        var root = doc.RootElement;
-
-        Assert.IsTrue(root.TryGetProperty("error", out var errorFlag) && errorFlag.GetBoolean(),
-            "Structured error envelope must carry error:true.");
-        Assert.IsTrue(root.TryGetProperty("category", out _),
-            "Structured error envelope must carry a 'category' field.");
-        Assert.IsTrue(root.TryGetProperty("tool", out var tool),
-            "Structured error envelope must carry a 'tool' field.");
-        Assert.AreEqual(expectedTool, tool.GetString());
-        Assert.IsTrue(root.TryGetProperty("message", out _),
-            "Structured error envelope must carry a 'message' field.");
-        Assert.IsTrue(root.TryGetProperty("exceptionType", out _),
-            "Structured error envelope must carry an 'exceptionType' field.");
-        Assert.IsTrue(root.TryGetProperty("_meta", out _),
-            "Structured error envelope must carry a '_meta' block (gate metrics injected by ToolErrorHandler.InjectMetaIfPossible).");
-    }
 
     /// <summary>
     /// Trivial gate stub that runs the action synchronously without contention. Keeps the

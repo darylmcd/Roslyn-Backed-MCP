@@ -194,61 +194,102 @@ public sealed class RefactoringService : IRefactoringService
 
         foreach (var projectChange in newSolution.GetChanges(oldSolution).GetProjectChanges())
         {
-            foreach (var docId in projectChange.GetChangedDocuments())
-            {
-                var oldDoc = oldSolution.GetDocument(docId);
-                var newDoc = newSolution.GetDocument(docId);
-                if (oldDoc is null || newDoc is null)
-                {
-                    continue;
-                }
-
-                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                if (string.Equals(oldText, newText, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var oldLineCount = CountLines(oldText);
-                var newLineCount = CountLines(newText);
-                var filePath = oldDoc.FilePath ?? newDoc.FilePath ?? oldDoc.Name;
-                var netChange = newLineCount - oldLineCount;
-                var netMarker = netChange switch
-                {
-                    > 0 => $"+{netChange} lines",
-                    < 0 => $"{netChange} lines",
-                    _ => "no net line change"
-                };
-
-                summaries.Add(new FileChangeDto(
-                    filePath,
-                    $"# summary=true: {oldLineCount} → {newLineCount} lines ({netMarker}). " +
-                    "Full unified diff suppressed to keep the response under the MCP output cap; " +
-                    "pass summary=false to see per-site edits."));
-            }
-
-            // Added/removed documents (rare for rename but possible with extension-method
-            // cross-file moves) get their own minimal entries.
-            foreach (var docId in projectChange.GetAddedDocuments())
-            {
-                var newDoc = newSolution.GetDocument(docId);
-                if (newDoc is null) continue;
-                var path = newDoc.FilePath ?? newDoc.Name;
-                var lineCount = CountLines((await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString());
-                summaries.Add(new FileChangeDto(path, $"# summary=true: added file ({lineCount} lines)."));
-            }
-
-            foreach (var docId in projectChange.GetRemovedDocuments())
-            {
-                var oldDoc = oldSolution.GetDocument(docId);
-                if (oldDoc is null) continue;
-                var path = oldDoc.FilePath ?? oldDoc.Name;
-                summaries.Add(new FileChangeDto(path, "# summary=true: removed file."));
-            }
+            await AppendChangedDocumentSummariesAsync(
+                summaries,
+                oldSolution,
+                newSolution,
+                projectChange,
+                ct).ConfigureAwait(false);
+            await AppendAddedDocumentSummariesAsync(
+                summaries,
+                newSolution,
+                projectChange,
+                ct).ConfigureAwait(false);
+            AppendRemovedDocumentSummaries(summaries, oldSolution, projectChange);
         }
 
         return summaries;
+    }
+
+    private static async Task AppendChangedDocumentSummariesAsync(
+        ICollection<FileChangeDto> summaries,
+        Solution oldSolution,
+        Solution newSolution,
+        ProjectChanges projectChange,
+        CancellationToken ct)
+    {
+        foreach (var documentId in projectChange.GetChangedDocuments())
+        {
+            var oldDocument = oldSolution.GetDocument(documentId);
+            var newDocument = newSolution.GetDocument(documentId);
+            if (oldDocument is null || newDocument is null)
+            {
+                continue;
+            }
+
+            var oldText = (await oldDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            var newText = (await newDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            if (string.Equals(oldText, newText, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var oldLineCount = CountLines(oldText);
+            var newLineCount = CountLines(newText);
+            var filePath = oldDocument.FilePath ?? newDocument.FilePath ?? oldDocument.Name;
+            var netChange = newLineCount - oldLineCount;
+            var netMarker = netChange switch
+            {
+                > 0 => $"+{netChange} lines",
+                < 0 => $"{netChange} lines",
+                _ => "no net line change",
+            };
+
+            summaries.Add(new FileChangeDto(
+                filePath,
+                $"# summary=true: {oldLineCount} → {newLineCount} lines ({netMarker}). " +
+                "Full unified diff suppressed to keep the response under the MCP output cap; " +
+                "pass summary=false to see per-site edits."));
+        }
+    }
+
+    private static async Task AppendAddedDocumentSummariesAsync(
+        ICollection<FileChangeDto> summaries,
+        Solution newSolution,
+        ProjectChanges projectChange,
+        CancellationToken ct)
+    {
+        foreach (var documentId in projectChange.GetAddedDocuments())
+        {
+            var document = newSolution.GetDocument(documentId);
+            if (document is null)
+            {
+                continue;
+            }
+
+            var path = document.FilePath ?? document.Name;
+            var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+            summaries.Add(new FileChangeDto(
+                path,
+                $"# summary=true: added file ({CountLines(text.ToString())} lines)."));
+        }
+    }
+
+    private static void AppendRemovedDocumentSummaries(
+        ICollection<FileChangeDto> summaries,
+        Solution oldSolution,
+        ProjectChanges projectChange)
+    {
+        foreach (var documentId in projectChange.GetRemovedDocuments())
+        {
+            var document = oldSolution.GetDocument(documentId);
+            if (document is not null)
+            {
+                summaries.Add(new FileChangeDto(
+                    document.FilePath ?? document.Name,
+                    "# summary=true: removed file."));
+            }
+        }
     }
 
     private static int CountLines(string text)
@@ -313,8 +354,12 @@ public sealed class RefactoringService : IRefactoringService
         // treating newly-added documents as removals.
         modifiedSolution = await RebaseModifiedSolutionOntoCurrentAsync(originalSolution, modifiedSolution, currentSolution, ct).ConfigureAwait(false);
         var solutionChanges = modifiedSolution.GetChanges(currentSolution);
-        var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
-            .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
+        var hasFileSetChanges = solutionChanges.GetProjectChanges()
+            .Any(projectChange =>
+                projectChange.GetAddedDocuments().Any()
+                || projectChange.GetRemovedDocuments().Any()
+                || projectChange.GetAddedProjectReferences().Any()
+                || projectChange.GetRemovedProjectReferences().Any());
 
         // Item #2 — severity-high-fail-documented-semantic-is-restore-pr.
         // When a refactor creates, deletes, or moves files, the legacy solution-based
@@ -323,55 +368,22 @@ public sealed class RefactoringService : IRefactoringService
         // Compute an authoritative FileSnapshotDto list here so UndoService takes its fast
         // path (RevertFromFileSnapshotsAsync), which explicitly handles file creation
         // (OriginalText=null → delete on revert) and file deletion (OriginalText=captured
-        // bytes → rewrite on revert) alongside the usual text-edit case.
+        // text → rewrite on revert) alongside the usual text-edit case.
         IReadOnlyList<FileSnapshotDto>? fileSnapshots = null;
-        if (hasDocumentSetChanges)
+        if (hasFileSetChanges)
         {
-            fileSnapshots = await BuildFileSnapshotsForDocumentSetChangesAsync(
+            fileSnapshots = await BuildFileSnapshotsForSolutionChangesAsync(
                 currentSolution, modifiedSolution, solutionChanges, ct).ConfigureAwait(false);
         }
 
         _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution, fileSnapshots);
 
-        bool success;
-        IReadOnlyList<string> appliedFiles;
-        if (hasDocumentSetChanges)
-        {
-            (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
-                workspaceId,
-                currentSolution,
-                modifiedSolution,
-                solutionChanges,
-                ct).ConfigureAwait(false);
-        }
-        else
-        {
-            success = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
-            appliedFiles = solutionChanges.GetProjectChanges()
-                .SelectMany(projectChange => projectChange.GetChangedDocuments())
-                .Select(documentId => modifiedSolution.GetDocument(documentId)?.FilePath)
-                .Where(filePath => !string.IsNullOrWhiteSpace(filePath))
-                .Cast<string>()
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            // BUG-N1: MSBuildWorkspace.TryApplyChanges updates the in-memory solution but does not
-            // reliably persist text edits to disk for change-only operations. Write every changed
-            // document explicitly (same as PersistDocumentSetChangesAsync changed-doc loop).
-            if (success)
-            {
-                try
-                {
-                    await PersistChangedDocumentsFromSolutionAsync(modifiedSolution, solutionChanges, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _logger.LogWarning(ex, "Failed to persist changed documents to disk for workspace {WorkspaceId}", workspaceId);
-                    _postApplyResolver?.Invalidate(previewToken);
-                    return new ApplyResultDto(false, [], "Failed to persist applied changes to disk.");
-                }
-            }
-        }
+        var (success, appliedFiles) = await _documentSetPersistence.PersistAsync(
+            workspaceId,
+            currentSolution,
+            modifiedSolution,
+            solutionChanges,
+            ct).ConfigureAwait(false);
 
         _previewStore.Invalidate(previewToken);
 
@@ -744,129 +756,214 @@ public sealed class RefactoringService : IRefactoringService
 
         var previewChanges = modifiedSolution.GetChanges(originalSolution);
         var rebased = currentSolution;
-
-        // Precompute a FilePath -> DocumentId index over the current solution once, so the
-        // cross-lineage changed-document fallback below is an O(1) dictionary lookup instead of
-        // an O(total-docs) SelectMany scan per changed document (previously O(changed-docs ×
-        // total-docs) on this apply-path hot function). Keyed OrdinalIgnoreCase to match the
-        // prior scan's comparison; first occurrence wins to mirror FirstOrDefault when the same
-        // FilePath is linked into multiple projects.
-        var currentDocumentsByPath = new Dictionary<string, DocumentId>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in currentSolution.Projects)
-        {
-            foreach (var currentDocument in project.Documents)
-            {
-                if (!string.IsNullOrWhiteSpace(currentDocument.FilePath)
-                    && !currentDocumentsByPath.ContainsKey(currentDocument.FilePath))
-                {
-                    currentDocumentsByPath[currentDocument.FilePath] = currentDocument.Id;
-                }
-            }
-        }
+        var currentDocumentsByPath = BuildCurrentDocumentPathIndex(currentSolution);
 
         foreach (var projectChange in previewChanges.GetProjectChanges())
         {
-            foreach (var docId in projectChange.GetChangedDocuments())
+            rebased = await RebaseChangedDocumentsAsync(
+                rebased,
+                modifiedSolution,
+                projectChange,
+                currentDocumentsByPath,
+                ct).ConfigureAwait(false);
+            rebased = await RebaseAddedDocumentsAsync(
+                rebased,
+                modifiedSolution,
+                projectChange,
+                ct).ConfigureAwait(false);
+            rebased = RebaseRemovedDocuments(rebased, originalSolution, projectChange);
+            rebased = RebaseProjectReferences(
+                rebased,
+                originalSolution,
+                modifiedSolution,
+                projectChange);
+        }
+
+        return rebased;
+    }
+
+    private static IReadOnlyDictionary<string, DocumentId> BuildCurrentDocumentPathIndex(
+        Solution solution)
+    {
+        var documentsByPath = new Dictionary<string, DocumentId>(StringComparer.OrdinalIgnoreCase);
+        foreach (var document in solution.Projects.SelectMany(project => project.Documents))
+        {
+            if (!string.IsNullOrWhiteSpace(document.FilePath))
             {
-                var doc = modifiedSolution.GetDocument(docId);
-                if (doc is null)
-                {
-                    continue;
-                }
+                documentsByPath.TryAdd(document.FilePath, document.Id);
+            }
+        }
 
-                // The DocumentId is stable only within a single Solution lineage. If the
-                // current workspace still has the same DocumentId, apply the text directly;
-                // otherwise match on FilePath (the canonical cross-lineage key).
-                var currentDoc = rebased.GetDocument(docId);
-                if (currentDoc is null && !string.IsNullOrWhiteSpace(doc.FilePath)
-                    && currentDocumentsByPath.TryGetValue(doc.FilePath, out var matchedDocId))
-                {
-                    currentDoc = rebased.GetDocument(matchedDocId);
-                }
+        return documentsByPath;
+    }
 
-                if (currentDoc is null)
-                {
-                    continue;
-                }
-
-                var sourceText = await doc.GetTextAsync(ct).ConfigureAwait(false);
-                rebased = rebased.WithDocumentText(currentDoc.Id, sourceText);
+    private static async Task<Solution> RebaseChangedDocumentsAsync(
+        Solution rebased,
+        Solution modifiedSolution,
+        ProjectChanges projectChange,
+        IReadOnlyDictionary<string, DocumentId> currentDocumentsByPath,
+        CancellationToken ct)
+    {
+        foreach (var documentId in projectChange.GetChangedDocuments())
+        {
+            var modifiedDocument = modifiedSolution.GetDocument(documentId);
+            if (modifiedDocument is null)
+            {
+                continue;
             }
 
-            foreach (var docId in projectChange.GetAddedDocuments())
+            var currentDocument = rebased.GetDocument(documentId);
+            if (currentDocument is null
+                && !string.IsNullOrWhiteSpace(modifiedDocument.FilePath)
+                && currentDocumentsByPath.TryGetValue(modifiedDocument.FilePath, out var matchedDocumentId))
             {
-                var doc = modifiedSolution.GetDocument(docId);
-                if (doc?.FilePath is null)
-                {
-                    continue;
-                }
-
-                // Find the target project in the rebased solution by project file path
-                // (ProjectId may differ across lineages after a sibling apply + reload).
-                var targetProject = rebased.GetProject(projectChange.ProjectId)
-                    ?? (doc.Project.FilePath is not null
-                        ? rebased.Projects.FirstOrDefault(project => string.Equals(project.FilePath, doc.Project.FilePath, StringComparison.OrdinalIgnoreCase))
-                        : null);
-                if (targetProject is null)
-                {
-                    continue;
-                }
-
-                var sourceText = await doc.GetTextAsync(ct).ConfigureAwait(false);
-                var newDocId = DocumentId.CreateNewId(targetProject.Id, doc.Name);
-                rebased = rebased.AddDocument(newDocId, doc.Name, sourceText, doc.Folders, doc.FilePath);
+                currentDocument = rebased.GetDocument(matchedDocumentId);
             }
 
-            foreach (var docId in projectChange.GetRemovedDocuments())
+            if (currentDocument is not null)
             {
-                var originalDoc = originalSolution.GetDocument(docId);
-                if (originalDoc?.FilePath is null)
-                {
-                    continue;
-                }
-
-                // Match the removal target by FilePath in the rebased solution.
-                var target = rebased.Projects
-                    .SelectMany(project => project.Documents)
-                    .FirstOrDefault(candidate => string.Equals(candidate.FilePath, originalDoc.FilePath, StringComparison.OrdinalIgnoreCase));
-                if (target is not null)
-                {
-                    rebased = rebased.RemoveDocument(target.Id);
-                }
+                var sourceText = await modifiedDocument.GetTextAsync(ct).ConfigureAwait(false);
+                rebased = rebased.WithDocumentText(currentDocument.Id, sourceText);
             }
         }
 
         return rebased;
     }
 
-    private static async Task PersistChangedDocumentsFromSolutionAsync(
+    private static async Task<Solution> RebaseAddedDocumentsAsync(
+        Solution rebased,
         Solution modifiedSolution,
-        SolutionChanges solutionChanges,
+        ProjectChanges projectChange,
         CancellationToken ct)
     {
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        foreach (var documentId in projectChange.GetAddedDocuments())
         {
-            foreach (var documentId in projectChange.GetChangedDocuments())
+            var document = modifiedSolution.GetDocument(documentId);
+            if (document?.FilePath is null)
             {
-                var document = modifiedSolution.GetDocument(documentId);
-                if (document?.FilePath is null)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+            var targetProject = ResolveRebaseTargetProject(rebased, projectChange.ProjectId, document.Project);
+            if (targetProject is null)
+            {
+                continue;
+            }
+
+            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+            var newDocumentId = DocumentId.CreateNewId(targetProject.Id, document.Name);
+            rebased = rebased.AddDocument(
+                newDocumentId,
+                document.Name,
+                sourceText,
+                document.Folders,
+                document.FilePath);
+        }
+
+        return rebased;
+    }
+
+    private static Project? ResolveRebaseTargetProject(
+        Solution rebased,
+        ProjectId originalProjectId,
+        Project modifiedProject)
+    {
+        var directMatch = rebased.GetProject(originalProjectId);
+        if (directMatch is not null || modifiedProject.FilePath is null)
+        {
+            return directMatch;
+        }
+
+        return rebased.Projects.FirstOrDefault(project =>
+            string.Equals(
+                project.FilePath,
+                modifiedProject.FilePath,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Solution RebaseRemovedDocuments(
+        Solution rebased,
+        Solution originalSolution,
+        ProjectChanges projectChange)
+    {
+        foreach (var documentId in projectChange.GetRemovedDocuments())
+        {
+            var filePath = originalSolution.GetDocument(documentId)?.FilePath;
+            if (filePath is null)
+            {
+                continue;
+            }
+
+            var target = rebased.Projects
+                .SelectMany(project => project.Documents)
+                .FirstOrDefault(candidate =>
+                    string.Equals(candidate.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+            if (target is not null)
+            {
+                rebased = rebased.RemoveDocument(target.Id);
             }
         }
+
+        return rebased;
+    }
+
+    private static Solution RebaseProjectReferences(
+        Solution rebased,
+        Solution originalSolution,
+        Solution modifiedSolution,
+        ProjectChanges projectChange)
+    {
+        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
+        var targetProject = modifiedProject is null
+            ? rebased.GetProject(projectChange.ProjectId)
+            : ResolveRebaseTargetProject(rebased, projectChange.ProjectId, modifiedProject);
+        if (targetProject is null)
+        {
+            return rebased;
+        }
+
+        foreach (var projectReference in projectChange.GetAddedProjectReferences())
+        {
+            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
+            var rebasedReference = referencedProject is null
+                ? rebased.GetProject(projectReference.ProjectId)
+                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
+            if (rebasedReference is not null
+                && !targetProject.ProjectReferences.Any(reference =>
+                    reference.ProjectId == rebasedReference.Id))
+            {
+                rebased = rebased.AddProjectReference(
+                    targetProject.Id,
+                    new ProjectReference(rebasedReference.Id, projectReference.Aliases, projectReference.EmbedInteropTypes));
+                targetProject = rebased.GetProject(targetProject.Id)!;
+            }
+        }
+
+        foreach (var projectReference in projectChange.GetRemovedProjectReferences())
+        {
+            var referencedProject = originalSolution.GetProject(projectReference.ProjectId);
+            var rebasedReference = referencedProject is null
+                ? rebased.GetProject(projectReference.ProjectId)
+                : ResolveRebaseTargetProject(rebased, projectReference.ProjectId, referencedProject);
+            var existingReference = targetProject.ProjectReferences.FirstOrDefault(reference =>
+                reference.ProjectId == rebasedReference?.Id);
+            if (existingReference is not null)
+            {
+                rebased = rebased.RemoveProjectReference(targetProject.Id, existingReference);
+                targetProject = rebased.GetProject(targetProject.Id)!;
+            }
+        }
+
+        return rebased;
     }
 
     /// <summary>
     /// Item #2 — build the authoritative FileSnapshotDto list that <see cref="UndoService"/>'s
     /// fast path uses to restore disk state. Added documents get <c>OriginalText: null</c>
-    /// (delete-on-revert); removed documents get the pre-apply disk bytes (recreate-on-revert);
-    /// changed documents get the pre-apply disk bytes (overwrite-on-revert).
+    /// (delete-on-revert); removed documents get the pre-apply disk text (recreate-on-revert);
+    /// changed documents get the pre-apply disk text (overwrite-on-revert).
     /// </summary>
-    private static async Task<IReadOnlyList<FileSnapshotDto>> BuildFileSnapshotsForDocumentSetChangesAsync(
+    private static async Task<IReadOnlyList<FileSnapshotDto>> BuildFileSnapshotsForSolutionChangesAsync(
         Solution currentSolution,
         Solution modifiedSolution,
         SolutionChanges solutionChanges,
@@ -877,79 +974,102 @@ public sealed class RefactoringService : IRefactoringService
 
         foreach (var projectChange in solutionChanges.GetProjectChanges())
         {
-            // Added documents: file doesn't exist pre-apply; revert must delete it.
-            // Roslyn may be a step ahead of disk when a previous tool already wrote the file,
-            // but the UndoService revert path tolerates "file not on disk" gracefully so using
-            // null unconditionally here is correct.
             foreach (var documentId in projectChange.GetAddedDocuments())
             {
-                var document = currentSolution.GetDocument(documentId)
-                    ?? modifiedSolution.GetDocument(documentId);
-                var filePath = document?.FilePath;
-                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
-                {
-                    continue;
-                }
-
-                snapshots.Add(new FileSnapshotDto(filePath, OriginalText: null));
+                await AddFileSnapshotAsync(
+                    snapshots,
+                    seenPaths,
+                    modifiedSolution.GetDocument(documentId),
+                    missingFileIsNew: true,
+                    ct).ConfigureAwait(false);
             }
 
-            // Removed documents: capture the pre-apply bytes so revert can recreate the file.
-            // Prefer disk (authoritative) over Solution text because some tools may be mid-flight
-            // and the disk copy is what the user actually had.
             foreach (var documentId in projectChange.GetRemovedDocuments())
             {
-                var document = currentSolution.GetDocument(documentId);
-                var filePath = document?.FilePath;
-                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
-                {
-                    continue;
-                }
-
-                string originalText;
-                if (File.Exists(filePath))
-                {
-                    originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
-                }
-                else if (document is not null)
-                {
-                    // No disk copy (rare) — fall back to the Solution text.
-                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
-                    originalText = sourceText.ToString();
-                }
-                else
-                {
-                    // Can't snapshot at all — skip rather than silently lose the entry on revert.
-                    continue;
-                }
-
-                snapshots.Add(new FileSnapshotDto(filePath, originalText));
+                await AddFileSnapshotAsync(
+                    snapshots,
+                    seenPaths,
+                    currentSolution.GetDocument(documentId),
+                    missingFileIsNew: false,
+                    ct).ConfigureAwait(false);
             }
 
-            // Changed documents: capture pre-apply disk bytes so revert can overwrite-in-place.
             foreach (var documentId in projectChange.GetChangedDocuments())
             {
-                var document = currentSolution.GetDocument(documentId);
-                var filePath = document?.FilePath;
-                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
-                {
-                    continue;
-                }
+                await AddFileSnapshotAsync(
+                    snapshots,
+                    seenPaths,
+                    currentSolution.GetDocument(documentId),
+                    missingFileIsNew: false,
+                    ct).ConfigureAwait(false);
+            }
 
-                if (File.Exists(filePath))
-                {
-                    var originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
-                    snapshots.Add(new FileSnapshotDto(filePath, originalText));
-                }
-                else if (document is not null)
-                {
-                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
-                    snapshots.Add(new FileSnapshotDto(filePath, sourceText.ToString()));
-                }
+            if (projectChange.GetAddedProjectReferences().Any()
+                || projectChange.GetRemovedProjectReferences().Any())
+            {
+                await AddProjectFileSnapshotAsync(
+                    snapshots,
+                    seenPaths,
+                    currentSolution.GetProject(projectChange.ProjectId)
+                        ?? modifiedSolution.GetProject(projectChange.ProjectId),
+                    ct).ConfigureAwait(false);
             }
         }
 
         return snapshots;
+    }
+
+    private static async Task AddFileSnapshotAsync(
+        ICollection<FileSnapshotDto> snapshots,
+        ISet<string> seenPaths,
+        Document? document,
+        bool missingFileIsNew,
+        CancellationToken ct)
+    {
+        var filePath = document?.FilePath;
+        if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+        {
+            return;
+        }
+
+        if (File.Exists(filePath))
+        {
+            snapshots.Add(new FileSnapshotDto(
+                filePath,
+                await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false)));
+            return;
+        }
+
+        if (missingFileIsNew)
+        {
+            snapshots.Add(new FileSnapshotDto(filePath, OriginalText: null));
+            return;
+        }
+
+        if (document is not null)
+        {
+            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+            snapshots.Add(new FileSnapshotDto(filePath, sourceText.ToString()));
+        }
+    }
+
+    private static async Task AddProjectFileSnapshotAsync(
+        ICollection<FileSnapshotDto> snapshots,
+        ISet<string> seenPaths,
+        Project? project,
+        CancellationToken ct)
+    {
+        var projectPath = project?.FilePath;
+        if (string.IsNullOrWhiteSpace(projectPath)
+            || !seenPaths.Add(projectPath)
+            || !File.Exists(projectPath))
+        {
+            return;
+        }
+
+        snapshots.Add(new FileSnapshotDto(
+            projectPath,
+            await File.ReadAllTextAsync(projectPath, ct).ConfigureAwait(false)));
     }
 
     private static string GetDefaultFixId(string diagnosticId) =>

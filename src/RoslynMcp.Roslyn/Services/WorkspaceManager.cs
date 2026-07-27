@@ -270,7 +270,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 }
             }
 
-            strictError:
+        strictError:
             var activeWorkspaces = _sessions.Values
                 .Select(s => new
                 {
@@ -289,7 +289,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 (lruCandidateId is not null ? $" lruCandidate={lruCandidateId}" : string.Empty));
         }
 
-        slotAcquired:
+    slotAcquired:
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
         var sessionAdded = false;

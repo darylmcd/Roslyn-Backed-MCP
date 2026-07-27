@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
 
@@ -133,6 +134,52 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         // The file from token A must still exist on disk (it must not have been
         // reverted by B's rebase overwriting the workspace with the pre-A snapshot).
         Assert.IsTrue(File.Exists(firstFilePath), "Token A's file must remain on disk after token B's apply.");
+    }
+
+    [TestMethod]
+    public async Task Sibling_Apply_Preserves_Project_Reference_From_Stale_CrossProject_Preview()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var unrelatedFilePath = workspace.GetPath("SampleApp", "UnrelatedSibling.cs");
+
+        var crossProjectPreview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+        var unrelatedPreview = await FileOperationService.PreviewCreateFileAsync(
+            workspace.WorkspaceId,
+            new CreateFileDto(
+                "SampleApp",
+                unrelatedFilePath,
+                "namespace SampleApp;\n\ninternal sealed class UnrelatedSibling { }\n"),
+            CancellationToken.None);
+
+        var unrelatedApply = await RefactoringService.ApplyRefactoringAsync(
+            unrelatedPreview.PreviewToken,
+            "test_apply",
+            CancellationToken.None);
+        Assert.IsTrue(unrelatedApply.Success, unrelatedApply.Error);
+
+        var crossProjectApply = await RefactoringService.ApplyRefactoringAsync(
+            crossProjectPreview.PreviewToken,
+            "test_apply",
+            CancellationToken.None);
+        Assert.IsTrue(crossProjectApply.Success, crossProjectApply.Error);
+
+        var projectXml = XDocument.Load(sourceProjectFilePath);
+        Assert.IsTrue(projectXml.Descendants("ProjectReference").Any(element =>
+            string.Equals(
+                Path.GetFileName((string?)element.Attribute("Include")),
+                "Contracts.csproj",
+                StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>

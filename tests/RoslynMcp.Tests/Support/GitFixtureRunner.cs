@@ -26,6 +26,62 @@ internal static class GitFixtureRunner
         "SampleLib.Tests",
     };
 
+    public static bool IsAvailable(out string? failureReason)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("--version");
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                failureReason = "Process.Start returned null.";
+                return false;
+            }
+
+            if (!process.WaitForExit(5_000))
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(1_000);
+                    failureReason = "git --version timed out after 5 seconds.";
+                }
+                catch (Exception ex)
+                {
+                    failureReason =
+                        $"git --version timed out and termination failed ({ex.GetType().Name}: {ex.Message}).";
+                }
+
+                return false;
+            }
+
+            if (process.ExitCode == 0)
+            {
+                failureReason = null;
+                return true;
+            }
+
+            var stderr = process.StandardError.ReadToEnd().Trim();
+            failureReason = string.IsNullOrWhiteSpace(stderr)
+                ? $"git --version exited {process.ExitCode}."
+                : $"git --version exited {process.ExitCode}: {stderr}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            failureReason = $"{ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
+    }
+
     public static void StageAndCommitAll(string directory)
     {
         StageFixtureBaseline(directory);
@@ -51,6 +107,9 @@ internal static class GitFixtureRunner
     }
 
     public static void RunGit(string workingDirectory, params string[] arguments)
+        => _ = RunGitCapture(workingDirectory, arguments);
+
+    public static string RunGitCapture(string workingDirectory, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -69,16 +128,24 @@ internal static class GitFixtureRunner
         var stderrTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(30_000))
         {
+            Exception? terminationFailure = null;
             try
             {
                 process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(1_000))
+                {
+                    terminationFailure = new TimeoutException(
+                        "The git process did not exit within one second after termination.");
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Best effort. The timeout failure below is the actionable signal.
+                terminationFailure = ex;
             }
 
-            throw new TimeoutException($"git {string.Join(' ', arguments)} did not exit within 30 seconds.");
+            throw new TimeoutException(
+                $"git {string.Join(' ', arguments)} did not exit within 30 seconds.",
+                terminationFailure);
         }
         var stderr = stderrTask.GetAwaiter().GetResult();
         var stdout = stdoutTask.GetAwaiter().GetResult();
@@ -87,5 +154,7 @@ internal static class GitFixtureRunner
             throw new InvalidOperationException(
                 $"git {string.Join(' ', arguments)} exited {process.ExitCode}. stdout=[{stdout}] stderr=[{stderr}]");
         }
+
+        return stdout;
     }
 }

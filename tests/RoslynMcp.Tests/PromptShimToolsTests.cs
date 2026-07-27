@@ -69,4 +69,18 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
             "Omitting projectName must fall through to the null default, which the template renders "
             + "as '(entire workspace)' — this pins the default-value binder branch.");
     }
+
+    [TestMethod]
+    public void ResolvePromptMethod_RepeatedLookups_BuildReflectionIndexOnce()
+    {
+        var first = PromptShimTools.ResolvePromptMethod("dead_code_audit");
+        var second = PromptShimTools.ResolvePromptMethod("dead_code_audit");
+
+        Assert.IsNotNull(first.Method);
+        Assert.AreSame(first.Method, second.Method);
+        Assert.AreEqual(
+            1,
+            PromptShimTools.PromptIndexBuildCount,
+            "Prompt reflection metadata must be indexed once and reused across calls.");
+    }
 }

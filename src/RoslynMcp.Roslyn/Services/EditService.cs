@@ -685,7 +685,7 @@ public sealed class EditService : IEditService
     /// non-null, the baseline is scoped to that single project — cheaper and more
     /// precise than a full-solution compile for single-file edits.
     /// </summary>
-    private async Task<PreEditBaseline> CapturePreEditBaselineAsync(
+    private async Task<CompilationErrorSnapshot> CapturePreEditBaselineAsync(
         string workspaceId,
         string? projectFilter,
         CancellationToken ct)
@@ -700,18 +700,11 @@ public sealed class EditService : IEditService
                 "Ensure RoslynMcp.Roslyn DI is configured (AddRoslynMcpCoreServices).");
         }
 
-        // Page size of 500 covers most single-project repos. If a project legitimately
-        // has more than 500 errors, the identity set will be an over-count — not a
-        // correctness hazard (any such error will also appear post-edit and be filtered
-        // out), just a performance one.
-        var baseline = await _compileCheckService.CheckAsync(
+        return await CompilationVerification.CaptureAsync(
+            _compileCheckService,
             workspaceId,
-            new CompileCheckOptions(ProjectFilter: projectFilter, SeverityFilter: "error", Limit: 500),
+            projectFilter,
             ct).ConfigureAwait(false);
-
-        var identities = DiagnosticIdentitySet.ExtractErrorIdentities(baseline);
-
-        return new PreEditBaseline(identities, baseline.ErrorCount);
     }
 
     /// <summary>
@@ -731,7 +724,7 @@ public sealed class EditService : IEditService
     private async Task<VerifyOutcomeDto> RunVerifyAndMaybeRevertAsync(
         string workspaceId,
         string? projectFilter,
-        PreEditBaseline preEditBaseline,
+        CompilationErrorSnapshot preEditBaseline,
         bool autoRevertOnError,
         CancellationToken ct)
     {
@@ -740,31 +733,22 @@ public sealed class EditService : IEditService
         // The CapturePreEditBaselineAsync path would have already thrown.
         ArgumentNullException.ThrowIfNull(_compileCheckService);
 
-        var postCheck = await _compileCheckService.CheckAsync(
+        var postEditSnapshot = await CompilationVerification.CaptureAsync(
+            _compileCheckService,
             workspaceId,
-            new CompileCheckOptions(ProjectFilter: projectFilter, SeverityFilter: "error", Limit: 500),
+            projectFilter,
             ct).ConfigureAwait(false);
 
-        var newDiagnostics = new List<DiagnosticDto>();
-        foreach (var d in postCheck.Diagnostics)
-        {
-            if (!string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            var identity = DiagnosticIdentitySet.FormatIdentity(d);
-            if (!preEditBaseline.ErrorIdentities.Contains(identity))
-            {
-                newDiagnostics.Add(d);
-            }
-        }
+        var newDiagnostics = CompilationVerification.FindIntroducedDiagnostics(
+            preEditBaseline,
+            postEditSnapshot);
 
         if (newDiagnostics.Count == 0)
         {
             return new VerifyOutcomeDto(
                 Status: "clean",
                 PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postCheck.ErrorCount,
+                PostErrorCount: postEditSnapshot.ErrorCount,
                 NewDiagnostics: Array.Empty<DiagnosticDto>(),
                 ProjectFilter: projectFilter,
                 Message: null);
@@ -775,7 +759,7 @@ public sealed class EditService : IEditService
             return new VerifyOutcomeDto(
                 Status: "errors_introduced",
                 PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postCheck.ErrorCount,
+                PostErrorCount: postEditSnapshot.ErrorCount,
                 NewDiagnostics: newDiagnostics,
                 ProjectFilter: projectFilter,
                 Message: "The edit applied but introduced new compile errors. autoRevertOnError was false, " +
@@ -791,7 +775,7 @@ public sealed class EditService : IEditService
             return new VerifyOutcomeDto(
                 Status: "revert_failed",
                 PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postCheck.ErrorCount,
+                PostErrorCount: postEditSnapshot.ErrorCount,
                 NewDiagnostics: newDiagnostics,
                 ProjectFilter: projectFilter,
                 Message: "autoRevertOnError=true but IUndoService is not registered on this EditService. " +
@@ -804,7 +788,7 @@ public sealed class EditService : IEditService
             return new VerifyOutcomeDto(
                 Status: "reverted",
                 PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postCheck.ErrorCount,
+                PostErrorCount: postEditSnapshot.ErrorCount,
                 NewDiagnostics: newDiagnostics,
                 ProjectFilter: projectFilter,
                 Message: "The edit introduced new compile errors and was reverted. " +
@@ -814,19 +798,11 @@ public sealed class EditService : IEditService
         return new VerifyOutcomeDto(
             Status: "revert_failed",
             PreErrorCount: preEditBaseline.ErrorCount,
-            PostErrorCount: postCheck.ErrorCount,
+            PostErrorCount: postEditSnapshot.ErrorCount,
             NewDiagnostics: newDiagnostics,
             ProjectFilter: projectFilter,
             Message: "The edit introduced new compile errors AND the auto-revert failed. " +
                     "The workspace is in an inconsistent state — inspect and call revert_last_apply manually.");
     }
 
-    /// <summary>
-    /// Holds the pre-edit identity set (id|file|line — see <see cref="DiagnosticIdentitySet"/>)
-    /// plus the total pre-existing error count so the verify outcome can report both the
-    /// delta and the baseline headline number.
-    /// </summary>
-    private sealed record PreEditBaseline(
-        HashSet<string> ErrorIdentities,
-        int ErrorCount);
 }

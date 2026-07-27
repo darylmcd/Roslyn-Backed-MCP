@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
@@ -104,6 +106,53 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [DataTestMethod]
+    [DataRow("drop-on-success", true, false)]
+    [DataRow("drop-on-success", false, true)]
+    [DataRow("drop-on-failure", true, true)]
+    [DataRow("drop-on-failure", false, false)]
+    [DataRow("drop-always", true, false)]
+    [DataRow("drop-always", false, false)]
+    [DataRow("keep", true, true)]
+    [DataRow("keep", false, true)]
+    public void ShouldRetainFork_AllPolicies_OwnTheirStateTransition(
+        string retention,
+        bool success,
+        bool expected)
+    {
+        Assert.AreEqual(expected, WorkspaceForkApplyService.ShouldRetainFork(retention, success));
+    }
+
+    [TestMethod]
+    public async Task RestoreForkAsync_Failure_RedactsCredentialBearingOutput()
+    {
+        const string secret = "super-secret-feed-password";
+        var runner = new FailingRestoreRunner(
+            $"NU1301: Unable to load https://build:{secret}@feed.example/v3/index.json" +
+            $"?api_key={secret} Authorization: Bearer {secret}");
+        var service = new WorkspaceForkApplyService(
+            workspaceManager: null!,
+            previewStore: null!,
+            validationService: null!,
+            testRunnerService: null!,
+            commandRunner: runner,
+            logger: NullLogger<WorkspaceForkApplyService>.Instance);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => service.RestoreForkAsync(
+                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                CancellationToken.None));
+
+        StringAssert.Contains(exception.Message, "exit code 1");
+        StringAssert.Contains(exception.Message, "[redacted]");
+        Assert.IsFalse(
+            exception.Message.Contains(secret, StringComparison.Ordinal),
+            "Client-facing restore failures must not expose credential-shaped output.");
+        Assert.IsTrue(
+            exception.Message.Length < 700,
+            "Client-facing restore failures must stay bounded.");
+    }
+
     private static WorkspaceValidationService CreateValidationService() =>
         new(
             CompileCheckService,
@@ -138,5 +187,24 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             modified,
             WorkspaceManager.GetCurrentVersion(workspaceId),
             "workspace_fork_apply test preview");
+    }
+
+    private sealed class FailingRestoreRunner(string stderr) : IDotnetCommandRunner
+    {
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            CancellationToken ct) =>
+            Task.FromResult(new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: arguments,
+                WorkingDirectory: workingDirectory,
+                TargetPath: targetPath,
+                ExitCode: 1,
+                Succeeded: false,
+                DurationMs: 1,
+                StdOut: string.Empty,
+                StdErr: stderr));
     }
 }

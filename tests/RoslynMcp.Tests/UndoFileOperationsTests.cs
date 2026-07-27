@@ -1,4 +1,8 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -11,7 +15,7 @@ namespace RoslynMcp.Tests;
 /// (RevertFromFileSnapshotsAsync) and restores disk state for file create/delete/move.
 /// </summary>
 [TestClass]
-public sealed class UndoFileOperationsTests : TestBase
+public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -62,7 +66,7 @@ public sealed class UndoFileOperationsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -108,22 +112,129 @@ public sealed class UndoFileOperationsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            DeleteDirectoryIfExists(solutionDir);
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    [TestMethod]
+    public async Task DocumentSetPersistence_MidBatchFailure_RestoresEveryPriorByte()
     {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        AddProjectToCopiedSolution(solutionDir, "Contracts", "net10.0");
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
         try
         {
-            if (Directory.Exists(path))
+            var currentSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+            var dog = currentSolution.Projects
+                .SelectMany(project => project.Documents)
+                .Single(document => document.Name == "Dog.cs");
+            var cat = currentSolution.Projects
+                .SelectMany(project => project.Documents)
+                .Single(document => document.Name == "Cat.cs");
+            var dogPath = dog.FilePath ?? throw new AssertFailedException("Dog.cs path missing.");
+            var catPath = cat.FilePath ?? throw new AssertFailedException("Cat.cs path missing.");
+            var sampleLib = currentSolution.Projects.Single(project => project.Name == "SampleLib");
+            var contracts = currentSolution.Projects.Single(project => project.Name == "Contracts");
+            var sampleLibProjectPath = sampleLib.FilePath
+                ?? throw new AssertFailedException("SampleLib.csproj path missing.");
+            var addedPath = Path.Combine(
+                Path.GetDirectoryName(sampleLibProjectPath)!,
+                "TransactionalAddition.cs");
+            var addedDocumentId = DocumentId.CreateNewId(sampleLib.Id, "TransactionalAddition.cs");
+            var dogBytes = await File.ReadAllBytesAsync(dogPath);
+            var catBytes = await File.ReadAllBytesAsync(catPath);
+            var projectBytes = await File.ReadAllBytesAsync(sampleLibProjectPath);
+
+            var modifiedSolution = currentSolution
+                .AddProjectReference(sampleLib.Id, new ProjectReference(contracts.Id))
+                .WithDocumentText(dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .AddDocument(
+                    addedDocumentId,
+                    "TransactionalAddition.cs",
+                    SourceText.From("namespace SampleLib; public class TransactionalAddition { }"),
+                    filePath: addedPath)
+                .RemoveDocument(cat.Id);
+            var service = new DocumentSetPersistenceService(
+                WorkspaceManager,
+                NullLogger.Instance,
+                new DeleteThenFailFileSystem(catPath));
+
+            var result = await service.PersistAsync(
+                workspaceId,
+                currentSolution,
+                modifiedSolution,
+                modifiedSolution.GetChanges(currentSolution),
+                CancellationToken.None);
+
+            Assert.IsFalse(result.Success, "The injected delete failure must fail the transaction.");
+            CollectionAssert.AreEqual(
+                dogBytes,
+                await File.ReadAllBytesAsync(dogPath),
+                "A changed document must be rolled back byte-for-byte.");
+            CollectionAssert.AreEqual(
+                catBytes,
+                await File.ReadAllBytesAsync(catPath),
+                "A document deleted before the injected failure must be recreated byte-for-byte.");
+            Assert.IsFalse(
+                File.Exists(addedPath),
+                "A document created earlier in the failed transaction must be removed.");
+            CollectionAssert.AreEqual(
+                projectBytes,
+                await File.ReadAllBytesAsync(sampleLibProjectPath),
+                "A project-reference mutation written before the failure must be rolled back byte-for-byte.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            DeleteDirectoryIfExists(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public void ProjectReferenceTargetsPath_DistinguishesSameNamedProjects()
+    {
+        var projectDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcp", "App");
+        var firstTarget = Path.Combine(Path.GetTempPath(), "RoslynMcp", "One", "Common.csproj");
+
+        Assert.IsTrue(DocumentSetPersistenceService.ProjectReferenceTargetsPath(
+            Path.Combine("..", "One", "Common.csproj"),
+            projectDirectory,
+            firstTarget));
+        Assert.IsFalse(DocumentSetPersistenceService.ProjectReferenceTargetsPath(
+            Path.Combine("..", "Two", "Common.csproj"),
+            projectDirectory,
+            firstTarget));
+    }
+
+    private sealed class DeleteThenFailFileSystem(string failingDeletePath) : IDocumentSetFileSystem
+    {
+        public bool FileExists(string path) => File.Exists(path);
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+        public void DeleteFile(string path)
+        {
+            File.Delete(path);
+            if (string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(failingDeletePath),
+                    OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal))
             {
-                Directory.Delete(path, recursive: true);
+                throw new IOException("Injected deterministic failure after document deletion.");
             }
         }
-        catch
-        {
-            // Best-effort cleanup.
-        }
+
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
+            File.ReadAllBytesAsync(path, ct);
+        public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
+            File.ReadAllTextAsync(path, ct);
+        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
+            File.WriteAllBytesAsync(path, bytes, ct);
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct) =>
+            File.WriteAllTextAsync(path, content, ct);
     }
 }

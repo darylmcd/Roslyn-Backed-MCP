@@ -1,3 +1,6 @@
+using System.Text;
+using RoslynMcp.Host.Stdio;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -29,8 +32,10 @@ public sealed class StdioFlushOnExitTests
             "Program.cs must register an AppDomain.CurrentDomain.ProcessExit handler so " +
             "the synchronous flush fires on every exit path (including stdin-EOF where " +
             "the SDK transport may exit before async FlushAsync completes).");
-        Assert.IsTrue(ProgramSource.Contains("Console.Out.Flush()"),
-            "ProcessExit handler must invoke Console.Out.Flush() synchronously.");
+        Assert.IsTrue(ProgramSource.Contains(
+                "StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, \"process-exit\")",
+                StringComparison.Ordinal),
+            "ProcessExit handler must invoke the no-throw observable flusher synchronously.");
     }
 
     [TestMethod]
@@ -51,9 +56,66 @@ public sealed class StdioFlushOnExitTests
         var postRunFlushSync = ProgramSource.IndexOf("await host.RunAsync()", StringComparison.Ordinal);
         Assert.IsTrue(postRunFlushSync > 0, "RunAsync await missing");
         var postSegment = ProgramSource.Substring(postRunFlushSync);
-        Assert.IsTrue(postSegment.Contains("Console.Out.Flush()"),
-            "Post-RunAsync block must include synchronous Console.Out.Flush().");
-        Assert.IsTrue(postSegment.Contains("Console.Out.FlushAsync()"),
-            "Post-RunAsync block must include asynchronous Console.Out.FlushAsync().");
+        Assert.IsTrue(postSegment.Contains(
+                "StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, \"post-run\")",
+                StringComparison.Ordinal),
+            "Post-RunAsync block must include the synchronous shutdown flusher.");
+        Assert.IsTrue(postSegment.Contains(
+                "StdioShutdownFlusher.FlushAsync(Console.Out, Console.Error.WriteLine, \"post-run-async\")",
+                StringComparison.Ordinal),
+            "Post-RunAsync block must include the asynchronous shutdown flusher.");
+    }
+
+    [TestMethod]
+    public async Task ShutdownFlusher_Success_FlushesSyncAndAsync()
+    {
+        var output = new RecordingTextWriter();
+        using var diagnostics = new StringWriter();
+
+        StdioShutdownFlusher.Flush(output, diagnostics.WriteLine, "sync-test");
+        await StdioShutdownFlusher.FlushAsync(output, diagnostics.WriteLine, "async-test");
+
+        Assert.AreEqual(1, output.SyncFlushCount);
+        Assert.AreEqual(1, output.AsyncFlushCount);
+        Assert.AreEqual(string.Empty, diagnostics.ToString());
+    }
+
+    [TestMethod]
+    public async Task ShutdownFlusher_TransportGone_ReportsOnlyToDiagnostics()
+    {
+        var output = new ThrowingTextWriter();
+        using var diagnostics = new StringWriter();
+
+        StdioShutdownFlusher.Flush(output, diagnostics.WriteLine, "sync-test");
+        await StdioShutdownFlusher.FlushAsync(output, diagnostics.WriteLine, "async-test");
+
+        var message = diagnostics.ToString();
+        StringAssert.Contains(message, "stdout flush failed during sync-test (IOException)");
+        StringAssert.Contains(message, "stdout flush failed during async-test (IOException)");
+    }
+
+    private sealed class RecordingTextWriter : TextWriter
+    {
+        public override Encoding Encoding => Encoding.UTF8;
+        public int SyncFlushCount { get; private set; }
+        public int AsyncFlushCount { get; private set; }
+
+        public override void Flush() => SyncFlushCount++;
+
+        public override Task FlushAsync()
+        {
+            AsyncFlushCount++;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingTextWriter : TextWriter
+    {
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public override void Flush() => throw new IOException("transport gone");
+
+        public override Task FlushAsync() =>
+            Task.FromException(new IOException("transport gone"));
     }
 }

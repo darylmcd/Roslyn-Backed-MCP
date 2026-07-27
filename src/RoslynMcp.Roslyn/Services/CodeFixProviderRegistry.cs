@@ -147,7 +147,7 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
                     "CA-series NetAnalyzer fix providers fall into this category)",
                     skippedNoParamlessCtor, analyzerPath);
             }
-            return [..providers];
+            return [.. providers];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
