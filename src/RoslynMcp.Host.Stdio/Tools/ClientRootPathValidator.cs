@@ -50,36 +50,22 @@ internal static class ClientRootPathValidator
     {
         var failOpen = securityOptions?.PathValidationFailOpen ?? false;
 
+        if (server is null || server.ClientCapabilities?.Roots is null)
+        {
+            return;
+        }
+
         try
         {
-            if (server is null || server.ClientCapabilities?.Roots is null)
-            {
-                return;
-            }
-
-            var rootsResult = await server.RequestRootsAsync(new ListRootsRequestParams(), ct).ConfigureAwait(false);
-            if (rootsResult.Roots.Count == 0)
-            {
-                return;
-            }
-
-            var fullPath = ResolvePath(path);
-            var rootPaths = rootsResult.Roots
-                .Where(r => r.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                .Select(r => new Uri(r.Uri).LocalPath)
-                .ToList();
-
-            if (IsPathUnderAnyRoot(fullPath, rootPaths, expandSanctionedRoots))
-            {
-                return;
-            }
-
-            var widenedNote = expandSanctionedRoots
-                ? " (expandSanctionedRoots=true was applied — parent directories of each root were also checked)"
-                : string.Empty;
-            throw new ArgumentException(
-                $"Path '{path}' is not under any client-sanctioned root. " +
-                $"Allowed roots: {string.Join(", ", rootsResult.Roots.Select(r => r.Uri))}{widenedNote}");
+            await ValidateAgainstAdvertisedRootsAsync(
+                server,
+                path,
+                expandSanctionedRoots,
+                ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (ArgumentException)
         {
@@ -87,21 +73,68 @@ internal static class ClientRootPathValidator
         }
         catch (Exception ex)
         {
-            // Roots lookup can fail when the client advertises the capability but
-            // doesn't fully support it (common with Claude Code and other clients).
-            if (failOpen)
-            {
-                logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — allowing access (fail-open)", path);
-            }
-            else
-            {
-                logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — rejecting access (fail-closed)", path);
-                throw new ArgumentException(
-                    $"Path validation failed for '{path}': roots lookup error and fail-closed mode is enabled. " +
-                    $"Set ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true to allow access when roots lookup fails.");
-            }
+            HandleRootsLookupFailure(path, failOpen, logger, ex);
         }
     }
+
+    private static async Task ValidateAgainstAdvertisedRootsAsync(
+        McpServer server,
+        string path,
+        bool expandSanctionedRoots,
+        CancellationToken ct)
+    {
+        var rootsResult = await server.RequestRootsAsync(
+            new ListRootsRequestParams(),
+            ct).ConfigureAwait(false);
+        if (rootsResult.Roots.Count == 0)
+        {
+            return;
+        }
+
+        var fullPath = await ResolvePathAsync(path, ct).ConfigureAwait(false);
+        var rootPaths = rootsResult.Roots
+            .Where(root => root.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            .Select(root => new Uri(root.Uri).LocalPath)
+            .ToList();
+        if (IsPathUnderAnyRoot(fullPath, rootPaths, expandSanctionedRoots))
+        {
+            return;
+        }
+
+        var widenedNote = expandSanctionedRoots
+            ? " (expandSanctionedRoots=true was applied — parent directories of each root were also checked)"
+            : string.Empty;
+        throw new ArgumentException(
+            $"Path '{path}' is not under any client-sanctioned root. " +
+            $"Allowed roots: {string.Join(", ", rootsResult.Roots.Select(root => root.Uri))}{widenedNote}");
+    }
+
+    private static void HandleRootsLookupFailure(
+        string path,
+        bool failOpen,
+        ILogger? logger,
+        Exception exception)
+    {
+        if (failOpen)
+        {
+            logger?.LogWarning(
+                exception,
+                "Roots lookup failed for path '{Path}' — allowing access (fail-open)",
+                path);
+            return;
+        }
+
+        logger?.LogWarning(
+            exception,
+            "Roots lookup failed for path '{Path}' — rejecting access (fail-closed)",
+            path);
+        throw new ArgumentException(
+            $"Path validation failed for '{path}': roots lookup error and fail-closed mode is enabled. " +
+            "Set ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true to allow access when roots lookup fails.");
+    }
+
+    internal static Task<string> ResolvePathAsync(string path, CancellationToken ct) =>
+        Task.Run(() => ResolvePath(path), ct);
 
     /// <summary>
     /// Pure path-match helper extracted for unit-testability of the sanctioned-root
@@ -205,35 +238,36 @@ internal static class ClientRootPathValidator
     internal static string ResolvePath(string path)
     {
         var fullPath = Path.GetFullPath(path);
+        return ResolveExistingEntry(fullPath)
+            ?? ResolveAncestorLink(fullPath)
+            ?? fullPath;
+    }
 
-        // Resolve symlinks/junctions when the target exists on disk.
-        // For files, check if the file itself or any directory component is a symlink.
+    private static string? ResolveExistingEntry(string fullPath)
+    {
         if (File.Exists(fullPath))
         {
             var resolved = new FileInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
-            if (resolved is not null)
-            {
-                return Path.GetFullPath(resolved.FullName);
-            }
-        }
-        else if (Directory.Exists(fullPath))
-        {
-            var resolved = new DirectoryInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
-            if (resolved is not null)
-            {
-                return Path.GetFullPath(resolved.FullName);
-            }
+            return resolved is null ? null : Path.GetFullPath(resolved.FullName);
         }
 
-        // Also check parent directories for symlinks (e.g., /allowed/link/subdir/file.cs
-        // where "link" is a symlink but file.cs doesn't exist yet)
+        if (Directory.Exists(fullPath))
+        {
+            var resolved = new DirectoryInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
+            return resolved is null ? null : Path.GetFullPath(resolved.FullName);
+        }
+
+        return null;
+    }
+
+    private static string? ResolveAncestorLink(string fullPath)
+    {
         var current = Path.GetDirectoryName(fullPath);
         while (!string.IsNullOrEmpty(current))
         {
-            // Skip drive roots — ResolveLinkTarget throws on root directories (e.g., C:\).
             if (Path.GetPathRoot(current) == current)
             {
-                break;
+                return null;
             }
 
             if (Directory.Exists(current))
@@ -241,7 +275,6 @@ internal static class ClientRootPathValidator
                 var resolved = new DirectoryInfo(current).ResolveLinkTarget(returnFinalTarget: true);
                 if (resolved is not null)
                 {
-                    // Rebase the remaining path on the resolved directory
                     var relativeTail = Path.GetRelativePath(current, fullPath);
                     return Path.GetFullPath(Path.Combine(resolved.FullName, relativeTail));
                 }
@@ -250,6 +283,6 @@ internal static class ClientRootPathValidator
             current = Path.GetDirectoryName(current);
         }
 
-        return fullPath;
+        return null;
     }
 }

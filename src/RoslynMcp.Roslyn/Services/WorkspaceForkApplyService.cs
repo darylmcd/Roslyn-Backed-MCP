@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
@@ -53,6 +54,24 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
     private const double DefaultForkTtlHours = 24;
     private const double DefaultForkRestoreTimeoutMinutes = 2;
     private const string ForkTimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
+    private const int MaxRestoreDiagnosticLength = 512;
+    private static readonly TimeSpan RedactionRegexTimeout = TimeSpan.FromMilliseconds(100);
+    private static readonly Regex UriUserInfoRegex = new(
+        @"\b(?<scheme>https?://)[^/\s@]+@",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RedactionRegexTimeout);
+    private static readonly Regex SecretValueRegex = new(
+        @"(?<prefix>\b[^=&;\s]*(?:token|api[_-]?key|password|secret|credential|signature)[^=&;\s]*=)[^&;\s]+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RedactionRegexTimeout);
+    private static readonly Regex AuthorizationValueRegex = new(
+        @"\b(?<scheme>Bearer|Basic)\s+\S+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RedactionRegexTimeout);
+    private static readonly Regex WhitespaceRegex = new(
+        @"\s+",
+        RegexOptions.CultureInvariant,
+        RedactionRegexTimeout);
 
     private static readonly ConcurrentDictionary<string, ForkApplyLock> ForkApplyLocks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -90,6 +109,63 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         CancellationToken ct)
     {
         var normalizedRetention = NormalizeRetention(retention);
+        var preview = RetrieveValidatedPreview(previewToken, workspaceId);
+        var source = GetRequiredSourceContext(workspaceId);
+        string? forkWorkspaceId = null;
+        var cleanupWarnings = new List<string>();
+        var retained = false;
+
+        using var sourceRootLock =
+            await AcquireForkApplyLockAsync(source.Root, ct).ConfigureAwait(false);
+        var forkPath = CreateForkDirectory(source.Root, forkName);
+        try
+        {
+            var validationState = await CreateAndValidateForkAsync(
+                preview.OriginalSolution,
+                preview.ModifiedSolution,
+                source.LoadedPath,
+                source.Root,
+                forkPath,
+                runTests,
+                testFilter,
+                ct).ConfigureAwait(false);
+            forkWorkspaceId = validationState.WorkspaceId;
+            var success = validationState.Success;
+            retained = ShouldRetainFork(normalizedRetention, success);
+
+            if (!retained)
+            {
+                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, ct);
+                forkWorkspaceId = null;
+                if (cleanupWarnings.Count > 0)
+                {
+                    success = false;
+                }
+            }
+
+            return new WorkspaceForkApplyResultDto(
+                success,
+                forkWorkspaceId,
+                forkPath,
+                retained,
+                validationState.AppliedFiles,
+                validationState.Validation,
+                validationState.ExplicitTestRun,
+                cleanupWarnings);
+        }
+        catch
+        {
+            if (!retained)
+            {
+                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
+            }
+
+            throw;
+        }
+    }
+
+    private ValidatedPreview RetrieveValidatedPreview(string previewToken, string workspaceId)
+    {
         var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
         {
@@ -111,80 +187,78 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 "Refusing to fork-apply a truncated preview because the reviewed diff is incomplete. Re-run the preview with a narrower scope before calling workspace_fork_apply.");
         }
 
-        var sourceStatus = _workspaceManager.GetStatus(workspaceId);
-        var loadedPath = sourceStatus.LoadedPath
+        return new ValidatedPreview(
+            entry.Value.OriginalSolution,
+            entry.Value.ModifiedSolution);
+    }
+
+    private SourceContext GetRequiredSourceContext(string workspaceId)
+    {
+        var loadedPath = _workspaceManager.GetStatus(workspaceId).LoadedPath
             ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         var sourceRoot = Path.GetDirectoryName(Path.GetFullPath(loadedPath))
-            ?? throw new InvalidOperationException($"Could not resolve source root for workspace '{workspaceId}'.");
-        string? forkWorkspaceId = null;
-        var cleanupWarnings = new List<string>();
-        var retained = false;
+            ?? throw new InvalidOperationException(
+                $"Could not resolve source root for workspace '{workspaceId}'.");
+        return new SourceContext(loadedPath, sourceRoot);
+    }
 
-        using var sourceRootLock = await AcquireForkApplyLockAsync(sourceRoot, ct).ConfigureAwait(false);
-        var forkPath = CreateForkDirectory(sourceRoot, forkName);
-        try
+    private async Task<ForkValidationState> CreateAndValidateForkAsync(
+        Solution originalSolution,
+        Solution modifiedSolution,
+        string loadedPath,
+        string sourceRoot,
+        string forkPath,
+        bool runTests,
+        string? testFilter,
+        CancellationToken ct)
+    {
+        CopyDirectory(sourceRoot, forkPath, ct);
+        var appliedFiles = await ReplayPreviewIntoForkAsync(
+            originalSolution,
+            modifiedSolution,
+            sourceRoot,
+            forkPath,
+            ct).ConfigureAwait(false);
+        var forkLoadedPath = MapSourcePathToFork(loadedPath, sourceRoot, forkPath);
+        await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
+        var forkStatus = await _workspaceManager
+            .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
+            .ConfigureAwait(false);
+
+        var validation = await _validationService.ValidateAsync(
+            forkStatus.WorkspaceId,
+            appliedFiles,
+            runTests && string.IsNullOrWhiteSpace(testFilter),
+            ct,
+            summary: true).ConfigureAwait(false);
+        var explicitTestRun = await RunExplicitTestsAsync(
+            forkStatus.WorkspaceId,
+            runTests,
+            testFilter,
+            ct).ConfigureAwait(false);
+
+        return new ForkValidationState(
+            forkStatus.WorkspaceId,
+            appliedFiles,
+            validation,
+            explicitTestRun,
+            IsValidationSuccess(validation, explicitTestRun));
+    }
+
+    private async Task<TestRunResultDto?> RunExplicitTestsAsync(
+        string forkWorkspaceId,
+        bool runTests,
+        string? testFilter,
+        CancellationToken ct)
+    {
+        if (!runTests || string.IsNullOrWhiteSpace(testFilter))
         {
-            CopyDirectory(sourceRoot, forkPath, ct);
-            var appliedFiles = await ReplayPreviewIntoForkAsync(
-                entry.Value.OriginalSolution,
-                entry.Value.ModifiedSolution,
-                sourceRoot,
-                forkPath,
-                ct).ConfigureAwait(false);
-            var forkLoadedPath = MapSourcePathToFork(loadedPath, sourceRoot, forkPath);
-            await RestoreForkAsync(forkLoadedPath, ct).ConfigureAwait(false);
-            var forkStatus = await _workspaceManager
-                .LoadAsync(forkLoadedPath, EvictPolicy.Lru, ct)
-                .ConfigureAwait(false);
-            forkWorkspaceId = forkStatus.WorkspaceId;
-
-            var validation = await _validationService.ValidateAsync(
-                forkWorkspaceId,
-                appliedFiles,
-                runTests && string.IsNullOrWhiteSpace(testFilter),
-                ct,
-                summary: true).ConfigureAwait(false);
-
-            TestRunResultDto? explicitTestRun = null;
-            if (runTests && !string.IsNullOrWhiteSpace(testFilter))
-            {
-                explicitTestRun = await _testRunnerService
-                    .RunTestsAsync(forkWorkspaceId, projectName: null, filter: testFilter, ct)
-                    .ConfigureAwait(false);
-            }
-
-            var success = IsValidationSuccess(validation, explicitTestRun);
-            retained = ShouldRetainFork(normalizedRetention, success);
-
-            if (!retained)
-            {
-                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, ct);
-                forkWorkspaceId = null;
-                if (cleanupWarnings.Count > 0)
-                {
-                    success = false;
-                }
-            }
-
-            return new WorkspaceForkApplyResultDto(
-                success,
-                forkWorkspaceId,
-                forkPath,
-                retained,
-                appliedFiles,
-                validation,
-                explicitTestRun,
-                cleanupWarnings);
+            return null;
         }
-        catch
-        {
-            if (!retained)
-            {
-                CleanupFork(forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
-            }
 
-            throw;
-        }
+        return await _testRunnerService
+            .RunTestsAsync(forkWorkspaceId, projectName: null, filter: testFilter, ct)
+            .ConfigureAwait(false);
     }
 
     private static string NormalizeRetention(string? retention)
@@ -200,7 +274,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 nameof(retention));
     }
 
-    private static bool ShouldRetainFork(string retention, bool success) => retention switch
+    internal static bool ShouldRetainFork(string retention, bool success) => retention switch
     {
         "drop-on-success" => !success,
         "drop-on-failure" => success,
@@ -436,7 +510,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         return false;
     }
 
-    private async Task RestoreForkAsync(string forkLoadedPath, CancellationToken ct)
+    internal async Task RestoreForkAsync(string forkLoadedPath, CancellationToken ct)
     {
         var workingDirectory = Path.GetDirectoryName(forkLoadedPath)
             ?? throw new InvalidOperationException(
@@ -464,12 +538,33 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
         if (!execution.Succeeded)
         {
-            var detail = string.IsNullOrWhiteSpace(execution.StdErr)
-                ? execution.StdOut.Trim()
-                : execution.StdErr.Trim();
+            var detail = BuildRestoreFailureSummary(execution);
+            _logger.LogWarning(
+                "dotnet restore for workspace fork failed with exit code {ExitCode}. Diagnostic: {Diagnostic}",
+                execution.ExitCode,
+                detail);
             throw new InvalidOperationException(
                 $"dotnet restore for workspace fork failed with exit code {execution.ExitCode}. {detail}");
         }
+    }
+
+    internal static string BuildRestoreFailureSummary(CommandExecutionDto execution)
+    {
+        var output = string.IsNullOrWhiteSpace(execution.StdErr)
+            ? execution.StdOut
+            : execution.StdErr;
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return "No diagnostic output was produced.";
+        }
+
+        var redacted = UriUserInfoRegex.Replace(output, "${scheme}[redacted]@");
+        redacted = SecretValueRegex.Replace(redacted, "${prefix}[redacted]");
+        redacted = AuthorizationValueRegex.Replace(redacted, "${scheme} [redacted]");
+        redacted = WhitespaceRegex.Replace(redacted, " ").Trim();
+        return redacted.Length <= MaxRestoreDiagnosticLength
+            ? redacted
+            : $"{redacted[..(MaxRestoreDiagnosticLength - 1)]}…";
     }
 
     private static async Task<IReadOnlyList<string>> ReplayPreviewIntoForkAsync(
@@ -624,6 +719,19 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
 
         Directory.Delete(path, recursive: true);
     }
+
+    private sealed record ForkValidationState(
+        string WorkspaceId,
+        IReadOnlyList<string> AppliedFiles,
+        WorkspaceValidationDto Validation,
+        TestRunResultDto? ExplicitTestRun,
+        bool Success);
+
+    private sealed record ValidatedPreview(
+        Solution OriginalSolution,
+        Solution ModifiedSolution);
+
+    private sealed record SourceContext(string LoadedPath, string Root);
 
     private sealed class ForkApplyLock : IDisposable
     {

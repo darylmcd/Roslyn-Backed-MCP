@@ -17,7 +17,7 @@ using RoslynMcp.Roslyn.Services;
 // still in the stdout buffer at that moment makes it to the pipe.
 AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 {
-    try { Console.Out.Flush(); } catch { /* shutdown — never throw */ }
+    StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "process-exit");
 };
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -157,7 +157,7 @@ lifetime.ApplicationStopping.Register(() =>
 
     // Flush stdout so buffered MCP JSON responses are delivered before the process exits.
     // Without this, non-SDK clients using bash pipes may receive 0 bytes on stdout.
-    Console.Out.Flush();
+    StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "application-stopping");
 });
 
 // compile-check-not-connected-raw-transport-error-envelope (path b): if the SDK's
@@ -189,8 +189,8 @@ catch (Exception ex) when (
 // any subsequent disposal/IO; async re-flushes any encoder writes that batched
 // behind the sync call. The ProcessExit handler at the top of this file is the
 // final fallback for stdin-EOF cases where RunAsync may not return cleanly.
-try { Console.Out.Flush(); } catch { /* transport already gone — ignore */ }
-try { await Console.Out.FlushAsync(); } catch { /* transport already gone — ignore */ }
+StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "post-run");
+await StdioShutdownFlusher.FlushAsync(Console.Out, Console.Error.WriteLine, "post-run-async");
 
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {

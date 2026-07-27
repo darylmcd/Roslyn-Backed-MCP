@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace RoslynMcp.Tests;
 
 public abstract class IsolatedWorkspaceTestBase : TestBase
@@ -16,6 +18,26 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         var workspace = CreateIsolatedWorkspaceCopy();
         await workspace.LoadAsync(ct).ConfigureAwait(false);
         return workspace;
+    }
+
+    protected static void AddProjectToCopiedSolution(
+        string copiedRoot,
+        string projectName,
+        string targetFramework)
+    {
+        var projectDirectory = Path.Combine(copiedRoot, projectName);
+        Directory.CreateDirectory(projectDirectory);
+
+        var projectFilePath = Path.Combine(projectDirectory, projectName + ".csproj");
+        File.WriteAllText(
+            projectFilePath,
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{targetFramework}</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n");
+
+        var solutionFilePath = Path.Combine(copiedRoot, "SampleSolution.slnx");
+        var solutionDocument = XDocument.Load(solutionFilePath, LoadOptions.PreserveWhitespace);
+        solutionDocument.Root?.Add(
+            new XElement("Project", new XAttribute("Path", $"{projectName}/{projectName}.csproj")));
+        solutionDocument.Save(solutionFilePath, SaveOptions.DisableFormatting);
     }
 
     protected sealed class IsolatedWorkspaceScope : IAsyncDisposable, IDisposable

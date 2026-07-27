@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
@@ -19,6 +20,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class PromptShimTools
 {
+    private static readonly Lazy<FrozenDictionary<string, PromptMethodRegistration>> PromptMethodIndex =
+        new(BuildPromptMethodIndex, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static int _promptIndexBuildCount;
+
+    internal static int PromptIndexBuildCount => Volatile.Read(ref _promptIndexBuildCount);
+
     [McpServerTool(Name = "get_prompt_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("prompts", "experimental", true, false,
         "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
@@ -75,38 +82,43 @@ public static class PromptShimTools
         return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
     }
 
-    private static (MethodInfo? Method, McpServerPromptAttribute? Attribute) ResolvePromptMethod(string promptName)
+    internal static (MethodInfo? Method, McpServerPromptAttribute? Attribute) ResolvePromptMethod(
+        string promptName)
     {
+        return PromptMethodIndex.Value.TryGetValue(promptName, out var registration)
+            ? (registration.Method, registration.Attribute)
+            : (null, null);
+    }
+
+    private static IEnumerable<string> EnumeratePromptNames() =>
+        PromptMethodIndex.Value.Keys.OrderBy(static name => name, StringComparer.Ordinal);
+
+    private static FrozenDictionary<string, PromptMethodRegistration> BuildPromptMethodIndex()
+    {
+        Interlocked.Increment(ref _promptIndexBuildCount);
         var assembly = typeof(RoslynPrompts).Assembly;
+        var registrations = new Dictionary<string, PromptMethodRegistration>(StringComparer.Ordinal);
         foreach (var type in assembly.GetTypes())
         {
             foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
             {
-                var attr = method.GetCustomAttribute<McpServerPromptAttribute>();
-                if (attr is null || attr.Name is null) continue;
-                if (string.Equals(attr.Name, promptName, StringComparison.Ordinal))
+                var attribute = method.GetCustomAttribute<McpServerPromptAttribute>();
+                if (attribute?.Name is null)
                 {
-                    return (method, attr);
+                    continue;
+                }
+
+                if (!registrations.TryAdd(
+                        attribute.Name,
+                        new PromptMethodRegistration(method, attribute)))
+                {
+                    throw new InvalidOperationException(
+                        $"Duplicate MCP prompt registration '{attribute.Name}'.");
                 }
             }
         }
-        return (null, null);
-    }
 
-    private static IEnumerable<string> EnumeratePromptNames()
-    {
-        var assembly = typeof(RoslynPrompts).Assembly;
-        var names = new List<string>();
-        foreach (var type in assembly.GetTypes())
-        {
-            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
-            {
-                var attr = method.GetCustomAttribute<McpServerPromptAttribute>();
-                if (attr?.Name is not null) names.Add(attr.Name);
-            }
-        }
-        names.Sort(StringComparer.Ordinal);
-        return names;
+        return registrations.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     private static object?[] BuildParameterValues(
@@ -234,4 +246,8 @@ public static class PromptShimTools
         if (message.Content is TextContentBlock text) return text.Text ?? string.Empty;
         return message.Content?.ToString() ?? string.Empty;
     }
+
+    private sealed record PromptMethodRegistration(
+        MethodInfo Method,
+        McpServerPromptAttribute Attribute);
 }

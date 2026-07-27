@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Support;
 
@@ -18,6 +19,7 @@ namespace RoslynMcp.Tests;
 public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;
+    private static string? _gitUnavailableReason;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -45,7 +47,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the happy-path test.");
+            Assert.Inconclusive($"git unavailable — cannot run the happy-path test. {_gitUnavailableReason}");
             return;
         }
 
@@ -101,7 +103,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the timeout-scope test.");
+            Assert.Inconclusive($"git unavailable — cannot run the timeout-scope test. {_gitUnavailableReason}");
             return;
         }
 
@@ -153,7 +155,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         // Ensure no `.git` entry is anywhere at or above the solution dir. The helper
         // returns a path under `%TEMP%` which should never be inside a repo, but we
         // guard explicitly so the test is robust against future changes.
-        RemoveAnyAncestorGitDir(workspace.RootPath);
+        RemoveGitEntry(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -183,7 +185,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the clean-tree test.");
+            Assert.Inconclusive($"git unavailable — cannot run the clean-tree test. {_gitUnavailableReason}");
             return;
         }
 
@@ -208,27 +210,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     // ------------------------------------------------------------------
 
     private static bool IsGitAvailable()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (process is null) return false;
-            process.WaitForExit(5_000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
 
     private static void InitializeGitRepo(string directory)
     {
@@ -251,35 +233,34 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Walks upward from <paramref name="directory"/> removing any <c>.git</c> entry we
-    /// find so we can prove the "not inside a git repo" fallback. Defensive: the helper
-    /// in <c>CreateSampleSolutionCopy</c> already targets a temp path outside the repo,
-    /// but a future refactor could change that — this guarantee keeps the test
-    /// deterministic.
+    /// Removes only the owned fixture's <c>.git</c> entry. Never walk into ancestors:
+    /// a fixture-placement change must not turn this test into a repository-deletion hazard.
     /// </summary>
-    private static void RemoveAnyAncestorGitDir(string directory)
+    private static void RemoveGitEntry(string directory)
     {
-        DirectoryInfo? current = new(directory);
-        while (current is not null)
+        var gitEntry = Path.Combine(directory, ".git");
+        if (Directory.Exists(gitEntry))
         {
-            var gitEntry = Path.Combine(current.FullName, ".git");
-            try
-            {
-                if (Directory.Exists(gitEntry))
-                    Directory.Delete(gitEntry, recursive: true);
-                else if (File.Exists(gitEntry))
-                    File.Delete(gitEntry);
-            }
-            catch
-            {
-                // Best-effort: the primary repo's `.git` is locked by the running test host
-                // and cannot be removed. That's fine — the nested sample-solution-copy
-                // directory we care about sits under %TEMP% and never contains a `.git`
-                // anyway, so this loop is purely belt-and-braces.
-                break;
-            }
-            current = current.Parent;
+            DeleteDirectoryIfExists(gitEntry);
         }
+        else if (File.Exists(gitEntry))
+        {
+            File.Delete(gitEntry);
+        }
+    }
+
+    [TestMethod]
+    public async Task ValidationBundleTools_Failure_PropagatesToStructuredFilterBoundary()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => ValidationBundleTools.ValidateRecentGitChanges(
+                WorkspaceExecutionGate,
+                new ThrowingWorkspaceValidationService(),
+                workspace.WorkspaceId,
+                ct: CancellationToken.None));
+
+        Assert.AreEqual("injected validation failure", exception.Message);
     }
 
     private sealed class SlowCompileCheckService : ICompileCheckService
@@ -292,6 +273,24 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             throw new InvalidOperationException("unreachable");
         }
+    }
+
+    private sealed class ThrowingWorkspaceValidationService : IWorkspaceValidationService
+    {
+        public Task<WorkspaceValidationDto> ValidateAsync(
+            string workspaceId,
+            IReadOnlyList<string>? changedFilePaths,
+            bool runTests,
+            CancellationToken ct,
+            bool summary = false) =>
+            throw new NotSupportedException("The direct validation path is not used by this test.");
+
+        public Task<WorkspaceValidationDto> ValidateRecentGitChangesAsync(
+            string workspaceId,
+            bool runTests,
+            CancellationToken ct,
+            bool summary = false) =>
+            throw new InvalidOperationException("injected validation failure");
     }
 
     // ------------------------------------------------------------------

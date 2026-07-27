@@ -288,7 +288,7 @@ public sealed class CsprojReserializationTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -314,18 +314,4 @@ public sealed class CsprojReserializationTests : TestBase
         return afterHasCrLf ? " [line-endings LF→CRLF]" : " [line-endings CRLF→LF]";
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup; the fixture copy lives under the test artifacts directory.
-        }
-    }
 }

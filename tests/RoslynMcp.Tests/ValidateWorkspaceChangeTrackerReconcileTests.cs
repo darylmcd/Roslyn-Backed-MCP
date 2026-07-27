@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Support;
@@ -20,6 +19,7 @@ namespace RoslynMcp.Tests;
 public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;
+    private static string? _gitUnavailableReason;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -48,7 +48,8 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the reconcile path test.");
+            Assert.Inconclusive(
+                $"git unavailable — cannot run the reconcile path test. {_gitUnavailableReason}");
             return;
         }
 
@@ -82,7 +83,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         await File.WriteAllTextAsync(dogPath, originalContent);
 
         // Sanity: git agrees the file is now clean.
-        Assert.AreEqual("", RunGitCapture(workspace.RootPath, "status", "--porcelain", "SampleLib/Dog.cs").Trim(),
+        Assert.AreEqual("", GitFixtureRunner.RunGitCapture(
+                workspace.RootPath,
+                "status",
+                "--porcelain",
+                "SampleLib/Dog.cs").Trim(),
             "Sanity: after the revert, git status must report the file clean.");
 
         // Call ValidateAsync with changedFilePaths=null. Post-fix the reverted file
@@ -109,7 +114,8 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the still-dirty test.");
+            Assert.Inconclusive(
+                $"git unavailable — cannot run the still-dirty test. {_gitUnavailableReason}");
             return;
         }
 
@@ -129,7 +135,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         Assert.IsTrue(editResult.Success, "Sanity: the seed edit must apply.");
 
         // Do NOT revert — file remains dirty. git status will report it Modified.
-        var statusOutput = RunGitCapture(workspace.RootPath, "status", "--porcelain", "SampleLib/Dog.cs").Trim();
+        var statusOutput = GitFixtureRunner.RunGitCapture(
+            workspace.RootPath,
+            "status",
+            "--porcelain",
+            "SampleLib/Dog.cs").Trim();
         Assert.IsFalse(string.IsNullOrEmpty(statusOutput),
             $"Sanity: git should report the edited file dirty; got [{statusOutput}].");
 
@@ -157,7 +167,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         await using var workspace = CreateIsolatedWorkspaceCopy();
         // Explicitly DO NOT git init. The isolated workspace defaults to a
         // non-git temp dir, but be belt-and-suspenders against ancestor repos.
-        RemoveAnyAncestorGitDir(workspace.RootPath);
+        RemoveGitEntry(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -195,7 +205,8 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         if (!IsGitAvailable())
         {
-            Assert.Inconclusive("git not on PATH — cannot run the caller-scope guard test.");
+            Assert.Inconclusive(
+                $"git unavailable — cannot run the caller-scope guard test. {_gitUnavailableReason}");
             return;
         }
 
@@ -233,27 +244,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     // ------------------------------------------------------------------
 
     private static bool IsGitAvailable()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (process is null) return false;
-            process.WaitForExit(5_000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
 
     private static void InitializeGitRepo(string directory)
     {
@@ -272,75 +263,16 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         GitFixtureRunner.RunGit(directory, "config", "--local", "core.autocrlf", "false");
     }
 
-    /// <summary>
-    /// Capturing variant of <see cref="GitFixtureRunner.RunGit"/> — used for inspecting the porcelain
-    /// output during sanity assertions ("is this file actually clean / dirty?").
-    /// </summary>
-    private static string RunGitCapture(string workingDirectory, params string[] arguments)
+    private static void RemoveGitEntry(string directory)
     {
-        var startInfo = new ProcessStartInfo
+        var gitEntry = Path.Combine(directory, ".git");
+        if (Directory.Exists(gitEntry))
         {
-            FileName = "git",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start git {string.Join(' ', arguments)}.");
-        if (!process.WaitForExit(30_000))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-                // Best effort. The timeout failure below is the actionable signal.
-            }
-
-            throw new TimeoutException($"git {string.Join(' ', arguments)} did not exit within 30 seconds.");
+            DeleteDirectoryIfExists(gitEntry);
         }
-        var stdout = process.StandardOutput.ReadToEnd();
-        if (process.ExitCode != 0)
+        else if (File.Exists(gitEntry))
         {
-            var stderr = process.StandardError.ReadToEnd();
-            throw new InvalidOperationException(
-                $"git {string.Join(' ', arguments)} exited {process.ExitCode}. stdout=[{stdout}] stderr=[{stderr}]");
-        }
-        return stdout;
-    }
-
-    /// <summary>
-    /// Walks upward from <paramref name="directory"/> removing any <c>.git</c> entry we
-    /// find so we can prove the "not inside a git repo" fallback. Same belt-and-braces
-    /// strategy as <c>ValidateRecentGitChangesTests.RemoveAnyAncestorGitDir</c>.
-    /// </summary>
-    private static void RemoveAnyAncestorGitDir(string directory)
-    {
-        DirectoryInfo? current = new(directory);
-        while (current is not null)
-        {
-            var gitEntry = Path.Combine(current.FullName, ".git");
-            try
-            {
-                if (Directory.Exists(gitEntry))
-                    Directory.Delete(gitEntry, recursive: true);
-                else if (File.Exists(gitEntry))
-                    File.Delete(gitEntry);
-            }
-            catch
-            {
-                // Best-effort: the primary repo's `.git` is locked by the running test
-                // host; the nested sample-solution-copy directory we care about sits
-                // under %TEMP% and never contains a `.git` so this loop is purely
-                // belt-and-braces.
-                break;
-            }
-            current = current.Parent;
+            File.Delete(gitEntry);
         }
     }
 }

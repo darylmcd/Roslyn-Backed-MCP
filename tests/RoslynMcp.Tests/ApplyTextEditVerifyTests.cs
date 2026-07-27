@@ -1,4 +1,7 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -294,6 +297,73 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
             "Cat.cs must match the original after batch-level auto-revert.");
     }
 
+    [TestMethod]
+    public async Task ApplyTextEdit_VerifyTrue_RegressionBeyondLegacyPage_IsCaughtAndReverted()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+
+        const int preExistingCount = 505;
+        var preExisting = Enumerable.Range(0, preExistingCount)
+            .Select(index => new DiagnosticDto(
+                "CS9999",
+                $"pre-existing error {index}",
+                "Error",
+                "Compiler",
+                "Existing.cs",
+                index + 1,
+                1,
+                index + 1,
+                2))
+            .ToList();
+        var introduced = new DiagnosticDto(
+            "CS0103",
+            "The name 'BeyondLegacyPage' does not exist in the current context",
+            "Error",
+            "Compiler",
+            "New.cs",
+            999,
+            1,
+            999,
+            2);
+
+        var compileCheck = new PaginatingCompileCheck(
+            preExisting,
+            new List<DiagnosticDto>(preExisting) { introduced });
+        var editService = new EditService(
+            WorkspaceManager,
+            NullLogger<EditService>.Instance,
+            UndoService,
+            ChangeTracker,
+            PreviewStore,
+            compileCheck);
+
+        var result = await editService.ApplyTextEditsAsync(
+            workspace.WorkspaceId,
+            dogFilePath,
+            [AppendCommentEdit(originalText, "// complete diagnostic verification")],
+            "apply_text_edit",
+            CancellationToken.None,
+            verify: true,
+            autoRevertOnError: true);
+
+        Assert.IsTrue(result.Success);
+        Assert.IsNotNull(result.Verification);
+        Assert.AreEqual("reverted", result.Verification.Status);
+        Assert.IsTrue(
+            result.Verification.NewDiagnostics.Any(diagnostic => diagnostic.Id == introduced.Id),
+            "An introduced error beyond the legacy 500-row page must remain visible.");
+        CollectionAssert.AreEqual(
+            new[] { int.MaxValue, int.MaxValue },
+            compileCheck.RecordedLimits,
+            "Both verification legs must request the complete error set.");
+        Assert.AreEqual(
+            originalText,
+            await File.ReadAllTextAsync(dogFilePath, CancellationToken.None),
+            "The edit must be rolled back when the complete diagnostic set exposes a regression.");
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
@@ -342,5 +412,37 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         }
 
         throw new InvalidOperationException("Could not locate Speak() expression body in test fixture.");
+    }
+
+    private sealed class PaginatingCompileCheck(
+        params IReadOnlyList<DiagnosticDto>[] diagnosticsByCall) : ICompileCheckService
+    {
+        private int _callIndex;
+
+        public List<int> RecordedLimits { get; } = [];
+
+        public Task<CompileCheckDto> CheckAsync(
+            string workspaceId,
+            CompileCheckOptions options,
+            CancellationToken ct)
+        {
+            RecordedLimits.Add(options.Limit);
+            var full = diagnosticsByCall[Math.Min(_callIndex, diagnosticsByCall.Length - 1)];
+            _callIndex++;
+            var page = full.Skip(options.Offset).Take(options.Limit).ToList();
+
+            return Task.FromResult(new CompileCheckDto(
+                Success: true,
+                ErrorCount: full.Count,
+                WarningCount: 0,
+                TotalDiagnostics: full.Count,
+                ReturnedDiagnostics: page.Count,
+                Offset: options.Offset,
+                Limit: options.Limit,
+                HasMore: page.Count < full.Count,
+                Diagnostics: page,
+                ElapsedMs: 0,
+                Cancelled: false));
+        }
     }
 }

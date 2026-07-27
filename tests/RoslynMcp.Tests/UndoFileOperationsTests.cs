@@ -1,4 +1,8 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -11,7 +15,7 @@ namespace RoslynMcp.Tests;
 /// (RevertFromFileSnapshotsAsync) and restores disk state for file create/delete/move.
 /// </summary>
 [TestClass]
-public sealed class UndoFileOperationsTests : TestBase
+public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -62,7 +66,7 @@ public sealed class UndoFileOperationsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -108,22 +112,97 @@ public sealed class UndoFileOperationsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            DeleteDirectoryIfExists(solutionDir);
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    [TestMethod]
+    public async Task DocumentSetPersistence_MidBatchFailure_RestoresEveryPriorByte()
     {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        AddProjectToCopiedSolution(solutionDir, "Contracts", "net10.0");
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
         try
         {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
+            var currentSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+            var dog = currentSolution.Projects
+                .SelectMany(project => project.Documents)
+                .Single(document => document.Name == "Dog.cs");
+            var cat = currentSolution.Projects
+                .SelectMany(project => project.Documents)
+                .Single(document => document.Name == "Cat.cs");
+            var dogPath = dog.FilePath ?? throw new AssertFailedException("Dog.cs path missing.");
+            var catPath = cat.FilePath ?? throw new AssertFailedException("Cat.cs path missing.");
+            var sampleLib = currentSolution.Projects.Single(project => project.Name == "SampleLib");
+            var contracts = currentSolution.Projects.Single(project => project.Name == "Contracts");
+            var sampleLibProjectPath = sampleLib.FilePath
+                ?? throw new AssertFailedException("SampleLib.csproj path missing.");
+            var dogBytes = await File.ReadAllBytesAsync(dogPath);
+            var catBytes = await File.ReadAllBytesAsync(catPath);
+            var projectBytes = await File.ReadAllBytesAsync(sampleLibProjectPath);
+
+            var modifiedSolution = currentSolution
+                .AddProjectReference(sampleLib.Id, new ProjectReference(contracts.Id))
+                .WithDocumentText(dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
+                .WithDocumentText(cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+            var service = new DocumentSetPersistenceService(
+                WorkspaceManager,
+                NullLogger.Instance,
+                new FailThirdTextWriteFileSystem());
+
+            var result = await service.PersistAsync(
+                workspaceId,
+                currentSolution,
+                modifiedSolution,
+                modifiedSolution.GetChanges(currentSolution),
+                CancellationToken.None);
+
+            Assert.IsFalse(result.Success, "The injected second write must fail the transaction.");
+            CollectionAssert.AreEqual(
+                dogBytes,
+                await File.ReadAllBytesAsync(dogPath),
+                "The first successful write must be rolled back byte-for-byte.");
+            CollectionAssert.AreEqual(
+                catBytes,
+                await File.ReadAllBytesAsync(catPath),
+                "The failing file must retain its original bytes.");
+            CollectionAssert.AreEqual(
+                projectBytes,
+                await File.ReadAllBytesAsync(sampleLibProjectPath),
+                "A project-reference mutation written before the failure must be rolled back byte-for-byte.");
         }
-        catch
+        finally
         {
-            // Best-effort cleanup.
+            WorkspaceManager.Close(workspaceId);
+            DeleteDirectoryIfExists(solutionDir);
+        }
+    }
+
+    private sealed class FailThirdTextWriteFileSystem : IDocumentSetFileSystem
+    {
+        private int _textWriteCount;
+
+        public bool FileExists(string path) => File.Exists(path);
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+        public void DeleteFile(string path) => File.Delete(path);
+        public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
+            File.ReadAllBytesAsync(path, ct);
+        public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
+            File.ReadAllTextAsync(path, ct);
+        public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
+            File.WriteAllBytesAsync(path, bytes, ct);
+
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref _textWriteCount) == 3)
+            {
+                throw new IOException("Injected deterministic mid-batch write failure.");
+            }
+
+            return File.WriteAllTextAsync(path, content, ct);
         }
     }
 }

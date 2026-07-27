@@ -75,38 +75,57 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter)
             .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p))
             .ToList();
+        var candidates = await CollectCandidatesAsync(
+            workspaceId,
+            projects,
+            includeInterfaces,
+            ct).ConfigureAwait(false);
+        var computation = await ComputeCandidateMetricsAsync(
+            workspaceId,
+            solution,
+            candidates,
+            ct).ConfigureAwait(false);
 
-        // Enumerate every candidate top-level type across the filtered projects. The tuple carries
-        // the compilation so the Ce pass downstream can build semantic models without a second
-        // GetCompilationAsync call per type.
-        var candidates = new List<(INamedTypeSymbol Type, Project Project, Compilation Compilation)>();
+        return BuildResult(computation, limit);
+    }
+
+    private async Task<IReadOnlyList<CouplingCandidate>> CollectCandidatesAsync(
+        string workspaceId,
+        IEnumerable<Project> projects,
+        bool includeInterfaces,
+        CancellationToken ct)
+    {
+        var candidates = new List<CouplingCandidate>();
         foreach (var project in projects)
         {
             ct.ThrowIfCancellationRequested();
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            if (compilation is null) continue;
+            if (compilation is null)
+            {
+                continue;
+            }
 
             foreach (var symbol in RoslynSymbolTraversal.EnumerateNamedTypes(compilation.Assembly.GlobalNamespace))
             {
                 ct.ThrowIfCancellationRequested();
-                if (!ShouldAnalyze(symbol, includeInterfaces)) continue;
-                candidates.Add((symbol, project, compilation));
+                if (ShouldAnalyze(symbol, includeInterfaces))
+                {
+                    candidates.Add(new CouplingCandidate(symbol, project, compilation));
+                }
             }
         }
 
-        // coupling-metrics-p50-borderline-on-15s-solution-budget: parallelize the per-type metric
-        // computation. Each candidate's ComputeAfferentCouplingAsync calls SymbolFinder over the
-        // whole solution and is the dominant cost on multi-project workspaces (12807ms p50 observed
-        // on a 7-project / 571-doc solution against the 15s budget). Roslyn's Compilation /
-        // SemanticModel / SymbolFinder are documented thread-safe for read-only operations, the
-        // logger is thread-safe, and the only shared mutable state is the result accumulator —
-        // which is now a ConcurrentBag.
+        return candidates;
+    }
+
+    private async Task<CouplingComputation> ComputeCandidateMetricsAsync(
+        string workspaceId,
+        Solution solution,
+        IReadOnlyCollection<CouplingCandidate> candidates,
+        CancellationToken ct)
+    {
         var results = new ConcurrentBag<CouplingMetricsDto>();
         var failures = new ConcurrentBag<string>();
-
-        // Cap parallelism at the lower of (CPU count, candidate count) — over-subscribing the
-        // SymbolFinder pipeline yields no win and burns thread-pool slots that the rest of the
-        // server may need for concurrent reads.
         var maxDop = Math.Max(1, Math.Min(Environment.ProcessorCount, candidates.Count));
         var parallelOptions = new ParallelOptions
         {
@@ -116,26 +135,25 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
 
         await Parallel.ForEachAsync(candidates, parallelOptions, async (candidate, token) =>
         {
-            var (type, project, compilation) = candidate;
             try
             {
-                if (_failureInjector?.Invoke(type) is { } injectedFailure)
+                if (_failureInjector?.Invoke(candidate.Type) is { } injectedFailure)
                 {
                     throw injectedFailure;
                 }
 
                 var metrics = await ComputeMetricsAsync(
-                    type,
+                    candidate.Type,
                     workspaceId,
-                    project,
-                    compilation,
+                    candidate.Project,
+                    candidate.Compilation,
                     solution,
                     token).ConfigureAwait(false);
                 results.Add(metrics);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                var typeName = type.ToDisplayString();
+                var typeName = candidate.Type.ToDisplayString();
                 failures.Add($"{typeName}: {ex.GetType().Name}");
                 _logger.LogWarning(
                     ex,
@@ -144,20 +162,26 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             }
         }).ConfigureAwait(false);
 
-        // Order: highest instability first (the "unstable" types most at risk of upstream churn),
-        // then Ce desc as a stable tiebreaker so the heavy outgoing-dependency types bubble up.
-        var orderedResults = results
+        return new CouplingComputation(results, failures);
+    }
+
+    private static CouplingAnalysisResultDto BuildResult(CouplingComputation computation, int limit)
+    {
+        var orderedResults = computation.Results
             .OrderByDescending(r => r.Instability)
             .ThenByDescending(r => r.EfferentCoupling)
             .ThenBy(r => r.FullyQualifiedName, StringComparer.Ordinal)
             .Take(limit)
             .ToList();
-        var warnings = failures
+        var warnings = computation.Failures
             .OrderBy(static failure => failure, StringComparer.Ordinal)
             .Take(MaxFailureWarnings)
             .ToList();
 
-        return new CouplingAnalysisResultDto(orderedResults, failures.Count, warnings);
+        return new CouplingAnalysisResultDto(
+            orderedResults,
+            computation.Failures.Count,
+            warnings);
     }
 
     private static bool ShouldAnalyze(INamedTypeSymbol type, bool includeInterfaces)
@@ -278,39 +302,61 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             if (!compilation.SyntaxTrees.Contains(tree)) continue;
 
             var semanticModel = compilation.GetSemanticModel(tree);
-
-            foreach (var descendant in typeDecl.DescendantNodes())
-            {
-                if (ct.IsCancellationRequested) break;
-
-                var symbolInfo = semanticModel.GetSymbolInfo(descendant, ct);
-                var referenced = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
-                if (referenced is null) continue;
-
-                var namedType = ExtractNamedType(referenced);
-                if (namedType is null) continue;
-                if (!IsCountableEfferent(namedType, type)) continue;
-
-                outbound.Add(namedType);
-            }
-
-            // Also include the explicit base type + implemented interfaces. These appear in
-            // DescendantNodes as IdentifierNameSyntax nodes too, but pulling them off the
-            // semantic model directly guarantees we never miss a base-list entry regardless
-            // of how the syntax is shaped (simple identifier vs qualified vs generic).
-            if (semanticModel.GetDeclaredSymbol(typeDecl, ct) is INamedTypeSymbol declaredSymbol)
-            {
-                if (declaredSymbol.BaseType is { } baseType && IsCountableEfferent(baseType, type))
-                    outbound.Add(baseType);
-                foreach (var iface in declaredSymbol.Interfaces)
-                {
-                    if (IsCountableEfferent(iface, type))
-                        outbound.Add(iface);
-                }
-            }
+            AddReferencedTypes(outbound, type, typeDecl, semanticModel, ct);
+            AddDeclaredBaseTypes(outbound, type, typeDecl, semanticModel, ct);
         }
 
         return outbound.Count;
+    }
+
+    private static void AddReferencedTypes(
+        ISet<INamedTypeSymbol> outbound,
+        INamedTypeSymbol self,
+        TypeDeclarationSyntax declaration,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        foreach (var descendant in declaration.DescendantNodes())
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var symbolInfo = semanticModel.GetSymbolInfo(descendant, ct);
+            var referenced = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+            var namedType = referenced is null ? null : ExtractNamedType(referenced);
+            if (namedType is not null && IsCountableEfferent(namedType, self))
+            {
+                outbound.Add(namedType);
+            }
+        }
+    }
+
+    private static void AddDeclaredBaseTypes(
+        ISet<INamedTypeSymbol> outbound,
+        INamedTypeSymbol self,
+        TypeDeclarationSyntax declaration,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        if (semanticModel.GetDeclaredSymbol(declaration, ct) is not INamedTypeSymbol declaredSymbol)
+        {
+            return;
+        }
+
+        if (declaredSymbol.BaseType is { } baseType && IsCountableEfferent(baseType, self))
+        {
+            outbound.Add(baseType);
+        }
+
+        foreach (var @interface in declaredSymbol.Interfaces)
+        {
+            if (IsCountableEfferent(@interface, self))
+            {
+                outbound.Add(@interface);
+            }
+        }
     }
 
     private static INamedTypeSymbol? ExtractNamedType(ISymbol symbol) => symbol switch
@@ -371,4 +417,13 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         if (instability > 0.7) return "unstable";
         return "balanced";
     }
+
+    private sealed record CouplingCandidate(
+        INamedTypeSymbol Type,
+        Project Project,
+        Compilation Compilation);
+
+    private sealed record CouplingComputation(
+        ConcurrentBag<CouplingMetricsDto> Results,
+        ConcurrentBag<string> Failures);
 }
