@@ -140,6 +140,10 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             var contracts = currentSolution.Projects.Single(project => project.Name == "Contracts");
             var sampleLibProjectPath = sampleLib.FilePath
                 ?? throw new AssertFailedException("SampleLib.csproj path missing.");
+            var addedPath = Path.Combine(
+                Path.GetDirectoryName(sampleLibProjectPath)!,
+                "TransactionalAddition.cs");
+            var addedDocumentId = DocumentId.CreateNewId(sampleLib.Id, "TransactionalAddition.cs");
             var dogBytes = await File.ReadAllBytesAsync(dogPath);
             var catBytes = await File.ReadAllBytesAsync(catPath);
             var projectBytes = await File.ReadAllBytesAsync(sampleLibProjectPath);
@@ -147,11 +151,16 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             var modifiedSolution = currentSolution
                 .AddProjectReference(sampleLib.Id, new ProjectReference(contracts.Id))
                 .WithDocumentText(dog.Id, SourceText.From("namespace SampleLib; public class Dog { }"))
-                .WithDocumentText(cat.Id, SourceText.From("namespace SampleLib; public class Cat { }"));
+                .AddDocument(
+                    addedDocumentId,
+                    "TransactionalAddition.cs",
+                    SourceText.From("namespace SampleLib; public class TransactionalAddition { }"),
+                    filePath: addedPath)
+                .RemoveDocument(cat.Id);
             var service = new DocumentSetPersistenceService(
                 WorkspaceManager,
                 NullLogger.Instance,
-                new FailThirdTextWriteFileSystem());
+                new DeleteThenFailFileSystem(catPath));
 
             var result = await service.PersistAsync(
                 workspaceId,
@@ -160,15 +169,18 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
                 modifiedSolution.GetChanges(currentSolution),
                 CancellationToken.None);
 
-            Assert.IsFalse(result.Success, "The injected second write must fail the transaction.");
+            Assert.IsFalse(result.Success, "The injected delete failure must fail the transaction.");
             CollectionAssert.AreEqual(
                 dogBytes,
                 await File.ReadAllBytesAsync(dogPath),
-                "The first successful write must be rolled back byte-for-byte.");
+                "A changed document must be rolled back byte-for-byte.");
             CollectionAssert.AreEqual(
                 catBytes,
                 await File.ReadAllBytesAsync(catPath),
-                "The failing file must retain its original bytes.");
+                "A document deleted before the injected failure must be recreated byte-for-byte.");
+            Assert.IsFalse(
+                File.Exists(addedPath),
+                "A document created earlier in the failed transaction must be removed.");
             CollectionAssert.AreEqual(
                 projectBytes,
                 await File.ReadAllBytesAsync(sampleLibProjectPath),
@@ -181,28 +193,48 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
     }
 
-    private sealed class FailThirdTextWriteFileSystem : IDocumentSetFileSystem
+    [TestMethod]
+    public void ProjectReferenceTargetsPath_DistinguishesSameNamedProjects()
     {
-        private int _textWriteCount;
+        var projectDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcp", "App");
+        var firstTarget = Path.Combine(Path.GetTempPath(), "RoslynMcp", "One", "Common.csproj");
 
+        Assert.IsTrue(DocumentSetPersistenceService.ProjectReferenceTargetsPath(
+            Path.Combine("..", "One", "Common.csproj"),
+            projectDirectory,
+            firstTarget));
+        Assert.IsFalse(DocumentSetPersistenceService.ProjectReferenceTargetsPath(
+            Path.Combine("..", "Two", "Common.csproj"),
+            projectDirectory,
+            firstTarget));
+    }
+
+    private sealed class DeleteThenFailFileSystem(string failingDeletePath) : IDocumentSetFileSystem
+    {
         public bool FileExists(string path) => File.Exists(path);
         public void CreateDirectory(string path) => Directory.CreateDirectory(path);
-        public void DeleteFile(string path) => File.Delete(path);
+
+        public void DeleteFile(string path)
+        {
+            File.Delete(path);
+            if (string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(failingDeletePath),
+                    OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal))
+            {
+                throw new IOException("Injected deterministic failure after document deletion.");
+            }
+        }
+
         public Task<byte[]> ReadAllBytesAsync(string path, CancellationToken ct) =>
             File.ReadAllBytesAsync(path, ct);
         public Task<string> ReadAllTextAsync(string path, CancellationToken ct) =>
             File.ReadAllTextAsync(path, ct);
         public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct) =>
             File.WriteAllBytesAsync(path, bytes, ct);
-
-        public Task WriteAllTextAsync(string path, string content, CancellationToken ct)
-        {
-            if (Interlocked.Increment(ref _textWriteCount) == 3)
-            {
-                throw new IOException("Injected deterministic mid-batch write failure.");
-            }
-
-            return File.WriteAllTextAsync(path, content, ct);
-        }
+        public Task WriteAllTextAsync(string path, string content, CancellationToken ct) =>
+            File.WriteAllTextAsync(path, content, ct);
     }
 }

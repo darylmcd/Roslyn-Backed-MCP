@@ -53,7 +53,7 @@ public sealed class FixAllService : IFixAllService
                 merged.Add(a);
             }
 
-            return [..merged];
+            return [.. merged];
         }
 
         if (!projectAnalyzers.IsDefaultOrEmpty)
@@ -394,7 +394,7 @@ public sealed class FixAllService : IFixAllService
         if (list.Count > 0)
             _logger.LogInformation("FixAllService loaded {Count} code fix provider(s) from project analyzer references", list.Count);
 
-        return [..list];
+        return [.. list];
     }
 
     private static ImmutableArray<DiagnosticAnalyzer> CollectProjectAnalyzersForDiagnosticId(
@@ -416,7 +416,7 @@ public sealed class FixAllService : IFixAllService
             }
         }
 
-        return [..set];
+        return [.. set];
     }
 
     private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()

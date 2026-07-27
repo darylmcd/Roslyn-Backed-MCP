@@ -308,9 +308,6 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         return forkPath;
     }
 
-    internal static void SweepExpiredForks(string forkRoot) =>
-        SweepExpiredForks(forkRoot, ResolveForkTtlHours(), DateTimeOffset.UtcNow, logger: null);
-
     internal static void SweepExpiredForks(
         string forkRoot,
         double ttlHours,

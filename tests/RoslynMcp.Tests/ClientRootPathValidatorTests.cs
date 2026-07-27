@@ -232,6 +232,20 @@ public class ClientRootPathValidatorTests
     }
 
     [TestMethod]
+    public void IsPathUnderAnyRoot_Case_Sensitive_Outside_Windows()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            "/repo/main/src/file.cs",
+            ["/repo/Main"],
+            expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
     public async Task ResolvePathAsync_MatchesCanonicalSyncResult()
     {
         var path = Path.Combine(Path.GetTempPath(), "RoslynMcp", "..", "RoslynMcp", "future.cs");

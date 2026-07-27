@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-27T03:57:35Z
+**updated_at:** 2026-07-27T12:58:42Z
 
 ## Agent contract
 
@@ -103,6 +103,10 @@
 | `apply-undo-tool-response-contract-docs` | Low | apply-undo-workflow-service-extraction | **Document apply and undo response variants** — enumerate discriminators, exact properties, explicit nulls, and recovery actions for all eight wire shapes. [type: docs] [source: backlog-sweep-20260716-review] | M | items/apply-undo-tool-response-contract-docs.md |
 | `prompt-smoke-tests-concern-split` | Low | prompt-workflows-missing-test-coverage,prompt-shim-parameter-binding-complexity-extraction | **Split prompt smoke-test concerns** — separate builder smoke, prompt-shim binding/error coverage, and shared sample/workspace fixtures. [type: test-refactor] [source: backlog-sweep-20260716-review] | S | items/prompt-smoke-tests-concern-split.md |
 | `legacy-sln-slnx-parity-drift` | Low | — | **Retire the legacy `Roslyn-Backed-MCP.sln`** — delete it (preferred; only live ref is `docs/setup.md:23`) or gate it against `RoslynMcp.slnx`. Already drifted: the `.sln` lists `samples/**` projects the `.slnx` lacks, nothing enforces parity. [type: maintenance] [source: 2026-07-19 slnx session] | S | items/legacy-sln-slnx-parity-drift.md |
+| `cross-platform-path-key-comparer` | Low | project-file-mutation-byte-fidelity,undo-file-snapshot-byte-fidelity | **Platform-correct path-key equality** — make persistence, rebase, and fork path sets preserve case-distinct files outside Windows. [type: bug] [source: 2026-07-27 ten-row cold review] | M | items/cross-platform-path-key-comparer.md |
+| `document-set-project-reference-write-decomposition` | Low | cross-platform-path-key-comparer | **Decompose project-reference persistence** — split exact target matching, XML mutation, and serialization while pinning same-filename references. [type: refactor] [source: 2026-07-27 ten-row cold review] | S | items/document-set-project-reference-write-decomposition.md |
+| `apply-verification-state-machine-decomposition` | Low | — | **Decompose apply verification state machines** — extract baseline, verification, cancellation compensation, and rollback transitions without merging wire contracts. [type: refactor] [source: 2026-07-27 ten-row cold review] | M | items/apply-verification-state-machine-decomposition.md |
+| `refactoring-apply-orchestration-decomposition` | Low | cross-platform-path-key-comparer | **Decompose refactoring apply orchestration** — split preview validation, rebase, undo capture, persistence, and post-apply bookkeeping. [type: refactor] [source: 2026-07-27 ten-row cold review] | S | items/refactoring-apply-orchestration-decomposition.md |
 
 ## Defer
 

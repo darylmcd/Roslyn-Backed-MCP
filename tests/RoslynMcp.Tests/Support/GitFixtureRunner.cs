@@ -132,6 +132,11 @@ internal static class GitFixtureRunner
             try
             {
                 process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(1_000))
+                {
+                    terminationFailure = new TimeoutException(
+                        "The git process did not exit within one second after termination.");
+                }
             }
             catch (Exception ex)
             {

@@ -351,10 +351,10 @@ internal sealed class DocumentSetPersistenceService
 
             var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
             if (document.Descendants("ProjectReference").Any(element =>
-                    string.Equals(
-                        NormalizeInclude((string?)element.Attribute("Include")),
-                        NormalizeInclude(relativePath),
-                        StringComparison.OrdinalIgnoreCase)))
+                    ProjectReferenceTargetsPath(
+                        (string?)element.Attribute("Include"),
+                        projectDirectory,
+                        referencedProject.FilePath)))
             {
                 continue;
             }
@@ -368,21 +368,16 @@ internal sealed class DocumentSetPersistenceService
         {
             var referencedProject = currentSolution.GetProject(projectReference.ProjectId)
                 ?? modifiedSolution.GetProject(projectReference.ProjectId);
-            var targetFileName = Path.GetFileName(referencedProject?.FilePath);
-            if (string.IsNullOrWhiteSpace(targetFileName))
+            if (referencedProject?.FilePath is null)
             {
                 continue;
             }
 
             var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
-            {
-                var include = (string?)candidate.Attribute("Include");
-                return !string.IsNullOrWhiteSpace(include)
-                       && string.Equals(
-                           Path.GetFileName(include),
-                           targetFileName,
-                           StringComparison.OrdinalIgnoreCase);
-            });
+                ProjectReferenceTargetsPath(
+                    (string?)candidate.Attribute("Include"),
+                    projectDirectory,
+                    referencedProject.FilePath));
 
             if (element is null)
             {
@@ -517,8 +512,36 @@ internal sealed class DocumentSetPersistenceService
             rollbackFailures);
     }
 
-    private static string NormalizeInclude(string? include) =>
-        (include ?? string.Empty).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+    internal static bool ProjectReferenceTargetsPath(
+        string? include,
+        string projectDirectory,
+        string targetProjectPath)
+    {
+        if (string.IsNullOrWhiteSpace(include))
+        {
+            return false;
+        }
+
+        try
+        {
+            var includedProjectPath = Path.GetFullPath(include, projectDirectory);
+            var normalizedTargetPath = Path.GetFullPath(targetProjectPath);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return string.Equals(includedProjectPath, normalizedTargetPath, comparison);
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            // MSBuild expressions such as $(SomeRoot) cannot be resolved safely without
+            // evaluating the project. Treat them as non-matches rather than deleting a
+            // similarly named reference.
+            return false;
+        }
+    }
 
     private sealed class DocumentSetPersistenceState(
         Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,

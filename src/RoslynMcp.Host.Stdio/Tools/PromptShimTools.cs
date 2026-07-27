@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -15,7 +16,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// every <see cref="McpServerPromptAttribute"/>-registered prompt as a <c>call_mcp_tool</c>-invocable
 /// tool. Some MCP clients (Cursor, Claude Code in some configurations) cannot invoke prompts via
 /// the dedicated <c>prompts/get</c> channel — this shim exposes the same content via the regular
-/// tool channel so every host has a uniform path to the 19 prompt workflows.
+/// tool channel so every host has a uniform path to every registered prompt workflow.
 /// </summary>
 [McpServerToolType]
 public static class PromptShimTools
@@ -57,7 +58,8 @@ public static class PromptShimTools
         }
         catch (TargetInvocationException tie) when (tie.InnerException is not null)
         {
-            throw tie.InnerException;
+            ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+            throw;
         }
 
         // Prompt methods return Task<IEnumerable<PromptMessage>> (or sometimes the

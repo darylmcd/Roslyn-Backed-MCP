@@ -21,6 +21,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// </remarks>
 internal static class ClientRootPathValidator
 {
+    private static readonly StringComparison FileSystemPathComparison =
+        OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
     /// <summary>
     /// Verifies that <paramref name="path"/> is located under at least one of the roots
     /// reported by the MCP client.
@@ -217,11 +222,11 @@ internal static class ClientRootPathValidator
     /// <summary>
     /// Tests whether <paramref name="fullPath"/> equals <paramref name="rootPath"/> exactly,
     /// or falls under it as a separator-bounded child. Both checks are
-    /// <see cref="StringComparison.OrdinalIgnoreCase"/> to match Windows path semantics.
+    /// compared with the platform's path casing semantics.
     /// </summary>
     private static bool IsPathUnderRoot(string fullPath, string rootPath)
     {
-        if (string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(fullPath, rootPath, FileSystemPathComparison))
         {
             return true;
         }
@@ -229,7 +234,7 @@ internal static class ClientRootPathValidator
         var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
             ? rootPath
             : rootPath + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+        return fullPath.StartsWith(normalizedRoot, FileSystemPathComparison);
     }
 
     /// <summary>

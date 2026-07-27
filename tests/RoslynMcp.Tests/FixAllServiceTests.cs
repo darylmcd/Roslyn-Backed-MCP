@@ -37,7 +37,7 @@ public sealed class FixAllServiceTests
         private readonly ImmutableArray<DiagnosticDescriptor> _supported;
 
         public AnalyzerA(params DiagnosticDescriptor[] descriptors) =>
-            _supported = [..descriptors];
+            _supported = [.. descriptors];
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => _supported;
 
