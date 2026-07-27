@@ -95,13 +95,8 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         return "mstest";
     }
 
-    private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
-    {
-        return _workspace.GetStatus(workspaceId).Projects.FirstOrDefault(project =>
-                   string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new InvalidOperationException($"Project not found: {projectName}");
-    }
+    private ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+        WorkspaceProjectResolver.Resolve(_workspace, workspaceId, projectName);
 
     private void ValidateIsTestProject(ProjectStatusDto project)
     {

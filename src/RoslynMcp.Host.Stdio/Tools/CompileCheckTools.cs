@@ -1,7 +1,7 @@
 using System.ComponentModel;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -35,7 +35,7 @@ public static class CompileCheckTools
     {
         ParameterValidation.ValidateSeverity(severity);
         ParameterValidation.ValidatePagination(offset, limit);
-        workspaceId = RequireResolvedWorkspaceId(workspaceId);
+        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
@@ -58,17 +58,4 @@ public static class CompileCheckTools
             ct);
     }
 
-    // workspace-id-optional-readonly-surface-flip: the read-path middleware
-    // (StructuredCallToolFilter) resolves or auto-loads an omitted workspaceId before this
-    // now-optional tool dispatches. This guard covers the residual case the middleware cannot
-    // resolve — workspaceId omitted, zero workspaces loaded, and no solution discoverable — by
-    // returning a structured InvalidArgument (the filter classifies the throw) that points the
-    // caller at workspace_load. It also narrows workspaceId to non-null for the dispatch below.
-    private static string RequireResolvedWorkspaceId(string? workspaceId) =>
-        string.IsNullOrEmpty(workspaceId)
-            ? throw new ArgumentException(
-                "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
-                "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
-                nameof(workspaceId))
-            : workspaceId;
 }

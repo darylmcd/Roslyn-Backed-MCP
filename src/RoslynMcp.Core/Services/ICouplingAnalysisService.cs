@@ -25,4 +25,26 @@ public interface ICouplingAnalysisService
         bool excludeTestProjects,
         bool includeInterfaces,
         CancellationToken ct);
+
+    /// <summary>
+    /// Computes coupling metrics and reports whether any per-type computations failed.
+    /// The default implementation preserves compatibility for external implementations.
+    /// </summary>
+    async Task<CouplingAnalysisResultDto> GetCouplingMetricsResultAsync(
+        string workspaceId,
+        string? projectFilter,
+        int limit,
+        bool excludeTestProjects,
+        bool includeInterfaces,
+        CancellationToken ct)
+    {
+        var metrics = await GetCouplingMetricsAsync(
+            workspaceId,
+            projectFilter,
+            limit,
+            excludeTestProjects,
+            includeInterfaces,
+            ct).ConfigureAwait(false);
+        return new CouplingAnalysisResultDto(metrics, FailedTypeCount: 0, Warnings: []);
+    }
 }

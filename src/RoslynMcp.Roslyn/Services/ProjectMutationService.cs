@@ -1,10 +1,10 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -626,13 +626,8 @@ public sealed class ProjectMutationService : IProjectMutationService
         return new RefactoringPreviewDto(token, description, [new FileChangeDto(filePath, diff)], warnings);
     }
 
-    private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
-    {
-        return _workspace.GetStatus(workspaceId).Projects.FirstOrDefault(project =>
-                   string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
-               ?? throw new InvalidOperationException($"Project not found: {projectName}");
-    }
+    private ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+        WorkspaceProjectResolver.Resolve(_workspace, workspaceId, projectName);
 
     private Project ResolveRoslynProject(string workspaceId, string projectName)
     {

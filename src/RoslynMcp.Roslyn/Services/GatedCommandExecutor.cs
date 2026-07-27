@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -111,16 +111,8 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         }
     }
 
-    public ProjectStatusDto ResolveProject(string workspaceId, string projectName)
-    {
-        var project = _workspaceManager.GetStatus(workspaceId).Projects
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(candidate.FilePath, projectName, StringComparison.OrdinalIgnoreCase));
-
-        return project ?? throw new InvalidOperationException(
-            $"Project '{projectName}' was not found in workspace '{workspaceId}'.");
-    }
+    public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+        WorkspaceProjectResolver.Resolve(_workspaceManager, workspaceId, projectName);
 
     internal static string GetWorkingDirectory(string targetPath)
     {

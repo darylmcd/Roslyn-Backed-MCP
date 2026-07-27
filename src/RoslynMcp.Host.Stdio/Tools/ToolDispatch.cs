@@ -8,8 +8,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Shared runtime dispatch helper for MCP tool shims under
 /// <c>src/RoslynMcp.Host.Stdio/Tools/*Tools.cs</c>. Every <c>*_apply</c>, <c>*_preview</c>,
 /// and read-only tool method whose body is pure "resolve workspace → gate → service →
-/// serialize" delegates inline to one of the three methods below; 87+ of ~157 stable
-/// tool shims currently route through this helper.
+/// serialize" delegates inline to the workspace-ID guard or one of the dispatch
+/// methods below; 87+ of ~157 stable tool shims currently route through this helper.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -54,6 +54,19 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// </remarks>
 internal static class ToolDispatch
 {
+    /// <summary>
+    /// Narrows an optional workspace id after read-path auto-resolution. The middleware
+    /// normally fills the value; this guard provides a structured corrective error when no
+    /// workspace is loaded or discoverable.
+    /// </summary>
+    public static string RequireResolvedWorkspaceId(string? workspaceId) =>
+        string.IsNullOrEmpty(workspaceId)
+            ? throw new ArgumentException(
+                "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
+                "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
+                nameof(workspaceId))
+            : workspaceId;
+
     /// <summary>
     /// Dispatch body for <c>*_apply</c> tools that receive an opaque preview token.
     /// Resolves the workspaceId from the token via

@@ -1,11 +1,11 @@
 using System.Reflection;
-using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Regression for backlog row <c>workspace-fork-apply-robustness-cancellation</c>:
-/// <see cref="ValidationBundleTools"/>'s private <c>CopyDirectory</c> /
+/// <see cref="WorkspaceForkApplyService"/>'s private <c>CopyDirectory</c> /
 /// <c>DeleteDirectoryIfExists</c> recursive walks were synchronous and non-cancellable —
 /// a cancellation token passed to <c>workspace_fork_apply</c> was silently dropped once
 /// inside the copy/cleanup loops. These tests exercise the two helpers directly via
@@ -18,7 +18,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceForkApplyCancellationTests
 {
-    private static readonly Type ToolsType = typeof(ValidationBundleTools);
+    private static readonly Type ToolsType = typeof(WorkspaceForkApplyService);
 
     private static readonly MethodInfo CopyDirectoryMethod = ToolsType.GetMethod(
         "CopyDirectory", BindingFlags.NonPublic | BindingFlags.Static)
@@ -118,14 +118,14 @@ public sealed class WorkspaceForkApplyCancellationTests
     {
         var sourceRoot = Path.Combine(_tempRoot, "SourceRoot");
         Directory.CreateDirectory(sourceRoot);
-        var firstLease = await ValidationBundleTools.AcquireForkApplyLockAsync(
+        var firstLease = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(
             sourceRoot,
             CancellationToken.None);
         var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondTask = Task.Run(async () =>
         {
-            using var secondLease = await ValidationBundleTools.AcquireForkApplyLockAsync(
+            using var secondLease = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(
                 Path.Combine(_tempRoot, "sourceroot"),
                 CancellationToken.None);
             secondEntered.TrySetResult();
@@ -138,7 +138,7 @@ public sealed class WorkspaceForkApplyCancellationTests
             Assert.IsFalse(
                 secondEntered.Task.IsCompleted,
                 "Same-root callers must serialize on one lock.");
-            Assert.IsTrue(ValidationBundleTools.HasForkApplyLock(sourceRoot));
+            Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(sourceRoot));
         }
         finally
         {
@@ -150,7 +150,7 @@ public sealed class WorkspaceForkApplyCancellationTests
         await secondTask;
 
         Assert.IsFalse(
-            ValidationBundleTools.HasForkApplyLock(sourceRoot),
+            WorkspaceForkApplyService.HasForkApplyLock(sourceRoot),
             "The keyed lock must be evicted and disposed after the last caller exits.");
     }
 

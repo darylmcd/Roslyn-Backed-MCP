@@ -40,3 +40,18 @@ public sealed record CouplingMetricsDto(
     /// <summary>The kind of type: Class, Struct, Interface, Enum, etc.</summary>
     public string TypeKind { get; init; } = "Class";
 }
+
+/// <summary>
+/// Coupling-analysis result with explicit partial-result observability.
+/// </summary>
+/// <param name="Metrics">Successfully computed metrics, already ordered and limited.</param>
+/// <param name="FailedTypeCount">Number of candidate types whose metric computation failed.</param>
+/// <param name="Warnings">Bounded, sanitized descriptions of failed type computations.</param>
+public sealed record CouplingAnalysisResultDto(
+    IReadOnlyList<CouplingMetricsDto> Metrics,
+    int FailedTypeCount,
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>Whether one or more candidate metrics are missing.</summary>
+    public bool IsPartial => FailedTypeCount > 0;
+}

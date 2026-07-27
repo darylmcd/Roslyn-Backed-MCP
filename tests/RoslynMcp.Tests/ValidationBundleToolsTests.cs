@@ -2,6 +2,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -132,12 +133,20 @@ public sealed class ValidationBundleToolsTests
     [DataRow("app.pubxml")]
     [DataRow("app.pubxml.user")]
     [DataRow("cert.pfx")]
+    [DataRow("cert.p12")]
+    [DataRow("private.pem")]
     [DataRow("private.key")]
+    [DataRow("credentials.txt")]
+    [DataRow("config.local.yaml")]
+    [DataRow("config.local.yml")]
+    [DataRow("config.local.json")]
+    [DataRow("id_rsa")]
+    [DataRow("id_ed25519")]
     [DataRow("appsettings.Production.json")]
     [DataRow("appsettings.Staging.json")]
     [DataRow("APPSETTINGS.PRODUCTION.JSON")]
     public void IsSecretBearingFile_SecretShapes_ReturnsTrue(string fileName)
-        => Assert.IsTrue(ValidationBundleTools.IsSecretBearingFile(fileName),
+        => Assert.IsTrue(WorkspaceForkApplyService.IsSecretBearingFile(fileName),
             $"'{fileName}' is a secret-bearing shape and must be excluded from forks.");
 
     [TestMethod]
@@ -151,8 +160,19 @@ public sealed class ValidationBundleToolsTests
     [DataRow("envelope.cs")]
     [DataRow("")]
     public void IsSecretBearingFile_SafeShapes_ReturnsFalse(string fileName)
-        => Assert.IsFalse(ValidationBundleTools.IsSecretBearingFile(fileName),
+        => Assert.IsFalse(WorkspaceForkApplyService.IsSecretBearingFile(fileName),
             $"'{fileName}' is not a secret-bearing shape and must be copied into forks.");
+
+    [TestMethod]
+    public void IsOutsideRoot_DotPrefixedSiblingName_RemainsInside()
+    {
+        Assert.IsFalse(
+            WorkspaceForkApplyService.IsOutsideRoot("..generated.cs"),
+            "A valid relative file whose name starts with two dots must not be rejected as an escape.");
+        Assert.IsTrue(
+            WorkspaceForkApplyService.IsOutsideRoot($"..{Path.DirectorySeparatorChar}outside.cs"),
+            "A parent-directory traversal must be rejected.");
+    }
 
     [TestMethod]
     public void CopyDirectory_ExcludesSecretFiles_KeepsSafeFiles()
@@ -172,7 +192,7 @@ public sealed class ValidationBundleToolsTests
             File.WriteAllText(Path.Combine(source, "appsettings.Development.json"), "{}");
             File.WriteAllText(Path.Combine(source, "Program.cs"), "class C {}");
 
-            ValidationBundleTools.CopyDirectory(source, dest, CancellationToken.None);
+            WorkspaceForkApplyService.CopyDirectory(source, dest, CancellationToken.None);
 
             Assert.IsFalse(File.Exists(Path.Combine(dest, ".env")), ".env must be excluded.");
             Assert.IsFalse(File.Exists(Path.Combine(dest, "appsettings.Production.json")),
@@ -207,7 +227,7 @@ public sealed class ValidationBundleToolsTests
             var unparseable = Path.Combine(forkRoot, "not-a-timestamp-abc");
             Directory.CreateDirectory(unparseable);
 
-            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours: 24, now: now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 24, now: now);
 
             Assert.IsFalse(Directory.Exists(expired), "Fork older than the TTL must be swept.");
             Assert.IsTrue(Directory.Exists(fresh), "Fork newer than the TTL must be kept.");
@@ -230,7 +250,7 @@ public sealed class ValidationBundleToolsTests
             var now = DateTimeOffset.UtcNow;
             var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
 
-            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours: 0, now: now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours: 0, now: now);
 
             Assert.IsTrue(Directory.Exists(ancient), "A non-positive TTL must disable the sweep entirely.");
         }
@@ -252,7 +272,7 @@ public sealed class ValidationBundleToolsTests
             var now = DateTimeOffset.UtcNow;
             var ancient = MakeForkDir(forkRoot, now.AddHours(-1000), "ancient");
 
-            ValidationBundleTools.SweepExpiredForks(forkRoot, ttlHours, now);
+            WorkspaceForkApplyService.SweepExpiredForks(forkRoot, ttlHours, now);
 
             Assert.IsTrue(Directory.Exists(ancient));
         }
@@ -270,25 +290,25 @@ public sealed class ValidationBundleToolsTests
         try
         {
             Environment.SetEnvironmentVariable(var, null);
-            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Unset must fall back to 24h.");
+            Assert.AreEqual(24, WorkspaceForkApplyService.ResolveForkTtlHours(), "Unset must fall back to 24h.");
 
             Environment.SetEnvironmentVariable(var, "6");
-            Assert.AreEqual(6, ValidationBundleTools.ResolveForkTtlHours(), "Override must be honored.");
+            Assert.AreEqual(6, WorkspaceForkApplyService.ResolveForkTtlHours(), "Override must be honored.");
 
             Environment.SetEnvironmentVariable(var, "0");
-            Assert.AreEqual(0, ValidationBundleTools.ResolveForkTtlHours(), "Zero is a valid disable value for TTL.");
+            Assert.AreEqual(0, WorkspaceForkApplyService.ResolveForkTtlHours(), "Zero is a valid disable value for TTL.");
 
             Environment.SetEnvironmentVariable(var, "not-a-number");
-            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Invalid must fall back to the default.");
+            Assert.AreEqual(24, WorkspaceForkApplyService.ResolveForkTtlHours(), "Invalid must fall back to the default.");
 
             Environment.SetEnvironmentVariable(var, "-5");
-            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Negative must fall back to the default.");
+            Assert.AreEqual(24, WorkspaceForkApplyService.ResolveForkTtlHours(), "Negative must fall back to the default.");
 
             Environment.SetEnvironmentVariable(var, "Infinity");
-            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "Infinity must fall back to the default.");
+            Assert.AreEqual(24, WorkspaceForkApplyService.ResolveForkTtlHours(), "Infinity must fall back to the default.");
 
             Environment.SetEnvironmentVariable(var, "NaN");
-            Assert.AreEqual(24, ValidationBundleTools.ResolveForkTtlHours(), "NaN must fall back to the default.");
+            Assert.AreEqual(24, WorkspaceForkApplyService.ResolveForkTtlHours(), "NaN must fall back to the default.");
         }
         finally
         {
@@ -304,20 +324,20 @@ public sealed class ValidationBundleToolsTests
         try
         {
             Environment.SetEnvironmentVariable(var, null);
-            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Unset must fall back to 2 min.");
+            Assert.AreEqual(2, WorkspaceForkApplyService.ResolveForkRestoreTimeoutMinutes(), "Unset must fall back to 2 min.");
 
             Environment.SetEnvironmentVariable(var, "10");
-            Assert.AreEqual(10, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Override must be honored.");
+            Assert.AreEqual(10, WorkspaceForkApplyService.ResolveForkRestoreTimeoutMinutes(), "Override must be honored.");
 
             Environment.SetEnvironmentVariable(var, "0");
-            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(),
+            Assert.AreEqual(2, WorkspaceForkApplyService.ResolveForkRestoreTimeoutMinutes(),
                 "Zero is not a usable timeout — must fall back to the default.");
 
             Environment.SetEnvironmentVariable(var, "garbage");
-            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(), "Invalid must fall back.");
+            Assert.AreEqual(2, WorkspaceForkApplyService.ResolveForkRestoreTimeoutMinutes(), "Invalid must fall back.");
 
             Environment.SetEnvironmentVariable(var, "Infinity");
-            Assert.AreEqual(2, ValidationBundleTools.ResolveForkRestoreTimeoutMinutes(),
+            Assert.AreEqual(2, WorkspaceForkApplyService.ResolveForkRestoreTimeoutMinutes(),
                 "Infinity is not a bounded timeout and must fall back.");
         }
         finally
@@ -334,13 +354,13 @@ public sealed class ValidationBundleToolsTests
         try
         {
             Environment.SetEnvironmentVariable(var, null);
-            Assert.AreEqual("dotnet", ValidationBundleTools.ResolveForkDotnetPath(), "Unset must fall back to 'dotnet'.");
+            Assert.AreEqual("dotnet", WorkspaceForkApplyService.ResolveForkDotnetPath(), "Unset must fall back to 'dotnet'.");
 
             Environment.SetEnvironmentVariable(var, "  ");
-            Assert.AreEqual("dotnet", ValidationBundleTools.ResolveForkDotnetPath(), "Whitespace must fall back to 'dotnet'.");
+            Assert.AreEqual("dotnet", WorkspaceForkApplyService.ResolveForkDotnetPath(), "Whitespace must fall back to 'dotnet'.");
 
             Environment.SetEnvironmentVariable(var, @"C:\sdk\dotnet.exe");
-            Assert.AreEqual(@"C:\sdk\dotnet.exe", ValidationBundleTools.ResolveForkDotnetPath(),
+            Assert.AreEqual(@"C:\sdk\dotnet.exe", WorkspaceForkApplyService.ResolveForkDotnetPath(),
                 "A configured dotnet path must be honored.");
         }
         finally
