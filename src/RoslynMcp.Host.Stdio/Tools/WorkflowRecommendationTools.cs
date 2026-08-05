@@ -86,6 +86,16 @@ public static class WorkflowRecommendationTools
                 RequiredWorkspaceState: "workspace_loaded");
         }
 
+        if (ContainsAny(text, "find occurrences of pattern", "search the codebase for", "pattern search", "sensitive api", "sync-over-async", "text pattern", "code idiom"))
+        {
+            return new(
+                PrimaryTools: ["semantic_grep"],
+                FollowUpTools: ["find_references", "symbol_search"],
+                Avoid: ["rg", "grep", "manual file scan"],
+                Why: "semantic_grep is token-aware regex search over syntax — it excludes false positives inside string literals/comments that plain text grep would match, and covers multi-candidate pattern sweeps find_references cannot (which requires a resolved symbol identity).",
+                RequiredWorkspaceState: "workspace_loaded");
+        }
+
         return new(
             PrimaryTools: ["discover_capabilities"],
             FollowUpTools: ["server_info", "roslyn://server/catalog"],

@@ -12,6 +12,7 @@ public sealed class WorkflowRecommendationToolsTests
     [DataRow("quick compile sanity after an edit", "compile_check", "dotnet build")]
     [DataRow("run related tests for this changed file", "test_related_files", "full dotnet test")]
     [DataRow("rename this symbol safely", "rename_preview", "search-and-replace")]
+    [DataRow("search the codebase for all call sites of the GetAwaiter().GetResult() sync-over-async pattern", "semantic_grep", "grep")]
     public async Task RecommendWorkflow_CommonTasks_ReturnsFocusedFirstHop(
         string task,
         string expectedPrimaryTool,
