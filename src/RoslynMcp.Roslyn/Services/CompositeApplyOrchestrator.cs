@@ -131,11 +131,26 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 internal static class AtomicFileWriter
 {
     public static async Task WriteAllTextAsync(string path, string content, CancellationToken ct, ILogger? logger = null)
+        => await WriteAtomicAsync(
+            path,
+            tmp => File.WriteAllTextAsync(tmp, content, ct),
+            logger).ConfigureAwait(false);
+
+    public static async Task WriteAllBytesAsync(string path, byte[] content, CancellationToken ct, ILogger? logger = null)
+        => await WriteAtomicAsync(
+            path,
+            tmp => File.WriteAllBytesAsync(tmp, content, ct),
+            logger).ConfigureAwait(false);
+
+    private static async Task WriteAtomicAsync(
+        string path,
+        Func<string, Task> writeTempAsync,
+        ILogger? logger)
     {
         var tmp = path + ".tmp";
         try
         {
-            await File.WriteAllTextAsync(tmp, content, ct).ConfigureAwait(false);
+            await writeTempAsync(tmp).ConfigureAwait(false);
             File.Move(tmp, path, overwrite: true);
         }
         catch

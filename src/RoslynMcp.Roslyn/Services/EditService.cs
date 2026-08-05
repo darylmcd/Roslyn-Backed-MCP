@@ -118,28 +118,16 @@ public sealed class EditService : IEditService
         bool autoRevertOnError = false)
     {
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
-
-        // apply-text-edit-invalid-edit-corrupt-diff: validate every file's edits BEFORE
-        // we take the undo snapshot and BEFORE any disk write. The whole batch fails
-        // fast if any single edit is malformed, so the caller never sees a half-applied
-        // state or a corrupt diff on the surviving files.
-        var perFileSnapshots = new List<(Document Document, SourceText SourceText, string NormalizedPath)>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(initialSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
-            perFileSnapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
-        }
+        var perFileSnapshots = await ResolveBatchSnapshotsAsync(
+            initialSolution,
+            fileEdits,
+            ct).ConfigureAwait(false);
 
         // semantic-edit-with-compile-check-wrapper: pre-edit baseline runs ONCE across
         // the union of owning projects (project-level filter is still cheaper than a
         // full-solution compile). A null projectFilter means "compile every project"
         // — required when the batch spans more than one project.
-        var ownerProjects = perFileSnapshots
-            .Select(t => t.Document.Project.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var batchProjectFilter = verify && ownerProjects.Count == 1 ? ownerProjects[0] : null;
+        var batchProjectFilter = verify ? ResolveSingleProjectFilter(perFileSnapshots) : null;
         var preErrorBaseline = verify
             ? await CapturePreEditBaselineAsync(workspaceId, batchProjectFilter, ct).ConfigureAwait(false)
             : null;
@@ -155,34 +143,12 @@ public sealed class EditService : IEditService
             initialSolution,
             fileSnapshots);
 
-        var results = new List<FileEditSummaryDto>();
-        foreach (var fileEdit in fileEdits)
-        {
-            // Each per-file apply uses the FRESH current solution because the previous edit
-            // is now committed. Pass it explicitly so the core path doesn't take its own
-            // (redundant) snapshot.
-            var current = _workspace.GetCurrentSolution(workspaceId);
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(current, fileEdit.FilePath, ct).ConfigureAwait(false);
-            var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
-            if (!skipSyntaxCheck
-                && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                var syntaxErrors = GetCSharpSyntaxErrors(merged, fileEdit.FilePath);
-                if (syntaxErrors.Count > 0)
-                {
-                    results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
-                    continue;
-                }
-            }
-
-            var result = await ApplyTextEditsCoreAsync(
-                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, toolName, ct,
-                suppressChangeTrackerRecord: true).ConfigureAwait(false);
-            var diff = result.Changes.Count > 0
-                ? string.Join("\n", result.Changes.Select(ch => ch.UnifiedDiff))
-                : null;
-            results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
-        }
+        var results = await ApplyBatchFilesAsync(
+            workspaceId,
+            fileEdits,
+            toolName,
+            skipSyntaxCheck,
+            ct).ConfigureAwait(false);
 
         // workspace-changes-atomic-batch-split-without-batchid (gh #740): emit ONE
         // change-tracker entry covering the whole batch, mirroring
@@ -209,6 +175,80 @@ public sealed class EditService : IEditService
         }
 
         return new MultiFileEditResultDto(true, results.Count, results, verification);
+    }
+
+    private async Task<List<(Document Document, SourceText SourceText, string NormalizedPath)>> ResolveBatchSnapshotsAsync(
+        Solution initialSolution,
+        IReadOnlyList<FileEditsDto> fileEdits,
+        CancellationToken ct)
+    {
+        var snapshots = new List<(Document, SourceText, string)>();
+        foreach (var fileEdit in fileEdits)
+        {
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(
+                initialSolution,
+                fileEdit.FilePath,
+                ct).ConfigureAwait(false);
+            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
+            snapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
+        }
+
+        return snapshots;
+    }
+
+    private static string? ResolveSingleProjectFilter(
+        IEnumerable<(Document Document, SourceText SourceText, string NormalizedPath)> snapshots)
+    {
+        var ownerProjects = snapshots
+            .Select(snapshot => snapshot.Document.Project.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
+        return ownerProjects.Count == 1 ? ownerProjects[0] : null;
+    }
+
+    private async Task<List<FileEditSummaryDto>> ApplyBatchFilesAsync(
+        string workspaceId,
+        IReadOnlyList<FileEditsDto> fileEdits,
+        string toolName,
+        bool skipSyntaxCheck,
+        CancellationToken ct)
+    {
+        var results = new List<FileEditSummaryDto>();
+        foreach (var fileEdit in fileEdits)
+        {
+            var current = _workspace.GetCurrentSolution(workspaceId);
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(
+                current,
+                fileEdit.FilePath,
+                ct).ConfigureAwait(false);
+            var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
+            if (!skipSyntaxCheck
+                && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)
+                && GetCSharpSyntaxErrors(merged, fileEdit.FilePath).Count > 0)
+            {
+                results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
+                continue;
+            }
+
+            var result = await ApplyTextEditsCoreAsync(
+                workspaceId,
+                fileEdit.FilePath,
+                fileEdit.Edits,
+                current,
+                document,
+                sourceText,
+                merged,
+                toolName,
+                ct,
+                suppressChangeTrackerRecord: true).ConfigureAwait(false);
+            var diff = result.Changes.Count > 0
+                ? string.Join("\n", result.Changes.Select(change => change.UnifiedDiff))
+                : null;
+            results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -745,25 +785,25 @@ public sealed class EditService : IEditService
 
         if (newDiagnostics.Count == 0)
         {
-            return new VerifyOutcomeDto(
-                Status: "clean",
-                PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postEditSnapshot.ErrorCount,
-                NewDiagnostics: Array.Empty<DiagnosticDto>(),
-                ProjectFilter: projectFilter,
-                Message: null);
+            return CreateVerifyOutcome(
+                "clean",
+                preEditBaseline,
+                postEditSnapshot,
+                [],
+                projectFilter,
+                message: null);
         }
 
         if (!autoRevertOnError)
         {
-            return new VerifyOutcomeDto(
-                Status: "errors_introduced",
-                PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postEditSnapshot.ErrorCount,
-                NewDiagnostics: newDiagnostics,
-                ProjectFilter: projectFilter,
-                Message: "The edit applied but introduced new compile errors. autoRevertOnError was false, " +
-                        "so the workspace is preserved for inspection. Call revert_last_apply to roll back this edit.");
+            return CreateVerifyOutcome(
+                "errors_introduced",
+                preEditBaseline,
+                postEditSnapshot,
+                newDiagnostics,
+                projectFilter,
+                "The edit applied but introduced new compile errors. autoRevertOnError was false, " +
+                "so the workspace is preserved for inspection. Call revert_last_apply to roll back this edit.");
         }
 
         // autoRevertOnError=true AND new errors appeared. Roll back the single-slot
@@ -772,37 +812,49 @@ public sealed class EditService : IEditService
         // that as a structured outcome rather than a NullReferenceException.
         if (_undoService is null)
         {
-            return new VerifyOutcomeDto(
-                Status: "revert_failed",
-                PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postEditSnapshot.ErrorCount,
-                NewDiagnostics: newDiagnostics,
-                ProjectFilter: projectFilter,
-                Message: "autoRevertOnError=true but IUndoService is not registered on this EditService. " +
-                        "The edit remained applied. Wire IUndoService via AddRoslynMcpCoreServices.");
+            return CreateVerifyOutcome(
+                "revert_failed",
+                preEditBaseline,
+                postEditSnapshot,
+                newDiagnostics,
+                projectFilter,
+                "autoRevertOnError=true but IUndoService is not registered on this EditService. " +
+                "The edit remained applied. Wire IUndoService via AddRoslynMcpCoreServices.");
         }
 
         var reverted = await _undoService.RevertAsync(workspaceId, ct).ConfigureAwait(false);
-        if (reverted)
-        {
-            return new VerifyOutcomeDto(
-                Status: "reverted",
-                PreErrorCount: preEditBaseline.ErrorCount,
-                PostErrorCount: postEditSnapshot.ErrorCount,
-                NewDiagnostics: newDiagnostics,
-                ProjectFilter: projectFilter,
-                Message: "The edit introduced new compile errors and was reverted. " +
-                        "The workspace is back to the pre-edit state.");
-        }
+        return reverted
+            ? CreateVerifyOutcome(
+                "reverted",
+                preEditBaseline,
+                postEditSnapshot,
+                newDiagnostics,
+                projectFilter,
+                "The edit introduced new compile errors and was reverted. " +
+                "The workspace is back to the pre-edit state.")
+            : CreateVerifyOutcome(
+                "revert_failed",
+                preEditBaseline,
+                postEditSnapshot,
+                newDiagnostics,
+                projectFilter,
+                "The edit introduced new compile errors AND the auto-revert failed. " +
+                "The workspace is in an inconsistent state — inspect and call revert_last_apply manually.");
+    }
 
-        return new VerifyOutcomeDto(
-            Status: "revert_failed",
+    private static VerifyOutcomeDto CreateVerifyOutcome(
+        string status,
+        CompilationErrorSnapshot preEditBaseline,
+        CompilationErrorSnapshot postEditSnapshot,
+        IReadOnlyList<DiagnosticDto> newDiagnostics,
+        string? projectFilter,
+        string? message) =>
+        new(
+            Status: status,
             PreErrorCount: preEditBaseline.ErrorCount,
             PostErrorCount: postEditSnapshot.ErrorCount,
             NewDiagnostics: newDiagnostics,
             ProjectFilter: projectFilter,
-            Message: "The edit introduced new compile errors AND the auto-revert failed. " +
-                    "The workspace is in an inconsistent state — inspect and call revert_last_apply manually.");
-    }
+            Message: message);
 
 }

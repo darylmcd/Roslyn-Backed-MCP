@@ -406,43 +406,10 @@ public sealed class AggregatePromotionScorecardsScriptTests
     }
 
     private PwshResult RunAggregator()
-    {
-        var scriptPath = ResolveScriptPath();
-        var args = new List<string>
-        {
-            "-NoProfile",
-            "-NonInteractive",
-            "-File", scriptPath,
-            "-SiblingRepoParent", _siblingParent
-        };
-
-        var pwshExecutable = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pwshExecutable,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        foreach (var a in args)
-        {
-            psi.ArgumentList.Add(a);
-        }
-
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        if (!proc.WaitForExit(milliseconds: 60_000))
-        {
-            proc.Kill(entireProcessTree: true);
-            throw new TimeoutException("pwsh aggregate-promotion-scorecards.ps1 invocation timed out after 60s.");
-        }
-
-        return new PwshResult(proc.ExitCode, stdout, stderr);
-    }
+        => RunPwshScript(
+            ResolveScriptPath(),
+            "aggregate-promotion-scorecards.ps1",
+            "-SiblingRepoParent", _siblingParent);
 
     /// <summary>
     /// Variant of <see cref="RunAggregator"/> that passes <c>-IncludeSelf</c> to the script.
@@ -450,38 +417,10 @@ public sealed class AggregatePromotionScorecardsScriptTests
     /// to exercise the self-exclusion-from-sibling-discovery invariant.
     /// </summary>
     private PwshResult RunAggregatorWithIncludeSelf()
-    {
-        var scriptPath = ResolveScriptPath();
-        var pwshExecutable = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pwshExecutable,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-NonInteractive");
-        psi.ArgumentList.Add("-File");
-        psi.ArgumentList.Add(scriptPath);
-        psi.ArgumentList.Add("-SiblingRepoParent");
-        psi.ArgumentList.Add(_siblingParent);
-        psi.ArgumentList.Add("-IncludeSelf");
-
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        if (!proc.WaitForExit(milliseconds: 60_000))
-        {
-            proc.Kill(entireProcessTree: true);
-            throw new TimeoutException("pwsh aggregate-promotion-scorecards.ps1 -IncludeSelf invocation timed out after 60s.");
-        }
-
-        return new PwshResult(proc.ExitCode, stdout, stderr);
-    }
+        => RunPwshScript(
+            ResolveScriptPath(),
+            "aggregate-promotion-scorecards.ps1 -IncludeSelf",
+            "-SiblingRepoParent", _siblingParent, "-IncludeSelf");
 
     private static PwshResult RunBacklogProposalScript(string aggregatedPath)
     {
@@ -490,16 +429,18 @@ public sealed class AggregatePromotionScorecardsScriptTests
             File.Exists(scriptPath),
             $"propose-promotion-scorecard-backlog-rows.ps1 was not found at the documented path '{scriptPath}'.");
 
-        var args = new List<string>
-        {
-            "-NoProfile",
-            "-NonInteractive",
-            "-File", scriptPath,
-            "-AggregatedScorecardPath", aggregatedPath
-        };
+        return RunPwshScript(
+            scriptPath,
+            "propose-promotion-scorecard-backlog-rows.ps1",
+            "-AggregatedScorecardPath", aggregatedPath);
+    }
 
+    private static PwshResult RunPwshScript(
+        string scriptPath,
+        string operationName,
+        params string[] scriptArguments)
+    {
         var pwshExecutable = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
-
         var psi = new ProcessStartInfo
         {
             FileName = pwshExecutable,
@@ -508,22 +449,30 @@ public sealed class AggregatePromotionScorecardsScriptTests
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        foreach (var a in args)
+
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(scriptPath);
+        foreach (var argument in scriptArguments)
         {
-            psi.ArgumentList.Add(a);
+            psi.ArgumentList.Add(argument);
         }
 
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
         if (!proc.WaitForExit(milliseconds: 60_000))
         {
             proc.Kill(entireProcessTree: true);
-            throw new TimeoutException("pwsh propose-promotion-scorecard-backlog-rows.ps1 invocation timed out after 60s.");
+            throw new TimeoutException($"pwsh {operationName} invocation timed out after 60s.");
         }
 
-        return new PwshResult(proc.ExitCode, stdout, stderr);
+        return new PwshResult(
+            proc.ExitCode,
+            stdoutTask.GetAwaiter().GetResult(),
+            stderrTask.GetAwaiter().GetResult());
     }
 
     private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);

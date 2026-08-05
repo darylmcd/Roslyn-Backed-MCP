@@ -893,30 +893,10 @@ public sealed class DuplicateMethodDetectorTests
     /// </summary>
     private static (DuplicateMethodDetectorService service, WorkspaceExecutionGate gate) BuildServiceAndGate(string source)
     {
-        var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId();
-        workspace.AddProject(ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "TestProject",
-            assemblyName: "TestProject",
-            language: LanguageNames.CSharp,
-            filePath: Path.Combine(Path.GetTempPath(), "TestProject.csproj")));
-
-        var docId = DocumentId.CreateNewId(projectId);
-        var fullPath = Path.Combine(Path.GetTempPath(), "Sample.cs");
-        workspace.AddDocument(DocumentInfo.Create(
-            docId,
-            "Sample.cs",
-            filePath: fullPath,
-            loader: TextLoader.From(
-                TextAndVersion.Create(
-                    SourceText.From(source),
-                    VersionStamp.Create(),
-                    fullPath))));
-
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var service = new DuplicateMethodDetectorService(wsManager);
+        var service = BuildServiceWithSourcesCore(
+            out _,
+            out var wsManager,
+            ("Sample.cs", source));
         var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), wsManager);
         return (service, gate);
     }
@@ -937,6 +917,12 @@ public sealed class DuplicateMethodDetectorTests
     }
 
     private static DuplicateMethodDetectorService BuildServiceWithSourcesCore(out AdhocWorkspace workspace, params (string fileName, string source)[] docs)
+        => BuildServiceWithSourcesCore(out workspace, out _, docs);
+
+    private static DuplicateMethodDetectorService BuildServiceWithSourcesCore(
+        out AdhocWorkspace workspace,
+        out TestWorkspaceManager wsManager,
+        params (string fileName, string source)[] docs)
     {
         workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -964,7 +950,7 @@ public sealed class DuplicateMethodDetectorTests
                         fullPath))));
         }
 
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
+        wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
         return new DuplicateMethodDetectorService(wsManager);
     }
 

@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Text;
+
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
@@ -115,7 +118,34 @@ public sealed record UndoEntry(
 /// </summary>
 /// <param name="FilePath">The absolute path of the file about to be modified.</param>
 /// <param name="OriginalText">The full pre-mutation text of the file (null if it didn't exist yet).</param>
-public sealed record FileSnapshotDto(string FilePath, string? OriginalText);
+public sealed record FileSnapshotDto(string FilePath, string? OriginalText)
+{
+    /// <summary>
+    /// Gets the exact pre-mutation bytes when the caller captured an on-disk file.
+    /// A default value preserves compatibility with text-only callers.
+    /// </summary>
+    public ImmutableArray<byte> OriginalBytes { get; init; }
+
+    /// <summary>
+    /// Creates a byte-exact snapshot for an existing file while retaining decoded text for
+    /// compatibility with callers that still inspect <see cref="OriginalText"/>.
+    /// </summary>
+    public static FileSnapshotDto FromExistingBytes(string filePath, ReadOnlySpan<byte> originalBytes)
+    {
+        var bytes = originalBytes.ToArray();
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var reader = new StreamReader(
+            stream,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: false);
+
+        return new FileSnapshotDto(filePath, reader.ReadToEnd())
+        {
+            OriginalBytes = ImmutableArray.CreateRange(bytes)
+        };
+    }
+}
 
 /// <summary>
 /// Result of <see cref="IUndoService.RevertBySequenceAsync"/>.

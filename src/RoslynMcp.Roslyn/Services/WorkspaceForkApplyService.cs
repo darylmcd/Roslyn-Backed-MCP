@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -74,7 +75,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
         RedactionRegexTimeout);
 
     private static readonly ConcurrentDictionary<string, ForkApplyLock> ForkApplyLocks =
-        new(StringComparer.OrdinalIgnoreCase);
+        new(FileSystemPath.Comparer);
 
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IPreviewStore _previewStore;
@@ -616,7 +617,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
             }
         }
 
-        return appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return appliedFiles.Distinct(FileSystemPath.Comparer).ToArray();
     }
 
     private static async Task WriteModifiedDocumentAsync(
