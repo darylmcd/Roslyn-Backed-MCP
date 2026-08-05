@@ -94,6 +94,43 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractTypePreview_WithUnknownMemberName_ReturnsBlockingDependencies()
+    {
+        // extract-type-preview-refusal-missing-blocking-deps: mirrors the closestMatches contract
+        // above — an extract_type_preview refusal keeps its InvalidOperation category and prose
+        // message, and additionally carries the structured member/reason pairs that produced it.
+        // server: null! exercises the validator's documented no-MCP-context fail-open branch
+        // (same technique as TypeExtractionTests).
+        var animalServicePath = _scope.GetPath("SampleLib", "AnimalService.cs");
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "extract_type_preview",
+            () => TypeExtractionTools.PreviewExtractType(
+                server: null!,
+                WorkspaceExecutionGate,
+                TypeExtractionService,
+                WorkspaceId,
+                animalServicePath,
+                typeName: "AnimalService",
+                memberNames: ["NoSuchMemberOnAnimalService"],
+                newTypeName: "AnimalHelper",
+                newFilePath: null,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("error").GetBoolean(),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.AreEqual("InvalidOperation", doc.RootElement.GetProperty("category").GetString(),
+            "category must be unchanged by the structured-field addition.");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("blockingDependencies", out var blocking),
+            $"extract_type_preview refusals must carry blockingDependencies. Envelope: {json}");
+        var first = blocking.EnumerateArray().First();
+        Assert.AreEqual("NoSuchMemberOnAnimalService", first.GetProperty("member").GetString(),
+            $"blockingDependencies entries must carry a camelCase 'member' key. Envelope: {json}");
+        StringAssert.Contains(first.GetProperty("reason").GetString(), "not found in type 'AnimalService'");
+    }
+
+    [TestMethod]
     public async Task Resource_GetWorkspaceStatus_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
     {
         // Pre-fix: a resource exception bubbled to the framework which labelled it
