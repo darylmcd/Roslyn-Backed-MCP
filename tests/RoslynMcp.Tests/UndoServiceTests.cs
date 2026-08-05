@@ -152,8 +152,9 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     {
         // A failed disk restore must NOT consume the pending snapshot — the compensating
         // caller (ApplyWithVerifyTool's rollback leg) needs the same snapshot to retry.
-        // Force the file-snapshot restore to fail by marking the target file read-only,
-        // then clear the obstruction and revert again for the SAME workspace.
+        // Force the file-snapshot restore to fail by replacing the target file with a
+        // directory. Unlike read-only attributes, this obstruction is deterministic on
+        // both Windows and Unix when the atomic writer replaces the target path.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var workspaceId = workspace.WorkspaceId;
 
@@ -169,10 +170,11 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(applyResult.Success, "Apply should succeed.");
         Assert.IsNotNull(UndoService.GetLastOperation(workspaceId), "Undo entry must exist after apply.");
 
+        File.Delete(dogFilePath);
+        Directory.CreateDirectory(dogFilePath);
+
         try
         {
-            File.SetAttributes(dogFilePath, FileAttributes.ReadOnly);
-
             var firstRevert = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
             Assert.IsFalse(firstRevert, "Revert must report failure when the disk restore cannot write.");
 
@@ -182,7 +184,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         }
         finally
         {
-            File.SetAttributes(dogFilePath, FileAttributes.Normal);
+            Directory.Delete(dogFilePath);
         }
 
         // Retry now that the file is writable again — the surviving snapshot must restore the original.
@@ -275,7 +277,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
     public async Task RevertBySequence_RestoreFails_SequenceRemainsRetryable()
     {
         // Apply A (Dog.cs) then Apply B (Cat.cs) — non-overlapping. Force the revert of A
-        // to fail by marking Dog.cs read-only. The failed revert must NOT destroy A's history
+        // to fail by replacing Dog.cs with a directory. The failed revert must NOT destroy A's history
         // entry: a follow-up RevertBySequenceAsync for the SAME sequence must succeed once the
         // obstruction clears, and B's edit must be untouched throughout (ordering preserved).
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
@@ -303,10 +305,11 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(2, changes.Count, "Expected 2 recorded changes.");
         var sequenceA = changes[0].SequenceNumber;
 
+        File.Delete(dogFilePath);
+        Directory.CreateDirectory(dogFilePath);
+
         try
         {
-            File.SetAttributes(dogFilePath, FileAttributes.ReadOnly);
-
             var failedRevert = await UndoService.RevertBySequenceAsync(
                 workspaceId, sequenceA, CancellationToken.None);
             Assert.IsFalse(failedRevert.Reverted, "Revert must report failure when the disk restore cannot write.");
@@ -319,7 +322,7 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         }
         finally
         {
-            File.SetAttributes(dogFilePath, FileAttributes.Normal);
+            Directory.Delete(dogFilePath);
         }
 
         // The target sequence must still be retryable — its history entry survived the failure.

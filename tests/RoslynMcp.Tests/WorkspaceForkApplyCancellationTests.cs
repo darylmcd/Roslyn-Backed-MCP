@@ -121,23 +121,13 @@ public sealed class WorkspaceForkApplyCancellationTests
         var firstLease = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(
             sourceRoot,
             CancellationToken.None);
-        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var secondTask = Task.Run(async () =>
-        {
-            using var secondLease = await WorkspaceForkApplyService.AcquireForkApplyLockAsync(
-                Path.Combine(_tempRoot, "sourceroot"),
-                CancellationToken.None);
-            secondEntered.TrySetResult();
-            await releaseSecond.Task;
-        });
+        var secondAcquire = WorkspaceForkApplyService.AcquireForkApplyLockAsync(
+            sourceRoot,
+            CancellationToken.None).AsTask();
 
+        var serialized = !secondAcquire.IsCompleted;
         try
         {
-            await Task.Delay(50);
-            Assert.IsFalse(
-                secondEntered.Task.IsCompleted,
-                "Same-root callers must serialize on one lock.");
             Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(sourceRoot));
         }
         finally
@@ -145,9 +135,16 @@ public sealed class WorkspaceForkApplyCancellationTests
             firstLease.Dispose();
         }
 
-        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        releaseSecond.TrySetResult();
-        await secondTask;
+        var secondLease = await secondAcquire.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            Assert.IsTrue(serialized, "Same-root callers must serialize on one lock.");
+            Assert.IsTrue(WorkspaceForkApplyService.HasForkApplyLock(sourceRoot));
+        }
+        finally
+        {
+            secondLease.Dispose();
+        }
 
         Assert.IsFalse(
             WorkspaceForkApplyService.HasForkApplyLock(sourceRoot),
