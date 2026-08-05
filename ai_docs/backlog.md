@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-05T16:12:40Z
+**updated_at:** 2026-08-05T21:25:00Z
 
 ## Agent contract
 
@@ -47,6 +47,9 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `extract-type-preview-refusal-missing-blocking-deps` | High | — | **extract_type_preview refusals give no retry path** — surface the already-collected dangling-reference warnings as structured `blockingDependencies` data (not just prose) so callers can retry with a corrected memberNames set instead of abandoning the tool. [type: feature] [source: 2026-08-05 multisession retro] | M | items/extract-type-preview-refusal-missing-blocking-deps.md |
+| `validate-workspace-compiler-category-status-mismatch` | High | — | **validate_workspace reports compile-error on a clean build** — `ComputeOverallStatus` flags `compile-error` whenever the separately-harvested `diagResult.CompilerDiagnostics` contains a Category="Compiler" error, even when `compile.ErrorCount==0`; reconcile the two error sources. [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-workspace-compiler-category-status-mismatch.md |
+| `workspace-eviction-no-auto-retry-on-tool-call` | High | — | **Auto-retry once on WorkspaceEvictedException** — `compile_check`/`test_run` surface a hard failure instead of transparently reloading an evicted workspace and retrying once; TTL-refresh-on-touch already exists (`TouchAccess`), only the retry wrapper is missing. Caused a non-deterministic test failure in-window. [type: reliability] [source: 2026-08-05 multisession retro] | M | items/workspace-eviction-no-auto-retry-on-tool-call.md |
 
 ## Medium
 
@@ -54,10 +57,14 @@
 |----|-----|------|----|------|--------|
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the promotion scorecard against the current v2.3.x surface (canonical snapshot is v1.38.1), then ship experimental→stable promotions in bounded batches via `/promote-tier`. Catalog hotspot; sweep-shaped → `/backlog-sweep:prepare`. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
-| `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
-| `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
+| `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
+| `compile-check-multi-project-fallback-structured-scope` | Medium | — | **compile_check's multi-project fallback is prose-only** — expose `actualScope`/`requestedScope` as structured DTO fields so callers can detect the full-project-compile fallback without parsing `restoreHint` text. Deterministic across 5 sessions/4 repos in-window; results stay correct, cost is latency. [type: feature] [source: 2026-08-05 multisession retro] | M | items/compile-check-multi-project-fallback-structured-scope.md |
+| `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `direct-mutation-undo-byte-fidelity` | Medium | — | Preserve byte-exact undo snapshots across direct edit, editorconfig, and project mutation paths. [type: bug] [source: 2026-08-05 direct remediation adjacent review] | M | items/direct-mutation-undo-byte-fidelity.md |
+| `recommend-workflow-missing-semantic-grep-route` | Medium | — |
+| `stage-review-inbox-multisession-retro-glob-miss` | Medium | — | **Staging script never discovers this repo's own retro reports** — `$filePatterns` in `eng/stage-review-inbox.ps1` is `*_roslyn-mcp-retro.md`, but all 3 retros this repo has ever produced are named `*_roslyn-mcp-multisession-retro.md` and were silently never auto-staged. [type: bug] [source: 2026-08-05 backlog-intake self-discovery] | S | items/stage-review-inbox-multisession-retro-glob-miss.md | **recommend_workflow has no semantic_grep routing branch** — its 5 `ContainsAny` rules cover references/outline/compile/tests/rename but nothing routes pattern-search-shaped tasks ("find usages of pattern X") to `semantic_grep`, so agents default to grep. Only pattern confirmed identical across both harnesses in-window. [type: feature] [source: 2026-08-05 multisession retro] | S | items/recommend-workflow-missing-semantic-grep-route.md |
+| `validate-recent-git-changes-status-timeout-false-clean` | Medium | — | **git-status timeout silently reports clean** — the 10s `_gitStatusTimeout` fallback in `GetGitChangedFilesAsync` returns an empty changed-file list on timeout instead of a degraded/unknown signal, distinct from the already-fixed broader validation-phase timeout (closed gh #759). [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-recent-git-changes-status-timeout-false-clean.md |
 
 ## Low
 
