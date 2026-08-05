@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-05T23:16:43Z
+**updated_at:** 2026-08-05T23:50:23Z
 
 ## Agent contract
 
@@ -47,8 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `validate-workspace-compiler-category-status-mismatch` | High | — | **validate_workspace reports compile-error on a clean build** — `ComputeOverallStatus` flags `compile-error` whenever the separately-harvested `diagResult.CompilerDiagnostics` contains a Category="Compiler" error, even when `compile.ErrorCount==0`; reconcile the two error sources. [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-workspace-compiler-category-status-mismatch.md |
-| `workspace-eviction-no-auto-retry-on-tool-call` | High | — | **Auto-retry once on WorkspaceEvictedException** — `compile_check`/`test_run` surface a hard failure instead of transparently reloading an evicted workspace and retrying once; TTL-refresh-on-touch already exists (`TouchAccess`), only the retry wrapper is missing. Caused a non-deterministic test failure in-window. [type: reliability] [source: 2026-08-05 multisession retro] | M | items/workspace-eviction-no-auto-retry-on-tool-call.md |
 
 ## Medium
 
@@ -65,6 +63,9 @@
 | `stage-review-inbox-multisession-retro-glob-miss` | Medium | — | **Staging script never discovers this repo's own retro reports** — `$filePatterns` in `eng/stage-review-inbox.ps1` is `*_roslyn-mcp-retro.md`, but all 3 retros this repo has ever produced are named `*_roslyn-mcp-multisession-retro.md` and were silently never auto-staged. [type: bug] [source: 2026-08-05 backlog-intake self-discovery] | S | items/stage-review-inbox-multisession-retro-glob-miss.md |
 | `validate-recent-git-changes-status-timeout-false-clean` | Medium | — | **git-status timeout silently reports clean** — the 10s `_gitStatusTimeout` fallback in `GetGitChangedFilesAsync` returns an empty changed-file list on timeout instead of a degraded/unknown signal, distinct from the already-fixed broader validation-phase timeout (closed gh #759). [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-recent-git-changes-status-timeout-false-clean.md |
 | `tool-error-handler-envelope-duplication` | Medium | — | **Extract shared error-envelope builder in ToolErrorHandler.FormatErrorResponse** — 4 near-identical anonymous-object literals repeat the same 5 properties; every future structured field costs another copy. [type: refactor] [source: PR #1138 code-quality review] | S | items/tool-error-handler-envelope-duplication.md |
+| `validate-workspace-diagnostic-harvest-reconcile` | Medium | — | **Reconcile validate_workspace's two diagnostic harvests** — a Category=Compiler row seen only by project_diagnostics still enters allErrors/ErrorCount even when compile_check is clean; PR #1140 relabeled the verdict, not the root cause. [type: bug] [source: PR #1140 review] | M | items/validate-workspace-diagnostic-harvest-reconcile.md |
+| `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
+| `workspace-eviction-retry-untested-branches` | Medium | — | **Cover the non-recovering branches of the workspace-eviction auto-retry** — reload-fails, bogus-id-no-reload, and mid-call WorkspaceEvictedException shapes are all unreachable from the shipped test suite. [type: test] [source: PR #1141 review] | M | items/workspace-eviction-retry-untested-branches.md |
 
 ## Low
 
@@ -105,6 +106,7 @@
 | `refactoring-code-fix-preview-decomposition` | Low | refactoring-format-range-preview-decomposition | Decompose diagnostic code-fix preview selection and assembly while preserving fix behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | M | items/refactoring-code-fix-preview-decomposition.md |
 | `type-extraction-service-dead-warnings-ternary` | Low | — | **Remove unreachable warnings ternary in PreviewExtractTypeAsync** — the line-56 refusal throw guarantees warnings is always empty by line 126, making the ternary dead. [type: refactor] [source: PR #1138 code-quality review] | S | items/type-extraction-service-dead-warnings-ternary.md |
 | `type-extraction-service-dead-fallback-and-stale-naming` | Low | — | **Consolidated cleanup: dead fallback + stale 'warnings' naming in TypeExtractionService** — PartitionMembers filter makes the GetMemberName fallback unreachable; helper/locals still read as advisory though values are fatal refusal causes. [type: refactor] [source: PR #1138 code-quality review] | S | items/type-extraction-service-dead-fallback-and-stale-naming.md |
+| `workspace-validation-analyzer-error-label-and-precondition` | Low | — | **Consolidated cleanup: analyzer-error label drift + undocumented precondition** — status now covers compiler-category rows too but docs imply analyzer-rule-only; errors param has no documented Severity==Error precondition. [type: docs] [source: PR #1140 review] | M | items/workspace-validation-analyzer-error-label-and-precondition.md |
 
 ## Defer
 
