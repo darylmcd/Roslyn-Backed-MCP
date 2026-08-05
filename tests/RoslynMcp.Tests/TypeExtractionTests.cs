@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -314,6 +315,82 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             TypeExtractionService.PreviewExtractTypeAsync(
                 wsId, doc.FilePath!, "AnimalService", [], "NewType", null, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task ExtractType_DanglingReference_ThrowsWithStructuredBlockingDependencies()
+    {
+        // extract-type-preview-refusal-missing-blocking-deps: the compile-safety refusal already
+        // computed per-(member, referenced-symbol) detail but flattened it into prose. It must now
+        // also carry the structured list so a caller can widen `memberNames` programmatically.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeDanglingFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExtractTypeDanglingFixture",
+                "{",
+                "    private int _seed = 7;",
+                "    public int Compute(int x) => x * _seed;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Extracting Compute leaves _seed behind on the source type, so the generated code
+            // would not compile — the refusal fires before the external-consumer check.
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, fixturePath, "ExtractTypeDanglingFixture", ["Compute"], "ComputeHelper", null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "would not compile",
+                "prose message must be unchanged so existing callers keep working");
+            Assert.IsTrue(ex.BlockingDependencies.Count > 0,
+                "refusal must carry at least one structured blocking dependency");
+            Assert.IsTrue(ex.BlockingDependencies.Any(d =>
+                    string.Equals(d.Member, "Compute", StringComparison.Ordinal)),
+                "the blocking dependency must be attributed to the extracted member that references the leftover state");
+            Assert.IsTrue(ex.BlockingDependencies.Any(d => d.Reason.Contains("_seed", StringComparison.Ordinal)),
+                $"the reason must name the symbol that remains behind. Actual: {string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason))}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_MemberNotFound_ThrowsWithStructuredBlockingDependencies()
+    {
+        // extract-type-preview-refusal-missing-blocking-deps: the member-not-found refusal held the
+        // unmatched names in a HashSet but only emitted them as a comma-joined sentence.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var wsId = workspace.WorkspaceId;
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("AnimalService.cs") == true);
+
+        var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, doc.FilePath!, "AnimalService", ["NoSuchMemberOnAnimalService"], "NewType", null,
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "NoSuchMemberOnAnimalService");
+        Assert.AreEqual(1, ex.BlockingDependencies.Count,
+            "exactly one member name was unmatched, so exactly one structured entry is expected");
+        Assert.AreEqual("NoSuchMemberOnAnimalService", ex.BlockingDependencies[0].Member);
+        StringAssert.Contains(ex.BlockingDependencies[0].Reason, "not found in type 'AnimalService'");
     }
 
     [TestMethod]

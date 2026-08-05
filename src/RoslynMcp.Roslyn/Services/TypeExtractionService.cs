@@ -55,12 +55,16 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // the split before attempting it.
         if (warnings.Count > 0)
         {
-            var summary = string.Join("; ", warnings);
-            throw new InvalidOperationException(
+            var summary = string.Join("; ", warnings.Select(w => w.Reason));
+            // extract-type-preview-refusal-missing-blocking-deps: the prose message is unchanged;
+            // the structured per-member blocking data that produced it now rides along on the
+            // exception so callers can retry with a corrected memberNames set programmatically.
+            throw new ExtractTypeBlockingDependencyException(
                 $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the selected members reference state " +
                 $"that would remain on the source type, so the generated code would not compile. " +
                 $"Either include the referenced members in the extraction or perform a manual redesign first. " +
-                $"Details: {summary}");
+                $"Details: {summary}",
+                warnings);
         }
 
         // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
@@ -117,7 +121,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+        return new RefactoringPreviewDto(
+            token, description, changes,
+            warnings.Count > 0 ? warnings.Select(w => w.Reason).ToList() : null);
     }
 
     private static (List<MemberDeclarationSyntax> ToExtract, List<MemberDeclarationSyntax> ToKeep) PartitionMembers(
@@ -142,8 +148,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         if (memberNameSet.Count > 0)
-            throw new InvalidOperationException(
-                $"Members not found in type '{sourceTypeName}': {string.Join(", ", memberNameSet)}");
+        {
+            // extract-type-preview-refusal-missing-blocking-deps: prose message unchanged; the
+            // unmatched names are also projected into structured blocking dependencies so the
+            // caller can correct `memberNames` without parsing the sentence.
+            var unmatched = memberNameSet
+                .Select(name => new BlockingDependencyDto(
+                    name,
+                    $"Member '{name}' not found in type '{sourceTypeName}'."))
+                .ToList();
+            throw new ExtractTypeBlockingDependencyException(
+                $"Members not found in type '{sourceTypeName}': {string.Join(", ", memberNameSet)}",
+                unmatched);
+        }
 
         if (toExtract.Count == 0)
             throw new InvalidOperationException("No members matched for extraction.");
@@ -354,7 +371,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return warnings;
     }
 
-    private static List<string> CollectExtractTypeDanglingReferenceWarnings(
+    /// <summary>
+    /// Collects one entry per (extracted member, referenced symbol that stays behind) pair.
+    /// extract-type-preview-refusal-missing-blocking-deps: returns structured
+    /// <see cref="BlockingDependencyDto"/> values rather than flat prose so the refusal at the
+    /// call site can carry them through to the caller. Dedup is keyed on the reason text alone
+    /// (unchanged from the pre-structured behavior), so a symbol referenced from several
+    /// extracted members is reported once, attributed to the first member that referenced it.
+    /// </summary>
+    private static List<BlockingDependencyDto> CollectExtractTypeDanglingReferenceWarnings(
         SemanticModel semanticModel,
         INamedTypeSymbol typeSymbol,
         IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
@@ -369,10 +394,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var warnings = new List<string>();
+        var warnings = new List<BlockingDependencyDto>();
 
         foreach (var member in membersToExtract)
         {
+            // GetMemberName returns null for shapes it does not name (operators, indexers,
+            // destructors); fall back to the syntax kind so the structured entry always
+            // carries a non-null attribution.
+            var memberName = GetMemberName(member) ?? member.Kind().ToString();
+
             foreach (var node in member.DescendantNodesAndSelf())
             {
                 ct.ThrowIfCancellationRequested();
@@ -396,7 +426,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     $"Extracted member may reference '{sym.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}' " +
                     $"which remains on the original type '{typeSymbol.Name}' and is not available in the new type.";
                 if (seen.Add(msg))
-                    warnings.Add(msg);
+                    warnings.Add(new BlockingDependencyDto(memberName, msg));
             }
         }
 
