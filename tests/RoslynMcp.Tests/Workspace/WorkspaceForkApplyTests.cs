@@ -106,7 +106,7 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("drop-on-success", true, false)]
     [DataRow("drop-on-success", false, true)]
     [DataRow("drop-on-failure", true, true)]

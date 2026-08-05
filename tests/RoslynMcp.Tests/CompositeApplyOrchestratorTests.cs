@@ -93,7 +93,7 @@ public sealed class CompositeApplyOrchestratorTests
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
 
         // (a) The original write failure must still propagate — primary failure is not masked.
-        await Assert.ThrowsExceptionAsync<IOException>(
+        await Assert.ThrowsExactlyAsync<IOException>(
             () => AtomicFileWriter.WriteAllTextAsync(path, "// content", CancellationToken.None, logger));
 
         // (b) Exactly one Warning naming the .tmp path is recorded.

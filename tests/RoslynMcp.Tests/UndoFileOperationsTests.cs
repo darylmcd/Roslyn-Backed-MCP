@@ -72,7 +72,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task DeleteFile_Then_Revert_Restores_Original_Bytes(bool useUtf16)
@@ -202,7 +202,7 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task DocumentSetPersistence_ProjectReferenceWrite_PreservesEncoding(bool useUtf16)
