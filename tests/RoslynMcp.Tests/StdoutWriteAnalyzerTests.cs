@@ -90,6 +90,31 @@ public sealed class StdoutWriteAnalyzerTests
     }
 
     [TestMethod]
+    public async Task RMCP010_WhenConsoleWriteLineImportedStatically()
+    {
+        var source = """
+            using static System.Console;
+
+            namespace RoslynMcp.Host.Stdio
+            {
+                public static class Leak
+                {
+                    public static void Bad()
+                    {
+                        {|#0:WriteLine("test")|};
+                    }
+                }
+            }
+            """;
+
+        var expected = new DiagnosticResult("RMCP010", DiagnosticSeverity.Warning)
+            .WithLocation(0)
+            .WithArguments("Console.WriteLine", HostStdioAssemblyName);
+
+        await VerifyAsync(source, expected);
+    }
+
+    [TestMethod]
     public async Task RMCP010_WhenConsoleWriteCalled()
     {
         var source = """

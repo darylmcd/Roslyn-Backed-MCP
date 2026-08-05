@@ -56,8 +56,8 @@ internal class UnresolvedAnalyzerReferenceStripper
                 newDiagnostics.Add(new DiagnosticDto(
                     Id: "WORKSPACE_UNRESOLVED_ANALYZER",
                     Message: $"Unresolved analyzer reference removed from project '{project.Name}': {displayName}. " +
-                             "This typically indicates a missing analyzer build output (netstandard2.0 analyzer project) " +
-                             "or an unresolved package path. Run `dotnet build` on the analyzer project, then `workspace_reload`.",
+                             "Run `dotnet build` on the analyzer project to produce the missing analyzer output, " +
+                             "then run `workspace_reload`.",
                     Severity: WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Warning, ""),
                     Category: "Workspace",
                     FilePath: project.FilePath,

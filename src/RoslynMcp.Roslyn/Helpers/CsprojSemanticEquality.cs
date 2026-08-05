@@ -50,7 +50,38 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </remarks>
 internal static class CsprojSemanticEquality
 {
-    internal sealed record ProjectFileSnapshot(string Content, byte[] Bytes);
+    internal sealed record ProjectFileSnapshot(
+        string Content,
+        byte[] Bytes,
+        Encoding TextEncoding,
+        bool HasPreamble)
+    {
+        public byte[] Encode(XDocument document)
+        {
+            var originalDeclaration = XDocument.Parse(Content, LoadOptions.PreserveWhitespace).Declaration;
+            var content = document.ToString(SaveOptions.DisableFormatting);
+            if (originalDeclaration is not null)
+            {
+                var declaration = new XDeclaration(
+                    originalDeclaration.Version,
+                    TextEncoding.WebName,
+                    originalDeclaration.Standalone);
+                content = string.Concat(declaration, Environment.NewLine, content);
+            }
+
+            var contentBytes = TextEncoding.GetBytes(content);
+            if (!HasPreamble)
+            {
+                return contentBytes;
+            }
+
+            var preamble = TextEncoding.GetPreamble();
+            var encoded = new byte[preamble.Length + contentBytes.Length];
+            preamble.CopyTo(encoded, 0);
+            contentBytes.CopyTo(encoded, preamble.Length);
+            return encoded;
+        }
+    }
 
     /// <summary>
     /// Returns <see langword="true"/> when <paramref name="originalContent"/> and
@@ -197,14 +228,15 @@ internal static class CsprojSemanticEquality
     /// <remarks>
     /// Read failures for individual csprojs are logged and skipped: they forfeit the
     /// trivia-restore guarantee for the affected file but do not propagate to the caller.
-    /// Returns a path-keyed dictionary (ordinal-ignore-case) with one entry per readable csproj.
+    /// Returns a path-keyed dictionary using the current platform's path semantics with one
+    /// entry per readable csproj.
     /// </remarks>
     public static async Task<Dictionary<string, ProjectFileSnapshot>> SnapshotProjectsAsync(
         IEnumerable<string> csprojPaths,
         ILogger logger,
         CancellationToken ct)
     {
-        var snapshots = new Dictionary<string, ProjectFileSnapshot>(StringComparer.OrdinalIgnoreCase);
+        var snapshots = new Dictionary<string, ProjectFileSnapshot>(FileSystemPath.Comparer);
         foreach (var path in csprojPaths)
         {
             if (string.IsNullOrWhiteSpace(path) || snapshots.ContainsKey(path) || !File.Exists(path))
@@ -215,7 +247,7 @@ internal static class CsprojSemanticEquality
             try
             {
                 var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-                snapshots[path] = new ProjectFileSnapshot(DecodeText(bytes), bytes);
+                snapshots[path] = CreateSnapshot(bytes);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -229,7 +261,7 @@ internal static class CsprojSemanticEquality
         return snapshots;
     }
 
-    private static string DecodeText(byte[] bytes)
+    internal static ProjectFileSnapshot CreateSnapshot(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes, writable: false);
         using var reader = new StreamReader(
@@ -237,7 +269,11 @@ internal static class CsprojSemanticEquality
             Encoding.UTF8,
             detectEncodingFromByteOrderMarks: true,
             leaveOpen: false);
-        return reader.ReadToEnd();
+        var content = reader.ReadToEnd();
+        var encoding = reader.CurrentEncoding;
+        var preamble = encoding.GetPreamble();
+        var hasPreamble = preamble.Length > 0 && bytes.AsSpan().StartsWith(preamble);
+        return new ProjectFileSnapshot(content, bytes, encoding, hasPreamble);
     }
 
     /// <summary>
@@ -287,7 +323,7 @@ internal static class CsprojSemanticEquality
                     continue;
                 }
 
-                if (AreXmlEquivalent(original.Content, DecodeText(currentBytes)))
+                if (AreXmlEquivalent(original.Content, CreateSnapshot(currentBytes).Content))
                 {
                     await File.WriteAllBytesAsync(csprojPath, original.Bytes, ct).ConfigureAwait(false);
                     logger.LogDebug(

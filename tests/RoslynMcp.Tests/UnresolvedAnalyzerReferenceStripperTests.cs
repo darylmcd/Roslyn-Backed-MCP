@@ -71,6 +71,8 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
         Assert.AreEqual("WORKSPACE_UNRESOLVED_ANALYZER", dto!.Id);
         Assert.AreEqual("Warning", dto.Severity);
         StringAssert.Contains(dto.Message, "SampleLib");
+        StringAssert.Contains(dto.Message, "Run `dotnet build`");
+        Assert.IsFalse(dto.Message.Contains("package path", StringComparison.Ordinal));
     }
 
     [TestMethod]
