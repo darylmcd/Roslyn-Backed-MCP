@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-05T21:25:00Z
+**updated_at:** 2026-08-05T23:16:43Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `extract-type-preview-refusal-missing-blocking-deps` | High | — | **extract_type_preview refusals give no retry path** — surface the already-collected dangling-reference warnings as structured `blockingDependencies` data (not just prose) so callers can retry with a corrected memberNames set instead of abandoning the tool. [type: feature] [source: 2026-08-05 multisession retro] | M | items/extract-type-preview-refusal-missing-blocking-deps.md |
 | `validate-workspace-compiler-category-status-mismatch` | High | — | **validate_workspace reports compile-error on a clean build** — `ComputeOverallStatus` flags `compile-error` whenever the separately-harvested `diagResult.CompilerDiagnostics` contains a Category="Compiler" error, even when `compile.ErrorCount==0`; reconcile the two error sources. [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-workspace-compiler-category-status-mismatch.md |
 | `workspace-eviction-no-auto-retry-on-tool-call` | High | — | **Auto-retry once on WorkspaceEvictedException** — `compile_check`/`test_run` surface a hard failure instead of transparently reloading an evicted workspace and retrying once; TTL-refresh-on-touch already exists (`TouchAccess`), only the retry wrapper is missing. Caused a non-deterministic test failure in-window. [type: reliability] [source: 2026-08-05 multisession retro] | M | items/workspace-eviction-no-auto-retry-on-tool-call.md |
 
@@ -65,6 +64,7 @@
 | `recommend-workflow-missing-semantic-grep-route` | Medium | — | **recommend_workflow has no semantic_grep routing branch** — its 5 `ContainsAny` rules cover references/outline/compile/tests/rename but nothing routes pattern-search-shaped tasks ("find usages of pattern X") to `semantic_grep`, so agents default to grep. Only pattern confirmed identical across both harnesses in-window. [type: feature] [source: 2026-08-05 multisession retro] | S | items/recommend-workflow-missing-semantic-grep-route.md |
 | `stage-review-inbox-multisession-retro-glob-miss` | Medium | — | **Staging script never discovers this repo's own retro reports** — `$filePatterns` in `eng/stage-review-inbox.ps1` is `*_roslyn-mcp-retro.md`, but all 3 retros this repo has ever produced are named `*_roslyn-mcp-multisession-retro.md` and were silently never auto-staged. [type: bug] [source: 2026-08-05 backlog-intake self-discovery] | S | items/stage-review-inbox-multisession-retro-glob-miss.md |
 | `validate-recent-git-changes-status-timeout-false-clean` | Medium | — | **git-status timeout silently reports clean** — the 10s `_gitStatusTimeout` fallback in `GetGitChangedFilesAsync` returns an empty changed-file list on timeout instead of a degraded/unknown signal, distinct from the already-fixed broader validation-phase timeout (closed gh #759). [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-recent-git-changes-status-timeout-false-clean.md |
+| `tool-error-handler-envelope-duplication` | Medium | — | **Extract shared error-envelope builder in ToolErrorHandler.FormatErrorResponse** — 4 near-identical anonymous-object literals repeat the same 5 properties; every future structured field costs another copy. [type: refactor] [source: PR #1138 code-quality review] | S | items/tool-error-handler-envelope-duplication.md |
 
 ## Low
 
@@ -103,6 +103,8 @@
 | `edit-preview-validation-decomposition` | Low | direct-mutation-undo-byte-fidelity | Decompose edit validation and multi-file preview construction without changing coordinate or syntax behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | M | items/edit-preview-validation-decomposition.md |
 | `refactoring-format-range-preview-decomposition` | Low | — | Decompose format-range preview and splice orchestration while preserving range and trivia behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | M | items/refactoring-format-range-preview-decomposition.md |
 | `refactoring-code-fix-preview-decomposition` | Low | refactoring-format-range-preview-decomposition | Decompose diagnostic code-fix preview selection and assembly while preserving fix behavior. [type: quality] [source: 2026-08-05 direct remediation adjacent review] | M | items/refactoring-code-fix-preview-decomposition.md |
+| `type-extraction-service-dead-warnings-ternary` | Low | — | **Remove unreachable warnings ternary in PreviewExtractTypeAsync** — the line-56 refusal throw guarantees warnings is always empty by line 126, making the ternary dead. [type: refactor] [source: PR #1138 code-quality review] | S | items/type-extraction-service-dead-warnings-ternary.md |
+| `type-extraction-service-dead-fallback-and-stale-naming` | Low | — | **Consolidated cleanup: dead fallback + stale 'warnings' naming in TypeExtractionService** — PartitionMembers filter makes the GetMemberName fallback unreachable; helper/locals still read as advisory though values are fatal refusal causes. [type: refactor] [source: PR #1138 code-quality review] | S | items/type-extraction-service-dead-fallback-and-stale-naming.md |
 
 ## Defer
 

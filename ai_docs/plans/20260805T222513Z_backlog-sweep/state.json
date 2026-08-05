@@ -12,7 +12,7 @@
     {
       "id": "extract-type-preview-refusal-missing-blocking-deps",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-type-preview-refusal-missing-blocking-deps"
       ],
@@ -37,10 +37,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/extract-type-preview-refusal-missing-blocking-deps",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1138",
+      "mergedAt": "2026-08-05T23:15:13Z",
       "notes": null,
       "fileSetHash": "d2f5bbf0dcd4af99163c801d2e57a610b3631f20606583a1b6e177ba18ba4040",
       "stanzaHash": "c2cef7e82dc87a39c1ffc29cb318b205ce023b9a87b916e532544fdc6a729c33",
