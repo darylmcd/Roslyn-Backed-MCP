@@ -1,4 +1,5 @@
 using System.Text;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Helpers;
@@ -34,6 +35,30 @@ public sealed class CsprojReserializationTests : TestBase
     }
 
     // === CsprojSemanticEquality unit tests ===
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ProjectFileSnapshot_Encode_RestoresOriginalDeclarationAndEncoding(bool useUtf16)
+    {
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var originalContent = $"<?xml version=\"1.0\" encoding=\"{encoding.WebName}\"?><Project />";
+        var originalBytes = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(originalContent))
+            .ToArray();
+        var snapshot = CsprojSemanticEquality.CreateSnapshot(originalBytes);
+        var rewrittenDocument = XDocument.Parse("<Project><ItemGroup /></Project>");
+
+        var encodedBytes = snapshot.Encode(rewrittenDocument);
+        var encodedSnapshot = CsprojSemanticEquality.CreateSnapshot(encodedBytes);
+
+        Assert.AreEqual(encoding.CodePage, encodedSnapshot.TextEncoding.CodePage);
+        Assert.IsTrue(encodedSnapshot.HasPreamble);
+        StringAssert.Contains(encodedSnapshot.Content, $"encoding=\"{encoding.WebName}\"");
+        StringAssert.Contains(encodedSnapshot.Content, "ItemGroup");
+    }
 
     [TestMethod]
     public void AreXmlEquivalent_ByteIdentical_IsTrue()

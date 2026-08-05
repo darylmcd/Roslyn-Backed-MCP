@@ -1,7 +1,9 @@
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -70,8 +72,10 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
         }
     }
 
-    [TestMethod]
-    public async Task DeleteFile_Then_Revert_Restores_File_With_Original_Content()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DeleteFile_Then_Revert_Restores_Original_Bytes(bool useUtf16)
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
@@ -83,7 +87,13 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             // Create a throwaway file first so we have a deterministic target to delete.
             var targetFilePath = Path.Combine(solutionDir, "SampleLib", "Item2Guard_ToDelete.cs");
             const string originalContent = "namespace SampleLib;\npublic static class Item2Guard_ToDelete { public const int Marker = 42; }\n";
-            await File.WriteAllTextAsync(targetFilePath, originalContent);
+            Encoding encoding = useUtf16
+                ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+                : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+            var originalBytes = encoding.GetPreamble()
+                .Concat(encoding.GetBytes(originalContent))
+                .ToArray();
+            await File.WriteAllBytesAsync(targetFilePath, originalBytes);
 
             // Reload so the workspace sees the new file as part of its solution.
             await WorkspaceManager.ReloadAsync(workspaceId, CancellationToken.None);
@@ -103,11 +113,10 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
             Assert.IsTrue(
                 File.Exists(targetFilePath),
                 "Files deleted by the apply MUST be restored on revert.");
-            var restoredContent = await File.ReadAllTextAsync(targetFilePath);
-            Assert.AreEqual(
-                originalContent,
-                restoredContent,
-                "Restored file must exactly match the pre-apply content.");
+            CollectionAssert.AreEqual(
+                originalBytes,
+                await File.ReadAllBytesAsync(targetFilePath),
+                "Restored file must exactly match the pre-apply byte sequence, including its BOM and encoding.");
         }
         finally
         {
@@ -185,6 +194,70 @@ public sealed class UndoFileOperationsTests : IsolatedWorkspaceTestBase
                 projectBytes,
                 await File.ReadAllBytesAsync(sampleLibProjectPath),
                 "A project-reference mutation written before the failure must be rolled back byte-for-byte.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            DeleteDirectoryIfExists(solutionDir);
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DocumentSetPersistence_ProjectReferenceWrite_PreservesEncoding(bool useUtf16)
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        AddProjectToCopiedSolution(solutionDir, "Contracts", "net10.0");
+        var sampleLibProjectPath = Path.Combine(solutionDir, "SampleLib", "SampleLib.csproj");
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var projectText = await File.ReadAllTextAsync(sampleLibProjectPath);
+        var encodedProject = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(projectText))
+            .ToArray();
+        await File.WriteAllBytesAsync(sampleLibProjectPath, encodedProject);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var currentSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+            var sampleLib = currentSolution.Projects.Single(project => project.Name == "SampleLib");
+            var contracts = currentSolution.Projects.Single(project => project.Name == "Contracts");
+            var addedPath = Path.Combine(
+                Path.GetDirectoryName(sampleLibProjectPath)!,
+                "EncodingCompanion.cs");
+            var addedDocumentId = DocumentId.CreateNewId(sampleLib.Id, "EncodingCompanion.cs");
+            var modifiedSolution = currentSolution.AddProjectReference(
+                sampleLib.Id,
+                new ProjectReference(contracts.Id))
+                .AddDocument(
+                    addedDocumentId,
+                    "EncodingCompanion.cs",
+                    SourceText.From("namespace SampleLib; public sealed class EncodingCompanion { }"),
+                    filePath: addedPath);
+            var service = new DocumentSetPersistenceService(WorkspaceManager, NullLogger.Instance);
+
+            var result = await service.PersistAsync(
+                workspaceId,
+                currentSolution,
+                modifiedSolution,
+                modifiedSolution.GetChanges(currentSolution),
+                CancellationToken.None);
+
+            Assert.IsTrue(result.Success);
+            CollectionAssert.Contains(result.AppliedFiles.ToList(), sampleLibProjectPath);
+            var persistedBytes = await File.ReadAllBytesAsync(sampleLibProjectPath);
+            var persistedSnapshot = CsprojSemanticEquality.CreateSnapshot(persistedBytes);
+            Assert.AreEqual(encoding.CodePage, persistedSnapshot.TextEncoding.CodePage);
+            Assert.IsTrue(persistedSnapshot.HasPreamble);
+            StringAssert.Contains(persistedSnapshot.Content, "ProjectReference");
+            StringAssert.Contains(persistedSnapshot.Content, "Contracts.csproj");
+            Assert.IsTrue(File.Exists(addedPath));
         }
         finally
         {

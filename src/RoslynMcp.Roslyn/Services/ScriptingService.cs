@@ -147,6 +147,9 @@ public sealed class ScriptingService : IScriptingService
     {
         try
         {
+            // APPROVED-SYNC-OVER-ASYNC: ScriptExecutionSupervisor invokes this method on a
+            // dedicated worker thread. The fence is intentional because CSharpScript can ignore
+            // cancellation in tight loops; never move it onto a thread-pool or request thread.
             var result = CSharpScript
                 .EvaluateAsync<object?>(code, scriptOptions, cancellationToken: timeoutToken)
                 .GetAwaiter().GetResult();

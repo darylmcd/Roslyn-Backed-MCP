@@ -104,7 +104,7 @@ internal sealed class DocumentSetPersistenceService
             ct).ConfigureAwait(false);
 
         return new DocumentSetPersistenceState(
-            new Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot>(FileSystemPath.Comparer),
             new List<string>(),
             allCsprojSnapshots,
             fileSnapshots);
@@ -130,7 +130,9 @@ internal sealed class DocumentSetPersistenceService
 
         await ApplyChangesAsync(
             workspaceId,
+            currentSolution,
             modifiedSolution,
+            solutionChanges,
             persistenceState.SdkProjectCsprojSnapshots,
             persistenceState.AllCsprojSnapshots,
             ct).ConfigureAwait(false);
@@ -273,7 +275,9 @@ internal sealed class DocumentSetPersistenceService
 
     private async Task ApplyChangesAsync(
         string workspaceId,
+        Solution currentSolution,
         Solution modifiedSolution,
+        SolutionChanges solutionChanges,
         Dictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> sdkProjectCsprojSnapshots,
         IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> allCsprojSnapshots,
         CancellationToken ct)
@@ -283,16 +287,68 @@ internal sealed class DocumentSetPersistenceService
         await RestoreSdkProjectSnapshotsAsync(sdkProjectCsprojSnapshots, ct).ConfigureAwait(false);
         await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
             allCsprojSnapshots,
-            sdkProjectCsprojSnapshots.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            sdkProjectCsprojSnapshots.Keys.ToHashSet(FileSystemPath.Comparer),
             _logger,
             operationTag: "csproj-reserialization-msbuildworkspace",
             ct: ct,
             throwOnFailure: true).ConfigureAwait(false);
+        await RestoreProjectReferenceWritesAsync(
+            currentSolution,
+            modifiedSolution,
+            solutionChanges,
+            allCsprojSnapshots,
+            ct).ConfigureAwait(false);
 
         if (!applied)
         {
             throw new InvalidOperationException(
                 $"TryApplyChanges rejected persisted document-set changes for workspace '{workspaceId}'.");
+        }
+    }
+
+    private async Task RestoreProjectReferenceWritesAsync(
+        Solution currentSolution,
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        IReadOnlyDictionary<string, CsprojSemanticEquality.ProjectFileSnapshot> originalSnapshots,
+        CancellationToken ct)
+    {
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            if (!projectChange.GetAddedProjectReferences().Any()
+                && !projectChange.GetRemovedProjectReferences().Any())
+            {
+                continue;
+            }
+
+            var projectPath = modifiedSolution.GetProject(projectChange.ProjectId)?.FilePath;
+            if (projectPath is null || !originalSnapshots.TryGetValue(projectPath, out var original))
+            {
+                throw new IOException(
+                    $"Could not restore the original encoding for project file '{projectPath}'.");
+            }
+
+            var currentBytes = await _fileSystem.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false);
+            var current = CsprojSemanticEquality.CreateSnapshot(currentBytes);
+            var document = XDocument.Parse(current.Content, LoadOptions.PreserveWhitespace);
+            var projectDirectory = Path.GetDirectoryName(projectPath)
+                ?? throw new InvalidOperationException("Project file path must have a parent directory.");
+            AddProjectReferences(
+                document,
+                projectDirectory,
+                modifiedSolution,
+                projectChange.GetAddedProjectReferences());
+            RemoveProjectReferences(
+                document,
+                projectDirectory,
+                currentSolution,
+                modifiedSolution,
+                projectChange.GetRemovedProjectReferences());
+            var encodedBytes = original.Encode(document);
+            if (!currentBytes.AsSpan().SequenceEqual(encodedBytes))
+            {
+                await _fileSystem.WriteAllBytesAsync(projectPath, encodedBytes, ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -333,24 +389,49 @@ internal sealed class DocumentSetPersistenceService
             return;
         }
 
-        var originalContent = await _fileSystem
-            .ReadAllTextAsync(modifiedProject.FilePath, ct)
+        var originalBytes = await _fileSystem
+            .ReadAllBytesAsync(modifiedProject.FilePath, ct)
             .ConfigureAwait(false);
-        var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
+        var originalSnapshot = CsprojSemanticEquality.CreateSnapshot(originalBytes);
+        var document = XDocument.Parse(originalSnapshot.Content, LoadOptions.PreserveWhitespace);
         var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
             ?? throw new InvalidOperationException("Project file path must have a parent directory.");
-        var changed = false;
+        var changed = AddProjectReferences(
+            document,
+            projectDirectory,
+            modifiedSolution,
+            addedProjectReferences);
+        changed |= RemoveProjectReferences(
+            document,
+            projectDirectory,
+            currentSolution,
+            modifiedSolution,
+            removedProjectReferences);
 
+        if (!changed)
+        {
+            return;
+        }
+
+        await _fileSystem.WriteAllBytesAsync(
+            modifiedProject.FilePath,
+            originalSnapshot.Encode(document),
+            ct).ConfigureAwait(false);
+        appliedFiles.Add(modifiedProject.FilePath);
+    }
+
+    private static bool AddProjectReferences(
+        XDocument document,
+        string projectDirectory,
+        Solution modifiedSolution,
+        IEnumerable<ProjectReference> addedProjectReferences)
+    {
+        var changed = false;
         foreach (var projectReference in addedProjectReferences)
         {
             var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
-            if (referencedProject?.FilePath is null)
-            {
-                continue;
-            }
-
-            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
-            if (document.Descendants("ProjectReference").Any(element =>
+            if (referencedProject?.FilePath is null
+                || document.Descendants("ProjectReference").Any(element =>
                     ProjectReferenceTargetsPath(
                         (string?)element.Attribute("Include"),
                         projectDirectory,
@@ -359,11 +440,23 @@ internal sealed class DocumentSetPersistenceService
                 continue;
             }
 
+            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
             OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
                 .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
             changed = true;
         }
 
+        return changed;
+    }
+
+    private static bool RemoveProjectReferences(
+        XDocument document,
+        string projectDirectory,
+        Solution currentSolution,
+        Solution modifiedSolution,
+        IEnumerable<ProjectReference> removedProjectReferences)
+    {
+        var changed = false;
         foreach (var projectReference in removedProjectReferences)
         {
             var referencedProject = currentSolution.GetProject(projectReference.ProjectId)
@@ -378,7 +471,6 @@ internal sealed class DocumentSetPersistenceService
                     (string?)candidate.Attribute("Include"),
                     projectDirectory,
                     referencedProject.FilePath));
-
             if (element is null)
             {
                 continue;
@@ -388,16 +480,7 @@ internal sealed class DocumentSetPersistenceService
             changed = true;
         }
 
-        if (!changed)
-        {
-            return;
-        }
-
-        await _fileSystem.WriteAllTextAsync(
-            modifiedProject.FilePath,
-            document.ToString(SaveOptions.DisableFormatting),
-            ct).ConfigureAwait(false);
-        appliedFiles.Add(modifiedProject.FilePath);
+        return changed;
     }
 
     private async Task<IReadOnlyDictionary<string, FileMutationSnapshot>> SnapshotPotentiallyMutatedFilesAsync(
@@ -407,7 +490,7 @@ internal sealed class DocumentSetPersistenceService
         IEnumerable<string> allCsprojPaths,
         CancellationToken ct)
     {
-        var paths = new HashSet<string>(allCsprojPaths, StringComparer.OrdinalIgnoreCase);
+        var paths = new HashSet<string>(allCsprojPaths, FileSystemPath.Comparer);
 
         foreach (var projectChange in solutionChanges.GetProjectChanges())
         {
@@ -431,8 +514,8 @@ internal sealed class DocumentSetPersistenceService
             }
         }
 
-        var snapshots = new Dictionary<string, FileMutationSnapshot>(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in paths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
+        var snapshots = new Dictionary<string, FileMutationSnapshot>(FileSystemPath.Comparer);
+        foreach (var path in paths.OrderBy(static path => path, FileSystemPath.Comparer))
         {
             if (_fileSystem.FileExists(path))
             {
@@ -526,10 +609,7 @@ internal sealed class DocumentSetPersistenceService
         {
             var includedProjectPath = Path.GetFullPath(include, projectDirectory);
             var normalizedTargetPath = Path.GetFullPath(targetProjectPath);
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-            return string.Equals(includedProjectPath, normalizedTargetPath, comparison);
+            return string.Equals(includedProjectPath, normalizedTargetPath, FileSystemPath.Comparison);
         }
         catch (Exception ex) when (
             ex is ArgumentException
@@ -557,7 +637,7 @@ internal sealed class DocumentSetPersistenceService
         public IReadOnlyDictionary<string, FileMutationSnapshot> FileSnapshots { get; } = fileSnapshots;
 
         public IReadOnlyList<string> GetDistinctAppliedFiles() =>
-            AppliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            AppliedFiles.Distinct(FileSystemPath.Comparer).ToList();
     }
 
     private sealed record FileMutationSnapshot(bool Existed, byte[]? Bytes);
