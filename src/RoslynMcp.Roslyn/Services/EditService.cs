@@ -77,9 +77,14 @@ public sealed class EditService : IEditService
         // pass BOTH the solution (for the legacy path) AND an explicit file snapshot
         // (for the authoritative file-based restore path — see FLAG-9A in UndoService).
         // Syntax check runs before capture so a rejected edit does not leave a no-op undo entry.
+        var normalizedFilePath = Path.GetFullPath(filePath);
         var fileSnapshots = new[]
         {
-            new FileSnapshotDto(Path.GetFullPath(filePath), sourceText.ToString()),
+            File.Exists(normalizedFilePath)
+                ? FileSnapshotDto.FromExistingBytes(
+                    normalizedFilePath,
+                    await File.ReadAllBytesAsync(normalizedFilePath, ct).ConfigureAwait(false))
+                : new FileSnapshotDto(normalizedFilePath, sourceText.ToString()),
         };
         _undoService?.CaptureBeforeApply(
             workspaceId,
@@ -134,9 +139,15 @@ public sealed class EditService : IEditService
 
         // Single snapshot at the top so revert_last_apply rolls back the ENTIRE batch atomically
         // (from an undo perspective; individual disk writes still happen sequentially).
-        var fileSnapshots = perFileSnapshots
-            .Select(t => new FileSnapshotDto(t.NormalizedPath, t.SourceText.ToString()))
-            .ToList();
+        var fileSnapshots = new List<FileSnapshotDto>(perFileSnapshots.Count);
+        foreach (var t in perFileSnapshots)
+        {
+            fileSnapshots.Add(File.Exists(t.NormalizedPath)
+                ? FileSnapshotDto.FromExistingBytes(
+                    t.NormalizedPath,
+                    await File.ReadAllBytesAsync(t.NormalizedPath, ct).ConfigureAwait(false))
+                : new FileSnapshotDto(t.NormalizedPath, t.SourceText.ToString()));
+        }
         _undoService?.CaptureBeforeApply(
             workspaceId,
             $"Apply edits to {fileEdits.Count} file(s)",

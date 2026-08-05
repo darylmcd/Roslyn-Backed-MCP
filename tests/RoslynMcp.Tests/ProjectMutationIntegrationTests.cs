@@ -1,3 +1,4 @@
+using System.Text;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 
@@ -552,6 +553,49 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
 
         var revertedBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
         Assert.AreEqual(preApplyBytes, revertedBytes, "Revert must restore the .csproj byte-exact.");
+    }
+
+    /// <summary>
+    /// Regression guard for direct-mutation-undo-byte-fidelity: <c>apply_project_mutation</c>
+    /// must capture a byte-exact pre-apply snapshot (via <c>FileSnapshotDto.FromExistingBytes</c>)
+    /// so revert restores the original BOM/encoding exactly, not a re-encoded-as-default-UTF8
+    /// approximation. The sibling test above only asserts on decoded text, which passes even
+    /// with the pre-fix text-only snapshot; this test asserts on raw bytes to close that gap.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Apply_Project_Mutation_Then_Revert_Restores_Original_Bytes(bool useUtf16)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+
+        var originalContent = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var originalBytes = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(originalContent))
+            .ToArray();
+        await File.WriteAllBytesAsync(projectFilePath, originalBytes, CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        Assert.IsTrue(reverted, "revert_last_apply must succeed.");
+
+        CollectionAssert.AreEqual(
+            originalBytes,
+            await File.ReadAllBytesAsync(projectFilePath, CancellationToken.None),
+            "Restored .csproj must exactly match the pre-apply byte sequence, including its BOM and encoding.");
     }
 
     [TestMethod]

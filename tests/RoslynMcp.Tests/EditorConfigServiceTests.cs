@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Roslyn.Services;
 
@@ -46,6 +47,49 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
             $"Get must surface '{unloadedKey}' after Set writes it, even when no loaded analyzer reports the id. " +
             $"Returned keys: {string.Join(", ", options.Options.Select(o => o.Key))}");
         Assert.AreEqual(value, entry!.Value);
+    }
+
+    /// <summary>
+    /// Regression guard for direct-mutation-undo-byte-fidelity: <c>set_editorconfig_option</c>
+    /// must capture a byte-exact pre-apply snapshot (via <c>FileSnapshotDto.FromExistingBytes</c>)
+    /// of a pre-existing <c>.editorconfig</c> so <c>revert_last_apply</c> restores its original
+    /// BOM/encoding exactly, not a re-encoded-as-default-UTF8 approximation.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task SetOptionAsync_ThenRevert_RestoresOriginalBytes(bool useUtf16)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var editorconfigPath = Path.Combine(workspace.RootPath, ".editorconfig");
+        const string key = "dotnet_diagnostic.CA9877.severity";
+        const string originalContent = "[*.{cs,csx,cake}]\ndotnet_diagnostic.CA9877.severity = warning\n";
+
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var originalBytes = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(originalContent))
+            .ToArray();
+        await File.WriteAllBytesAsync(editorconfigPath, originalBytes, CancellationToken.None);
+
+        var setResult = await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, key, "error", "set_editorconfig_option", CancellationToken.None);
+        Assert.IsFalse(setResult.CreatedNewFile, "File already existed; CreatedNewFile must be false.");
+
+        var afterSet = await File.ReadAllTextAsync(editorconfigPath, CancellationToken.None);
+        StringAssert.Contains(afterSet, "error", "Sanity check: the option must have been updated.");
+
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        Assert.IsTrue(reverted, "Revert should succeed.");
+
+        CollectionAssert.AreEqual(
+            originalBytes,
+            await File.ReadAllBytesAsync(editorconfigPath, CancellationToken.None),
+            "Restored .editorconfig must exactly match the pre-apply byte sequence, including its BOM and encoding.");
     }
 
     /// <summary>

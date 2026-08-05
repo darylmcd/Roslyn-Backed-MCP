@@ -1,3 +1,4 @@
+using System.Text;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
@@ -52,6 +53,50 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
             "After revert, Dog.cs must match the original byte-for-byte.");
     }
 
+    /// <summary>
+    /// Regression guard for direct-mutation-undo-byte-fidelity: <c>apply_text_edit</c>
+    /// must capture a byte-exact pre-apply snapshot (via <c>FileSnapshotDto.FromExistingBytes</c>)
+    /// so revert restores the original BOM/encoding exactly, not a re-encoded-as-default-UTF8
+    /// approximation. Mirrors <see cref="UndoFileOperationsTests.DeleteFile_Then_Revert_Restores_Original_Bytes"/>.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ApplyTextEdit_ThenRevert_RestoresOriginalBytes(bool useUtf16)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var originalBytes = encoding.GetPreamble()
+            .Concat(encoding.GetBytes(originalText))
+            .ToArray();
+        await File.WriteAllBytesAsync(dogFilePath, originalBytes, CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var lines = originalText.Split('\n');
+        var lastLine = lines.Length;
+        var lastColumn = lines[^1].Length + 1;
+        var edit = new TextEditDto(lastLine, lastColumn, lastLine, lastColumn, "\n// inserted by test");
+
+        var result = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(result.Success, "ApplyTextEditsAsync should report success.");
+
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        Assert.IsTrue(reverted, "Revert should succeed.");
+
+        CollectionAssert.AreEqual(
+            originalBytes,
+            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            "Restored file must exactly match the pre-apply byte sequence, including its BOM and encoding.");
+    }
+
     [TestMethod]
     public async Task ApplyMultiFileEdit_ThenRevert_RestoresAllFiles()
     {
@@ -94,6 +139,59 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         var revertedCat = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
         Assert.AreEqual(originalDog, revertedDog, "Dog.cs must match the original after revert.");
         Assert.AreEqual(originalCat, revertedCat, "Cat.cs must match the original after revert.");
+    }
+
+    /// <summary>
+    /// Regression guard for direct-mutation-undo-byte-fidelity: <c>apply_multi_file_edit</c>'s
+    /// batch snapshot must be byte-exact per file so revert restores each file's original
+    /// BOM/encoding exactly.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ApplyMultiFileEdit_ThenRevert_RestoresOriginalBytes(bool useUtf16)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+
+        var originalDogText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var originalCatText = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
+
+        Encoding encoding = useUtf16
+            ? new UnicodeEncoding(bigEndian: false, byteOrderMark: true)
+            : new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var originalDogBytes = encoding.GetPreamble().Concat(encoding.GetBytes(originalDogText)).ToArray();
+        var originalCatBytes = encoding.GetPreamble().Concat(encoding.GetBytes(originalCatText)).ToArray();
+        await File.WriteAllBytesAsync(dogFilePath, originalDogBytes, CancellationToken.None);
+        await File.WriteAllBytesAsync(catFilePath, originalCatBytes, CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var dogEdit = AppendCommentEdit(originalDogText, "// dog test");
+        var catEdit = AppendCommentEdit(originalCatText, "// cat test");
+
+        var fileEdits = new[]
+        {
+            new FileEditsDto(dogFilePath, new[] { dogEdit }),
+            new FileEditsDto(catFilePath, new[] { catEdit }),
+        };
+
+        var dto = await EditService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, "apply_multi_file_edit", CancellationToken.None);
+        Assert.IsTrue(dto.Success);
+
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        Assert.IsTrue(reverted, "Multi-file revert should succeed.");
+
+        CollectionAssert.AreEqual(
+            originalDogBytes,
+            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            "Dog.cs must be restored byte-exact, including BOM/encoding.");
+        CollectionAssert.AreEqual(
+            originalCatBytes,
+            await File.ReadAllBytesAsync(catFilePath, CancellationToken.None),
+            "Cat.cs must be restored byte-exact, including BOM/encoding.");
     }
 
     [TestMethod]
