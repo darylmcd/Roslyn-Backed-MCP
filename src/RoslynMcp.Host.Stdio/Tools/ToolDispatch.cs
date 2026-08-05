@@ -208,4 +208,170 @@ internal static class ToolDispatch
             var result = await serviceCall(c).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
+
+    /// <summary>
+    /// Eviction-tolerant variant of
+    /// <see cref="ReadByWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>.
+    /// Runs the read once; when the workspace lookup misses because the session was evicted,
+    /// rehydrates it from the evicted session's recorded <c>LoadedPath</c> and retries the read
+    /// exactly once against the fresh <c>workspaceId</c>. Any other failure — and any second
+    /// failure — propagates unchanged so the caller's existing error envelope is preserved.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>workspace-eviction-no-auto-retry-on-tool-call</c>. Two distinct miss shapes reach this
+    /// helper and both must recover:
+    /// </para>
+    /// <list type="number">
+    ///   <item><description><b>Evicted before the call started</b> (the common case) —
+    ///     <c>WorkspaceExecutionGate.RunPerWorkspaceAsync</c> runs a cheap
+    ///     <c>ContainsWorkspace</c> precheck that only consults the live session dictionary and
+    ///     throws a bare <see cref="KeyNotFoundException"/>, never reaching
+    ///     <c>WorkspaceManager.GetRequiredSession</c>'s richer classification. The helper
+    ///     therefore re-probes the manager (<see cref="TryReclassifyAsEvicted"/>) to recover the
+    ///     <see cref="WorkspaceEvictedException"/> the gate short-circuited.</description></item>
+    ///   <item><description><b>Evicted mid-call</b> (the narrow race) — the deeper
+    ///     <c>GetRequiredSession</c> lookup inside the service body throws
+    ///     <see cref="WorkspaceEvictedException"/> directly; it is used as-is.</description></item>
+    /// </list>
+    /// <para>
+    /// <paramref name="workspaceManager"/> is optional so direct (non-DI) callers keep the exact
+    /// pre-existing behaviour: with no manager the helper degrades to
+    /// <see cref="ReadByWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+    /// and never retries.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
+    /// <param name="gate">The workspace execution gate.</param>
+    /// <param name="workspaceManager">
+    /// The workspace manager used to reclassify the miss and rehydrate the evicted session, or
+    /// <see langword="null"/> to disable the retry entirely.
+    /// </param>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="serviceCall">
+    /// A closure that invokes the service method for a given workspace id. Unlike the
+    /// non-retrying helpers this takes the id as a parameter rather than capturing it, because
+    /// the retry leg must run against the post-reload id.
+    /// </param>
+    /// <param name="ct">The caller's cancellation token.</param>
+    /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
+    public static async Task<string> ReadByWorkspaceIdWithEvictionRetryAsync<TDto>(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager? workspaceManager,
+        string workspaceId,
+        Func<string, CancellationToken, Task<TDto>> serviceCall,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await ReadByWorkspaceIdAsync(gate, workspaceId, c => serviceCall(workspaceId, c), ct)
+                .ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex) when (workspaceManager is not null)
+        {
+            var reloadedId = await TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct)
+                .ConfigureAwait(false);
+            if (reloadedId is null)
+            {
+                // Not an eviction, or not recoverable — rethrow so the original structured
+                // envelope reaches the caller unchanged (no silent retry loop).
+                throw;
+            }
+
+            return await ReadByWorkspaceIdAsync(gate, reloadedId, c => serviceCall(reloadedId, c), ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Re-probes <paramref name="workspaceManager"/> for <paramref name="workspaceId"/> purely to
+    /// recover the eviction classification that a cheap <c>ContainsWorkspace</c> precheck
+    /// discarded. Returns the <see cref="WorkspaceEvictedException"/> when the manager holds an
+    /// eviction record (or a host-recycle signal) for the id, or <see langword="null"/> when the
+    /// miss is a genuine never-loaded/typo'd id — or when the workspace turns out to be live
+    /// again (a concurrent reload won the race), in which case there is nothing to rehydrate.
+    /// </summary>
+    /// <remarks>
+    /// Uses <see cref="IWorkspaceManager.GetCurrentVersion"/> rather than
+    /// <see cref="IWorkspaceManager.GetStatus"/> as the probe: both route through
+    /// <c>GetRequiredSession</c> (the sole source of the eviction classification), but
+    /// <c>GetCurrentVersion</c> returns a single <see langword="int"/> instead of building a full
+    /// status DTO with per-project rollups. The probe only ever runs on an already-failing call,
+    /// never on the hot success path.
+    /// </remarks>
+    internal static WorkspaceEvictedException? TryReclassifyAsEvicted(
+        IWorkspaceManager workspaceManager,
+        string workspaceId)
+    {
+        try
+        {
+            _ = workspaceManager.GetCurrentVersion(workspaceId);
+            return null;
+        }
+        catch (WorkspaceEvictedException evicted)
+        {
+            return evicted;
+        }
+        catch (KeyNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Rehydrates an evicted workspace from its recorded <c>LoadedPath</c> and returns the fresh
+    /// workspace id, or <see langword="null"/> when the failure is not a recoverable eviction (no
+    /// eviction record, no recorded path — e.g. a cross-process recycle — or the reload itself
+    /// failed). Callers rethrow the original failure on <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why <see cref="EvictPolicy.Lru"/> and not <see cref="EvictPolicy.Strict"/>:</b> the
+    /// evidenced failure is LRU eviction under <c>MaxConcurrentWorkspaces</c> pressure — the
+    /// evicted session's slot was freed and immediately consumed by the load that triggered the
+    /// eviction, so the cap is still saturated at retry time. A <see cref="EvictPolicy.Strict"/>
+    /// reload would throw <see cref="InvalidOperationException"/> ("already tracking N
+    /// workspaces") for the primary case this helper exists to fix, recovering nothing and
+    /// replacing the caller's eviction envelope with a confusing cap-reached one.
+    /// <see cref="EvictPolicy.Lru"/> makes room by evicting the current least-recently-used
+    /// session, and <c>WorkspaceManager</c>'s LRU scan already skips sessions holding their load
+    /// lock, so an in-flight workspace is never yanked out from under a concurrent caller. This
+    /// is exactly the recovery a caller would perform by hand
+    /// (<c>workspace_load(path, evictPolicy: "lru")</c>), just without the round trip.
+    /// </para>
+    /// <para>
+    /// A failed reload is deliberately not surfaced: the original eviction exception is richer
+    /// (it carries the id, the recorded path, and a copy-pasteable <c>workspace_load</c> recovery
+    /// hint), and the caller rethrows it, so no diagnostic is lost.
+    /// </para>
+    /// </remarks>
+    internal static async Task<string?> TryReloadEvictedWorkspaceForRetryAsync(
+        IWorkspaceManager workspaceManager,
+        string workspaceId,
+        KeyNotFoundException failure,
+        CancellationToken ct)
+    {
+        var evicted = failure as WorkspaceEvictedException
+            ?? TryReclassifyAsEvicted(workspaceManager, workspaceId);
+
+        if (evicted?.LoadedPath is not { Length: > 0 } loadedPath)
+        {
+            return null;
+        }
+
+        try
+        {
+            var reloaded = await workspaceManager.LoadAsync(loadedPath, EvictPolicy.Lru, ct)
+                .ConfigureAwait(false);
+            return reloaded.WorkspaceId;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
