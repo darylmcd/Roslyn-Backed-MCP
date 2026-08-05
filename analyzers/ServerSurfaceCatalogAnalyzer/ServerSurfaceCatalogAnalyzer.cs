@@ -121,9 +121,10 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
             }
 
             var state = new CatalogState();
+            var attributeSymbols = new SurfaceAttributeSymbols(toolAttr, resourceAttr, promptAttr);
 
             compilationStart.RegisterSymbolAction(
-                symbolContext => AnalyzeMethodAttributes(symbolContext, state, toolAttr, resourceAttr, promptAttr),
+                symbolContext => AnalyzeMethodAttributes(symbolContext, state, attributeSymbols),
                 SymbolKind.Method);
 
             compilationStart.RegisterSyntaxNodeAction(
@@ -137,9 +138,7 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeMethodAttributes(
         SymbolAnalysisContext context,
         CatalogState state,
-        INamedTypeSymbol? toolAttr,
-        INamedTypeSymbol? resourceAttr,
-        INamedTypeSymbol? promptAttr)
+        SurfaceAttributeSymbols attributeSymbols)
     {
         var method = (IMethodSymbol)context.Symbol;
         foreach (var attribute in method.GetAttributes())
@@ -147,25 +146,7 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
             var attrClass = attribute.AttributeClass;
             if (attrClass is null) continue;
 
-            SurfaceKind? kind = null;
-            string? attributeName = null;
-            if (toolAttr is not null && SymbolEqualityComparer.Default.Equals(attrClass, toolAttr))
-            {
-                kind = SurfaceKind.Tool;
-                attributeName = "McpServerTool";
-            }
-            else if (resourceAttr is not null && SymbolEqualityComparer.Default.Equals(attrClass, resourceAttr))
-            {
-                kind = SurfaceKind.Resource;
-                attributeName = "McpServerResource";
-            }
-            else if (promptAttr is not null && SymbolEqualityComparer.Default.Equals(attrClass, promptAttr))
-            {
-                kind = SurfaceKind.Prompt;
-                attributeName = "McpServerPrompt";
-            }
-
-            if (kind is null || attributeName is null) continue;
+            if (!TryClassifyAttribute(attrClass, attributeSymbols, out var kind, out var attributeName)) continue;
 
             var toolName = ExtractNameArgument(attribute);
             if (string.IsNullOrEmpty(toolName)) continue;
@@ -174,8 +155,43 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
                 ?? method.Locations.FirstOrDefault()
                 ?? Location.None;
 
-            state.AddAttributed(kind.Value, toolName!, location, attributeName);
+            state.AddAttributed(kind, toolName!, location, attributeName);
         }
+    }
+
+    private static bool TryClassifyAttribute(
+        INamedTypeSymbol attributeClass,
+        SurfaceAttributeSymbols symbols,
+        out SurfaceKind kind,
+        out string attributeName)
+    {
+        if (symbols.Tool is not null
+            && SymbolEqualityComparer.Default.Equals(attributeClass, symbols.Tool))
+        {
+            kind = SurfaceKind.Tool;
+            attributeName = "McpServerTool";
+            return true;
+        }
+
+        if (symbols.Resource is not null
+            && SymbolEqualityComparer.Default.Equals(attributeClass, symbols.Resource))
+        {
+            kind = SurfaceKind.Resource;
+            attributeName = "McpServerResource";
+            return true;
+        }
+
+        if (symbols.Prompt is not null
+            && SymbolEqualityComparer.Default.Equals(attributeClass, symbols.Prompt))
+        {
+            kind = SurfaceKind.Prompt;
+            attributeName = "McpServerPrompt";
+            return true;
+        }
+
+        kind = default;
+        attributeName = string.Empty;
+        return false;
     }
 
     private static string? ExtractNameArgument(AttributeData attribute)
@@ -216,24 +232,12 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var methodName = identifier.Identifier.ValueText;
-        SurfaceKind kind;
-        switch (methodName)
-        {
-            case CatalogToolMethod: kind = SurfaceKind.Tool; break;
-            case CatalogResourceMethod: kind = SurfaceKind.Resource; break;
-            case CatalogPromptMethod: kind = SurfaceKind.Prompt; break;
-            default: return;
-        }
+        if (!TryGetCatalogKind(identifier.Identifier.ValueText, out var kind)) return;
 
         // Semantic check: require the invocation to bind to a method on ServerSurfaceCatalog
         // (not some helper of the same name imported from elsewhere). This is the
         // disambiguation that makes the analyzer safe against identifier shadowing.
-        var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken);
-        var targetMethod = symbolInfo.Symbol as IMethodSymbol
-            ?? symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
-        if (targetMethod is null
-            || !string.Equals(targetMethod.ContainingType?.Name, CatalogTypeName, StringComparison.Ordinal))
+        if (!BindsToCatalogMethod(context, invocation))
         {
             return;
         }
@@ -257,6 +261,46 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
 
         var name = literal.Token.ValueText;
         state.AddCatalogEntry(kind, name, literal.GetLocation());
+    }
+
+    private static bool TryGetCatalogKind(string methodName, out SurfaceKind kind)
+    {
+        kind = methodName switch
+        {
+            CatalogToolMethod => SurfaceKind.Tool,
+            CatalogResourceMethod => SurfaceKind.Resource,
+            CatalogPromptMethod => SurfaceKind.Prompt,
+            _ => default
+        };
+        return methodName is CatalogToolMethod or CatalogResourceMethod or CatalogPromptMethod;
+    }
+
+    private static bool BindsToCatalogMethod(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation)
+    {
+        var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken);
+        var targetMethod = symbolInfo.Symbol as IMethodSymbol
+            ?? symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+        return targetMethod is not null
+            && string.Equals(targetMethod.ContainingType?.Name, CatalogTypeName, StringComparison.Ordinal);
+    }
+
+    private readonly struct SurfaceAttributeSymbols
+    {
+        public SurfaceAttributeSymbols(
+            INamedTypeSymbol? tool,
+            INamedTypeSymbol? resource,
+            INamedTypeSymbol? prompt)
+        {
+            Tool = tool;
+            Resource = resource;
+            Prompt = prompt;
+        }
+
+        public INamedTypeSymbol? Tool { get; }
+        public INamedTypeSymbol? Resource { get; }
+        public INamedTypeSymbol? Prompt { get; }
     }
 
     private static void ReportDrift(CompilationAnalysisContext context, CatalogState state)
@@ -389,4 +433,3 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
         public string AttributeName { get; }
     }
 }
-

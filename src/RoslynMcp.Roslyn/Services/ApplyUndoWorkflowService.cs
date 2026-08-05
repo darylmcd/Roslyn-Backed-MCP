@@ -164,90 +164,77 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
                 previewToken,
                 $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
 
-        // apply-with-verify-cancellation-and-compile-scope: scope both compile_check legs to the
-        // single project the preview actually touches, instead of compiling the FULL solution twice.
-        // Mirrors EditService's ownerProjects/batchProjectFilter pattern: exactly one changed
-        // project → filter to it; zero or many → null (compile everything, the safe fallback).
-        // Retrieve is non-consuming and does not perturb the token's TTL, so the paired apply below
-        // still redeems it. A null entry (stale token) falls through to the full-solution compile —
-        // correctness-preserving, just slower.
-        string? projectFilter = null;
-        if (_previewStore.Retrieve(previewToken) is { } previewEntry)
-        {
-            var changedProjects = previewEntry.ModifiedSolution
-                .GetChanges(previewEntry.OriginalSolution)
-                .GetProjectChanges()
-                .Select(pc => pc.NewProject.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            projectFilter = changedProjects.Count == 1 ? changedProjects[0] : null;
-        }
-
-        // apply-with-verify-diff-not-counts: snapshot pre-apply error IDENTITIES (id+file+line) so we
-        // can tell NEW errors from pre-existing ones. Identity-diff replaces the prior count-delta +
-        // message-fingerprint heuristic that produced false-positive rollbacks when a pre-existing
-        // diagnostic flipped severity class or had its message text shift on the post-apply build
-        // path. CompilationVerification owns the complete, unpaginated check options and is shared
-        // with EditService so neither workflow can silently make a correctness decision from a
-        // truncated diagnostic page.
-        var preBaseline = await CompilationVerification.CaptureAsync(
-            _compileCheckService,
+        var projectFilter = ResolveProjectFilter(previewToken);
+        var preBaseline = await CapturePreApplyBaselineAsync(
             workspaceId,
             projectFilter,
             ct).ConfigureAwait(false);
-
-        // apply-with-verify-cancelled-result-compensation: CompileCheckService.CheckAsync catches
-        // OperationCanceledException internally and returns a normal (non-throwing) DTO with
-        // Cancelled=true instead of propagating the exception — so a caller-token cancellation that
-        // landed inside the pre-apply baseline check is otherwise invisible here. Nothing has been
-        // applied yet, so surface the cancellation directly with zero apply/revert calls.
-        if (preBaseline.Cancelled)
-        {
-            ct.ThrowIfCancellationRequested();
-            throw new OperationCanceledException(ct);
-        }
-
-        // Apply
         var applyResult = await _refactoringService.ApplyRefactoringAsync(previewToken, "apply_with_verify", ct).ConfigureAwait(false);
         if (!applyResult.Success)
         {
             return new ApplyVerifyOutcome.ApplyFailed(applyResult.Error);
         }
 
-        // apply-with-verify-cancellation-and-compile-scope: the workspace is now mutated. Everything
-        // from here to the normal revert leg runs under the caller's token `ct`; if it fires
-        // mid-verify (post-check) or mid-revert, an OperationCanceledException would otherwise unwind
-        // with the apply left in place and NO rollback. Guard the post-apply region so a cancellation
-        // triggers a bounded best-effort revert on a FRESH token before the OCE is rethrown. This
-        // catch can only fire when the apply already succeeded (we are past the !Success early
-        // return), so a pre-apply cancellation on the baseline compile still propagates untouched.
-        //
-        // apply-with-verify-cancelled-result-compensation: `revertedForCancelledDto` guards against a
-        // DOUBLE revert. The postCheck.Cancelled branch below performs its own best-effort revert and
-        // then throws OperationCanceledException from INSIDE this same try block, which the catch
-        // immediately below would otherwise also revert for — exactly one best-effort revert is
-        // required per cancellation. The flag is false on every path where compileCheckService threw
-        // directly (the catch's original responsibility) and true only when this method already
-        // reverted before throwing.
+        return await VerifyAppliedEditAsync(
+            workspaceId,
+            projectFilter,
+            preBaseline,
+            applyResult,
+            rollbackOnError,
+            ct).ConfigureAwait(false);
+    }
+
+    private string? ResolveProjectFilter(string previewToken)
+    {
+        if (_previewStore.Retrieve(previewToken) is not { } previewEntry)
+        {
+            return null;
+        }
+
+        var changedProjects = previewEntry.ModifiedSolution
+            .GetChanges(previewEntry.OriginalSolution)
+            .GetProjectChanges()
+            .Select(projectChange => projectChange.NewProject.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return changedProjects.Count == 1 ? changedProjects[0] : null;
+    }
+
+    private async Task<CompilationErrorSnapshot> CapturePreApplyBaselineAsync(
+        string workspaceId,
+        string? projectFilter,
+        CancellationToken ct)
+    {
+        var baseline = await CompilationVerification.CaptureAsync(
+            _compileCheckService,
+            workspaceId,
+            projectFilter,
+            ct).ConfigureAwait(false);
+        if (!baseline.Cancelled)
+        {
+            return baseline;
+        }
+
+        ct.ThrowIfCancellationRequested();
+        throw new OperationCanceledException(ct);
+    }
+
+    private async Task<ApplyVerifyOutcome> VerifyAppliedEditAsync(
+        string workspaceId,
+        string? projectFilter,
+        CompilationErrorSnapshot preBaseline,
+        ApplyResultDto applyResult,
+        bool rollbackOnError,
+        CancellationToken ct)
+    {
         var revertedForCancelledDto = false;
         try
         {
-            // Verify — extract post-apply error identities and subtract the pre-apply set. The
-            // remaining identities are "introduced" errors that did not exist at any (id+file+line)
-            // location before the apply. Pre-existing errors whose severity flipped, message changed,
-            // or column shifted no longer trigger rollback.
             var postCheck = await CompilationVerification.CaptureAsync(
                 _compileCheckService,
                 workspaceId,
                 projectFilter,
                 ct).ConfigureAwait(false);
-
-            // apply-with-verify-cancelled-result-compensation: as above, a caller-token cancellation
-            // that landed inside the post-apply verify check returns a Cancelled=true DTO rather than
-            // throwing. The apply already succeeded and mutated the workspace, so — unlike the
-            // pre-apply check above — this must attempt exactly one best-effort revert (same
-            // fresh-token helper the thrown-OCE catch block below uses) before surfacing the
-            // cancellation. `newErrors` would otherwise be computed from a partial diagnostic list.
             if (postCheck.Cancelled)
             {
                 await BestEffortRevertAfterCancellationAsync(workspaceId).ConfigureAwait(false);
@@ -266,7 +253,6 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
                     applyResult.AppliedFiles, preBaseline.ErrorCount, postCheck.ErrorCount);
             }
 
-            // New errors appeared. Either roll back or surface for inspection.
             if (!rollbackOnError)
             {
                 return new ApplyVerifyOutcome.AppliedWithErrors(
@@ -279,13 +265,6 @@ public sealed class ApplyUndoWorkflowService : IApplyUndoWorkflowService
         }
         catch (OperationCanceledException)
         {
-            // The apply landed but the caller cancelled before the verify/revert leg finished. Roll
-            // the workspace back best-effort on a fresh token (the caller's token `ct` is already
-            // cancelled and cannot drive the revert), then rethrow the original cancellation so the
-            // caller still observes it. A second failure in the revert itself is logged rather than
-            // swallowed (Directive #3) and does NOT mask the cancellation. Skip the revert here if
-            // the postCheck.Cancelled branch above already performed it (revertedForCancelledDto) —
-            // otherwise this genuinely is the first (and only) observation of the cancellation.
             if (!revertedForCancelledDto)
             {
                 await BestEffortRevertAfterCancellationAsync(workspaceId).ConfigureAwait(false);

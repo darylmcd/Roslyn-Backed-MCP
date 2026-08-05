@@ -121,57 +121,29 @@ public sealed class StdoutWriteAnalyzer : DiagnosticAnalyzer
         INamedTypeSymbol? textWriterType)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-
-        // Only member-access invocations carry the receiver shape we care about
-        // (`Console.WriteLine(...)`, `Console.Out.WriteLine(...)`, `stdout.WriteLine(...)`).
-        // Bare-identifier invocations like `WriteLine(...)` (only valid via `using static`)
-        // are caught by the symbol-binding check below — we resolve via `GetSymbolInfo`
-        // rather than syntax shape so the rule is robust to import style.
-        var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
-        if (memberAccess is null)
-        {
-            return;
-        }
-
-        var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken);
-        var methodSymbol = symbolInfo.Symbol as IMethodSymbol;
-        if (methodSymbol is null && symbolInfo.CandidateSymbols.Length > 0)
-        {
-            methodSymbol = symbolInfo.CandidateSymbols[0] as IMethodSymbol;
-        }
-
-        if (methodSymbol is null)
+        var methodSymbol = ResolveInvokedMethod(context, invocation);
+        if (methodSymbol?.ContainingType is not { } containingType)
         {
             return;
         }
 
         var methodName = methodSymbol.Name;
-        var containingType = methodSymbol.ContainingType;
-        if (containingType is null)
+
+        var staticReceiver = GetForbiddenStaticReceiver(
+            containingType,
+            consoleType,
+            traceType,
+            methodName);
+        if (staticReceiver is not null)
         {
+            ReportInvocation(context, invocation, $"{staticReceiver}.{methodName}");
             return;
         }
 
-        // Branch 1: System.Console static methods (Console.Write*, Console.WriteLine*).
-        // No instance receiver — Console is a static class — so any Write* is forbidden.
-        if (consoleType is not null
-            && SymbolEqualityComparer.Default.Equals(containingType, consoleType)
-            && IsWriteMethodName(methodName))
+        // Static imports have no receiver expression and were handled above. The remaining
+        // TextWriter cases require member access (`Console.Out.WriteLine`, `writer.WriteLine`).
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
         {
-            ReportInvocation(context, invocation, $"Console.{methodName}");
-            return;
-        }
-
-        // Branch 2: System.Diagnostics.Trace static methods (Trace.Write*, Trace.WriteLine*).
-        // Trace defaults to writing to OutputDebugString on Windows but is documented to
-        // route to stdout in some host configurations — flag it for the same reason as
-        // Console.Write*. Allow-listed flush methods don't apply (Trace.Flush is fine —
-        // it doesn't emit content).
-        if (traceType is not null
-            && SymbolEqualityComparer.Default.Equals(containingType, traceType)
-            && IsWriteMethodName(methodName))
-        {
-            ReportInvocation(context, invocation, $"Trace.{methodName}");
             return;
         }
 
@@ -185,33 +157,56 @@ public sealed class StdoutWriteAnalyzer : DiagnosticAnalyzer
         // The receiver-resolution step uses GetSymbolInfo on the member-access expression,
         // which gives us the property symbol for `Console.Out` / `Console.Error` even when
         // the receiver is a local alias for the same property.
-        if (textWriterType is not null
-            && IsTypeOrDerived(containingType, textWriterType)
-            && IsWriteOrFlushMethodName(methodName))
+        if (textWriterType is null
+            || !IsTypeOrDerived(containingType, textWriterType)
+            || !IsWriteOrFlushMethodName(methodName))
         {
-            // Resolve the receiver expression (the bit before the `.` in `receiver.Method(...)`).
-            var receiverExpr = memberAccess.Expression;
-
-            // Allow-list `Console.Error.*` — stderr is the canonical diagnostic channel for
-            // stdio servers and is never the framing channel.
-            if (IsConsoleErrorReceiver(receiverExpr, context.SemanticModel, consoleType, context.CancellationToken))
-            {
-                return;
-            }
-
-            // From here on we're looking at a TextWriter receiver that is NOT Console.Error.
-            // Allow flush calls regardless of receiver — they don't emit content.
-            if (IsFlushMethodName(methodName))
-            {
-                return;
-            }
-
-            // Flag the write. We don't gate on "is this Console.Out specifically" because
-            // Host.Stdio has no legitimate use case for writing to any other TextWriter
-            // (no file appenders, no in-memory writers in production code paths). The
-            // diagnostic message points at the canonical fix (route through ILogger).
-            ReportInvocation(context, invocation, $"{ReceiverDescription(receiverExpr)}.{methodName}");
+            return;
         }
+
+        var receiverExpr = memberAccess.Expression;
+        if (IsConsoleErrorReceiver(receiverExpr, context.SemanticModel, consoleType, context.CancellationToken)
+            || IsFlushMethodName(methodName))
+        {
+            return;
+        }
+
+        ReportInvocation(context, invocation, $"{ReceiverDescription(receiverExpr)}.{methodName}");
+    }
+
+    private static IMethodSymbol? ResolveInvokedMethod(
+        SyntaxNodeAnalysisContext context,
+        InvocationExpressionSyntax invocation)
+    {
+        var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken);
+        return symbolInfo.Symbol as IMethodSymbol
+            ?? (symbolInfo.CandidateSymbols.Length > 0
+                ? symbolInfo.CandidateSymbols[0] as IMethodSymbol
+                : null);
+    }
+
+    private static bool IsStaticWrite(
+        INamedTypeSymbol containingType,
+        INamedTypeSymbol? expectedType,
+        string methodName) =>
+        expectedType is not null
+        && SymbolEqualityComparer.Default.Equals(containingType, expectedType)
+        && IsWriteMethodName(methodName);
+
+    private static string? GetForbiddenStaticReceiver(
+        INamedTypeSymbol containingType,
+        INamedTypeSymbol? consoleType,
+        INamedTypeSymbol? traceType,
+        string methodName)
+    {
+        if (IsStaticWrite(containingType, consoleType, methodName))
+        {
+            return "Console";
+        }
+
+        return IsStaticWrite(containingType, traceType, methodName)
+            ? "Trace"
+            : null;
     }
 
     private static bool IsConsoleErrorReceiver(
@@ -225,46 +220,32 @@ public sealed class StdoutWriteAnalyzer : DiagnosticAnalyzer
             return false;
         }
 
-        var receiverSymbolInfo = semanticModel.GetSymbolInfo(receiver, cancellationToken);
-        var receiverSymbol = receiverSymbolInfo.Symbol;
-        if (receiverSymbol is null)
-        {
-            return false;
-        }
-
-        // Direct `Console.Error` receiver — symbol is the IPropertySymbol on Console.
-        if (receiverSymbol is IPropertySymbol property
+        var property = ResolveReceiverProperty(receiver, semanticModel, cancellationToken);
+        return property is not null
             && SymbolEqualityComparer.Default.Equals(property.ContainingType, consoleType)
-            && string.Equals(property.Name, "Error", StringComparison.Ordinal))
+            && string.Equals(property.Name, "Error", StringComparison.Ordinal);
+    }
+
+    private static IPropertySymbol? ResolveReceiverProperty(
+        ExpressionSyntax receiver,
+        SemanticModel semanticModel,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        var receiverSymbol = semanticModel.GetSymbolInfo(receiver, cancellationToken).Symbol;
+        if (receiverSymbol is IPropertySymbol property)
         {
-            return true;
+            return property;
         }
 
-        // Aliased `var stderr = Console.Error; stderr.WriteLine(...)` — receiver symbol is the
-        // local; we follow the local's initializer if present. Conservative: we only allow when
-        // the local's initializer is exactly the `Console.Error` property access. More elaborate
-        // dataflow (e.g. assignment from a parameter) is out of scope; if Host.Stdio ever needs
-        // that pattern it can use ILogger instead, which is the recommended path anyway.
-        if (receiverSymbol is ILocalSymbol local)
+        if (receiverSymbol is not ILocalSymbol local
+            || local.DeclaringSyntaxReferences.Length == 0
+            || local.DeclaringSyntaxReferences[0].GetSyntax(cancellationToken)
+                is not VariableDeclaratorSyntax { Initializer.Value: MemberAccessExpressionSyntax initializer })
         {
-            var declaringRef = local.DeclaringSyntaxReferences.Length > 0
-                ? local.DeclaringSyntaxReferences[0]
-                : null;
-            var declaringSyntax = declaringRef?.GetSyntax(cancellationToken);
-            if (declaringSyntax is VariableDeclaratorSyntax declarator
-                && declarator.Initializer?.Value is MemberAccessExpressionSyntax initMa)
-            {
-                var initSymbol = semanticModel.GetSymbolInfo(initMa, cancellationToken).Symbol;
-                if (initSymbol is IPropertySymbol initProperty
-                    && SymbolEqualityComparer.Default.Equals(initProperty.ContainingType, consoleType)
-                    && string.Equals(initProperty.Name, "Error", StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
+            return null;
         }
 
-        return false;
+        return semanticModel.GetSymbolInfo(initializer, cancellationToken).Symbol as IPropertySymbol;
     }
 
     private static string ReceiverDescription(ExpressionSyntax receiver) => receiver switch

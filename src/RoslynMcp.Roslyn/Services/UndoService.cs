@@ -360,7 +360,20 @@ public sealed class UndoService : IUndoService, IDisposable
                     {
                         Directory.CreateDirectory(directory);
                     }
-                    await AtomicFileWriter.WriteAllTextAsync(file.FilePath, file.OriginalText, cancellationToken).ConfigureAwait(false);
+                    if (!file.OriginalBytes.IsDefault)
+                    {
+                        await AtomicFileWriter.WriteAllBytesAsync(
+                            file.FilePath,
+                            file.OriginalBytes.ToArray(),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await AtomicFileWriter.WriteAllTextAsync(
+                            file.FilePath,
+                            file.OriginalText,
+                            cancellationToken).ConfigureAwait(false);
+                    }
                     restoredAny = true;
                 }
             }
