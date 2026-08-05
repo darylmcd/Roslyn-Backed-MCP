@@ -3,6 +3,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -31,18 +32,25 @@ public static class CompileCheckTools
         [Description("Optional: only return diagnostics whose file path matches any absolute path in this list. Pass as a native JSON array of absolute file paths, not a JSON-encoded string. When combined with file, the union is used.")] string[]? files = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
+        IWorkspaceManager? workspaceManager = null,
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateSeverity(severity);
         ParameterValidation.ValidatePagination(offset, limit);
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
-        return ToolDispatch.ReadByWorkspaceIdAsync(
+        // workspace-eviction-no-auto-retry-on-tool-call: route through the eviction-tolerant
+        // dispatch helper so a workspace evicted by MaxConcurrentWorkspaces pressure is
+        // rehydrated from its recorded LoadedPath and the check retried once, transparently.
+        // workspaceManager is DI-bound (never surfaced as a tool input); when absent — direct
+        // C# callers in tests — the helper degrades to the plain non-retrying dispatch.
+        return ToolDispatch.ReadByWorkspaceIdWithEvictionRetryAsync(
             gate,
+            workspaceManager,
             workspaceId,
-            async c =>
+            async (wsId, c) =>
             {
                 var result = await compileCheckService.CheckAsync(
-                    workspaceId,
+                    wsId,
                     new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit, files),
                     c).ConfigureAwait(false);
 

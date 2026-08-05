@@ -4,6 +4,7 @@ using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -196,7 +197,89 @@ public static class ValidationTools
         [Description("Optional: specific test project name or file path")] string? projectName = null,
         [Description("Optional: dotnet test filter expression")] string? filter = null,
         IProgress<ProgressNotificationValue>? progress = null,
+        IWorkspaceManager? workspaceManager = null,
         CancellationToken ct = default)
+        => RunTestsWithEvictionRetryAsync(
+            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter, progress, ct);
+
+    /// <summary>
+    /// <c>workspace-eviction-no-auto-retry-on-tool-call</c> — runs <c>test_run</c> once and, when
+    /// the workspace lookup missed because the session was evicted, rehydrates it from the
+    /// evicted session's recorded <c>LoadedPath</c> and re-runs the suite once against the fresh
+    /// workspace id.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>test_run</c> cannot use
+    /// <see cref="ToolDispatch.ReadByWorkspaceIdWithEvictionRetryAsync{TDto}"/> because it formats
+    /// its own failure envelope inline rather than letting exceptions reach the global
+    /// <c>StructuredCallToolFilter</c>. The retry is therefore hand-rolled here so every
+    /// non-recovering path keeps its existing shape byte-for-byte:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description>A miss raised by the gate's <c>ContainsWorkspace</c> precheck (the
+    ///     common "evicted before the call started" case) escapes
+    ///     <see cref="RunTestsOnceAsync"/> today and propagates to the global filter as
+    ///     <c>IsError=true</c>. When it is not recoverable it still does.</description></item>
+    ///   <item><description>A <see cref="WorkspaceEvictedException"/> raised mid-call (the narrow
+    ///     race) is rethrown by <see cref="RunTestsOnceAsync"/> so it can be retried; when it is
+    ///     not recoverable this orchestrator reproduces the original inline
+    ///     <c>ReportStage("done")</c> → <c>ClassifyAndFormat</c> →
+    ///     <c>InjectSchemaHintIfPossible</c> envelope exactly.</description></item>
+    ///   <item><description>Every other exception is still swallowed and formatted inline by
+    ///     <see cref="RunTestsOnceAsync"/> — untouched.</description></item>
+    /// </list>
+    /// </remarks>
+    private static async Task<string> RunTestsWithEvictionRetryAsync(
+        IWorkspaceExecutionGate gate,
+        ITestRunnerService testRunnerService,
+        IWorkspaceManager? workspaceManager,
+        string workspaceId,
+        string? projectName,
+        string? filter,
+        IProgress<ProgressNotificationValue>? progress,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await RunTestsOnceAsync(gate, testRunnerService, workspaceId, projectName, filter, progress, ct)
+                .ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            var reloadedId = workspaceManager is null
+                ? null
+                : await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct)
+                    .ConfigureAwait(false);
+
+            if (reloadedId is null)
+            {
+                if (ex is WorkspaceEvictedException)
+                {
+                    // Raised inside the gated action, where the pre-existing inline catch would
+                    // have formatted it. Reproduce that envelope rather than changing the shape.
+                    ProgressHelper.ReportStage(progress, 3, 3, "done");
+                    var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_run");
+                    return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "test_run");
+                }
+
+                // Raised by the gate precheck, outside the action — propagates today, still does.
+                throw;
+            }
+
+            return await RunTestsOnceAsync(gate, testRunnerService, reloadedId, projectName, filter, progress, ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static Task<string> RunTestsOnceAsync(
+        IWorkspaceExecutionGate gate,
+        ITestRunnerService testRunnerService,
+        string workspaceId,
+        string? projectName,
+        string? filter,
+        IProgress<ProgressNotificationValue>? progress,
+        CancellationToken ct)
     {
         // test-run stage emissions: clients see "discovering-tests → running-tests → done"
         // instead of waiting silently while dotnet-test enumerates assemblies, builds the
@@ -216,6 +299,14 @@ public static class ValidationTools
             }
             catch (OperationCanceledException)
             {
+                throw;
+            }
+            catch (WorkspaceEvictedException)
+            {
+                // Deliberately NOT formatted here: the caller reloads the evicted workspace and
+                // re-runs, and formats this envelope itself when the retry is not available. A
+                // plain KeyNotFoundException from deeper service code is NOT intercepted — it
+                // carries no eviction record, so it stays on the pre-existing inline path below.
                 throw;
             }
             catch (Exception ex)
