@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-05T21:15:00Z
+**updated_at:** 2026-08-05T21:25:00Z
 
 ## Agent contract
 
@@ -62,7 +62,8 @@
 | `compile-check-multi-project-fallback-structured-scope` | Medium | — | **compile_check's multi-project fallback is prose-only** — expose `actualScope`/`requestedScope` as structured DTO fields so callers can detect the full-project-compile fallback without parsing `restoreHint` text. Deterministic across 5 sessions/4 repos in-window; results stay correct, cost is latency. [type: feature] [source: 2026-08-05 multisession retro] | M | items/compile-check-multi-project-fallback-structured-scope.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `direct-mutation-undo-byte-fidelity` | Medium | — | Preserve byte-exact undo snapshots across direct edit, editorconfig, and project mutation paths. [type: bug] [source: 2026-08-05 direct remediation adjacent review] | M | items/direct-mutation-undo-byte-fidelity.md |
-| `recommend-workflow-missing-semantic-grep-route` | Medium | — | **recommend_workflow has no semantic_grep routing branch** — its 5 `ContainsAny` rules cover references/outline/compile/tests/rename but nothing routes pattern-search-shaped tasks ("find usages of pattern X") to `semantic_grep`, so agents default to grep. Only pattern confirmed identical across both harnesses in-window. [type: feature] [source: 2026-08-05 multisession retro] | S | items/recommend-workflow-missing-semantic-grep-route.md |
+| `recommend-workflow-missing-semantic-grep-route` | Medium | — |
+| `stage-review-inbox-multisession-retro-glob-miss` | Medium | — | **Staging script never discovers this repo's own retro reports** — `$filePatterns` in `eng/stage-review-inbox.ps1` is `*_roslyn-mcp-retro.md`, but all 3 retros this repo has ever produced are named `*_roslyn-mcp-multisession-retro.md` and were silently never auto-staged. [type: bug] [source: 2026-08-05 backlog-intake self-discovery] | S | items/stage-review-inbox-multisession-retro-glob-miss.md | **recommend_workflow has no semantic_grep routing branch** — its 5 `ContainsAny` rules cover references/outline/compile/tests/rename but nothing routes pattern-search-shaped tasks ("find usages of pattern X") to `semantic_grep`, so agents default to grep. Only pattern confirmed identical across both harnesses in-window. [type: feature] [source: 2026-08-05 multisession retro] | S | items/recommend-workflow-missing-semantic-grep-route.md |
 | `validate-recent-git-changes-status-timeout-false-clean` | Medium | — | **git-status timeout silently reports clean** — the 10s `_gitStatusTimeout` fallback in `GetGitChangedFilesAsync` returns an empty changed-file list on timeout instead of a degraded/unknown signal, distinct from the already-fixed broader validation-phase timeout (closed gh #759). [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-recent-git-changes-status-timeout-false-clean.md |
 
 ## Low
