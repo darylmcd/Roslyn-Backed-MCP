@@ -49,7 +49,7 @@
     {
       "id": "validate-workspace-compiler-category-status-mismatch",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "validate-workspace-compiler-category-status-mismatch"
       ],
@@ -71,10 +71,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/validate-workspace-compiler-category-status-mismatch",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1140",
+      "mergedAt": "2026-08-05T23:40:00Z",
       "notes": null,
       "fileSetHash": "a31531a21a7c2f4042e7b84a9e89697576bb5f306047377acebf1b39883aaf4e",
       "stanzaHash": "41f8126138235cd62ef725c04ec20356f2ca7768352d5c2f3248152d1685e00c",
@@ -83,7 +83,7 @@
     {
       "id": "workspace-eviction-no-auto-retry-on-tool-call",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-eviction-no-auto-retry-on-tool-call"
       ],
@@ -107,10 +107,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-eviction-no-auto-retry-on-tool-call",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1141",
+      "mergedAt": "2026-08-05T23:49:29Z",
       "notes": null,
       "fileSetHash": "43a2bdece1dd6ad7e8d4d4fe54c8f5c51628f5eeb8b8c2a58fade796a4d5bd6a",
       "stanzaHash": "f4ba69919c678b98d1d367fabee19f632e3391921d06771f9f430cdcc6f3e96c",
