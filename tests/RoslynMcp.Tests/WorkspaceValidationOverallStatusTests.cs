@@ -95,8 +95,17 @@ public sealed class WorkspaceValidationOverallStatusTests
         Assert.AreEqual("clean", status, "incomplete / vacuous compile_check must not be compile-error with zero errors");
     }
 
+    /// <summary>
+    /// validate-workspace-compiler-category-status-mismatch: a Category=="Compiler" diagnostic
+    /// that appears ONLY in the merged list (i.e. surfaced by the project_diagnostics harvest,
+    /// with its own version-keyed compilation cache) while the authoritative compile_check pass
+    /// reports ErrorCount==0 must NOT yield "compile-error" — that combination produced the
+    /// observed "overallStatus: compile-error / Compile errors: 0" contradiction. It is
+    /// downgraded to "analyzer-error" (surfaced, not silently dropped to "clean").
+    /// This test previously pinned the pre-fix "compile-error" verdict.
+    /// </summary>
     [TestMethod]
-    public void ComputeOverallStatus_CompilerErrorOnlyInMergedErrors_YieldsCompileError()
+    public void ComputeOverallStatus_CompilerErrorOnlyInMergedErrors_YieldsAnalyzerError()
     {
         var compileClean = new CompileCheckDto(
             Success: true,
@@ -122,7 +131,10 @@ public sealed class WorkspaceValidationOverallStatusTests
             null,
             runTests: false);
 
-        Assert.AreEqual("compile-error", status);
+        Assert.AreEqual(
+            "analyzer-error",
+            status,
+            "an uncorroborated Compiler-category row from the second harvest must not override a clean compile.ErrorCount==0 — it degrades to analyzer-error, and must not vanish into 'clean'.");
     }
 
     [TestMethod]

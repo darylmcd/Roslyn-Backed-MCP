@@ -485,16 +485,29 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // so a caller exact-matching "clean" doesn't treat a zero-run as success. This is a
     // BREAKING change for callers that exact-match "clean" as the only passing value; the
     // CHANGELOG flags it as such.
+    //
+    // validate-workspace-compiler-category-status-mismatch: the merged `errors` list is built
+    // from TWO independent diagnostic harvests — compile_check (CompileCheckService, which
+    // fetches compilations directly and computes an unbounded ErrorCount) and
+    // project_diagnostics (DiagnosticService, which goes through its own version-keyed
+    // compilation cache). When the two disagree, the second harvest can surface a
+    // Category=="Compiler" row that the authoritative compile pass never saw, producing the
+    // observed "overallStatus: compile-error / Compile errors: 0" contradiction. compile.ErrorCount
+    // is now the SOLE compile-error signal; an uncorroborated Compiler-category row from the
+    // second harvest falls through to "analyzer-error" (branch 2 widened from a
+    // Category!="Compiler" predicate to a plain non-empty check) so it is downgraded, never
+    // silently dropped from the verdict. Note compile.Diagnostics is paged (Limit=200) while
+    // ErrorCount is the true total, so identity-matching against the paged list would be
+    // strictly less reliable than trusting ErrorCount.
     internal static string ComputeOverallStatus(
         CompileCheckDto compile,
         IReadOnlyList<DiagnosticDto> errors,
         TestRunResultDto? testRunResult,
         bool runTests)
     {
-        if (compile.ErrorCount > 0
-            || errors.Any(d => string.Equals(d.Category, "Compiler", StringComparison.Ordinal)))
+        if (compile.ErrorCount > 0)
             return "compile-error";
-        if (errors.Any(d => !string.Equals(d.Category, "Compiler", StringComparison.Ordinal)))
+        if (errors.Count > 0)
             return "analyzer-error";
         if (runTests && testRunResult is not null && testRunResult.Failed > 0)
             return "test-failure";
