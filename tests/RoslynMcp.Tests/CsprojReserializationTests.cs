@@ -36,7 +36,7 @@ public sealed class CsprojReserializationTests : TestBase
 
     // === CsprojSemanticEquality unit tests ===
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public void ProjectFileSnapshot_Encode_RestoresOriginalDeclarationAndEncoding(bool useUtf16)

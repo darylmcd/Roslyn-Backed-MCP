@@ -322,7 +322,7 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
         var wsId = await workspace.LoadAsync(CancellationToken.None);
 
         var service = CreateService();
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.PreviewChangeTypeNamespaceAsync(
                 wsId,
                 typeName: "Twin",
