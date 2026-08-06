@@ -155,7 +155,7 @@
     {
       "id": "direct-mutation-undo-byte-fidelity",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "direct-mutation-undo-byte-fidelity"
       ],
@@ -179,10 +179,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/direct-mutation-undo-byte-fidelity",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1144",
+      "mergedAt": "2026-08-06T00:17:50Z",
       "notes": null,
       "fileSetHash": "435b065762b483cf157b9e39f1d225e16504f8b748a3846e5394134ba6f3a274",
       "stanzaHash": "b90703ceacc9c3e6aa9e885afe36b340139fd424b3b9e35ae080dc264d8affd5",
@@ -191,7 +191,7 @@
     {
       "id": "recommend-workflow-missing-semantic-grep-route",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "recommend-workflow-missing-semantic-grep-route"
       ],
@@ -213,10 +213,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/recommend-workflow-missing-semantic-grep-route",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1143",
+      "mergedAt": "2026-08-06T00:17:39Z",
       "notes": null,
       "fileSetHash": "ae3c15541c5933d5d8c38a88b6e7f7b2069ca217562233b71887e718c15ba560",
       "stanzaHash": "f812ab703dae695a9e318c5edbda0cd3874080a31589999963f4320e454d0629",
