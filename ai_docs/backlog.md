@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T05:05:38Z
+**updated_at:** 2026-08-06T05:39:48Z
 
 ## Agent contract
 
@@ -57,9 +57,7 @@
 | `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
-| `tool-error-handler-envelope-duplication` | Medium | — | **Extract shared error-envelope builder in ToolErrorHandler.FormatErrorResponse** — 4 near-identical anonymous-object literals repeat the same 5 properties; every future structured field costs another copy. [type: refactor] [source: PR #1138 code-quality review] | S | items/tool-error-handler-envelope-duplication.md |
 | `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
-| `workspace-eviction-retry-untested-branches` | Medium | — | **Cover the non-recovering branches of the workspace-eviction auto-retry** — reload-fails, bogus-id-no-reload, and mid-call WorkspaceEvictedException shapes are all unreachable from the shipped test suite. [type: test] [source: PR #1141 review] | M | items/workspace-eviction-retry-untested-branches.md |
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
 | `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
 | `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
@@ -118,6 +116,7 @@
 | `composite-apply-encoding-hygiene-consolidated` | Low | — | **Consolidated cleanup: duplicated test fixture + stale doc + ambiguous overload names** — encoding-fixture block copy-pasted 3x; class doc overstates the fix's coverage; ResolveWriteEncoding overloads are ambiguous. [type: test] [source: PR #1157 review] | S | items/composite-apply-encoding-hygiene-consolidated.md |
 | `lru-eviction-test-hygiene-consolidated` | Low | — | **Consolidated test hygiene: orphaned gate-holding task on assert failure + unexplained timeout override** — evictionCompleted.SetResult isn't in a finally; a 5min RequestTimeout override has no comment. [type: test] [source: PR #1159 review] | S | items/lru-eviction-test-hygiene-consolidated.md |
 | `validate-workspace-harvest-doc-hygiene-consolidated` | Low | — | **Consolidated doc cleanup: incomplete builder-slot enumeration + duplicated racer narrative** — test builder header omits Diagnostics; the same explanation is restated in two comment blocks. [type: docs] [source: PR #1160 re-review] | S | items/validate-workspace-harvest-doc-hygiene-consolidated.md |
+| `compile-check-eviction-retry-nonrecovering-coverage` | Low | — | **Cover compile_check's non-recovering eviction-retry arm** — reload-fails and bogus-id-no-reload shapes are unreachable from any test for the compile_check sibling of the already-tested test_run path. [type: test] [source: PR #1167 review] | M | items/compile-check-eviction-retry-nonrecovering-coverage.md |
 
 ## Defer
 

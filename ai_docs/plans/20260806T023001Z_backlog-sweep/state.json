@@ -220,7 +220,7 @@
     {
       "id": "workspace-eviction-retry-untested-branches",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-eviction-retry-untested-branches"
       ],
@@ -240,10 +240,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-eviction-retry-untested-branches",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1167",
+      "mergedAt": "2026-08-06T05:39:10Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "de7f16f5e0f67bdb256768e7b43b041a90749dc23b08b230b08fe3cb81e793da",
@@ -252,7 +252,7 @@
     {
       "id": "tool-error-handler-envelope-duplication",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-error-handler-envelope-duplication"
       ],
@@ -274,10 +274,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-error-handler-envelope-duplication",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1166",
+      "mergedAt": "2026-08-06T05:38:58Z",
       "notes": null,
       "fileSetHash": "b592c76dae4acb2dc3495c0fefd7d799cc5fe81ed7ad929c9c833040747f4fc3",
       "stanzaHash": "a7772d728742116c79a2853a0bb13d01940d37174852702509acf8f9087746b7",
