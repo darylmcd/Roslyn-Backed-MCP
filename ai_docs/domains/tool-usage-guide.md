@@ -54,14 +54,32 @@ validate_recent_git_changes(workspaceId)
   → derives changedFilePaths from `git status --porcelain`
   → runs compile_check + project_diagnostics (errors) + test_related_files
   → scoped to the projects that own the touched files
-  → returns an aggregate envelope: overallStatus = clean | compile-error | analyzer-error | test-failure
+  → returns an aggregate envelope: overallStatus = clean | compile-error | analyzer-error | test-failure | test-zero-run | git-status-unknown | timeout
 ```
 
 Falls back to full-workspace scope with a `Warnings` entry when git is not
 available on PATH, the solution directory is not inside a git repository, or
 `git status` exits non-zero. In that case callers should trust
 `OverallStatus` as usual — the bundle still runs — but know the scope is wider
-than the touched-file set.
+than the touched-file set. The exception is a `git status` **timeout** (a
+fourth fallback cause, distinct from the three above): that path returns
+`overallStatus = git-status-unknown` specifically so callers do NOT trust a
+`clean` verdict computed over an unverified fallback scope — see below.
+
+Three additional `overallStatus` values beyond the original four:
+
+- `test-zero-run` — `runTests=true` but the discovered filter matched zero
+  tests. Re-run `test_run` standalone against the surfaced filter; the
+  zero-match is almost always a working-directory/filter-resolution race, not
+  a real pass.
+- `timeout` — a validation phase exceeded the 25-second internal cap. The
+  response carries `compileResult.cancelled=true` plus a `warnings` entry
+  naming the phase; safe to retry.
+- `git-status-unknown` — `validate_recent_git_changes`-only: the `git status`
+  scope-collection itself timed out, so a would-be `clean` verdict was
+  computed over an untrustworthy fallback scope instead of the real working
+  tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see
+  `ai_docs/runtime.md`) if `git status` is slow on this repo.
 
 **Explicit file list (when not in a git repo or for targeted verify):**
 

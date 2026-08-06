@@ -95,6 +95,8 @@ This composes `compile_check` + error-severity diagnostics + `test_related_files
 - `compile-error` — production code broke. Inspect `errorDiagnostics`.
 - `analyzer-error` — a CA*/IDE* analyzer reports a new error. Inspect `errorDiagnostics`.
 - `test-failure` — related tests failed after the edit. Inspect `testRunResult.failures`.
+- `test-zero-run` — `runTests: true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter — the zero-match is almost always a working-directory/filter-resolution race, not a real pass.
+- `timeout` — a validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry.
 
 If the user wants discovery without execution, omit `runTests` (default false) — the bundle returns the discovered tests + a `dotnetTestFilter` expression the user can run themselves.
 
