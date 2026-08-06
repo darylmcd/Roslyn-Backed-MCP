@@ -507,89 +507,80 @@ internal static class ToolErrorHandler
         return string.Join("\n", frames);
     }
 
+    /// <summary>
+    /// tool-error-handler-envelope-duplication: single constructor for the JSON error envelope.
+    /// Emits the five base properties (<c>error</c>, <c>category</c>, <c>tool</c>, <c>message</c>,
+    /// <c>exceptionType</c>) in a fixed order, then optionally one structured extra field appended
+    /// last — the same shape the per-branch anonymous-object literals used to produce. Adding a new
+    /// structured error field is a call-site argument, not a sixth copy of the envelope.
+    /// </summary>
+    /// <param name="extraFieldName">
+    /// camelCase key for the extra field, or <see langword="null"/> to emit the bare envelope. The
+    /// key is written verbatim — <see cref="JsonDefaults.Indented"/>'s naming policy applies only to
+    /// the serialized <paramref name="extraFieldValue"/>, never to <see cref="JsonObject"/> keys.
+    /// </param>
+    /// <param name="extraFieldValue">
+    /// Value for the extra field, serialized with the shared options so nested records/lists keep the
+    /// camelCase + enum-as-string shape. Declared <see cref="object"/> so the runtime type drives
+    /// serialization (e.g. <c>List&lt;T&gt;</c> extras stay arrays of objects).
+    /// </param>
+    private static string BuildErrorEnvelope(
+        ErrorInfo info,
+        string toolName,
+        Exception ex,
+        string? extraFieldName = null,
+        object? extraFieldValue = null)
+    {
+        var envelope = new JsonObject
+        {
+            ["error"] = true,
+            ["category"] = info.Category,
+            ["tool"] = toolName,
+            ["message"] = info.Message,
+            ["exceptionType"] = ex.GetType().Name,
+        };
+
+        if (extraFieldName is not null)
+        {
+            envelope[extraFieldName] = JsonSerializer.SerializeToNode(extraFieldValue, JsonDefaults.Indented);
+        }
+
+        return envelope.ToJsonString(JsonDefaults.Indented);
+    }
+
     internal static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
     {
         if (info.Category == "InternalError")
         {
-            var error = new
-            {
-                error = true,
-                category = info.Category,
-                tool = toolName,
-                message = info.Message,
-                exceptionType = ex.GetType().Name,
-                stackTrace = GetAbbreviatedStackTrace(ex),
-            };
-            return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+            return BuildErrorEnvelope(info, toolName, ex, "stackTrace", GetAbbreviatedStackTrace(ex));
         }
-        else
+
+        if (ex is SymbolNotFoundException { ClosestMatches.Count: > 0 } symbolNotFound)
         {
-            if (ex is SymbolNotFoundException { ClosestMatches.Count: > 0 } symbolNotFound)
-            {
-                var error = new
-                {
-                    error = true,
-                    category = info.Category,
-                    tool = toolName,
-                    message = info.Message,
-                    exceptionType = ex.GetType().Name,
-                    closestMatches = symbolNotFound.ClosestMatches,
-                };
-                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
-            }
-
-            // extract-type-preview-refusal-missing-blocking-deps: mirror the closestMatches
-            // treatment above for extract_type_preview's refusals — the prose message and the
-            // InvalidOperation category are unchanged; the envelope just gains the structured
-            // per-member blocking data the refusal was computed from.
-            if (ex is ExtractTypeBlockingDependencyException { BlockingDependencies.Count: > 0 } blockedExtraction)
-            {
-                var error = new
-                {
-                    error = true,
-                    category = info.Category,
-                    tool = toolName,
-                    message = info.Message,
-                    exceptionType = ex.GetType().Name,
-                    blockingDependencies = blockedExtraction.BlockingDependencies,
-                };
-                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
-            }
-
-            // inv-arg-envelope-schema-hint: attach a one-line schema hint for InvalidArgument
-            // envelopes so cold-context callers can re-call without round-tripping through
-            // server_info. Hint is omitted (rather than emitted as null) when the failing
-            // parameter cannot be resolved against the tool catalog — keeps the envelope
-            // shape stable for downstream parsers that do not expect the field.
-            var schemaHint = info.Category == "InvalidArgument"
-                ? BuildSchemaHint(toolName, info.ParamName)
-                : null;
-            if (schemaHint is not null)
-            {
-                var error = new
-                {
-                    error = true,
-                    category = info.Category,
-                    tool = toolName,
-                    message = info.Message,
-                    exceptionType = ex.GetType().Name,
-                    schemaHint,
-                };
-                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
-            }
-            else
-            {
-                var error = new
-                {
-                    error = true,
-                    category = info.Category,
-                    tool = toolName,
-                    message = info.Message,
-                    exceptionType = ex.GetType().Name,
-                };
-                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
-            }
+            return BuildErrorEnvelope(info, toolName, ex, "closestMatches", symbolNotFound.ClosestMatches);
         }
+
+        // extract-type-preview-refusal-missing-blocking-deps: mirror the closestMatches
+        // treatment above for extract_type_preview's refusals — the prose message and the
+        // InvalidOperation category are unchanged; the envelope just gains the structured
+        // per-member blocking data the refusal was computed from.
+        if (ex is ExtractTypeBlockingDependencyException { BlockingDependencies.Count: > 0 } blockedExtraction)
+        {
+            return BuildErrorEnvelope(info, toolName, ex, "blockingDependencies", blockedExtraction.BlockingDependencies);
+        }
+
+        // inv-arg-envelope-schema-hint: attach a one-line schema hint for InvalidArgument
+        // envelopes so cold-context callers can re-call without round-tripping through
+        // server_info. Hint is omitted (rather than emitted as null) when the failing
+        // parameter cannot be resolved against the tool catalog — keeps the envelope
+        // shape stable for downstream parsers that do not expect the field.
+        var schemaHint = info.Category == "InvalidArgument"
+            ? BuildSchemaHint(toolName, info.ParamName)
+            : null;
+
+        return schemaHint is not null
+            ? BuildErrorEnvelope(info, toolName, ex, "schemaHint", schemaHint)
+            : BuildErrorEnvelope(info, toolName, ex);
     }
 
     /// <summary>
