@@ -517,17 +517,38 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     //
     // The corroboration rule below extends the trust boundary ComputeOverallStatus already commits to
     // (compile.ErrorCount is the SOLE compile-error signal) from the verdict string to the count and
-    // the list: diagResult.CompilerDiagnostics is merged only when compile.ErrorCount > 0 corroborates
-    // at least one real compiler error. AnalyzerDiagnostics merges unconditionally — those are the
-    // CA*/IDE* rows this stage exists to contribute. WorkspaceDiagnostics stays excluded, as before.
-    // The gate is applied BEFORE the concat so the Severity filter and DistinctBy dedup semantics are
-    // untouched. ComputeOverallStatus keeps its own downgrade-not-drop branch as defense in depth for
-    // any Compiler-category row that reaches the verdict through some other path.
+    // the list. AnalyzerDiagnostics merges unconditionally — those are the CA*/IDE* rows this stage
+    // exists to contribute. WorkspaceDiagnostics stays excluded, as before. The gate is applied
+    // BEFORE the concat so the Severity filter and DistinctBy dedup semantics are untouched.
+    //
+    // The gate keys on compile_check's AUTHORITY, not merely on its count. compile.ErrorCount is
+    // authoritative only when the compile pass actually finished: CompileCheckService.CheckAsync
+    // swallows OperationCanceledException, sets Cancelled=true, and returns whatever partial
+    // ErrorCount it accumulated before the timeout — and RunValidationPhaseAsync gives stage 2 a
+    // FRESH timeout budget, so a timed-out stage 1 routinely pairs with a stage 2 that completed.
+    // In that shape ErrorCount==0 means "did not look", not "found nothing", and the second harvest
+    // is the ONLY view of real CS* errors in the un-compiled projects. Dropping those rows would
+    // turn a timed-out validation into a false "clean" on the pre-ship gate — strictly worse than
+    // the phantom-row false positive this initiative set out to fix. So the compiler arm merges
+    // whenever compile_check either corroborates (ErrorCount > 0) or forfeits authority
+    // (Cancelled, or CompletedProjects < TotalProjects). Only a complete, genuinely-green compile
+    // pass suppresses an uncorroborated Compiler-category row. Today Cancelled is the sole way
+    // CompletedProjects can lag TotalProjects, but the incompleteness test is the invariant that
+    // matters, so both are checked. Null Completed/Total (paths that do not report project counts)
+    // are treated as complete — Cancelled still covers the timeout case there.
+    //
+    // ComputeOverallStatus keeps its own downgrade-not-drop branch as defense in depth for any
+    // Compiler-category row that reaches the verdict through some other path.
     internal static DiagnosticDto[] MergeErrorDiagnostics(
         CompileCheckDto compile,
         DiagnosticsResultDto diagResult)
     {
-        var corroboratedCompilerRows = compile.ErrorCount > 0
+        var compileIncomplete = compile.Cancelled
+            || (compile.CompletedProjects is int completed
+                && compile.TotalProjects is int total
+                && completed < total);
+
+        var corroboratedCompilerRows = compile.ErrorCount > 0 || compileIncomplete
             ? diagResult.CompilerDiagnostics
             : Array.Empty<DiagnosticDto>();
 
@@ -567,6 +588,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // silently dropped from the verdict. Note compile.Diagnostics is paged (Limit=200) while
     // ErrorCount is the true total, so identity-matching against the paged list would be
     // strictly less reliable than trusting ErrorCount.
+    //
+    // validate-workspace-diagnostic-harvest-reconcile: MergeErrorDiagnostics now applies that same
+    // corroboration rule UPSTREAM, so on the live path an uncorroborated Compiler-category row from
+    // a complete, green compile pass never reaches `errors` at all — it is filtered out of the count
+    // and the list, not merely downgraded here. This branch is therefore defense-in-depth only for
+    // callers that assemble `errors` by some other route (e.g. the unit tests below); do not read it
+    // as the live behavior for that shape.
     internal static string ComputeOverallStatus(
         CompileCheckDto compile,
         IReadOnlyList<DiagnosticDto> errors,
