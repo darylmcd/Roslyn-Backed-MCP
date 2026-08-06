@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T06:16:59Z
+**updated_at:** 2026-08-06T06:36:34Z
 
 ## Agent contract
 
@@ -59,12 +59,13 @@
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
-| `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
 | `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
 | `lru-eviction-gate-layer-execution` | Medium | — | **Close the LRU-eviction / WorkspaceExecutionGate gap** — eviction execution needs to move into the gate layer so it cannot dispose a workspace holding an in-flight reader/writer lock; PR #1159 documented and characterized this, didn't fix it. [type: bug] [source: PR #1159 review] | M | items/lru-eviction-gate-layer-execution.md |
 | `validate-workspace-compiler-gate-scope-to-category` | Medium | — | **Scope validate_workspace's compiler-arm corroboration gate to Category=="Compiler" rows** — the gate drops the whole CompilerDiagnostics arm, silently dropping the unrelated WORKSPACE001 Category=Workspace row too. [type: bug] [source: PR #1160 re-review] | M | items/validate-workspace-compiler-gate-scope-to-category.md |
 | `compile-check-zero-resolution-false-success` | Medium | — | **compile_check reports Success=true when a files filter matches zero workspace documents** — the zero-resolution fallback widens to full-solution scope, filters by path to zero, and still reports success against a solution with real errors. [type: bug] [source: PR #1160 fix-cycle observation] | S | items/compile-check-zero-resolution-false-success.md |
 | `project-filter-helper-whitespace-normalize` | Medium | — | **Normalize whitespace-only projectFilter inside ProjectFilterHelper** — 17 other FilterProjects call sites (FormatVerifyService, AnalyzerInfoService, etc.) still silently return zero-project results on a blank filter. [type: bug] [source: PR #1163 review] | M | items/project-filter-helper-whitespace-normalize.md |
+| `single-source-overallstatus-verdict-table` | Medium | — | **Single-source the validate_workspace overallStatus verdict table** — the caller-action prose is now byte-identical across 4+ files with no shared source; 3 more surfaces still enumerate only the stale 4-value set. [type: docs] [source: PR #1169 review] | S | items/single-source-overallstatus-verdict-table.md |
+| `workspace-validation-service-overallstatus-xmldoc-inverted` | Medium | — | **IWorkspaceValidationService OverallStatus XML doc has skipped/timeout inverted** — skipped is documented but never emitted; timeout is emitted but not documented. [type: docs] [source: PR #1169 review] | M | items/workspace-validation-service-overallstatus-xmldoc-inverted.md |
 
 ## Low
 

@@ -286,7 +286,7 @@
     {
       "id": "document-git-status-unknown-verdict",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "document-git-status-unknown-verdict"
       ],
@@ -311,10 +311,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/document-git-status-unknown-verdict",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1169",
+      "mergedAt": "2026-08-06T06:35:38Z",
       "notes": null,
       "fileSetHash": "99df75f9bf40ffc97c0976fe41a119f8ee1b3ed882df4a5a89c612c6cc623272",
       "stanzaHash": "59644cddab210532dc20c9cf4534d874fec02d02493ea6d53608b22ee18512ff",
