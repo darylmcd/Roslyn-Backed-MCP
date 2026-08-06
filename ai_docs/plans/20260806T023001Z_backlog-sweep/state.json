@@ -323,7 +323,7 @@
     {
       "id": "compilation-cache-adoption-read-side",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [],
       "productionFilesTouched": 1,
       "productionFiles": [
@@ -343,10 +343,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/compilation-cache-adoption-read-side",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1170",
+      "mergedAt": "2026-08-06T06:16:33Z",
       "notes": null,
       "fileSetHash": "2c1758cb3d426e2b2e9d53b42e9cd8c84ec39b8df59f326cd42e576bfb52ed93",
       "stanzaHash": "6ae48e015d8a7d0275bdffb0d061719cf9f53458689baa5f7f6b9f7ea3f1d04d",
