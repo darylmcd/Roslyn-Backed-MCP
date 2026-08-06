@@ -29,6 +29,7 @@
       *_mcp-server-surface-test.md  Consumer-facing audit from /mcp-server-surface-test
       *_experimental-promotion.md   Experimental tool/prompt promotion audit
       *_roslyn-mcp-retro.md         Session retro on Roslyn-MCP tool quality
+      *_roslyn-mcp-multisession-retro.md  Session multisession-retro on Roslyn-MCP tool quality
       backlog.d/<finding-id>.md     Per-finding fragments emitted by /mcp-server-stress
                                     Phase 19 (canonical schema:
                                     ai_docs/items/backlog-d-fragment-schema.md).
@@ -134,7 +135,8 @@ $filePatterns = @(
     '*_mcp-server-audit.md',
     '*_mcp-server-surface-test.md',
     '*_experimental-promotion.md',
-    '*_roslyn-mcp-retro.md'
+    '*_roslyn-mcp-retro.md',
+    '*_roslyn-mcp-multisession-retro.md'
 )
 
 # Fragment-discovery contract: any .md under <repo-root>/backlog.d/ whose
