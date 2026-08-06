@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -198,9 +199,10 @@ public static class ValidationTools
         [Description("Optional: dotnet test filter expression")] string? filter = null,
         IProgress<ProgressNotificationValue>? progress = null,
         IWorkspaceManager? workspaceManager = null,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
         => RunTestsWithEvictionRetryAsync(
-            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter, progress, ct);
+            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter, progress, loggerFactory, ct);
 
     /// <summary>
     /// <c>workspace-eviction-no-auto-retry-on-tool-call</c> — runs <c>test_run</c> once and, when
@@ -238,6 +240,7 @@ public static class ValidationTools
         string? projectName,
         string? filter,
         IProgress<ProgressNotificationValue>? progress,
+        ILoggerFactory? loggerFactory,
         CancellationToken ct)
     {
         try
@@ -249,7 +252,7 @@ public static class ValidationTools
         {
             var reloadedId = workspaceManager is null
                 ? null
-                : await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct)
+                : await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct, loggerFactory)
                     .ConfigureAwait(false);
 
             if (reloadedId is null)
