@@ -72,6 +72,8 @@ Execute each stage in order. Do not start stage N+1 until stage N validates clea
 - `clean` — proceed to the next stage.
 - `compile-error` / `analyzer-error` — stop. Surface `errorDiagnostics` to the user.
 - `test-failure` — stop. Surface `testRunResult.failures` to the user.
+- `test-zero-run` — `runTests: true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter — the zero-match is almost always a working-directory/filter-resolution race, not a real pass.
+- `timeout` — a validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry.
 
 If validation fails after a successful apply, offer the user `revert_last_apply` to roll the stage back, then stop the skill.
 
