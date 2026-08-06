@@ -36,6 +36,9 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(1, result.CompletedProjects);
         Assert.AreEqual(0, result.ErrorCount,
             "The broken unrelated project must not participate in the scoped compile check.");
+        Assert.AreEqual("files", result.RequestedScope);
+        Assert.AreEqual(result.RequestedScope, result.ActualScope,
+            "A file filter honoured by its single owning project must not report a widened scope.");
     }
 
     [TestMethod]
@@ -57,5 +60,9 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
             "File filters spanning multiple projects should fall back to the full project scope.");
         Assert.IsNotNull(result.RestoreHint);
         StringAssert.Contains(result.RestoreHint, "file filter fallback");
+        Assert.AreEqual("files", result.RequestedScope);
+        Assert.AreEqual("solution", result.ActualScope);
+        Assert.AreNotEqual(result.RequestedScope, result.ActualScope,
+            "A widened file scope must be detectable structurally, not only by parsing restoreHint.");
     }
 }
