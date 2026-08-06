@@ -589,6 +589,12 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
+        var postApplyBytes = await File.ReadAllBytesAsync(projectFilePath, CancellationToken.None);
+        CollectionAssert.AreNotEqual(
+            originalBytes,
+            postApplyBytes,
+            "Sanity check: apply must have mutated the .csproj before revert is meaningful.");
+
         var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "revert_last_apply must succeed.");
 
