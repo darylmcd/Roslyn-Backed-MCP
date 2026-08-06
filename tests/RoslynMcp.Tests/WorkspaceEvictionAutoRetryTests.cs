@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -418,6 +419,112 @@ public sealed class WorkspaceEvictionAutoRetryTests
     }
 
     /// <summary>
+    /// <c>workspace-eviction-retry-swallowed-log</c> — a failed rehydration reload must now emit
+    /// a Warning-or-higher log entry (via the optional <see cref="ILoggerFactory"/>) referencing
+    /// the evicted workspace id, in addition to the pre-existing byte-for-byte-preserved fallback
+    /// behaviour (the original NotFound envelope is unchanged).
+    /// </summary>
+    [TestMethod]
+    public async Task CompileCheck_EvictedWorkspace_RehydrationReloadFails_LogsWarning()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        var compileCheckService = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+
+        try
+        {
+            var evictedId = await StageEvictionAsync(manager, path1, path2);
+
+            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+
+            var json = await ToolExecutionTestHarness.RunAsync(
+                "compile_check",
+                () => CompileCheckTools.CompileCheck(
+                    gate,
+                    compileCheckService,
+                    workspaceId: evictedId,
+                    workspaceManager: manager,
+                    loggerFactory: loggerFactory,
+                    ct: CancellationToken.None));
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
+                $"A failed reload must still surface the original NotFound envelope unchanged. Actual: {json}");
+            Assert.AreEqual("NotFound", root.GetProperty("category").GetString(),
+                $"Fallback behaviour must be byte-for-byte preserved — only a log emission is added. Actual: {json}");
+
+            Assert.AreEqual(1,
+                logger.Entries.Count(e =>
+                    e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
+                $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+        }
+    }
+
+    /// <summary>
+    /// <c>workspace-eviction-retry-swallowed-log</c> — the <c>test_run</c> analogue of
+    /// <see cref="CompileCheck_EvictedWorkspace_RehydrationReloadFails_LogsWarning"/>: a failed
+    /// rehydration reload must log a Warning-or-higher entry while the original
+    /// <see cref="KeyNotFoundException"/> still propagates unchanged.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTests_EvictedWorkspace_RehydrationReloadFails_LogsWarning()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        var runner = new RecordingTestRunnerService();
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+
+        try
+        {
+            var evictedId = await StageEvictionAsync(manager, path1, path2);
+
+            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+
+            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+                () => ValidationTools.RunTests(
+                    gate,
+                    runner,
+                    workspaceId: evictedId,
+                    projectName: null,
+                    filter: null,
+                    progress: null,
+                    workspaceManager: manager,
+                    loggerFactory: loggerFactory,
+                    ct: CancellationToken.None));
+
+            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                "A failed rehydration must not run the suite against some other session.");
+
+            Assert.AreEqual(1,
+                logger.Entries.Count(e =>
+                    e.Level >= LogLevel.Warning && e.Message.Contains(evictedId, StringComparison.Ordinal)),
+                $"Expected exactly one Warning-or-higher log entry referencing the evicted workspace id. Entries: {string.Join(" | ", logger.Entries.Select(e => $"[{e.Level}] {e.Message}"))}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+        }
+    }
+
+    /// <summary>
     /// Loads <paramref name="path1"/> into the (cap-saturated) manager, then LRU-loads
     /// <paramref name="path2"/> so the first session is evicted with a recoverable eviction
     /// record. Returns the now-evicted workspace id.
@@ -500,4 +607,41 @@ public sealed class WorkspaceEvictionAutoRetryTests
             throw _eviction;
         }
     }
+
+    /// <summary>
+    /// Copied from <c>WorkspaceCloseDrainTests.cs</c> — a minimal <see cref="ILoggerFactory"/>
+    /// that always resolves to the single <see cref="RecordingLogger"/> it wraps, so the test can
+    /// assert on emitted log entries regardless of the category name the caller requests.
+    /// </summary>
+    private sealed class RecordingLoggerFactory(RecordingLogger logger) : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void AddProvider(ILoggerProvider provider) { }
+
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        private readonly List<LogEntry> _entries = [];
+
+        public IReadOnlyList<LogEntry> Entries => _entries;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            _entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
 }

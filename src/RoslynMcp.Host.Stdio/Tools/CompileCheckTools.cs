@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -33,6 +34,7 @@ public static class CompileCheckTools
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
         IWorkspaceManager? workspaceManager = null,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateSeverity(severity);
@@ -63,7 +65,8 @@ public static class CompileCheckTools
 
                 return result;
             },
-            ct);
+            ct,
+            loggerFactory);
     }
 
 }

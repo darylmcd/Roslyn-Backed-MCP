@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -29,6 +30,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 ///   <item><see cref="ReadByWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
 ///     — read-only tools that accept an explicit <c>workspaceId</c> and run under the
 ///     per-workspace read gate.
+///   </item>
+///   <item><see cref="ReadByWorkspaceIdWithEvictionRetryAsync{TDto}(IWorkspaceExecutionGate, IWorkspaceManager?, string, Func{string, CancellationToken, Task{TDto}}, CancellationToken, ILoggerFactory?)"/>
+///     — eviction-tolerant variant of <see cref="ReadByWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+///     for read-only tools (<c>compile_check</c>) that should transparently rehydrate an
+///     evicted workspace from its recorded <c>LoadedPath</c> and retry the read once, instead
+///     of surfacing the miss to the caller.
 ///   </item>
 /// </list>
 /// </para>
@@ -254,13 +261,18 @@ internal static class ToolDispatch
     /// the retry leg must run against the post-reload id.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
+    /// <param name="loggerFactory">
+    /// Optional DI-bound logger factory used to log a swallowed reload failure during the
+    /// eviction-retry attempt, or <see langword="null"/> to skip logging (direct/test callers).
+    /// </param>
     /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
     public static async Task<string> ReadByWorkspaceIdWithEvictionRetryAsync<TDto>(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager? workspaceManager,
         string workspaceId,
         Func<string, CancellationToken, Task<TDto>> serviceCall,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILoggerFactory? loggerFactory = null)
     {
         try
         {
@@ -269,7 +281,7 @@ internal static class ToolDispatch
         }
         catch (KeyNotFoundException ex) when (workspaceManager is not null)
         {
-            var reloadedId = await TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct)
+            var reloadedId = await TryReloadEvictedWorkspaceForRetryAsync(workspaceManager, workspaceId, ex, ct, loggerFactory)
                 .ConfigureAwait(false);
             if (reloadedId is null)
             {
@@ -354,16 +366,29 @@ internal static class ToolDispatch
     /// <c>WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_EvictsAnyway_AndReaderObservesEviction</c>.
     /// </para>
     /// <para>
-    /// A failed reload is deliberately not surfaced: the original eviction exception is richer
-    /// (it carries the id, the recorded path, and a copy-pasteable <c>workspace_load</c> recovery
-    /// hint), and the caller rethrows it, so no diagnostic is lost.
+    /// A failed reload is not additionally surfaced by this helper: the caller rethrows the
+    /// original failure it was given, unchanged. That original failure is only richly
+    /// diagnostic — carrying the id, the recorded path, and a copy-pasteable
+    /// <c>workspace_load</c> recovery hint — when it arrived here already as a
+    /// <see cref="WorkspaceEvictedException"/> (the mid-call case). On the more common
+    /// gate-precheck miss the caller instead rethrows the bare <see cref="KeyNotFoundException"/>
+    /// the gate raised, which carries no eviction context at all — on that path a failed reload
+    /// previously left no trace anywhere. This helper now logs the reload failure itself
+    /// (the evicted workspace id, the recorded <c>LoadedPath</c>, and the reload exception) via
+    /// the optional <paramref name="loggerFactory"/>, so the failure is no longer silent on
+    /// either path.
     /// </para>
     /// </remarks>
+    /// <param name="loggerFactory">
+    /// Optional DI-bound logger factory used to log a reload failure, or
+    /// <see langword="null"/> to skip logging (direct/test callers).
+    /// </param>
     internal static async Task<string?> TryReloadEvictedWorkspaceForRetryAsync(
         IWorkspaceManager workspaceManager,
         string workspaceId,
         KeyNotFoundException failure,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILoggerFactory? loggerFactory = null)
     {
         var evicted = failure as WorkspaceEvictedException
             ?? TryReclassifyAsEvicted(workspaceManager, workspaceId);
@@ -383,9 +408,19 @@ internal static class ToolDispatch
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            CreateLogger(loggerFactory)?.LogWarning(
+                ex,
+                "Failed to rehydrate evicted workspace {WorkspaceId} from LoadedPath \"{LoadedPath}\": {ExceptionType}: {ExceptionMessage}",
+                workspaceId,
+                loadedPath,
+                ex.GetType().Name,
+                ex.Message);
             return null;
         }
     }
+
+    private static ILogger? CreateLogger(ILoggerFactory? loggerFactory) =>
+        loggerFactory?.CreateLogger(typeof(ToolDispatch).FullName ?? nameof(ToolDispatch));
 }
