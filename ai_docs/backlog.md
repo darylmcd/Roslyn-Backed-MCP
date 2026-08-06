@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T02:23:11Z
+**updated_at:** 2026-08-06T03:39:09Z
 
 ## Agent contract
 
@@ -61,12 +61,12 @@
 | `validate-workspace-diagnostic-harvest-reconcile` | Medium | — | **Reconcile validate_workspace's two diagnostic harvests** — a Category=Compiler row seen only by project_diagnostics still enters allErrors/ErrorCount even when compile_check is clean; PR #1140 relabeled the verdict, not the root cause. [type: bug] [source: PR #1140 review] | M | items/validate-workspace-diagnostic-harvest-reconcile.md |
 | `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
 | `workspace-eviction-retry-untested-branches` | Medium | — | **Cover the non-recovering branches of the workspace-eviction auto-retry** — reload-fails, bogus-id-no-reload, and mid-call WorkspaceEvictedException shapes are all unreachable from the shipped test suite. [type: test] [source: PR #1141 review] | M | items/workspace-eviction-retry-untested-branches.md |
-| `mutation-write-paths-drop-original-encoding` | Medium | — | **Mutation apply paths silently re-encode files as UTF-8-no-BOM** — AtomicFileWriter.WriteAllTextAsync and EditorConfigService's File.WriteAllLines both use the encoding-less default, dropping a source file's original BOM/encoding on every apply. [type: bug] [source: PR #1144 review] | M | items/mutation-write-paths-drop-original-encoding.md |
 | `undo-tests-assert-vacuous-noop-protection` | Medium | — | **Byte-fidelity undo tests must assert the apply actually mutated the file** — 3 of 4 new tests only assert post-revert byte-equality, so a mutation-becomes-no-op regression would pass vacuously. [type: test] [source: PR #1144 review] | S | items/undo-tests-assert-vacuous-noop-protection.md |
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
 | `compile-check-project-filter-normalize` | Medium | — | **Normalize compile_check's projectFilter once** — FilterProjects gates on null while ResolveProjectScope/ComputeRequestedScope gate on IsNullOrWhiteSpace, so a blank projectName reports actualScope=solution with TotalProjects=0. [type: bug] [source: PR #1151 review] | M | items/compile-check-project-filter-normalize.md |
 | `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
 | `lru-eviction-concurrent-reader-safety-overstated` | Medium | — | **LRU eviction can evict a workspace mid-read, contradicting a documented safety claim** — LoadLock only guards the load path; the gate's separate reader/writer lock is never consulted by the eviction scan. [type: bug] [source: sweep 20260805T222513Z Step 13 cold review] | M | items/lru-eviction-concurrent-reader-safety-overstated.md |
+| `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
 
 ## Low
 
@@ -114,6 +114,8 @@
 | `compile-check-scope-vocab-and-untested-branches` | Low | — | **Consolidated cleanup: untested ComputeRequestedScope branches + duplicated scope vocabulary** — project/solution branches have no test; the files/project/solution vocabulary is restated in 4 unlinked places. [type: test] [source: PR #1151 review] | M | items/compile-check-scope-vocab-and-untested-branches.md |
 | `git-status-timeout-docs-scope-correction` | Low | — | **Correct the GitStatusTimeout docs — the knob bounds two call sites, not one** — docs name only validate_recent_git_changes, but the timeout also bounds validate_workspace's change-tracker reconcile. [type: docs] [source: PR #1152 review] | M | items/git-status-timeout-docs-scope-correction.md |
 | `workspace-validation-dead-path-and-duplicated-default` | Low | — | **Consolidated cleanup: dead status-degrade wrapper + duplicated 10s default** — DegradeStatusWhenGitStatusUnknown can never fire on the timeout branch; the default timeout is hardcoded twice. [type: refactor] [source: PR #1152 review] | M | items/workspace-validation-dead-path-and-duplicated-default.md |
+| `extract-atomicfilewriter-encoding-helper` | Low | — | **Extract BOM/encoding resolution out of AtomicFileWriter into a neutrally-named helper** — a non-atomic writer (EditorConfigService) now depends on AtomicFileWriter solely as an encoding sniffer; CsprojSemanticEquality misused the same way. [type: refactor] [source: PR #1157 review] | M | items/extract-atomicfilewriter-encoding-helper.md |
+| `composite-apply-encoding-hygiene-consolidated` | Low | — | **Consolidated cleanup: duplicated test fixture + stale doc + ambiguous overload names** — encoding-fixture block copy-pasted 3x; class doc overstates the fix's coverage; ResolveWriteEncoding overloads are ambiguous. [type: test] [source: PR #1157 review] | S | items/composite-apply-encoding-hygiene-consolidated.md |
 
 ## Defer
 
