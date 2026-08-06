@@ -214,6 +214,7 @@ static ValidationServiceOptions BindValidationServiceOptions()
     var testSec = ReadEnv("ROSLYNMCP_TEST_TIMEOUT_SECONDS");
     var vulnSec = ReadEnv("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS");
     var revertSec = ReadEnv("ROSLYNMCP_APPLY_REVERT_TIMEOUT_SECONDS");
+    var gitStatusSec = ReadEnv("ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS");
 
     if (int.TryParse(buildSec, out var bs) && bs > 0)
         opts = opts with { BuildTimeout = TimeSpan.FromSeconds(bs) };
@@ -225,6 +226,8 @@ static ValidationServiceOptions BindValidationServiceOptions()
         opts = opts with { VulnerabilityScanTimeout = TimeSpan.FromSeconds(vs) };
     if (int.TryParse(revertSec, out var rs) && rs > 0)
         opts = opts with { ApplyRevertTimeout = TimeSpan.FromSeconds(rs) };
+    if (int.TryParse(gitStatusSec, out var gss) && gss > 0)
+        opts = opts with { GitStatusTimeout = TimeSpan.FromSeconds(gss) };
 
     return opts;
 }
