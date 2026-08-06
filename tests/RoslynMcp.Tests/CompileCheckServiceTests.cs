@@ -65,4 +65,28 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreNotEqual(result.RequestedScope, result.ActualScope,
             "A widened file scope must be detectable structurally, not only by parsing restoreHint.");
     }
+
+    [TestMethod]
+    public async Task CheckAsync_WhitespaceOnlyProjectFilterWithMultiProjectFiles_NoLongerMisreportsSolutionScope()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var dogPath = workspace.GetPath("SampleLib", "Dog.cs");
+        var programPath = workspace.GetPath("SampleApp", "Program.cs");
+
+        var result = await CompileCheckService.CheckAsync(
+            workspace.WorkspaceId,
+            new CompileCheckOptions(
+                SeverityFilter: "Error",
+                ProjectFilter: " ",
+                FileFilters: [dogPath, programPath]),
+            CancellationToken.None);
+
+        Assert.IsTrue(result.TotalProjects > 1,
+            "A whitespace-only projectFilter must be treated as no filter, not as a literal (nonexistent) project name.");
+        Assert.AreEqual("solution", result.ActualScope);
+        Assert.AreEqual("files", result.RequestedScope,
+            "Whitespace-only projectFilter must not be classified as a project-scoped request.");
+        StringAssert.Contains(result.RestoreHint, "file filter fallback");
+    }
 }
