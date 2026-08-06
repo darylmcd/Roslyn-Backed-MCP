@@ -240,12 +240,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 request.WorkspaceId, projectFilter: null, fileFilter: null,
                 severityFilter: "Error", diagnosticIdFilter: null, token),
             ct).ConfigureAwait(false);
-        var allErrors = compile.Diagnostics
-            .Concat(diagResult.CompilerDiagnostics)
-            .Concat(diagResult.AnalyzerDiagnostics)
-            .Where(d => string.Equals(d.Severity, "Error", StringComparison.Ordinal))
-            .DistinctBy(d => (d.Id, d.FilePath, d.StartLine, d.StartColumn))
-            .ToArray();
+        var allErrors = MergeErrorDiagnostics(compile, diagResult);
 
         // Stages 3+4: discover related tests and (optionally) run them.
         var (related, testRunResult) = await DiscoverAndOptionallyRunTestsAsync(
@@ -506,6 +501,42 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return (tracked, Array.Empty<string>());
+    }
+
+    // validate-workspace-diagnostic-harvest-reconcile: builds the merged error-severity list that
+    // backs both WorkspaceValidationDto.ErrorDiagnostics and .ErrorCount. Stage 2's
+    // project_diagnostics harvest exists for ONE reason — to add CA*/IDE* errors that compile_check
+    // (compiler-only) structurally cannot see. Its CompilerDiagnostics arm was never meant to be an
+    // independent arbiter of compiler errors: compile.Diagnostics / compile.ErrorCount already is.
+    // Because the two harvests fetch compilations through different paths (CompileCheckService calls
+    // project.GetCompilationAsync directly; DiagnosticService goes through the version-keyed
+    // CompilationCache, whose documented "lost racer" window lets concurrent callers observe
+    // different entries), the second harvest can surface a Category=="Compiler" row the authoritative
+    // compile pass never saw — producing a green build (0 compile errors, 0 warnings, tests passing)
+    // that still reported errorCount:1 / overallStatus:"analyzer-error".
+    //
+    // The corroboration rule below extends the trust boundary ComputeOverallStatus already commits to
+    // (compile.ErrorCount is the SOLE compile-error signal) from the verdict string to the count and
+    // the list: diagResult.CompilerDiagnostics is merged only when compile.ErrorCount > 0 corroborates
+    // at least one real compiler error. AnalyzerDiagnostics merges unconditionally — those are the
+    // CA*/IDE* rows this stage exists to contribute. WorkspaceDiagnostics stays excluded, as before.
+    // The gate is applied BEFORE the concat so the Severity filter and DistinctBy dedup semantics are
+    // untouched. ComputeOverallStatus keeps its own downgrade-not-drop branch as defense in depth for
+    // any Compiler-category row that reaches the verdict through some other path.
+    internal static DiagnosticDto[] MergeErrorDiagnostics(
+        CompileCheckDto compile,
+        DiagnosticsResultDto diagResult)
+    {
+        var corroboratedCompilerRows = compile.ErrorCount > 0
+            ? diagResult.CompilerDiagnostics
+            : Array.Empty<DiagnosticDto>();
+
+        return compile.Diagnostics
+            .Concat(corroboratedCompilerRows)
+            .Concat(diagResult.AnalyzerDiagnostics)
+            .Where(d => string.Equals(d.Severity, "Error", StringComparison.Ordinal))
+            .DistinctBy(d => (d.Id, d.FilePath, d.StartLine, d.StartColumn))
+            .ToArray();
     }
 
     // validate-workspace-overallstatus-false-positive: compile_check can report Success=false
