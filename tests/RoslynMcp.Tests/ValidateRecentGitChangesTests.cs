@@ -143,6 +143,90 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     // ------------------------------------------------------------------
+    // validate-recent-git-changes-status-timeout-false-clean: when the dedicated
+    // `git status` collection times out, the bundle falls back to the in-process
+    // change-tracker scope — which is EMPTY for edits made outside this MCP session.
+    // Pre-fix that produced `overallStatus: clean` + `changedFilePaths: []` against a
+    // demonstrably dirty tree, indistinguishable from a genuinely clean repo. The
+    // verdict must now degrade to `git-status-unknown` while the retryable warning
+    // is preserved. A 1 ms git timeout makes the timeout branch fire deterministically
+    // regardless of real git speed (mirrors the SlowValidationPhase test's approach).
+    // ------------------------------------------------------------------
+    [TestMethod]
+    public async Task ValidateRecentGitChangesAsync_GitStatusTimeout_ReportsGitStatusUnknownNotClean()
+    {
+        if (!IsGitAvailable())
+        {
+            Assert.Inconclusive($"git unavailable — cannot run the git-status-timeout test. {_gitUnavailableReason}");
+            return;
+        }
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+
+        // Dirty the tree so a `clean` verdict would be provably wrong.
+        var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// git-status timeout {Guid.NewGuid():N}{Environment.NewLine}");
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        // The compile/diagnostic stages are stubbed clean on purpose. The isolated fixture
+        // copy has no restored NuGet packages, so the real CompileCheckService reports
+        // CS0246-class errors and every verdict would be "compile-error" — which would mask
+        // the behavior under test. Pinning the underlying verdict to "clean" isolates the one
+        // thing this test is about: whether a git-status timeout downgrades it.
+        var timeoutService = new WorkspaceValidationService(
+            new CleanCompileCheckService(),
+            new CleanDiagnosticService(),
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker,
+            gitStatusTimeout: TimeSpan.FromMilliseconds(1),
+            validationPhaseTimeout: TimeSpan.FromMinutes(2));
+
+        var result = await timeoutService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
+
+        Assert.AreEqual("git-status-unknown", result.OverallStatus,
+            "A clean verdict computed over an unobserved git scope must degrade to git-status-unknown; "
+            + $"warnings were [{string.Join("; ", result.Warnings)}].");
+
+        // The fallback widened to changedFilePaths=null; this workspace id has no
+        // change-tracker entries, so the scope really is empty — which is exactly the
+        // false-clean shape the row reported (dirty tree, empty scope, passing verdict).
+        Assert.AreEqual(0, result.ChangedFilePaths.Count,
+            $"Expected the empty change-tracker fallback scope; got [{string.Join("; ", result.ChangedFilePaths)}].");
+
+        Assert.IsTrue(result.Warnings.Any(w =>
+                w.Contains("git status exceeded the timeout", StringComparison.Ordinal)
+                && w.Contains("retryable=true", StringComparison.Ordinal)),
+            $"Expected the retryable git-status timeout warning; got [{string.Join("; ", result.Warnings)}].");
+
+        // Control: same stubs, same dirty tree, a git timeout that does NOT fire. The verdict
+        // must stay "clean" — proving the new status is gated on the timeout rather than being
+        // emitted unconditionally.
+        var normalService = new WorkspaceValidationService(
+            new CleanCompileCheckService(),
+            new CleanDiagnosticService(),
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker,
+            gitStatusTimeout: TimeSpan.FromSeconds(30),
+            validationPhaseTimeout: TimeSpan.FromMinutes(2));
+
+        var control = await normalService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
+
+        Assert.AreEqual("clean", control.OverallStatus,
+            $"Control run must stay clean; warnings were [{string.Join("; ", control.Warnings)}].");
+        Assert.AreEqual(0, control.Warnings.Count,
+            $"Control run must not warn; got [{string.Join("; ", control.Warnings)}].");
+    }
+
+    // ------------------------------------------------------------------
     // No-git-repo fallback: copy the sample solution to a temp directory that
     // is NOT inside a git repo. Must fall back to full-workspace scope and
     // surface the reason in Warnings.
@@ -261,6 +345,63 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
                 ct: CancellationToken.None));
 
         Assert.AreEqual("injected validation failure", exception.Message);
+    }
+
+    /// <summary>
+    /// validate-recent-git-changes-status-timeout-false-clean: pins the compile stage to a
+    /// zero-error result so <c>ComputeOverallStatus</c> yields <c>clean</c> independently of the
+    /// isolated fixture's (unrestored, therefore error-laden) compilation state.
+    /// </summary>
+    private sealed class CleanCompileCheckService : ICompileCheckService
+    {
+        public Task<CompileCheckDto> CheckAsync(
+            string workspaceId,
+            CompileCheckOptions options,
+            CancellationToken ct) =>
+            Task.FromResult(new CompileCheckDto(
+                Success: true,
+                ErrorCount: 0,
+                WarningCount: 0,
+                TotalDiagnostics: 0,
+                ReturnedDiagnostics: 0,
+                Offset: 0,
+                Limit: 200,
+                HasMore: false,
+                Diagnostics: Array.Empty<DiagnosticDto>(),
+                ElapsedMs: 0,
+                Cancelled: false));
+    }
+
+    /// <summary>
+    /// Companion to <see cref="CleanCompileCheckService"/> — the second diagnostic harvest inside
+    /// <c>ValidateInternalAsync</c> would otherwise re-introduce the fixture's unrestored-package
+    /// errors and force an <c>analyzer-error</c> verdict.
+    /// </summary>
+    private sealed class CleanDiagnosticService : IDiagnosticService
+    {
+        public Task<DiagnosticsResultDto> GetDiagnosticsAsync(
+            string workspaceId,
+            string? projectFilter,
+            string? fileFilter,
+            string? severityFilter,
+            string? diagnosticIdFilter,
+            CancellationToken ct) =>
+            Task.FromResult(new DiagnosticsResultDto(
+                WorkspaceDiagnostics: Array.Empty<DiagnosticDto>(),
+                CompilerDiagnostics: Array.Empty<DiagnosticDto>(),
+                AnalyzerDiagnostics: Array.Empty<DiagnosticDto>(),
+                TotalErrors: 0,
+                TotalWarnings: 0,
+                TotalInfo: 0));
+
+        public Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
+            string workspaceId,
+            string diagnosticId,
+            string filePath,
+            int line,
+            int column,
+            CancellationToken ct) =>
+            throw new NotSupportedException("Diagnostic details are not exercised by the validation bundle.");
     }
 
     private sealed class SlowCompileCheckService : ICompileCheckService

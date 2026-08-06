@@ -43,4 +43,15 @@ public sealed record ValidationServiceOptions
     /// Defaults to 30 seconds.
     /// </summary>
     public TimeSpan ApplyRevertTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Gets the maximum time allowed for the <c>git status --porcelain</c> invocation that
+    /// <c>validate_recent_git_changes</c> uses to derive its changed-file scope.
+    /// Defaults to 10 seconds. Distinct from the broader per-phase validation timeout: this one
+    /// bounds only the git subprocess. When it fires the bundle can no longer trust an otherwise
+    /// <c>clean</c> verdict and reports <c>git-status-unknown</c> instead, so a repository large
+    /// or cold enough to routinely exceed 10 seconds should raise this rather than live with a
+    /// degraded verdict.
+    /// </summary>
+    public TimeSpan GitStatusTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }

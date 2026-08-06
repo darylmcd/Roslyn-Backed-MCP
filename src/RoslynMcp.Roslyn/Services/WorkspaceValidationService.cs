@@ -39,6 +39,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly ILogger<WorkspaceValidationService>? _logger;
     private readonly Action<Process> _killProcessTree;
 
+    /// <param name="validationOptions">
+    /// validate-recent-git-changes-status-timeout-false-clean: supplies the operator-configurable
+    /// <see cref="ValidationServiceOptions.GitStatusTimeout"/> (env
+    /// <c>ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS</c>). Resolved automatically by DI, which registers
+    /// <see cref="ValidationServiceOptions"/> as a singleton; <see langword="null"/> falls back to
+    /// the 10-second default.
+    /// </param>
     public WorkspaceValidationService(
         ICompileCheckService compile,
         IDiagnosticService diagnostics,
@@ -46,7 +53,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         ITestRunnerService testRunner,
         IWorkspaceManager workspace,
         IChangeTracker? changeTracker = null,
-        ILogger<WorkspaceValidationService>? logger = null)
+        ILogger<WorkspaceValidationService>? logger = null,
+        ValidationServiceOptions? validationOptions = null)
         : this(
             compile,
             diagnostics,
@@ -54,7 +62,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             testRunner,
             workspace,
             changeTracker,
-            DefaultGitStatusTimeout,
+            validationOptions?.GitStatusTimeout ?? DefaultGitStatusTimeout,
             DefaultValidationPhaseTimeout,
             logger)
     {
@@ -126,7 +134,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         bool summary = false)
     {
         var solutionDir = ResolveSolutionDirectory(workspaceId);
-        var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
+        var (gitFiles, gitWarnings, gitTimedOut) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
             .ConfigureAwait(false);
 
         // No-fallback path: git produced a (possibly empty) list of touched files. Forward
@@ -147,21 +155,46 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             }
         }
 
-        // Fallback: git was unavailable / repo not found / git exited with error. Widen to
-        // full-workspace scope (changedFilePaths=null → change-tracker fallback → tool behaves
-        // like validate_workspace did before this feature) and surface the warning so the
-        // caller can tell why the scope is full instead of narrow.
+        // Fallback: git was unavailable / repo not found / git exited with error / git status
+        // timed out. Widen to full-workspace scope (changedFilePaths=null → change-tracker
+        // fallback → tool behaves like validate_workspace did before this feature) and surface
+        // the warning so the caller can tell why the scope is full instead of narrow.
         try
         {
-            return await ValidateInternalAsync(
+            var fallback = await ValidateInternalAsync(
                 new ValidationRequestContext(workspaceId, ChangedFilePaths: null, runTests, summary, gitWarnings),
                 ct).ConfigureAwait(false);
+            return DegradeStatusWhenGitStatusUnknown(fallback, gitTimedOut);
         }
         catch (InternalValidationTimeoutException ex)
         {
-            return CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings);
+            return DegradeStatusWhenGitStatusUnknown(
+                CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings),
+                gitTimedOut);
         }
     }
+
+    /// <summary>
+    /// validate-recent-git-changes-status-timeout-false-clean: when the dedicated
+    /// <c>git status</c> collection timed out, the change-tracker fallback scope is
+    /// unknowable — for edits made outside this MCP session the tracker is empty, so the
+    /// bundle validated (effectively) nothing and still computed <c>clean</c> from a
+    /// zero-error compile pass. That is indistinguishable from a genuinely clean tree, so a
+    /// <c>clean</c> verdict is downgraded to <c>git-status-unknown</c>. The
+    /// <c>retryable=true</c> marker already present in the warning text is thereby promoted
+    /// into the structured status callers actually branch on.
+    ///
+    /// Any other verdict (<c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>,
+    /// <c>test-zero-run</c>, <c>timeout</c>) is left untouched: those are real, actionable
+    /// findings and outrank an unknown-scope caveat that the <see cref="WorkspaceValidationDto.Warnings"/>
+    /// list still carries verbatim.
+    /// </summary>
+    private static WorkspaceValidationDto DegradeStatusWhenGitStatusUnknown(
+        WorkspaceValidationDto result,
+        bool gitStatusTimedOut)
+        => gitStatusTimedOut && string.Equals(result.OverallStatus, "clean", StringComparison.Ordinal)
+            ? result with { OverallStatus = "git-status-unknown" }
+            : result;
 
     /// <summary>
     /// Parameter object for <see cref="ValidateInternalAsync"/>. Folds the five per-call inputs
@@ -279,7 +312,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         if (solutionDir is null)
             return changedFiles;
 
-        var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
+        // The TimedOut flag is deliberately discarded here: this is the general validate_workspace
+        // change-tracker path, where the git reconcile is a best-effort precision improvement
+        // rather than the scope's source of truth. Degrading the status on a git-status timeout is
+        // scoped to ValidateRecentGitChangesAsync only.
+        var (gitFiles, gitWarnings, _) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
             .ConfigureAwait(false);
 
         // git unavailable / repo not found / git error — preserve existing unfiltered behavior
@@ -540,13 +577,14 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// change Roslyn compilation output, so passing them would just widen the scope for no
     /// verification benefit.
     ///
-    /// Returns a (files, warnings) tuple:
+    /// Returns a (files, warnings, timedOut) tuple:
     /// <list type="bullet">
     ///   <item>warnings empty → files is the authoritative touched set (possibly empty on clean tree).</item>
-    ///   <item>warnings non-empty → git was unavailable / solution is outside a git repo / git exited with error. Caller should fall back to full-workspace scope.</item>
+    ///   <item>warnings non-empty → git was unavailable / solution is outside a git repo / git exited with error / git status exceeded <paramref name="timeout"/>. Caller should fall back to full-workspace scope.</item>
+    ///   <item>timedOut true → and ONLY → the <paramref name="timeout"/> elapsed. Distinguishes "we do not know what changed" from every other fallback reason, all of which are deterministic facts about the environment rather than an incomplete observation. validate-recent-git-changes-status-timeout-false-clean: the caller uses it to avoid reporting a <c>clean</c> verdict derived from a scope it never actually observed.</item>
     /// </list>
     /// </summary>
-    private async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings)> CollectGitChangedFilesAsync(
+    private async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings, bool TimedOut)> CollectGitChangedFilesAsync(
         string solutionDirectory,
         TimeSpan timeout,
         CancellationToken ct)
@@ -560,7 +598,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git repository not found at or above '{solutionDirectory}'; validated full workspace."
-            });
+            }, false);
         }
 
         ProcessStartInfo startInfo;
@@ -587,7 +625,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git invocation failed to configure: {ex.Message}; validated full workspace."
-            });
+            }, false);
         }
 
         using var process = new Process { StartInfo = startInfo };
@@ -598,7 +636,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 return (Array.Empty<string>(), new[]
                 {
                     "git failed to start; validated full workspace."
-                });
+                }, false);
             }
         }
         catch (Exception ex)
@@ -607,7 +645,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git not available on PATH ({ex.Message}); validated full workspace."
-            });
+            }, false);
         }
 
         string stdout;
@@ -628,7 +666,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git status exceeded the timeout of {timeout.TotalSeconds:F0} second(s); retryable=true; validated full workspace."
-            });
+            }, true);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -637,7 +675,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git status failed: {ex.Message}; validated full workspace."
-            });
+            }, false);
         }
 
         if (process.ExitCode != 0)
@@ -646,10 +684,10 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return (Array.Empty<string>(), new[]
             {
                 $"git status exited non-zero ({detail}); validated full workspace."
-            });
+            }, false);
         }
 
-        return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>());
+        return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>(), false);
     }
 
     /// <summary>
