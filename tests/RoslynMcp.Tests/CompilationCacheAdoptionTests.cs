@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
@@ -16,7 +17,11 @@ namespace RoslynMcp.Tests;
 /// <see cref="CouplingAnalysisService"/>, <see cref="ExceptionFlowService"/>, and
 /// <see cref="AnalyzerInfoService"/>; batch 2 adds <see cref="TypeConsumersService"/>,
 /// <see cref="CodePatternAnalyzer"/>, and <see cref="SymbolSearchService"/>; group-a core adds
-/// <see cref="TestReferenceMapService"/> and <see cref="ReferenceService"/>.
+/// <see cref="TestReferenceMapService"/>, <see cref="ReferenceService"/>,
+/// <see cref="ImpactSweepService"/>, <see cref="MutationAnalysisService"/>, and
+/// <see cref="SymbolRelationshipService"/>; group-b core adds <see cref="BuildService"/>,
+/// <see cref="FixAllService"/>, <see cref="BulkRefactoringService"/>, and
+/// <see cref="CrossProjectRefactoringService"/>.
 /// <para>
 /// A reference-equality check alone cannot prove adoption — Roslyn memoizes a
 /// <see cref="Compilation"/> on its owning <see cref="Project"/>, so two direct calls would also
@@ -371,6 +376,129 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
     }
 
+    [TestMethod]
+    public async Task BuildService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        // EnrichDiagnosticSpansAsync -> CollectRoslynDiagnosticSpansAsync is the converted site. Its
+        // candidate gate only admits a parsed build diagnostic that HAS a start position but NO end
+        // position, so the command executor is stubbed with a canned MSBuild warning line anchored on
+        // a real sample document. Shelling out to a real `dotnet build` would emit no diagnostics at
+        // all against the clean sample, skip the helper entirely, and produce a false-green
+        // zero-call assertion.
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var dogFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
+        using var executor = new CannedBuildOutputExecutor(
+            $"{dogFile.FilePath}(5,19): warning CS0219: The variable 'unused' is assigned but its value is never used");
+        var service = new BuildService(
+            WorkspaceManager,
+            executor,
+            cache,
+            NullLogger<BuildService>.Instance);
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.BuildWorkspaceAsync(workspace.WorkspaceId, CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task FixAllService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new FixAllService(
+            WorkspaceManager,
+            new PreviewStore(),
+            cache,
+            NullLogger<FixAllService>.Instance);
+
+        // CollectDiagnosticsAsync is the converted site. PreviewFixAllAsync early-returns BEFORE it
+        // unless a CodeFixProvider *and* a FixAllProvider both resolve for the id, so anchor on
+        // IDE0161 (ConvertNamespaceCodeFixProvider) — the same id FixAllServiceGuidanceTests relies
+        // on for reaching the active-provider path. Solution scope makes the collection walk every
+        // project, so a correctly-routed implementation drives one cache fetch per project.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.PreviewFixAllAsync(
+                workspace.WorkspaceId,
+                diagnosticId: "IDE0161",
+                scope: "solution",
+                filePath: null,
+                projectName: null,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task BulkRefactoringService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new BulkRefactoringService(WorkspaceManager, new PreviewStore(), cache);
+
+        // All THREE converted resolve-helpers must share the one injected cache instance, so the
+        // reference-equality assertion below holds across the whole service rather than one path.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            // ResolveTypeByNameAsync — the fully-qualified-metadata sweep runs over every project
+            // before the simple-name fallback resolves 'IAnimal'.
+            await service.PreviewBulkReplaceTypeAsync(
+                workspace.WorkspaceId, "IAnimal", "Shape", scope: null, CancellationToken.None);
+
+            // ResolveMethodBySignatureAsync — a qualified-but-unresolvable signature drives the full
+            // per-project compilation loop; the public method then throws because nothing matched.
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                service.PreviewReplaceInvocationAsync(
+                    workspace.WorkspaceId,
+                    oldMethod: "SampleLib.NoSuchHelper.Build(int, string)",
+                    newMethod: "SampleLib.NoSuchHelper.Generate(string, int)",
+                    scope: null,
+                    CancellationToken.None));
+
+            // ResolveMethodByBareNameAsync — an unqualified name defeats the last-dot split, so the
+            // bare-name fallback runs its own per-project compilation loop.
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                service.PreviewReplaceInvocationAsync(
+                    workspace.WorkspaceId,
+                    oldMethod: "NoSuchBareBuild(int, string)",
+                    newMethod: "NoSuchBareGenerate(string, int)",
+                    scope: null,
+                    CancellationToken.None));
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task CrossProjectRefactoringService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new CrossProjectRefactoringService(WorkspaceManager, new PreviewStore(), cache);
+
+        // DetectExistingTypeConflictAsync is the converted site — reached from BOTH
+        // PreviewExtractInterfaceAsync and (via CreateInterfaceExtractionSolutionAsync)
+        // PreviewDependencyInversionAsync, always against the LIVE solution. It throws on a
+        // collision, so the interface name is deliberately one the sample cannot already declare.
+        // Explicitly NOT covered here: the SymbolResolver.ResolveByMetadataNameAsync call in
+        // PreviewDependencyInversionAsync, which reads a FORKED solution and stays uncached.
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.PreviewExtractInterfaceAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "AnimalService",
+                interfaceName: "IAnimalServiceCompilationCacheProbe",
+                targetProjectName: null,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
     /// <summary>
     /// Runs the service once (proving it touched the cache), snapshots the compilations the cache
     /// handed out, then runs it a second time at the unchanged workspace version so the caller can
@@ -470,6 +598,39 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         var dto = compilation.GetTypeByMetadataName("HoistFixture.Gadget")!;
         var otherDto = compilation.GetTypeByMetadataName("HoistFixture.Trinket")!;
         return (solution, 2, domain, dto, otherDto);
+    }
+
+    /// <summary>
+    /// Stub <see cref="IGatedCommandExecutor"/> that returns a fixed <c>dotnet build</c> stdout
+    /// instead of spawning the real CLI. The canned line carries a start position and no end
+    /// position, which is exactly the diagnostic shape <see cref="BuildService"/> routes into its
+    /// Roslyn span-enrichment path — the converted compilation-cache site.
+    /// </summary>
+    private sealed class CannedBuildOutputExecutor(string stdOut) : IGatedCommandExecutor
+    {
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken ct) =>
+            Task.FromResult(new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: arguments,
+                WorkingDirectory: Path.GetDirectoryName(targetPath) ?? ".",
+                TargetPath: targetPath,
+                ExitCode: 0,
+                Succeeded: true,
+                DurationMs: 1,
+                StdOut: stdOut,
+                StdErr: string.Empty));
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
     }
 
     /// <summary>

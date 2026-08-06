@@ -118,7 +118,8 @@ internal sealed class TestServiceContainer
             NullLogger<FileOperationService>.Instance);
         var crossProjectRefactoringService = new CrossProjectRefactoringService(
             workspaceManager,
-            previewStore);
+            previewStore,
+            compilationCache);
         var compositePreviewStore = new CompositePreviewStore();
 
         // semantic-edit-with-compile-check-wrapper: hoist CompileCheckService construction
@@ -170,6 +171,7 @@ internal sealed class TestServiceContainer
             BuildService = new BuildService(
                 workspaceManager,
                 gatedCommandExecutor,
+                compilationCache,
                 NullLogger<BuildService>.Instance,
                 validationOptions),
             TestRunnerService = new TestRunnerService(
@@ -233,7 +235,8 @@ internal sealed class TestServiceContainer
             SyntaxService = new SyntaxService(workspaceManager),
             BulkRefactoringService = new BulkRefactoringService(
                 workspaceManager,
-                previewStore),
+                previewStore,
+                compilationCache),
             CohesionAnalysisService = new CohesionAnalysisService(
                 workspaceManager,
                 NullLogger<CohesionAnalysisService>.Instance),
@@ -262,6 +265,7 @@ internal sealed class TestServiceContainer
             FixAllService = new FixAllService(
                 workspaceManager,
                 previewStore,
+                compilationCache,
                 NullLogger<FixAllService>.Instance),
             OperationService = new OperationService(workspaceManager),
             SnippetAnalysisService = new SnippetAnalysisService(

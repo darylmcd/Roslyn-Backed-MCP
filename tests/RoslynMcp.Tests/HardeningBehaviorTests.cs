@@ -78,6 +78,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         var service = new BuildService(
             fakeWorkspaceManager,
             executor,
+            new CompilationCache(fakeWorkspaceManager),
             NullLogger<BuildService>.Instance,
             new ValidationServiceOptions
             {

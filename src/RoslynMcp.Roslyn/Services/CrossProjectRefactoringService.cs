@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -14,11 +15,16 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly ICompilationCache _compilationCache;
 
-    public CrossProjectRefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore)
+    public CrossProjectRefactoringService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _compilationCache = compilationCache;
     }
 
     public async Task<RefactoringPreviewDto> PreviewMoveTypeToProjectAsync(
@@ -152,7 +158,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ? DeriveTargetNamespaceForPath(targetProject, targetProjectDirectory, interfaceDirectory)
             : GetContainingNamespace(typeSymbol);
 
-        await DetectExistingTypeConflictAsync(solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
+        await DetectExistingTypeConflictAsync(
+            workspaceId, _compilationCache, solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         // gh #765 — walk the source type's public-instance member symbols semantically and
         // collect every referenced type's containing namespace. The generated interface file's
@@ -215,6 +222,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
         var updatedSolution = await CreateInterfaceExtractionSolutionAsync(
+            workspaceId,
+            _compilationCache,
             solution,
             sourceDocument,
             sourceRoot,
@@ -379,6 +388,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
     }
 
     private static async Task DetectExistingTypeConflictAsync(
+        string workspaceId, ICompilationCache compilationCache,
         Solution solution, string namespaceName, string typeName, CancellationToken ct)
     {
         var fullyQualifiedName = string.IsNullOrWhiteSpace(namespaceName)
@@ -387,7 +397,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation?.GetTypeByMetadataName(fullyQualifiedName) is not null)
             {
                 throw new InvalidOperationException(
@@ -759,6 +769,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
     }
 
     private static async Task<Solution> CreateInterfaceExtractionSolutionAsync(
+        string workspaceId,
+        ICompilationCache compilationCache,
         Solution solution,
         Document sourceDocument,
         CompilationUnitSyntax sourceRoot,
@@ -776,7 +788,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ? DeriveTargetNamespace(targetProject)
             : GetContainingNamespace(typeSymbol);
 
-        await DetectExistingTypeConflictAsync(solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
+        await DetectExistingTypeConflictAsync(
+            workspaceId, compilationCache, solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
 
         // gh #765 — collect required namespaces semantically (see PreviewExtractInterfaceAsync
         // for the same call). The DI-inversion path routes through here too, so missing this

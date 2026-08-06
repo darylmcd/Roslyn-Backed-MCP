@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -12,11 +13,16 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly ICompilationCache _compilationCache;
 
-    public BulkRefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore)
+    public BulkRefactoringService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _compilationCache = compilationCache;
     }
 
     public async Task<RefactoringPreviewDto> PreviewBulkReplaceTypeAsync(
@@ -25,11 +31,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
         // Resolve old type
-        var oldTypeSymbol = await ResolveTypeByNameAsync(solution, oldTypeName, ct).ConfigureAwait(false)
+        var oldTypeSymbol = await ResolveTypeByNameAsync(workspaceId, _compilationCache, solution, oldTypeName, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Type '{oldTypeName}' not found in the solution.");
 
         // Resolve new type (must exist)
-        var newTypeSymbol = await ResolveTypeByNameAsync(solution, newTypeName, ct).ConfigureAwait(false)
+        var newTypeSymbol = await ResolveTypeByNameAsync(workspaceId, _compilationCache, solution, newTypeName, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Replacement type '{newTypeName}' not found in the solution.");
 
         var normalizedScope = (scope ?? "all").ToLowerInvariant();
@@ -158,12 +164,13 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         return lastDot >= 0 ? typeName[(lastDot + 1)..] : typeName;
     }
 
-    private static async Task<INamedTypeSymbol?> ResolveTypeByNameAsync(Solution solution, string typeName, CancellationToken ct)
+    private static async Task<INamedTypeSymbol?> ResolveTypeByNameAsync(
+        string workspaceId, ICompilationCache compilationCache, Solution solution, string typeName, CancellationToken ct)
     {
         // Try fully qualified name first
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             var symbol = compilation.GetTypeByMetadataName(typeName);
@@ -209,11 +216,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        var oldMethodSymbol = await ResolveMethodBySignatureAsync(solution, oldSig, ct).ConfigureAwait(false)
+        var oldMethodSymbol = await ResolveMethodBySignatureAsync(workspaceId, _compilationCache, solution, oldSig, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
                 $"Could not resolve oldMethod '{oldMethod}'. Ensure the fully-qualified type name and parameter-type list match an existing method overload.");
 
-        var newMethodSymbol = await ResolveMethodBySignatureAsync(solution, newSig, ct).ConfigureAwait(false)
+        var newMethodSymbol = await ResolveMethodBySignatureAsync(workspaceId, _compilationCache, solution, newSig, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
                 $"Could not resolve newMethod '{newMethod}'. Ensure the fully-qualified type name and parameter-type list match an existing method overload.");
 
@@ -535,14 +542,14 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
     }
 
     private static async Task<IMethodSymbol?> ResolveMethodBySignatureAsync(
-        Solution solution, MethodSignature sig, CancellationToken ct)
+        string workspaceId, ICompilationCache compilationCache, Solution solution, MethodSignature sig, CancellationToken ct)
     {
         // Split FQ name into containing-type + method-name at the last dot.
         var lastDot = sig.FullyQualifiedName.LastIndexOf('.');
         if (lastDot <= 0 || lastDot == sig.FullyQualifiedName.Length - 1)
         {
             // No namespace/type qualifier — fall back to solution-wide simple-name search.
-            return await ResolveMethodByBareNameAsync(solution, sig, ct).ConfigureAwait(false);
+            return await ResolveMethodByBareNameAsync(workspaceId, compilationCache, solution, sig, ct).ConfigureAwait(false);
         }
 
         var containingTypeName = sig.FullyQualifiedName[..lastDot];
@@ -551,7 +558,7 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             var containingType = compilation.GetTypeByMetadataName(containingTypeName);
@@ -566,12 +573,12 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
     }
 
     private static async Task<IMethodSymbol?> ResolveMethodByBareNameAsync(
-        Solution solution, MethodSignature sig, CancellationToken ct)
+        string workspaceId, ICompilationCache compilationCache, Solution solution, MethodSignature sig, CancellationToken ct)
     {
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             var candidates = new List<IMethodSymbol>();

@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
@@ -10,17 +11,20 @@ public sealed class BuildService : IBuildService
 {
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IGatedCommandExecutor _executor;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<BuildService> _logger;
     private readonly ValidationServiceOptions _options;
 
     public BuildService(
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
+        ICompilationCache compilationCache,
         ILogger<BuildService> logger,
         ValidationServiceOptions? options = null)
     {
         _workspaceManager = workspaceManager;
         _executor = executor;
+        _compilationCache = compilationCache;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
     }
@@ -97,7 +101,8 @@ public sealed class BuildService : IBuildService
         try
         {
             var solution = _workspaceManager.GetCurrentSolution(workspaceId);
-            spans = await CollectRoslynDiagnosticSpansAsync(solution, candidates, ct).ConfigureAwait(false);
+            spans = await CollectRoslynDiagnosticSpansAsync(
+                workspaceId, _compilationCache, solution, candidates, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -126,6 +131,8 @@ public sealed class BuildService : IBuildService
     }
 
     private static async Task<Dictionary<string, (int EndLine, int EndColumn)>> CollectRoslynDiagnosticSpansAsync(
+        string workspaceId,
+        ICompilationCache compilationCache,
         Microsoft.CodeAnalysis.Solution solution,
         IReadOnlyList<DiagnosticDto> candidates,
         CancellationToken ct)
@@ -146,7 +153,9 @@ public sealed class BuildService : IBuildService
                     continue;
                 }
 
-                var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false);
+                var compilation = await compilationCache
+                    .GetCompilationAsync(workspaceId, document.Project, ct)
+                    .ConfigureAwait(false);
                 if (compilation is null)
                 {
                     continue;
