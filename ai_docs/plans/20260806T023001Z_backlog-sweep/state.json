@@ -84,7 +84,7 @@
     {
       "id": "validate-workspace-diagnostic-harvest-reconcile",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "validate-workspace-diagnostic-harvest-reconcile"
       ],
@@ -106,10 +106,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/validate-workspace-diagnostic-harvest-reconcile",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1160",
+      "mergedAt": "2026-08-06T04:37:29Z",
       "notes": null,
       "fileSetHash": "a31531a21a7c2f4042e7b84a9e89697576bb5f306047377acebf1b39883aaf4e",
       "stanzaHash": "789f4eeac117e951c5b92e1a8a7a1a8019b21d1e4977f00a74a65b369ca22451",
