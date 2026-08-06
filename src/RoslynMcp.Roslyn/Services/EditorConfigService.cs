@@ -372,7 +372,12 @@ public sealed class EditorConfigService : IEditorConfigService
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllLines(editorconfigPath, lines);
+        // mutation-write-paths-drop-original-encoding: the encoding-less File.WriteAllLines overload
+        // is UTF-8-no-BOM by definition, so it silently stripped/rewrote the BOM of an existing
+        // .editorconfig. existingBytes is already in scope for the undo snapshot — reuse it to
+        // detect the original encoding (null when we are creating the file, which correctly
+        // resolves to UTF-8-no-BOM).
+        File.WriteAllLines(editorconfigPath, lines, AtomicFileWriter.ResolveWriteEncoding(existingBytes));
 
         // workspace-changes-log-missing-editorconfig-writers: route the editorconfig write
         // through ChangeTracker so `workspace_changes` surfaces the originating tool name

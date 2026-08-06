@@ -93,6 +93,62 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// Regression guard for <c>mutation-write-paths-drop-original-encoding</c>: the FORWARD apply
+    /// half of the byte-fidelity contract. <c>SetOptionAsync</c> rewrote the file through the
+    /// <c>Encoding</c>-less <see cref="File.WriteAllLines(string, IEnumerable{string})"/> overload,
+    /// which is UTF-8-no-BOM by definition — so a UTF-8-BOM or UTF-16 <c>.editorconfig</c> lost its
+    /// byte-order mark on every set. The sibling revert test above only covers the restore path.
+    /// The <c>utf8-nobom</c> row is the inverse guard: a file that had no BOM must not gain one.
+    /// </summary>
+    [TestMethod]
+    [DataRow("utf8-nobom")]
+    [DataRow("utf8-bom")]
+    [DataRow("utf16-bom")]
+    public async Task SetOptionAsync_PreservesOriginalFileEncoding(string encodingKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var editorconfigPath = Path.Combine(workspace.RootPath, ".editorconfig");
+        const string key = "dotnet_diagnostic.CA9878.severity";
+        const string originalContent = "[*.{cs,csx,cake}]\ndotnet_diagnostic.CA9878.severity = warning\n";
+
+        Encoding encoding = encodingKind switch
+        {
+            "utf16-bom" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+        var preamble = encoding.GetPreamble();
+
+        await File.WriteAllBytesAsync(
+            editorconfigPath,
+            preamble.Concat(encoding.GetBytes(originalContent)).ToArray(),
+            CancellationToken.None);
+
+        var setResult = await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, key, "error", "set_editorconfig_option", CancellationToken.None);
+        Assert.IsFalse(setResult.CreatedNewFile, "File already existed; CreatedNewFile must be false.");
+
+        var afterBytes = await File.ReadAllBytesAsync(editorconfigPath, CancellationToken.None);
+        Assert.IsTrue(
+            afterBytes.AsSpan().StartsWith(preamble),
+            $"set_editorconfig_option must re-emit the original {encodingKind} byte-order mark instead of rewriting the file as UTF-8-no-BOM.");
+        if (preamble.Length == 0)
+        {
+            Assert.IsFalse(
+                afterBytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()),
+                "An .editorconfig that had no BOM must not gain one.");
+        }
+
+        StringAssert.Contains(
+            encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
+            "error",
+            "Sanity check: the option must be readable back through the original encoding.");
+    }
+
+    /// <summary>
     /// Regression test for <c>editorconfig-write-no-auto-invalidation</c>:
     /// <see cref="IEditorConfigService.GetOptionsAsync"/> must return the value that
     /// <see cref="IEditorConfigService.SetOptionAsync"/> just wrote for a <em>known</em>

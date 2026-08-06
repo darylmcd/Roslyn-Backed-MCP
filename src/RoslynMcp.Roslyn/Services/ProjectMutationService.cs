@@ -551,10 +551,14 @@ public sealed class ProjectMutationService : IProjectMutationService
             // `null` OriginalText is impossible here because Retrieve above succeeded and
             // the preview-store entry was created from File.ReadAllTextAsync.
             var normalizedProjectFilePath = Path.GetFullPath(projectFilePath);
-            var preApplySnapshot = File.Exists(projectFilePath)
-                ? FileSnapshotDto.FromExistingBytes(
-                    normalizedProjectFilePath,
-                    await File.ReadAllBytesAsync(projectFilePath, ct).ConfigureAwait(false))
+            // mutation-write-paths-drop-original-encoding: the pre-apply bytes are read here for
+            // the undo snapshot anyway, so reuse them to detect the file's original BOM/encoding
+            // and write it back with the same one instead of defaulting to UTF-8-no-BOM.
+            var preApplyBytes = File.Exists(projectFilePath)
+                ? await File.ReadAllBytesAsync(projectFilePath, ct).ConfigureAwait(false)
+                : null;
+            var preApplySnapshot = preApplyBytes is not null
+                ? FileSnapshotDto.FromExistingBytes(normalizedProjectFilePath, preApplyBytes)
                 : new FileSnapshotDto(normalizedProjectFilePath, OriginalText: null);
             _undoService?.CaptureBeforeApply(
                 workspaceId,
@@ -562,7 +566,11 @@ public sealed class ProjectMutationService : IProjectMutationService
                 preApplySolution: null,
                 fileSnapshots: new[] { preApplySnapshot });
 
-            await AtomicFileWriter.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
+            await AtomicFileWriter.WriteAllTextAsync(
+                projectFilePath,
+                updatedContent,
+                ct,
+                encoding: AtomicFileWriter.ResolveWriteEncoding(preApplyBytes)).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
             _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");

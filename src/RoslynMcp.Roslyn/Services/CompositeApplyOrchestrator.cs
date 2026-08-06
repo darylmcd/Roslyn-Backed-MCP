@@ -1,6 +1,8 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -127,13 +129,47 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 /// <paramref name="logger"/> is supplied, a failure to delete the orphaned <c>.tmp</c> is logged
 /// at Warning level (the primary write failure is still re-thrown either way) so a stray artifact
 /// left on disk leaves an observability trail instead of being silently discarded.
+/// <para>
+/// Text writes accept an optional <see cref="Encoding"/> so a mutated file keeps its original
+/// BOM/encoding (<c>mutation-write-paths-drop-original-encoding</c>). Callers resolve it through
+/// <see cref="ResolveWriteEncoding(byte[])"/> (from the pre-mutation on-disk bytes) or
+/// <see cref="ResolveWriteEncoding(Encoding)"/> (from a Roslyn <c>SourceText.Encoding</c>).
+/// Omitting it keeps the historic UTF-8-no-BOM behavior.
+/// </para>
 /// </summary>
 internal static class AtomicFileWriter
 {
-    public static async Task WriteAllTextAsync(string path, string content, CancellationToken ct, ILogger? logger = null)
+    /// <summary>
+    /// UTF-8 without a byte-order mark — the encoding .NET's <c>Encoding</c>-less
+    /// <see cref="File.WriteAllTextAsync(string, string?, CancellationToken)"/> overload uses.
+    /// Also the correct default for a brand-new file and for any source whose original encoding
+    /// could not be determined, so omitting <c>encoding</c> preserves the pre-existing behavior
+    /// byte-for-byte. Deliberately NOT <see cref="Encoding.UTF8"/>: that static instance emits a
+    /// BOM, so using it would ADD a preamble to every no-BOM file.
+    /// </summary>
+    internal static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+    /// <summary>
+    /// Atomically writes <paramref name="content"/> to <paramref name="path"/>.
+    /// </summary>
+    /// <param name="encoding">
+    /// Optional. When supplied, the temp file is written with this encoding so a source file's
+    /// original BOM/encoding survives the round-trip (<c>mutation-write-paths-drop-original-encoding</c>).
+    /// When <see langword="null"/> the encoding-less BCL overload is used, i.e. UTF-8 with no BOM.
+    /// Declared AFTER <paramref name="logger"/> on purpose: callers that pass a logger positionally
+    /// must keep binding it to <paramref name="logger"/>.
+    /// </param>
+    public static async Task WriteAllTextAsync(
+        string path,
+        string content,
+        CancellationToken ct,
+        ILogger? logger = null,
+        Encoding? encoding = null)
         => await WriteAtomicAsync(
             path,
-            tmp => File.WriteAllTextAsync(tmp, content, ct),
+            tmp => encoding is null
+                ? File.WriteAllTextAsync(tmp, content, ct)
+                : File.WriteAllTextAsync(tmp, content, encoding, ct),
             logger).ConfigureAwait(false);
 
     public static async Task WriteAllBytesAsync(string path, byte[] content, CancellationToken ct, ILogger? logger = null)
@@ -141,6 +177,56 @@ internal static class AtomicFileWriter
             path,
             tmp => File.WriteAllBytesAsync(tmp, content, ct),
             logger).ConfigureAwait(false);
+
+    /// <summary>
+    /// Resolves the <see cref="Encoding"/> a file should be REWRITTEN with, given the bytes it
+    /// held before the mutation. Returns <see cref="Utf8NoBom"/> when <paramref name="existingBytes"/>
+    /// is <see langword="null"/> (the file is being created) or when the original carried no
+    /// preamble. Otherwise returns the BOM-derived encoding so the preamble is re-emitted verbatim.
+    /// </summary>
+    /// <remarks>
+    /// The <c>HasPreamble</c> gate is load-bearing. <see cref="CsprojSemanticEquality.CreateSnapshot"/>
+    /// reports <see cref="Encoding.UTF8"/> (BOM-emitting) for a plain no-BOM UTF-8 file, because that
+    /// is the <see cref="StreamReader"/> fallback when no byte-order mark is detected. Writing with
+    /// that instance would add a BOM to every no-BOM file, so the no-preamble case must fall back to
+    /// <see cref="Utf8NoBom"/> instead of trusting the detected encoding.
+    /// Encoding detection is BOM-based only: a BOM-less UTF-16/codepage file is indistinguishable
+    /// from UTF-8 here and is rewritten as UTF-8-no-BOM, matching the pre-fix behavior.
+    /// </remarks>
+    internal static Encoding ResolveWriteEncoding(byte[]? existingBytes)
+    {
+        if (existingBytes is null || existingBytes.Length == 0)
+        {
+            return Utf8NoBom;
+        }
+
+        var snapshot = CsprojSemanticEquality.CreateSnapshot(existingBytes);
+        return snapshot.HasPreamble ? snapshot.TextEncoding : Utf8NoBom;
+    }
+
+    /// <summary>
+    /// Resolves the <see cref="Encoding"/> to write with from an encoding Roslyn already attached
+    /// to a <c>SourceText</c> (<c>SourceText.Encoding</c>), which is <see langword="null"/> for text
+    /// synthesized in memory.
+    /// </summary>
+    /// <remarks>
+    /// A UTF-8 encoding that emits no preamble is normalized to the shared <see cref="Utf8NoBom"/>
+    /// instance rather than passed through: Roslyn's own no-BOM UTF-8 instance is constructed with
+    /// <c>throwOnInvalidBytes: true</c>, so writing through it would turn an unpaired surrogate into
+    /// a mid-write <see cref="EncoderFallbackException"/> where the pre-fix path silently emitted
+    /// U+FFFD. Non-UTF-8 and BOM-carrying encodings are preserved as-is.
+    /// </remarks>
+    internal static Encoding ResolveWriteEncoding(Encoding? sourceEncoding)
+    {
+        if (sourceEncoding is null)
+        {
+            return Utf8NoBom;
+        }
+
+        return sourceEncoding.CodePage == Utf8NoBom.CodePage && sourceEncoding.GetPreamble().Length == 0
+            ? Utf8NoBom
+            : sourceEncoding;
+    }
 
     private static async Task WriteAtomicAsync(
         string path,
