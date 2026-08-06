@@ -15,6 +15,18 @@ namespace RoslynMcp.Core.Models;
 /// <param name="HasMore">True when more diagnostics are available beyond the returned page.</param>
 /// <param name="Diagnostics">The page of diagnostics returned by this call.</param>
 /// <param name="ElapsedMs">Wall-clock time spent in the call, in milliseconds.</param>
+/// <param name="RequestedScope">The compile scope implied by the caller's arguments, one of
+/// <c>"files"</c> (a <c>file</c>/<c>files</c> filter was supplied), <c>"project"</c> (a
+/// <c>projectName</c> filter was supplied — takes precedence over a file filter), or
+/// <c>"solution"</c> (no scoping filter). Additive and non-breaking: <see langword="null"/>
+/// on responses produced by paths that do not compute a scope.</param>
+/// <param name="ActualScope">The compile scope that actually ran, drawn from the same
+/// <c>"files"</c>/<c>"project"</c>/<c>"solution"</c> vocabulary as <see cref="RequestedScope"/>.
+/// When a <c>files</c> filter spans zero or more than one owning project the check silently widens
+/// to every project in the solution, so <see cref="ActualScope"/> becomes <c>"solution"</c> while
+/// <see cref="RequestedScope"/> stays <c>"files"</c> — comparing the two is the structured
+/// (non-prose) way to detect that fallback, which is otherwise only reported inside
+/// <see cref="RestoreHint"/>. Additive and non-breaking.</param>
 public sealed record CompileCheckDto(
     bool Success,
     int ErrorCount,
@@ -29,4 +41,6 @@ public sealed record CompileCheckDto(
     string? RestoreHint = null,
     bool Cancelled = false,
     int? CompletedProjects = null,
-    int? TotalProjects = null);
+    int? TotalProjects = null,
+    string? RequestedScope = null,
+    string? ActualScope = null);

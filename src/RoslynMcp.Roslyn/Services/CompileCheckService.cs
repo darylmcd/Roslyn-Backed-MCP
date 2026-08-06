@@ -66,6 +66,13 @@ public sealed class CompileCheckService : ICompileCheckService
 
         var hint = BuildHint(projectFilter, projectList.Count, acc, fileScopeHint);
 
+        // compile-check-multi-project-fallback-structured-scope: surface the requested-vs-actual
+        // compile scope as structured fields so callers can detect the silent file-filter widening
+        // without string-matching restoreHint prose. fileScopeHint (not `hint`) is the fallback
+        // signal — BuildHint joins into an empty string, never null, when no hint applies.
+        var requestedScope = ComputeRequestedScope(projectFilter, normalizedFileFilters);
+        var actualScope = fileScopeHint is not null ? ScopeSolution : requestedScope;
+
         return new CompileCheckDto(
             // A true Success requires that we actually evaluated at least one project.
             // CompletedProjects==0 with TotalProjects==0 always flips Success false; when
@@ -84,7 +91,31 @@ public sealed class CompileCheckService : ICompileCheckService
             RestoreHint: hint,
             Cancelled: acc.Cancelled,
             CompletedProjects: acc.CompletedProjects,
-            TotalProjects: projectList.Count);
+            TotalProjects: projectList.Count,
+            RequestedScope: requestedScope,
+            ActualScope: actualScope);
+    }
+
+    /// <summary>Scope vocabulary shared by <c>RequestedScope</c>/<c>ActualScope</c>.</summary>
+    private const string ScopeFiles = "files";
+    private const string ScopeProject = "project";
+    private const string ScopeSolution = "solution";
+
+    /// <summary>
+    /// Classifies the compile scope the caller asked for. Mirrors
+    /// <see cref="ResolveProjectScope"/>'s precedence exactly: a project filter short-circuits
+    /// before file filters are considered, so a call supplying both <c>projectName</c> and
+    /// <c>files</c> is a <c>"project"</c> request. Takes the already-normalized file set (rather
+    /// than the raw options) so whitespace-only file arguments — which
+    /// <see cref="NormalizeFileFilters"/> discards — are not misreported as a file scope.
+    /// </summary>
+    private static string ComputeRequestedScope(
+        string? projectFilter,
+        IReadOnlySet<string>? normalizedFileFilters)
+    {
+        if (!string.IsNullOrWhiteSpace(projectFilter)) return ScopeProject;
+        if (normalizedFileFilters is not null && normalizedFileFilters.Count > 0) return ScopeFiles;
+        return ScopeSolution;
     }
 
     /// <summary>
