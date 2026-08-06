@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T03:39:09Z
+**updated_at:** 2026-08-06T04:01:10Z
 
 ## Agent contract
 
@@ -65,8 +65,8 @@
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
 | `compile-check-project-filter-normalize` | Medium | — | **Normalize compile_check's projectFilter once** — FilterProjects gates on null while ResolveProjectScope/ComputeRequestedScope gate on IsNullOrWhiteSpace, so a blank projectName reports actualScope=solution with TotalProjects=0. [type: bug] [source: PR #1151 review] | M | items/compile-check-project-filter-normalize.md |
 | `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
-| `lru-eviction-concurrent-reader-safety-overstated` | Medium | — | **LRU eviction can evict a workspace mid-read, contradicting a documented safety claim** — LoadLock only guards the load path; the gate's separate reader/writer lock is never consulted by the eviction scan. [type: bug] [source: sweep 20260805T222513Z Step 13 cold review] | M | items/lru-eviction-concurrent-reader-safety-overstated.md |
 | `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
+| `lru-eviction-gate-layer-execution` | Medium | — | **Close the LRU-eviction / WorkspaceExecutionGate gap** — eviction execution needs to move into the gate layer so it cannot dispose a workspace holding an in-flight reader/writer lock; PR #1159 documented and characterized this, didn't fix it. [type: bug] [source: PR #1159 review] | M | items/lru-eviction-gate-layer-execution.md |
 
 ## Low
 
@@ -116,6 +116,7 @@
 | `workspace-validation-dead-path-and-duplicated-default` | Low | — | **Consolidated cleanup: dead status-degrade wrapper + duplicated 10s default** — DegradeStatusWhenGitStatusUnknown can never fire on the timeout branch; the default timeout is hardcoded twice. [type: refactor] [source: PR #1152 review] | M | items/workspace-validation-dead-path-and-duplicated-default.md |
 | `extract-atomicfilewriter-encoding-helper` | Low | — | **Extract BOM/encoding resolution out of AtomicFileWriter into a neutrally-named helper** — a non-atomic writer (EditorConfigService) now depends on AtomicFileWriter solely as an encoding sniffer; CsprojSemanticEquality misused the same way. [type: refactor] [source: PR #1157 review] | M | items/extract-atomicfilewriter-encoding-helper.md |
 | `composite-apply-encoding-hygiene-consolidated` | Low | — | **Consolidated cleanup: duplicated test fixture + stale doc + ambiguous overload names** — encoding-fixture block copy-pasted 3x; class doc overstates the fix's coverage; ResolveWriteEncoding overloads are ambiguous. [type: test] [source: PR #1157 review] | S | items/composite-apply-encoding-hygiene-consolidated.md |
+| `lru-eviction-test-hygiene-consolidated` | Low | — | **Consolidated test hygiene: orphaned gate-holding task on assert failure + unexplained timeout override** — evictionCompleted.SetResult isn't in a finally; a 5min RequestTimeout override has no comment. [type: test] [source: PR #1159 review] | S | items/lru-eviction-test-hygiene-consolidated.md |
 
 ## Defer
 

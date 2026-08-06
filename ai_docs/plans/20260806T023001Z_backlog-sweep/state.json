@@ -49,7 +49,7 @@
     {
       "id": "lru-eviction-concurrent-reader-safety-overstated",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "lru-eviction-concurrent-reader-safety-overstated"
       ],
@@ -72,10 +72,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/lru-eviction-concurrent-reader-safety-overstated",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1159",
+      "mergedAt": "2026-08-06T04:00:15Z",
       "notes": null,
       "fileSetHash": "f82ef9bb7cabe0db036f579baa340be7b392a03a45f7be5d0ae17df4d7a2fa77",
       "stanzaHash": "c156d6e988f2a65350360faa2134db7bef8b4a6ef7d75a0882aa67efc5fd2300",
