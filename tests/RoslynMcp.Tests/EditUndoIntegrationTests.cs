@@ -79,14 +79,17 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         await File.WriteAllBytesAsync(dogFilePath, originalBytes, CancellationToken.None);
         await workspace.ReloadAsync(CancellationToken.None);
 
-        var lines = originalText.Split('\n');
-        var lastLine = lines.Length;
-        var lastColumn = lines[^1].Length + 1;
-        var edit = new TextEditDto(lastLine, lastColumn, lastLine, lastColumn, "\n// inserted by test");
+        var edit = AppendCommentEdit(originalText, "// inserted by test");
 
         var result = await EditService.ApplyTextEditsAsync(
             workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
         Assert.IsTrue(result.Success, "ApplyTextEditsAsync should report success.");
+
+        var afterApplyBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        CollectionAssert.AreNotEqual(
+            originalBytes,
+            afterApplyBytes,
+            "Sanity check: apply must have mutated the file before revert is meaningful.");
 
         var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Revert should succeed.");
@@ -180,6 +183,17 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
 
         var dto = await EditService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, "apply_multi_file_edit", CancellationToken.None);
         Assert.IsTrue(dto.Success);
+
+        var afterApplyDogBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        var afterApplyCatBytes = await File.ReadAllBytesAsync(catFilePath, CancellationToken.None);
+        CollectionAssert.AreNotEqual(
+            originalDogBytes,
+            afterApplyDogBytes,
+            "Sanity check: apply must have mutated Dog.cs before revert is meaningful.");
+        CollectionAssert.AreNotEqual(
+            originalCatBytes,
+            afterApplyCatBytes,
+            "Sanity check: apply must have mutated Cat.cs before revert is meaningful.");
 
         var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Multi-file revert should succeed.");
