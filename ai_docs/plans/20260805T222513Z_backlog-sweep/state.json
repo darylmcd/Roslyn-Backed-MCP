@@ -225,7 +225,7 @@
     {
       "id": "stage-review-inbox-multisession-retro-glob-miss",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "stage-review-inbox-multisession-retro-glob-miss"
       ],
@@ -247,10 +247,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/stage-review-inbox-multisession-retro-glob-miss",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1146",
+      "mergedAt": "2026-08-06T01:07:41Z",
       "notes": null,
       "fileSetHash": "807021aafa26e88340fe13da9dc73eef867ea7db47a7ff2bea8fc6d276485278",
       "stanzaHash": "dbbd1e879a3647387a21410aa038f69b3636c1283e4f9103a8b1e2a73147935c",
@@ -296,7 +296,7 @@
     {
       "id": "compilation-cache-adoption-read-side",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
       "productionFiles": [
@@ -319,10 +319,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/compilation-cache-adoption-read-side",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1147",
+      "mergedAt": "2026-08-06T01:07:52Z",
       "notes": null,
       "fileSetHash": "8a8316f0d84f3d6412b3d3787b723a2268a859632404059d21befe7208b39ad6",
       "stanzaHash": "42286c13152ae9b591c87b514a0c5dc3c2ef28f1090f1c3ba3fad2eace322b3e",

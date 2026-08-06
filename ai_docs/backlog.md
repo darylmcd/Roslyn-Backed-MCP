@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T00:19:12Z
+**updated_at:** 2026-08-06T01:08:51Z
 
 ## Agent contract
 
@@ -58,7 +58,6 @@
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `compile-check-multi-project-fallback-structured-scope` | Medium | — | **compile_check's multi-project fallback is prose-only** — expose `actualScope`/`requestedScope` as structured DTO fields so callers can detect the full-project-compile fallback without parsing `restoreHint` text. Deterministic across 5 sessions/4 repos in-window; results stay correct, cost is latency. [type: feature] [source: 2026-08-05 multisession retro] | M | items/compile-check-multi-project-fallback-structured-scope.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
-| `stage-review-inbox-multisession-retro-glob-miss` | Medium | — | **Staging script never discovers this repo's own retro reports** — `$filePatterns` in `eng/stage-review-inbox.ps1` is `*_roslyn-mcp-retro.md`, but all 3 retros this repo has ever produced are named `*_roslyn-mcp-multisession-retro.md` and were silently never auto-staged. [type: bug] [source: 2026-08-05 backlog-intake self-discovery] | S | items/stage-review-inbox-multisession-retro-glob-miss.md |
 | `validate-recent-git-changes-status-timeout-false-clean` | Medium | — | **git-status timeout silently reports clean** — the 10s `_gitStatusTimeout` fallback in `GetGitChangedFilesAsync` returns an empty changed-file list on timeout instead of a degraded/unknown signal, distinct from the already-fixed broader validation-phase timeout (closed gh #759). [type: bug] [source: 2026-08-05 multisession retro] | S | items/validate-recent-git-changes-status-timeout-false-clean.md |
 | `tool-error-handler-envelope-duplication` | Medium | — | **Extract shared error-envelope builder in ToolErrorHandler.FormatErrorResponse** — 4 near-identical anonymous-object literals repeat the same 5 properties; every future structured field costs another copy. [type: refactor] [source: PR #1138 code-quality review] | S | items/tool-error-handler-envelope-duplication.md |
 | `validate-workspace-diagnostic-harvest-reconcile` | Medium | — | **Reconcile validate_workspace's two diagnostic harvests** — a Category=Compiler row seen only by project_diagnostics still enters allErrors/ErrorCount even when compile_check is clean; PR #1140 relabeled the verdict, not the root cause. [type: bug] [source: PR #1140 review] | M | items/validate-workspace-diagnostic-harvest-reconcile.md |
@@ -109,6 +108,7 @@
 | `type-extraction-service-dead-fallback-and-stale-naming` | Low | — | **Consolidated cleanup: dead fallback + stale 'warnings' naming in TypeExtractionService** — PartitionMembers filter makes the GetMemberName fallback unreachable; helper/locals still read as advisory though values are fatal refusal causes. [type: refactor] [source: PR #1138 code-quality review] | S | items/type-extraction-service-dead-fallback-and-stale-naming.md |
 | `workspace-validation-analyzer-error-label-and-precondition` | Low | — | **Consolidated cleanup: analyzer-error label drift + undocumented precondition** — status now covers compiler-category rows too but docs imply analyzer-rule-only; errors param has no documented Severity==Error precondition. [type: docs] [source: PR #1140 review] | M | items/workspace-validation-analyzer-error-label-and-precondition.md |
 | `project-mutation-service-stale-comment-and-naming` | Low | — | **Consolidated cleanup: stale comment + naming in ProjectMutationService/EditService snapshot blocks** — a comment contradicts the branch beneath it; normalizedProjectFilePath is computed but unused; a leftover single-letter loop var. [type: docs] [source: PR #1144 review] | M | items/project-mutation-service-stale-comment-and-naming.md |
+| `deep-review-shape-list-single-source` | Low | — | **Single-source the deep-review recognized-artifact-shape list** — the glob/shape set is copy-pasted across 6 sites, so a fix like PR #1146's glob-miss patch only updates 1 of them and re-drifts immediately. [type: docs] [source: PR #1146 review] | M | items/deep-review-shape-list-single-source.md |
 
 ## Defer
 
