@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T04:01:10Z
+**updated_at:** 2026-08-06T04:38:39Z
 
 ## Agent contract
 
@@ -58,7 +58,6 @@
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `tool-error-handler-envelope-duplication` | Medium | — | **Extract shared error-envelope builder in ToolErrorHandler.FormatErrorResponse** — 4 near-identical anonymous-object literals repeat the same 5 properties; every future structured field costs another copy. [type: refactor] [source: PR #1138 code-quality review] | S | items/tool-error-handler-envelope-duplication.md |
-| `validate-workspace-diagnostic-harvest-reconcile` | Medium | — | **Reconcile validate_workspace's two diagnostic harvests** — a Category=Compiler row seen only by project_diagnostics still enters allErrors/ErrorCount even when compile_check is clean; PR #1140 relabeled the verdict, not the root cause. [type: bug] [source: PR #1140 review] | M | items/validate-workspace-diagnostic-harvest-reconcile.md |
 | `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
 | `workspace-eviction-retry-untested-branches` | Medium | — | **Cover the non-recovering branches of the workspace-eviction auto-retry** — reload-fails, bogus-id-no-reload, and mid-call WorkspaceEvictedException shapes are all unreachable from the shipped test suite. [type: test] [source: PR #1141 review] | M | items/workspace-eviction-retry-untested-branches.md |
 | `undo-tests-assert-vacuous-noop-protection` | Medium | — | **Byte-fidelity undo tests must assert the apply actually mutated the file** — 3 of 4 new tests only assert post-revert byte-equality, so a mutation-becomes-no-op regression would pass vacuously. [type: test] [source: PR #1144 review] | S | items/undo-tests-assert-vacuous-noop-protection.md |
@@ -67,6 +66,8 @@
 | `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
 | `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
 | `lru-eviction-gate-layer-execution` | Medium | — | **Close the LRU-eviction / WorkspaceExecutionGate gap** — eviction execution needs to move into the gate layer so it cannot dispose a workspace holding an in-flight reader/writer lock; PR #1159 documented and characterized this, didn't fix it. [type: bug] [source: PR #1159 review] | M | items/lru-eviction-gate-layer-execution.md |
+| `validate-workspace-compiler-gate-scope-to-category` | Medium | — | **Scope validate_workspace's compiler-arm corroboration gate to Category=="Compiler" rows** — the gate drops the whole CompilerDiagnostics arm, silently dropping the unrelated WORKSPACE001 Category=Workspace row too. [type: bug] [source: PR #1160 re-review] | M | items/validate-workspace-compiler-gate-scope-to-category.md |
+| `compile-check-zero-resolution-false-success` | Medium | — | **compile_check reports Success=true when a files filter matches zero workspace documents** — the zero-resolution fallback widens to full-solution scope, filters by path to zero, and still reports success against a solution with real errors. [type: bug] [source: PR #1160 fix-cycle observation] | S | items/compile-check-zero-resolution-false-success.md |
 
 ## Low
 
@@ -117,6 +118,7 @@
 | `extract-atomicfilewriter-encoding-helper` | Low | — | **Extract BOM/encoding resolution out of AtomicFileWriter into a neutrally-named helper** — a non-atomic writer (EditorConfigService) now depends on AtomicFileWriter solely as an encoding sniffer; CsprojSemanticEquality misused the same way. [type: refactor] [source: PR #1157 review] | M | items/extract-atomicfilewriter-encoding-helper.md |
 | `composite-apply-encoding-hygiene-consolidated` | Low | — | **Consolidated cleanup: duplicated test fixture + stale doc + ambiguous overload names** — encoding-fixture block copy-pasted 3x; class doc overstates the fix's coverage; ResolveWriteEncoding overloads are ambiguous. [type: test] [source: PR #1157 review] | S | items/composite-apply-encoding-hygiene-consolidated.md |
 | `lru-eviction-test-hygiene-consolidated` | Low | — | **Consolidated test hygiene: orphaned gate-holding task on assert failure + unexplained timeout override** — evictionCompleted.SetResult isn't in a finally; a 5min RequestTimeout override has no comment. [type: test] [source: PR #1159 review] | S | items/lru-eviction-test-hygiene-consolidated.md |
+| `validate-workspace-harvest-doc-hygiene-consolidated` | Low | — | **Consolidated doc cleanup: incomplete builder-slot enumeration + duplicated racer narrative** — test builder header omits Diagnostics; the same explanation is restated in two comment blocks. [type: docs] [source: PR #1160 re-review] | S | items/validate-workspace-harvest-doc-hygiene-consolidated.md |
 
 ## Defer
 
