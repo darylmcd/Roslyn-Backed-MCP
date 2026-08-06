@@ -550,14 +550,17 @@ public sealed class ProjectMutationService : IProjectMutationService
             // may have changed since the preview was generated (last-apply-wins semantics).
             // `null` OriginalText is impossible here because Retrieve above succeeded and
             // the preview-store entry was created from File.ReadAllTextAsync.
-            var preApplyContent = File.Exists(projectFilePath)
-                ? await File.ReadAllTextAsync(projectFilePath, ct).ConfigureAwait(false)
-                : null;
+            var normalizedProjectFilePath = Path.GetFullPath(projectFilePath);
+            var preApplySnapshot = File.Exists(projectFilePath)
+                ? FileSnapshotDto.FromExistingBytes(
+                    normalizedProjectFilePath,
+                    await File.ReadAllBytesAsync(projectFilePath, ct).ConfigureAwait(false))
+                : new FileSnapshotDto(normalizedProjectFilePath, OriginalText: null);
             _undoService?.CaptureBeforeApply(
                 workspaceId,
                 $"Project mutation: {Path.GetFileName(projectFilePath)}",
                 preApplySolution: null,
-                fileSnapshots: new[] { new FileSnapshotDto(Path.GetFullPath(projectFilePath), preApplyContent) });
+                fileSnapshots: new[] { preApplySnapshot });
 
             await AtomicFileWriter.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);

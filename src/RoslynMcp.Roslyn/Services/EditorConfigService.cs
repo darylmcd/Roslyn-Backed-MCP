@@ -342,7 +342,7 @@ public sealed class EditorConfigService : IEditorConfigService
             ?? Path.Combine(Path.GetDirectoryName(normalizedSource) ?? throw new InvalidOperationException("Invalid source path."), ".editorconfig");
 
         var created = !File.Exists(editorconfigPath);
-        var existingText = created ? null : File.ReadAllText(editorconfigPath);
+        var existingBytes = created ? null : File.ReadAllBytes(editorconfigPath);
         var lines = created ? new List<string>() : File.ReadAllLines(editorconfigPath).ToList();
 
         // set-editorconfig-option-not-undoable: capture the pre-apply content so
@@ -352,7 +352,9 @@ public sealed class EditorConfigService : IEditorConfigService
         {
             var snapshot = new[]
             {
-                new FileSnapshotDto(editorconfigPath, existingText),
+                existingBytes is not null
+                    ? FileSnapshotDto.FromExistingBytes(editorconfigPath, existingBytes)
+                    : new FileSnapshotDto(editorconfigPath, OriginalText: null),
             };
             _undoService.CaptureBeforeApply(
                 workspaceId,
