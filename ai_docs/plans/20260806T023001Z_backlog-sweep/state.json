@@ -12,7 +12,7 @@
     {
       "id": "mutation-write-paths-drop-original-encoding",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "mutation-write-paths-drop-original-encoding"
       ],
@@ -37,10 +37,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/mutation-write-paths-drop-original-encoding",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1157",
+      "mergedAt": "2026-08-06T03:38:08Z",
       "notes": null,
       "fileSetHash": "83f726b19eb73554f406137c57b370365fb88d4bececc6c3831479700d52efdf",
       "stanzaHash": "049a676c42682e7b847f4e84b792be97278a1e2f5d429784081222f1d73cb95c",
