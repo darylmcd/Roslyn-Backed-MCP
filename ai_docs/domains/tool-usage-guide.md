@@ -61,7 +61,10 @@ Falls back to full-workspace scope with a `Warnings` entry when git is not
 available on PATH, the solution directory is not inside a git repository, or
 `git status` exits non-zero. In that case callers should trust
 `OverallStatus` as usual — the bundle still runs — but know the scope is wider
-than the touched-file set.
+than the touched-file set. The exception is a `git status` **timeout** (a
+fourth fallback cause, distinct from the three above): that path returns
+`overallStatus = git-status-unknown` specifically so callers do NOT trust a
+`clean` verdict computed over an unverified fallback scope — see below.
 
 Three additional `overallStatus` values beyond the original four:
 
