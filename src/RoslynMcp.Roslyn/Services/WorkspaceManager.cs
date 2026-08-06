@@ -243,7 +243,28 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             {
                 // parallel-mode-workspace-cap-lru-or-raise: LRU eviction path.
                 // Pick the session with the smallest LastAccessedUtc, skipping any that
-                // currently hold their LoadLock (i.e. are actively being loaded or read).
+                // currently hold their LoadLock. LoadLock is acquired ONLY by
+                // LoadIntoSessionAsync, so this filter excludes exactly the sessions that are
+                // mid-workspace_load / mid-reload — and nothing else.
+                //
+                // lru-eviction-concurrent-reader-safety-overstated: the filter does NOT exclude
+                // a session with in-flight reads or writes. Ordinary tool calls serialise on
+                // WorkspaceExecutionGate's per-workspace reader/writer lock, which this scan
+                // never consults, so the Close() below can remove and dispose a session while a
+                // gated reader is still running against it. The in-flight caller then observes
+                // WorkspaceEvictedException (a KeyNotFoundException) on its next WorkspaceManager
+                // lookup, because Close() removes the session from _sessions and records the
+                // eviction before disposing it.
+                //
+                // Contrast workspace_close / workspace_reload (WorkspaceTools.cs), which nest
+                // gate.RunWriteAsync inside gate.RunLoadGateAsync so in-flight readers drain
+                // first. LRU eviction is the one lifecycle transition that skips that pattern:
+                // WorkspaceExecutionGate's constructor already takes IWorkspaceManager, so taking
+                // the gate from here would be a constructor-level DI cycle. Closing the gap means
+                // moving eviction *execution* (not just candidate selection) up into the gate
+                // layer. Characterised by
+                // WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_EvictsAnyway_AndReaderObservesEviction.
+                //
                 // If all sessions are locked, fall through to the Strict error path.
                 var lruCandidate = _sessions.Values
                     .Where(s => s.LoadLock.CurrentCount > 0)

@@ -334,10 +334,24 @@ internal static class ToolDispatch
     /// workspaces") for the primary case this helper exists to fix, recovering nothing and
     /// replacing the caller's eviction envelope with a confusing cap-reached one.
     /// <see cref="EvictPolicy.Lru"/> makes room by evicting the current least-recently-used
-    /// session, and <c>WorkspaceManager</c>'s LRU scan already skips sessions holding their load
-    /// lock, so an in-flight workspace is never yanked out from under a concurrent caller. This
-    /// is exactly the recovery a caller would perform by hand
+    /// session. This is exactly the recovery a caller would perform by hand
     /// (<c>workspace_load(path, evictPolicy: "lru")</c>), just without the round trip.
+    /// </para>
+    /// <para>
+    /// <b>What the LRU scan does and does not protect
+    /// (<c>lru-eviction-concurrent-reader-safety-overstated</c>):</b> <c>WorkspaceManager</c>'s
+    /// eviction scan skips only sessions holding their <c>LoadLock</c>, which is acquired
+    /// exclusively while a <c>workspace_load</c>/reload is in flight. It does <b>not</b> consult
+    /// <c>WorkspaceExecutionGate</c>'s per-workspace reader/writer lock, so a workspace with
+    /// in-flight reads or writes can still be evicted and disposed mid-operation; that caller
+    /// observes <see cref="WorkspaceEvictedException"/> (a <see cref="KeyNotFoundException"/>) on
+    /// its next <c>WorkspaceManager</c> lookup. Earlier revisions of these remarks claimed an
+    /// in-flight workspace is never yanked out from under a concurrent caller — that guarantee
+    /// holds for the load path only, not for gated readers/writers. The gap is documented rather
+    /// than closed because <c>WorkspaceExecutionGate</c> already depends on
+    /// <c>IWorkspaceManager</c>, so gating eviction from inside <c>WorkspaceManager</c> would be a
+    /// DI cycle. Pinned by
+    /// <c>WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_EvictsAnyway_AndReaderObservesEviction</c>.
     /// </para>
     /// <para>
     /// A failed reload is deliberately not surfaced: the original eviction exception is richer
