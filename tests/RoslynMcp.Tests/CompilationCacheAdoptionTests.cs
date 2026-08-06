@@ -40,6 +40,68 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
+    /// <summary>
+    /// Regression cover for the shared-task poisoning hazard called out in the
+    /// <c>compilation-cache-adoption-read-side</c> item doc: a cached entry is shared by every
+    /// later caller at the same workspace version, so it must not inherit the cancellation
+    /// lifetime of whichever caller happened to arrive first. Caller A supplies an already-
+    /// canceled token and must observe <see cref="OperationCanceledException"/> from its own
+    /// wrapper; caller B then reads the SAME (workspaceId, project) key at the unchanged version
+    /// with an uncancelable token and must receive a real <see cref="Compilation"/>. Pre-fix the
+    /// entry installed by caller A held a <c>Canceled</c> task and caller B rethrew A's
+    /// cancellation until the next workspace version bump.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCompilationAsync_OneCallersCancellation_DoesNotPoisonSharedEntry()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var cache = new CompilationCache(WorkspaceManager);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+
+        using var canceled = new CancellationTokenSource();
+        await canceled.CancelAsync();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+            () => cache.GetCompilationAsync(workspace.WorkspaceId, project, canceled.Token),
+            "A caller passing an already-canceled token must observe its own cancellation.");
+
+        var compilation = await cache.GetCompilationAsync(workspace.WorkspaceId, project, CancellationToken.None);
+        Assert.IsNotNull(compilation,
+            "A later caller reading the same key at the unchanged workspace version must get a real " +
+            "compilation — an OperationCanceledException here means the earlier caller's cancellation " +
+            "poisoned the shared cache entry.");
+
+        var again = await cache.GetCompilationAsync(workspace.WorkspaceId, project, CancellationToken.None);
+        Assert.AreSame(compilation, again,
+            "The warm-compilation sharing contract must survive the cancellation-decoupling fix.");
+    }
+
+    /// <summary>
+    /// Analyzer-bound twin of
+    /// <see cref="GetCompilationAsync_OneCallersCancellation_DoesNotPoisonSharedEntry"/> — the
+    /// <c>_analyzerBound</c> map installs its own shared task and needs the identical treatment.
+    /// The bound result may legitimately be <c>null</c> when the project declares no analyzers, so
+    /// the assertion is that caller B completes at all rather than rethrowing caller A's
+    /// cancellation.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCompilationWithAnalyzersAsync_OneCallersCancellation_DoesNotPoisonSharedEntry()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var cache = new CompilationCache(WorkspaceManager);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+
+        using var canceled = new CancellationTokenSource();
+        await canceled.CancelAsync();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+            () => cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, canceled.Token),
+            "A caller passing an already-canceled token must observe its own cancellation.");
+
+        // Must not throw: pre-fix this rethrew the first caller's OperationCanceledException.
+        _ = await cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, CancellationToken.None);
+    }
+
     [TestMethod]
     public async Task CouplingAnalysisService_ObtainsCompilations_ThroughSharedCache()
     {

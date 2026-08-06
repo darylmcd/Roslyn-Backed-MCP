@@ -12,12 +12,26 @@ namespace RoslynMcp.Roslyn.Services;
 /// rationale and concurrency contract.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The cache stores <see cref="Task{TResult}"/> values rather than materialized compilations,
 /// so concurrent first-callers awaiting the same key share a single compilation pass instead
 /// of racing to start their own. Stale entries are replaced atomically when a higher
 /// workspace version is observed; we don't bother evicting older entries proactively because
 /// each project has at most one slot per cache and stale tasks are released as soon as the
 /// new entry is installed.
+/// </para>
+/// <para>
+/// Because a stored task is shared by every later caller at the same workspace version, its
+/// lifetime is deliberately decoupled from any one caller: the underlying work is started with
+/// <see cref="CancellationToken.None"/> and each caller observes it through
+/// <c>ObserveWithCallerToken</c>, which honors that caller's own token without canceling the
+/// shared task. Starting the shared task with the first caller's token instead would let one
+/// caller's cancellation poison the entry — every later caller would await the same
+/// <see cref="TaskStatus.Canceled"/> task and see an <see cref="OperationCanceledException"/>
+/// for a token that was never canceled, until the next workspace version bump replaced it.
+/// Entries whose shared task completes canceled or faulted are evicted by
+/// <c>EvictWhenBroken</c> so the next caller re-populates instead of replaying the failure.
+/// </para>
 /// </remarks>
 public sealed class CompilationCache : ICompilationCache, IDisposable
 {
@@ -60,7 +74,7 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
 
         if (_compilations.TryGetValue(key, out var existing) && existing.Version == version)
         {
-            return existing.Compilation;
+            return ObserveWithCallerToken(existing.Compilation, ct);
         }
 
         // Cache miss or stale: install a fresh task. Multiple concurrent first-callers may
@@ -68,15 +82,23 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         // that lost will see the winner's task on the next read. The lost-racer's task will
         // run to completion but its result is discarded — acceptable cost for the simplicity
         // of not holding a per-key lock.
-        var compilationTask = project.GetCompilationAsync(ct);
+        //
+        // CancellationToken.None is deliberate: this task becomes shared state for every later
+        // caller at this version, so it must not inherit whichever caller happened to arrive
+        // first. The caller's own token is applied to the returned wrapper instead.
+        var compilationTask = project.GetCompilationAsync(CancellationToken.None);
         var entry = new CompilationEntry(version, compilationTask);
         _compilations.AddOrUpdate(key, entry, (_, current) => current.Version >= version ? current : entry);
+        // Registered after AddOrUpdate so an already-completed broken task still evicts the
+        // entry we just installed rather than racing ahead of the install.
+        EvictWhenBroken(_compilations, key, entry, entry.Compilation);
 
         // Return whichever entry actually won the AddOrUpdate so all callers observe the
         // same task instance.
-        return _compilations.TryGetValue(key, out var winner) && winner.Version == version
+        var shared = _compilations.TryGetValue(key, out var winner) && winner.Version == version
             ? winner.Compilation
             : compilationTask;
+        return ObserveWithCallerToken(shared, ct);
     }
 
     public async Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(string workspaceId, Project project, CancellationToken ct)
@@ -86,23 +108,69 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
 
         if (_analyzerBound.TryGetValue(key, out var existing) && existing.Version == version)
         {
-            return await existing.Bound.ConfigureAwait(false);
+            return await ObserveWithCallerToken(existing.Bound, ct).ConfigureAwait(false);
         }
 
-        var task = BuildCompilationWithAnalyzersAsync(workspaceId, project, ct);
+        // Same shared-task discipline as GetCompilationAsync: the analyzer-bound task is started
+        // detached from any caller's token, and the nested GetCompilationAsync it performs is
+        // therefore detached too.
+        var task = BuildCompilationWithAnalyzersAsync(workspaceId, project);
         var entry = new AnalyzerEntry(version, task);
         _analyzerBound.AddOrUpdate(key, entry, (_, current) => current.Version >= version ? current : entry);
+        EvictWhenBroken(_analyzerBound, key, entry, entry.Bound);
 
         var winner = _analyzerBound.TryGetValue(key, out var stored) && stored.Version == version
             ? stored.Bound
             : task;
-        return await winner.ConfigureAwait(false);
+        return await ObserveWithCallerToken(winner, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Applies the calling caller's <see cref="CancellationToken"/> to a shared cached task
+    /// without canceling that task for anyone else. An already-canceled token short-circuits so
+    /// the caller sees <see cref="OperationCanceledException"/> deterministically, matching the
+    /// pre-cache behavior of passing a canceled token straight to Roslyn.
+    /// </summary>
+    private static Task<T> ObserveWithCallerToken<T>(Task<T> shared, CancellationToken ct)
+    {
+        if (!ct.CanBeCanceled) return shared;
+        if (ct.IsCancellationRequested) return Task.FromCanceled<T>(ct);
+        return shared.WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// Removes <paramref name="entry"/> from <paramref name="map"/> if its shared task ends up
+    /// canceled or faulted, so the next caller re-populates instead of replaying the failure
+    /// until the workspace version bumps. The removal is a compare-and-remove against the exact
+    /// entry (both <c>CompilationEntry</c> and <c>AnalyzerEntry</c> are records with structural
+    /// equality over version + task identity), so a newer entry installed concurrently by a
+    /// version bump is never collateral damage.
+    /// </summary>
+    private static void EvictWhenBroken<TEntry>(
+        ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), TEntry> map,
+        (string WorkspaceId, ProjectId ProjectId) key,
+        TEntry entry,
+        Task shared)
+        where TEntry : notnull
+    {
+        shared.ContinueWith(
+            completed =>
+            {
+                // Mark a faulted shared task observed; callers that already bailed out via their
+                // own token would otherwise leave it unobserved.
+                _ = completed.Exception;
+                ((ICollection<KeyValuePair<(string WorkspaceId, ProjectId ProjectId), TEntry>>)map)
+                    .Remove(new KeyValuePair<(string WorkspaceId, ProjectId ProjectId), TEntry>(key, entry));
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.NotOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private async Task<CompilationWithAnalyzers?> BuildCompilationWithAnalyzersAsync(
-        string workspaceId, Project project, CancellationToken ct)
+        string workspaceId, Project project)
     {
-        var compilation = await GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+        var compilation = await GetCompilationAsync(workspaceId, project, CancellationToken.None).ConfigureAwait(false);
         if (compilation is null) return null;
 
         // unresolved-analyzer-reference-crash: WorkspaceManager.StripUnresolvedAnalyzerReferences
