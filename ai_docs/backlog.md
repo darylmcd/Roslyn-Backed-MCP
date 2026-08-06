@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T06:36:34Z
+**updated_at:** 2026-08-06T07:01:18Z
 
 ## Agent contract
 
@@ -57,7 +57,6 @@
 | `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
-| `workspace-eviction-retry-swallowed-log` | Medium | — | **Log the swallowed workspace-rehydration failure in the eviction auto-retry seam** — reload failures (deleted path, cap-saturated) throw before any session diagnostics exist and emit no log; a failed auto-recovery is currently invisible. [type: reliability] [source: PR #1141 review] | M | items/workspace-eviction-retry-swallowed-log.md |
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
 | `composite-apply-undo-encoding-still-lossy` | Medium | — | **apply_composite_preview and UndoService solution-restore writes still drop the original BOM/encoding** — same root cause as PR #1157, unfixed in the composite-apply and solution-snapshot-revert paths. [type: bug] [source: PR #1157 review] | M | items/composite-apply-undo-encoding-still-lossy.md |
 | `lru-eviction-gate-layer-execution` | Medium | — | **Close the LRU-eviction / WorkspaceExecutionGate gap** — eviction execution needs to move into the gate layer so it cannot dispose a workspace holding an in-flight reader/writer lock; PR #1159 documented and characterized this, didn't fix it. [type: bug] [source: PR #1159 review] | M | items/lru-eviction-gate-layer-execution.md |
@@ -66,6 +65,7 @@
 | `project-filter-helper-whitespace-normalize` | Medium | — | **Normalize whitespace-only projectFilter inside ProjectFilterHelper** — 17 other FilterProjects call sites (FormatVerifyService, AnalyzerInfoService, etc.) still silently return zero-project results on a blank filter. [type: bug] [source: PR #1163 review] | M | items/project-filter-helper-whitespace-normalize.md |
 | `single-source-overallstatus-verdict-table` | Medium | — | **Single-source the validate_workspace overallStatus verdict table** — the caller-action prose is now byte-identical across 4+ files with no shared source; 3 more surfaces still enumerate only the stale 4-value set. [type: docs] [source: PR #1169 review] | S | items/single-source-overallstatus-verdict-table.md |
 | `workspace-validation-service-overallstatus-xmldoc-inverted` | Medium | — | **IWorkspaceValidationService OverallStatus XML doc has skipped/timeout inverted** — skipped is documented but never emitted; timeout is emitted but not documented. [type: docs] [source: PR #1169 review] | M | items/workspace-validation-service-overallstatus-xmldoc-inverted.md |
+| `tool-di-resolution-leak-pin-compile-check-test-run` | Medium | — | **Extend the ILoggerFactory schema-leak pin to compile_check and test_run** — the DI-resolution leak-guard test's hardcoded tool array wasn't updated when those 2 tools gained the same DI parameter. [type: test] [source: PR #1172 review] | M | items/tool-di-resolution-leak-pin-compile-check-test-run.md |
 
 ## Low
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-06T02:30:08.647Z",
-  "backlogSnapshot": "2026-08-06T02:23:11Z",
+  "backlogSnapshot": "2026-08-06T07:01:18Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -152,7 +152,7 @@
     {
       "id": "workspace-eviction-retry-swallowed-log",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-eviction-retry-swallowed-log"
       ],
@@ -176,10 +176,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-eviction-retry-swallowed-log",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1172",
+      "mergedAt": "2026-08-06T07:00:16Z",
       "notes": null,
       "fileSetHash": "43a2bdece1dd6ad7e8d4d4fe54c8f5c51628f5eeb8b8c2a58fade796a4d5bd6a",
       "stanzaHash": "40ed97665220533dcbea53a4ffc5294a86e9beed3347558cb3066912ee3524b5",
@@ -452,5 +452,7 @@
   "planHash": "92bf78c662ca59ace37cc29d2ba7f28cc8e3c916c544cef27d57263a2e3e165b",
   "backlogSnapshotHash": "f947de8061150c75d32e67cac89426ff12bd4bef08a048d64eb9de0243e7f1d5",
   "reviewedPlanHash": "92bf78c662ca59ace37cc29d2ba7f28cc8e3c916c544cef27d57263a2e3e165b",
-  "reviewedBacklogSnapshotHash": "f947de8061150c75d32e67cac89426ff12bd4bef08a048d64eb9de0243e7f1d5"
+  "reviewedBacklogSnapshotHash": "f947de8061150c75d32e67cac89426ff12bd4bef08a048d64eb9de0243e7f1d5",
+  "completed": true,
+  "completedAt": "2026-08-06T07:01:33.640Z"
 }
