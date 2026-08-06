@@ -74,6 +74,7 @@ Execute each stage in order. Do not start stage N+1 until stage N validates clea
 - `test-failure` — stop. Surface `testRunResult.failures` to the user.
 - `test-zero-run` — `runTests: true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter — the zero-match is almost always a working-directory/filter-resolution race, not a real pass.
 - `timeout` — a validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry.
+- `git-status-unknown` — `validate_recent_git_changes`-only: the `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope instead of the real working tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` if `git status` is slow on this repo.
 
 If validation fails after a successful apply, offer the user `revert_last_apply` to roll the stage back, then stop the skill.
 
