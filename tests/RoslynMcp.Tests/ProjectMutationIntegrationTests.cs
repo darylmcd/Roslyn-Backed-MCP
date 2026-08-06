@@ -598,6 +598,64 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             "Restored .csproj must exactly match the pre-apply byte sequence, including its BOM and encoding.");
     }
 
+    /// <summary>
+    /// Regression guard for <c>mutation-write-paths-drop-original-encoding</c>: the FORWARD apply
+    /// half of the byte-fidelity contract. <c>apply_project_mutation</c> wrote the updated .csproj
+    /// through <c>AtomicFileWriter.WriteAllTextAsync</c> with no <see cref="Encoding"/>, so a
+    /// UTF-8-BOM or UTF-16 project file was silently re-encoded as UTF-8-no-BOM on every mutation —
+    /// the sibling revert test above only covers the restore path and passes either way.
+    /// The <c>utf8-nobom</c> row is the inverse guard: a file that had no BOM must not gain one.
+    /// </summary>
+    [TestMethod]
+    [DataRow("utf8-nobom")]
+    [DataRow("utf8-bom")]
+    [DataRow("utf16-bom")]
+    public async Task Apply_Project_Mutation_Preserves_Original_File_Encoding(string encodingKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+
+        var originalContent = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+        Encoding encoding = encodingKind switch
+        {
+            "utf16-bom" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+        var preamble = encoding.GetPreamble();
+
+        await File.WriteAllBytesAsync(
+            projectFilePath,
+            preamble.Concat(encoding.GetBytes(originalContent)).ToArray(),
+            CancellationToken.None);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var afterBytes = await File.ReadAllBytesAsync(projectFilePath, CancellationToken.None);
+        Assert.IsTrue(
+            afterBytes.AsSpan().StartsWith(preamble),
+            $"apply_project_mutation must re-emit the original {encodingKind} byte-order mark instead of rewriting the .csproj as UTF-8-no-BOM.");
+        if (preamble.Length == 0)
+        {
+            Assert.IsFalse(
+                afterBytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()),
+                "A .csproj that had no BOM must not gain one.");
+        }
+
+        StringAssert.Contains(
+            encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
+            "Humanizer.Core",
+            "Sanity check: the mutation must be readable back through the original encoding.");
+    }
+
     [TestMethod]
     public async Task Set_Conditional_Property_Preview_Invalid_Condition_Error_Message_Includes_MSBuild_Quoting_Example()
     {

@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -362,6 +363,71 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
             originalText,
             await File.ReadAllTextAsync(dogFilePath, CancellationToken.None),
             "The edit must be rolled back when the complete diagnostic set exposes a regression.");
+    }
+
+    // ------------------------------------------------------------------
+    // mutation-write-paths-drop-original-encoding: the on-disk write must
+    // round-trip the source file's original BOM/encoding.
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Regression guard for <c>mutation-write-paths-drop-original-encoding</c>:
+    /// <c>apply_text_edit</c> persisted the edited document through
+    /// <c>AtomicFileWriter.WriteAllTextAsync</c> without an <see cref="Encoding"/>, and the
+    /// encoding-less BCL overload is UTF-8-no-BOM by definition — so editing a UTF-8-BOM or
+    /// UTF-16 source file silently stripped its byte-order mark and re-encoded the whole file.
+    /// The <c>utf8-nobom</c> row is the inverse guard: a file that had no BOM must not gain one.
+    /// </summary>
+    [TestMethod]
+    [DataRow("utf8-nobom")]
+    [DataRow("utf8-bom")]
+    [DataRow("utf16-bom")]
+    public async Task ApplyTextEdit_PreservesOriginalFileEncoding(string encodingKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var originalContent = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        Encoding encoding = encodingKind switch
+        {
+            "utf16-bom" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+        var preamble = encoding.GetPreamble();
+
+        await File.WriteAllBytesAsync(
+            dogFilePath,
+            preamble.Concat(encoding.GetBytes(originalContent)).ToArray(),
+            CancellationToken.None);
+        // Reload so Roslyn re-reads the file and populates SourceText.Encoding from the new BOM.
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        const string probe = "// encoding-preservation probe";
+        var result = await EditService.ApplyTextEditsAsync(
+            workspaceId,
+            dogFilePath,
+            new[] { AppendCommentEdit(originalContent, probe) },
+            "apply_text_edit",
+            CancellationToken.None);
+        Assert.IsTrue(result.Success, "Edit must apply cleanly as a precondition.");
+
+        var afterBytes = await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None);
+        Assert.IsTrue(
+            afterBytes.AsSpan().StartsWith(preamble),
+            $"apply_text_edit must re-emit the original {encodingKind} byte-order mark instead of rewriting the file as UTF-8-no-BOM.");
+        if (preamble.Length == 0)
+        {
+            Assert.IsFalse(
+                afterBytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()),
+                "A source file that had no BOM must not gain one.");
+        }
+
+        StringAssert.Contains(
+            encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
+            probe,
+            "Sanity check: the edit must be readable back through the original encoding.");
     }
 
     // ------------------------------------------------------------------

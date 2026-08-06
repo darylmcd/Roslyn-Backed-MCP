@@ -1,3 +1,4 @@
+using System.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -711,8 +712,17 @@ public sealed class EditService : IEditService
 
         try
         {
-            var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            await AtomicFileWriter.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+            // mutation-write-paths-drop-original-encoding: keep the SourceText object rather than
+            // collapsing it to a string immediately — SourceText.Encoding carries the encoding
+            // Roslyn detected when the document was loaded from disk (and SourceText.WithChanges
+            // propagates it through the edit), so threading it into the write keeps a UTF-8-BOM or
+            // UTF-16 source file byte-faithful instead of silently re-encoding it as UTF-8-no-BOM.
+            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+            await AtomicFileWriter.WriteAllTextAsync(
+                document.FilePath,
+                sourceText.ToString(),
+                ct,
+                encoding: AtomicFileWriter.ResolveWriteEncoding(sourceText.Encoding)).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
