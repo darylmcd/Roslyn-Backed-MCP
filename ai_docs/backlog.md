@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T02:15:11Z
+**updated_at:** 2026-08-06T02:23:11Z
 
 ## Agent contract
 
@@ -66,6 +66,7 @@
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
 | `compile-check-project-filter-normalize` | Medium | — | **Normalize compile_check's projectFilter once** — FilterProjects gates on null while ResolveProjectScope/ComputeRequestedScope gate on IsNullOrWhiteSpace, so a blank projectName reports actualScope=solution with TotalProjects=0. [type: bug] [source: PR #1151 review] | M | items/compile-check-project-filter-normalize.md |
 | `document-git-status-unknown-verdict` | Medium | — | **Document the git-status-unknown verdict on every agent-facing status surface** — the new status appears on no tool Description or skill decision table, same gap as the pre-existing test-zero-run status. [type: docs] [source: PR #1152 review] | S | items/document-git-status-unknown-verdict.md |
+| `lru-eviction-concurrent-reader-safety-overstated` | Medium | — | **LRU eviction can evict a workspace mid-read, contradicting a documented safety claim** — LoadLock only guards the load path; the gate's separate reader/writer lock is never consulted by the eviction scan. [type: bug] [source: sweep 20260805T222513Z Step 13 cold review] | M | items/lru-eviction-concurrent-reader-safety-overstated.md |
 
 ## Low
 
