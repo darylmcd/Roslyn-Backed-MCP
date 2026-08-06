@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T01:08:51Z
+**updated_at:** 2026-08-06T01:38:27Z
 
 ## Agent contract
 
@@ -89,7 +89,6 @@
 | `filewatcher-markstaleifrelevant-stale-precedence-comment` | Low | — | **MarkStaleIfRelevant comment claims external-edit precedence the code lacks** — `FileWatcherService.cs:154-155` says external edits take precedence / no-downgrade, but `MarkStaleWithReason` (:247) is unconditional last-writer-wins; fix or delete the stale comment. [type: docs] [source: 2026-06-21 top-n cold-review] | S | items/filewatcher-markstaleifrelevant-stale-precedence-comment.md |
 | `analysis-services-dedup-reference-classifiers` | Low | — | **Unify the three independent reference-site classifiers in Roslyn analysis services** — merge ConsumerAnalysisService.ClassifyDependencyKind, TypeConsumersService.ClassifyKind. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-dedup-reference-classifiers.md |
 | `analysis-services-hardcoded-parallelism-clamp-magic-numbers` | Low | — | **Centralize the duplicated parallelism-clamp and regex-timeout magic numbers in Roslyn analysis services** — replace the three independent Math.Clamp(Environment.ProcessorCount, 4. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-hardcoded-parallelism-clamp-magic-numbers.md |
-| `core-dto-fileeditsdto-array-to-readonlylist` | Low | — | **Fix FileEditsDto mutable array property** — change FileEditsDto.Edits from TextEditDto[] to IReadOnlyList<TextEditDto> to restore record value-equality and prevent aliased-array mutation of shared. [type: refactor] [source: refactor-matrix-pass1] | S | items/core-dto-fileeditsdto-array-to-readonlylist.md |
 | `host-tools-cohesion-split` | Low | — | **Split low-cohesion Host tool files by responsibility** — break AdvancedAnalysisTools.cs's 11 unrelated endpoints (dead-code, DI registrations, complexity, reflection, namespace deps, NuGet deps. [type: refactor] [source: refactor-matrix-pass1] | M | items/host-tools-cohesion-split.md |
 | `symbollocatorfactory-drift-tool-test-gap` | Low | — | **Add unit coverage for SymbolLocatorFactory and workspace_drift_check** — write direct unit tests for SymbolLocatorFactory.Create(. [type: refactor] [source: refactor-matrix-pass1] | M | items/symbollocatorfactory-drift-tool-test-gap.md |
 | `stdoutwrite-analyzer-project-misplacement` | Low | — | **Move StdoutWriteAnalyzer out of the ServerSurfaceCatalog project** — relocate RMCP010's StdoutWriteAnalyzer (and update the RootNamespace/AssemblyName. [type: refactor] [source: refactor-matrix-pass1] | M | items/stdoutwrite-analyzer-project-misplacement.md |
@@ -109,6 +108,7 @@
 | `workspace-validation-analyzer-error-label-and-precondition` | Low | — | **Consolidated cleanup: analyzer-error label drift + undocumented precondition** — status now covers compiler-category rows too but docs imply analyzer-rule-only; errors param has no documented Severity==Error precondition. [type: docs] [source: PR #1140 review] | M | items/workspace-validation-analyzer-error-label-and-precondition.md |
 | `project-mutation-service-stale-comment-and-naming` | Low | — | **Consolidated cleanup: stale comment + naming in ProjectMutationService/EditService snapshot blocks** — a comment contradicts the branch beneath it; normalizedProjectFilePath is computed but unused; a leftover single-letter loop var. [type: docs] [source: PR #1144 review] | M | items/project-mutation-service-stale-comment-and-naming.md |
 | `deep-review-shape-list-single-source` | Low | — | **Single-source the deep-review recognized-artifact-shape list** — the glob/shape set is copy-pasted across 6 sites, so a fix like PR #1146's glob-miss patch only updates 1 of them and re-drifts immediately. [type: docs] [source: PR #1146 review] | M | items/deep-review-shape-list-single-source.md |
+| `file-edits-dto-ordering-contract-and-hash-test` | Low | — | **Clarify FileEditsDto.Edits ordering contract + tighten equality test** — param doc says 'any order' but new Equals/GetHashCode make order load-bearing; test asserts an unguaranteed hash-inequality detail. [type: docs] [source: PR #1149 review] | S | items/file-edits-dto-ordering-contract-and-hash-test.md |
 
 ## Defer
 

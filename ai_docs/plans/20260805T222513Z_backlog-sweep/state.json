@@ -331,7 +331,7 @@
     {
       "id": "core-dto-fileeditsdto-array-to-readonlylist",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "core-dto-fileeditsdto-array-to-readonlylist"
       ],
@@ -353,10 +353,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/core-dto-fileeditsdto-array-to-readonlylist",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1149",
+      "mergedAt": "2026-08-06T01:38:05Z",
       "notes": null,
       "fileSetHash": "08cade2aad95090198f389564e6b49ed8755d7690fe04ac73036c1d247394c97",
       "stanzaHash": "8d757a89b1cb856fdb5be6a1c55c0aef781b6e789c05d1dd0880e489f9a24530",
