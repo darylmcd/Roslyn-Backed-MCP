@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-05T22:25:30.287Z",
-  "backlogSnapshot": "2026-08-05T21:25:00Z",
+  "backlogSnapshot": "2026-08-06T02:15:11Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -119,7 +119,7 @@
     {
       "id": "compile-check-multi-project-fallback-structured-scope",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "compile-check-multi-project-fallback-structured-scope"
       ],
@@ -143,10 +143,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/compile-check-multi-project-fallback-structured-scope",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1151",
+      "mergedAt": "2026-08-06T02:13:03Z",
       "notes": null,
       "fileSetHash": "8796f22346393336b0696bfd587c116b88da27f05d64fb80d08b196ea6c5db4d",
       "stanzaHash": "a6ef6411458a3bd45f806fd1543b7579a1c6e1a6c6af9e7b85a1ada752cb682d",
@@ -259,7 +259,7 @@
     {
       "id": "validate-recent-git-changes-status-timeout-false-clean",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "validate-recent-git-changes-status-timeout-false-clean"
       ],
@@ -284,10 +284,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/validate-recent-git-changes-status-timeout-false-clean",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1152",
+      "mergedAt": "2026-08-06T02:13:16Z",
       "notes": null,
       "fileSetHash": "418a186bd90e4a157c739a75a39fab01ae74d1bbd5a6542369010aa6a48dbcde",
       "stanzaHash": "83177da1358c9790fc83455540cd6b9eb2cae1c13fb86c0597979d23285e04e2",
@@ -455,5 +455,7 @@
   "planHash": "505a823d6358a63000bacce3eb93f94e35e50695cf1fa08a54c088889e5ee880",
   "backlogSnapshotHash": "21a10dfa038b4b6aff80ec18774961c158685f2d4415c3f8b4427f0a5fb67c42",
   "reviewedPlanHash": "505a823d6358a63000bacce3eb93f94e35e50695cf1fa08a54c088889e5ee880",
-  "reviewedBacklogSnapshotHash": "21a10dfa038b4b6aff80ec18774961c158685f2d4415c3f8b4427f0a5fb67c42"
+  "reviewedBacklogSnapshotHash": "21a10dfa038b4b6aff80ec18774961c158685f2d4415c3f8b4427f0a5fb67c42",
+  "completed": true,
+  "completedAt": "2026-08-06T02:15:32.604Z"
 }
