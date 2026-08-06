@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
@@ -16,14 +17,20 @@ public sealed class FixAllService : IFixAllService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<FixAllService> _logger;
     private readonly Lazy<ImmutableArray<CodeFixProvider>> _codeFixProviders;
     private readonly Lazy<ImmutableArray<DiagnosticAnalyzer>> _analyzers;
 
-    public FixAllService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<FixAllService> logger)
+    public FixAllService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache,
+        ILogger<FixAllService> logger)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _compilationCache = compilationCache;
         _logger = logger;
         _codeFixProviders = new Lazy<ImmutableArray<CodeFixProvider>>(LoadCodeFixProviders);
         _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(LoadAnalyzers);
@@ -110,7 +117,7 @@ public sealed class FixAllService : IFixAllService
             diagnosticId, _analyzers.Value, projectAnalyzers);
 
         var diagnosticsMap = await CollectDiagnosticsAsync(
-            solution, diagnosticId, fixAllScope, targetDocument, targetProject,
+            workspaceId, _compilationCache, solution, diagnosticId, fixAllScope, targetDocument, targetProject,
             analyzersForCollection, ct).ConfigureAwait(false);
 
         var totalDiagCount = diagnosticsMap.Values.Sum(d => d.Length);
@@ -290,6 +297,7 @@ public sealed class FixAllService : IFixAllService
     }
 
     private static async Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>> CollectDiagnosticsAsync(
+        string workspaceId, ICompilationCache compilationCache,
         Solution solution, string diagnosticId, FixAllScope scope,
         Document targetDocument, Project targetProject,
         ImmutableArray<DiagnosticAnalyzer> analyzers, CancellationToken ct)
@@ -303,7 +311,9 @@ public sealed class FixAllService : IFixAllService
         foreach (var project in projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache
+                .GetCompilationAsync(workspaceId, project, ct)
+                .ConfigureAwait(false);
             if (compilation is null) continue;
 
             IEnumerable<Diagnostic> allDiagnostics;

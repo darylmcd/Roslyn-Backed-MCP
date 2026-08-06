@@ -119,6 +119,7 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         var buildService = new BuildService(
             workspaceManager,
             executor,
+            new CompilationCache(workspaceManager),
             NullLogger<BuildService>.Instance);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
