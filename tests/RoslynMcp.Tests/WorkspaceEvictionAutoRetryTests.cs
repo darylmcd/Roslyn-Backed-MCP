@@ -206,6 +206,218 @@ public sealed class WorkspaceEvictionAutoRetryTests
     }
 
     /// <summary>
+    /// Non-recovering branch 1 of 3 — <b>genuinely never-loaded id, manager wired</b>.
+    ///
+    /// <para>
+    /// Combination pinned: gate <c>ContainsWorkspace</c> precheck miss (plain
+    /// <see cref="KeyNotFoundException"/>, NOT <see cref="WorkspaceEvictedException"/>) ×
+    /// <c>IWorkspaceManager</c> supplied × no eviction record for the id. The re-probe in
+    /// <c>ToolDispatch.TryReclassifyAsEvicted</c> therefore falls into its
+    /// <c>catch (KeyNotFoundException) return null</c> arm, so no rehydration load is ever
+    /// attempted and the original lookup miss propagates exactly as it did before the retry
+    /// wiring existed.
+    /// </para>
+    ///
+    /// <para>
+    /// A live session is loaded first so the manager's active-session count is non-zero — that
+    /// keeps <c>GetRequiredSession</c> off its cross-process host-recycle branch, which would
+    /// otherwise reclassify a never-loaded id as evicted whenever an unrelated test left a
+    /// recycle signal in the process-wide <see cref="WorkspaceEvictionRegistry"/>.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task RunTests_NeverLoadedWorkspaceId_ManagerWired_AttemptsNoReloadAndPropagatesLookupMiss()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        var runner = new RecordingTestRunnerService();
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+
+        try
+        {
+            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+            var bogusId = $"never-loaded-{Guid.NewGuid():N}";
+
+            // Unit-level pin on the branch itself: a never-loaded id yields no eviction record,
+            // so the reclassification probe returns null and the retry leg is skipped outright.
+            Assert.IsNull(
+                ToolDispatch.TryReclassifyAsEvicted(manager, bogusId),
+                "A never-loaded id carries no eviction record; the reclassification probe must return null.");
+
+            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+                () => ValidationTools.RunTests(
+                    gate,
+                    runner,
+                    workspaceId: bogusId,
+                    projectName: null,
+                    filter: null,
+                    progress: null,
+                    workspaceManager: manager,
+                    ct: CancellationToken.None));
+
+            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                "No reload is possible for a never-loaded id, so the runner must never be reached.");
+            Assert.IsTrue(manager.ContainsWorkspace(liveStatus.WorkspaceId),
+                "No rehydration load may be attempted — the unrelated live session must not be LRU-evicted to make room.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+        }
+    }
+
+    /// <summary>
+    /// Non-recovering branch 2 of 3 — <b>eviction record present, rehydration reload fails</b>.
+    ///
+    /// <para>
+    /// Combination pinned: gate <c>ContainsWorkspace</c> precheck miss (plain
+    /// <see cref="KeyNotFoundException"/>) × <c>IWorkspaceManager</c> supplied × a real eviction
+    /// record whose recorded <c>LoadedPath</c> no longer exists on disk. The reclassification
+    /// probe succeeds (so the retry leg <i>is</i> entered — the contrast with the never-loaded
+    /// case above), but <c>WorkspaceManager.LoadAsync</c> throws
+    /// <see cref="FileNotFoundException"/> from its path validation, which
+    /// <c>ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync</c> swallows and reports as
+    /// <see langword="null"/>. The original lookup miss must then propagate unchanged rather
+    /// than being replaced by the reload's own (less informative) failure.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task RunTests_EvictedWorkspace_RehydrationReloadFails_PropagatesOriginalLookupMiss()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        var runner = new RecordingTestRunnerService();
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+
+        try
+        {
+            var evictedId = await StageEvictionAsync(manager, path1, path2);
+
+            // Fixture precondition AND the discriminator against the never-loaded case: this id
+            // DOES reclassify as evicted with a recoverable path, so the reload leg is entered.
+            var reclassified = ToolDispatch.TryReclassifyAsEvicted(manager, evictedId);
+            Assert.IsNotNull(reclassified,
+                "Fixture precondition: the LRU-evicted id must reclassify as an eviction.");
+            Assert.AreEqual(Path.GetFullPath(path1), reclassified.LoadedPath,
+                "Fixture precondition: the eviction record must carry the original solution path.");
+
+            // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+
+            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+                () => ValidationTools.RunTests(
+                    gate,
+                    runner,
+                    workspaceId: evictedId,
+                    projectName: null,
+                    filter: null,
+                    progress: null,
+                    workspaceManager: manager,
+                    ct: CancellationToken.None));
+
+            Assert.AreEqual(0, runner.ObservedWorkspaceIds.Count,
+                "A failed rehydration must not run the suite against some other session.");
+
+            // Unit-level pin on the swallow-and-report-null arm the orchestrator depends on.
+            var reloadResult = await ToolDispatch.TryReloadEvictedWorkspaceForRetryAsync(
+                manager,
+                evictedId,
+                new KeyNotFoundException("probe"),
+                CancellationToken.None);
+            Assert.IsNull(reloadResult,
+                "A reload that throws must be reported as an unrecoverable retry, not surfaced to the caller.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+        }
+    }
+
+    /// <summary>
+    /// Non-recovering branch 3 of 3 — <b>mid-call eviction with no recoverable path</b>.
+    ///
+    /// <para>
+    /// Combination pinned: the gate precheck <i>passes</i> (the workspace is live) and the
+    /// <see cref="WorkspaceEvictedException"/> is raised by the deeper service lookup, so it
+    /// travels through <c>RunTestsOnceAsync</c>'s deliberate
+    /// <c>catch (WorkspaceEvictedException) { throw; }</c> instead of its inline formatter.
+    /// An <c>IWorkspaceManager</c> <i>is</i> supplied, but the eviction carries no recorded
+    /// <c>LoadedPath</c> (the cross-process host-recycle shape), so
+    /// <c>TryReloadEvictedWorkspaceForRetryAsync</c> returns <see langword="null"/> without
+    /// attempting a load — leaving the orchestrator to reproduce the pre-existing inline
+    /// <c>ReportStage("done")</c> → <c>ClassifyAndFormat</c> → <c>InjectSchemaHintIfPossible</c>
+    /// envelope. That envelope is asserted byte-for-byte against the same three calls made
+    /// directly on the very exception instance the fake threw.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Test double, not a real race:</b> the eviction is injected by an
+    /// <see cref="ITestRunnerService"/> that throws on invocation. That exercises the code path
+    /// the genuine "evicted strictly between the precheck and the deeper lookup" timing window
+    /// reaches; it does not reproduce the window itself. The result is deliberately compared
+    /// raw rather than through <c>ToolExecutionTestHarness</c>, whose <c>_meta</c> injection
+    /// carries a nondeterministic elapsed-ms field that byte-for-byte equality cannot tolerate.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task RunTests_MidCallEviction_UnrecoverableRetry_ReproducesInlineEnvelopeByteForByte()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+
+        // 3-arg ctor == cross-process recycle shape: LoadedPath is null, so there is nothing to
+        // rehydrate from and the retry bails before any load is attempted.
+        var midCallEviction = new WorkspaceEvictedException(
+            "ws-mid-call",
+            new DateTimeOffset(2026, 8, 6, 0, 0, 0, TimeSpan.Zero),
+            "Workspace 'ws-mid-call' was evicted while the call was in flight.");
+        var runner = new EvictingTestRunnerService(midCallEviction);
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+
+        try
+        {
+            // Live workspace — the gate precheck must PASS so the eviction is observed mid-call.
+            var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
+
+            var json = await ValidationTools.RunTests(
+                gate,
+                runner,
+                workspaceId: liveStatus.WorkspaceId,
+                projectName: null,
+                filter: null,
+                progress: null,
+                workspaceManager: manager,
+                ct: CancellationToken.None);
+
+            Assert.AreEqual(1, runner.InvocationCount,
+                "The suite must be attempted exactly once — an unrecoverable eviction must not re-run it.");
+
+            var expected = ToolErrorHandler.InjectSchemaHintIfPossible(
+                ToolErrorHandler.ClassifyAndFormat(midCallEviction, "test_run"),
+                "test_run");
+            Assert.AreEqual(expected, json,
+                "The unrecoverable mid-call eviction must reproduce the pre-existing inline envelope byte-for-byte.");
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
+                $"Expected an error envelope, not a test-run payload. Actual: {json}");
+            Assert.AreEqual("WorkspaceEvicted", root.GetProperty("category").GetString(),
+                $"The eviction category must survive the retry wiring. Actual: {json}");
+            Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+        }
+    }
+
+    /// <summary>
     /// Loads <paramref name="path1"/> into the (cap-saturated) manager, then LRU-loads
     /// <paramref name="path2"/> so the first session is evicted with a recoverable eviction
     /// record. Returns the now-evicted workspace id.
@@ -261,6 +473,31 @@ public sealed class WorkspaceEvictionAutoRetryTests
                 Failed: 0,
                 Skipped: 0,
                 Failures: []));
+        }
+    }
+
+    /// <summary>
+    /// Throws a caller-supplied <see cref="WorkspaceEvictedException"/> on every invocation,
+    /// simulating the deeper <c>GetRequiredSession</c> lookup evicting strictly after the gate's
+    /// <c>ContainsWorkspace</c> precheck passed. Counts invocations so the test can prove the
+    /// unrecoverable path does not silently re-run the suite.
+    /// </summary>
+    private sealed class EvictingTestRunnerService : ITestRunnerService
+    {
+        private readonly WorkspaceEvictedException _eviction;
+
+        public EvictingTestRunnerService(WorkspaceEvictedException eviction) => _eviction = eviction;
+
+        public int InvocationCount { get; private set; }
+
+        public Task<TestRunResultDto> RunTestsAsync(
+            string workspaceId,
+            string? projectName,
+            string? filter,
+            CancellationToken ct)
+        {
+            InvocationCount++;
+            throw _eviction;
         }
     }
 }
