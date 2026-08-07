@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using Microsoft.CodeAnalysis;
@@ -425,7 +426,11 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         var currentSolution = workspace.GetCurrentSolution(workspaceId);
-        var diskRestores = new List<(string FilePath, string Text)>();
+        // composite-apply-undo-encoding-still-lossy: the queued restores carry the pre-apply
+        // `SourceText.Encoding` alongside the text so `PersistRevertChangesAsync` can rewrite each
+        // file with its original BOM/encoding instead of collapsing everything to UTF-8-no-BOM.
+        // `Encoding` is null for in-memory-synthesized text; `ResolveWriteEncoding` handles that.
+        var diskRestores = new List<(string FilePath, string Text, Encoding? Encoding)>();
 
         // Phase 1 (primary): trust the Solution diff to tell us what changed.
         var (targetSolution, changedDocumentCount) = await CollectChangesFromSolutionDiffAsync(
@@ -464,7 +469,7 @@ public sealed class UndoService : IUndoService, IDisposable
     private static async Task<(Solution TargetSolution, int ChangedDocumentCount)> CollectChangesFromSolutionDiffAsync(
         Solution preApplySolution,
         Solution currentSolution,
-        List<(string FilePath, string Text)> diskRestores,
+        List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
         var targetSolution = currentSolution;
@@ -485,7 +490,7 @@ public sealed class UndoService : IUndoService, IDisposable
                 var path = currentDoc?.FilePath ?? oldDoc.FilePath;
                 if (!string.IsNullOrWhiteSpace(path))
                 {
-                    diskRestores.Add((path!, oldText.ToString()));
+                    diskRestores.Add((path!, oldText.ToString(), oldText.Encoding));
                 }
             }
         }
@@ -501,7 +506,7 @@ public sealed class UndoService : IUndoService, IDisposable
     /// </summary>
     private async Task<int> CollectChangesFromDiskWalkAsync(
         Solution preApplySolution,
-        List<(string FilePath, string Text)> diskRestores,
+        List<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
         var changedDocumentCount = 0;
@@ -524,10 +529,11 @@ public sealed class UndoService : IUndoService, IDisposable
                     continue;
                 }
 
-                var oldText = (await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString();
+                var oldSourceText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                var oldText = oldSourceText.ToString();
                 if (!string.Equals(currentDiskText, oldText, StringComparison.Ordinal))
                 {
-                    diskRestores.Add((oldDoc.FilePath, oldText));
+                    diskRestores.Add((oldDoc.FilePath, oldText, oldSourceText.Encoding));
                     changedDocumentCount++;
                 }
             }
@@ -549,7 +555,7 @@ public sealed class UndoService : IUndoService, IDisposable
         IWorkspaceManager workspace,
         UndoSnapshot snapshot,
         Solution targetSolution,
-        IReadOnlyList<(string FilePath, string Text)> diskRestores,
+        IReadOnlyList<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
         var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);
@@ -564,11 +570,17 @@ public sealed class UndoService : IUndoService, IDisposable
 
         var diskOk = true;
         var anyDiskWrite = false;
-        foreach (var (filePath, text) in diskRestores)
+        foreach (var (filePath, text, encoding) in diskRestores)
         {
             try
             {
-                await AtomicFileWriter.WriteAllTextAsync(filePath, text, cancellationToken).ConfigureAwait(false);
+                // composite-apply-undo-encoding-still-lossy: restore with the pre-apply
+                // `SourceText.Encoding` so a reverted file keeps its original BOM/encoding.
+                await AtomicFileWriter.WriteAllTextAsync(
+                    filePath,
+                    text,
+                    cancellationToken,
+                    encoding: AtomicFileWriter.ResolveWriteEncoding(encoding)).ConfigureAwait(false);
                 anyDiskWrite = true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
