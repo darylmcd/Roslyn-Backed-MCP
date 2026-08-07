@@ -252,6 +252,7 @@ internal sealed class TestServiceContainer
             InterfaceExtractionService = new InterfaceExtractionService(
                 workspaceManager,
                 previewStore,
+                compilationCache,
                 NullLogger<InterfaceExtractionService>.Instance),
             TypeMoveService = new TypeMoveService(
                 workspaceManager,

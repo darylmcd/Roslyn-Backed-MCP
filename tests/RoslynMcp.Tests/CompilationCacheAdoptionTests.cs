@@ -21,7 +21,8 @@ namespace RoslynMcp.Tests;
 /// <see cref="ImpactSweepService"/>, <see cref="MutationAnalysisService"/>, and
 /// <see cref="SymbolRelationshipService"/>; group-b core adds <see cref="BuildService"/>,
 /// <see cref="FixAllService"/>, <see cref="BulkRefactoringService"/>, and
-/// <see cref="CrossProjectRefactoringService"/>.
+/// <see cref="CrossProjectRefactoringService"/>; the group-b tail adds
+/// <see cref="InterfaceExtractionService"/>.
 /// <para>
 /// A reference-equality check alone cannot prove adoption — Roslyn memoizes a
 /// <see cref="Compilation"/> on its owning <see cref="Project"/>, so two direct calls would also
@@ -556,6 +557,37 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
                 "AnimalService",
                 interfaceName: "IAnimalServiceCompilationCacheProbe",
                 targetProjectName: null,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task InterfaceExtractionService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new InterfaceExtractionService(
+            WorkspaceManager, new PreviewStore(), cache,
+            NullLogger<InterfaceExtractionService>.Instance);
+
+        // ValidateNoConflictsAsync is the converted site — it sweeps every project of the LIVE
+        // pre-fork solution for a same-name type. It only runs inside the `!alreadyImplements`
+        // guard, so the probe interface name must be one AnimalService cannot already implement,
+        // otherwise the cache is never touched and the call-count assertion below fails.
+        // Explicitly NOT covered here: ReplaceConcreteUsagesAsync, which compiles a FORKED
+        // solution and therefore stays on the raw project.GetCompilationAsync path — hence
+        // replaceUsages: false.
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.PreviewExtractInterfaceAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "AnimalService",
+                interfaceName: "IAnimalServiceInterfaceExtractionCacheProbe",
+                memberNames: null,
+                replaceUsages: false,
                 CancellationToken.None));
 
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
