@@ -60,7 +60,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `ValidationServiceOptions.TestTimeout` | 10 minutes |
 | `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `ValidationServiceOptions.VulnerabilityScanTimeout` | 5 minutes |
 | `ROSLYNMCP_APPLY_REVERT_TIMEOUT_SECONDS` | `ValidationServiceOptions.ApplyRevertTimeout` | 30 seconds |
-| `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` | `ValidationServiceOptions.GitStatusTimeout` — bounds the `git status` scope-collection in `validate_recent_git_changes`; on timeout the bundle reports `overallStatus: git-status-unknown` instead of `clean` | 10 seconds |
+| `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` | `ValidationServiceOptions.GitStatusTimeout` — bounds the `git status` subprocess at both `validate_recent_git_changes`'s scope-collection (on timeout, reports `overallStatus: git-status-unknown` instead of `clean`) and `validate_workspace`'s change-tracker reconcile fallback when `changedFilePaths` is omitted (on timeout, silently falls back to the unfiltered tracker list, no verdict change) | 10 seconds |
 | `ROSLYNMCP_MAX_RELATED_FILES` | `ValidationServiceOptions.MaxRelatedFiles` | 25 |
 | `ROSLYNMCP_FAST_FAIL_FILE_LOCK` | Early terminate `dotnet test` on MSB3027/MSB3021 file-lock failures | `true` |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `PreviewStoreOptions.MaxEntries` | 20 |

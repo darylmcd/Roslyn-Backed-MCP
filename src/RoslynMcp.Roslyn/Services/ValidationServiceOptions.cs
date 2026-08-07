@@ -45,13 +45,17 @@ public sealed record ValidationServiceOptions
     public TimeSpan ApplyRevertTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Gets the maximum time allowed for the <c>git status --porcelain</c> invocation that
-    /// <c>validate_recent_git_changes</c> uses to derive its changed-file scope.
-    /// Defaults to 10 seconds. Distinct from the broader per-phase validation timeout: this one
-    /// bounds only the git subprocess. When it fires the bundle can no longer trust an otherwise
-    /// <c>clean</c> verdict and reports <c>git-status-unknown</c> instead, so a repository large
-    /// or cold enough to routinely exceed 10 seconds should raise this rather than live with a
-    /// degraded verdict.
+    /// Gets the maximum time allowed for the <c>git status --porcelain</c> invocation used by
+    /// <c>CollectGitChangedFilesAsync</c>, which bounds this same subprocess at two call sites
+    /// with different on-timeout behavior. Defaults to 10 seconds. Distinct from the broader
+    /// per-phase validation timeout: this one bounds only the git subprocess.
+    /// In <c>ValidateRecentGitChangesAsync</c> (the <c>validate_recent_git_changes</c> scope-collection
+    /// path), a timeout means the bundle can no longer trust an otherwise <c>clean</c> verdict, so it
+    /// reports <c>git-status-unknown</c> instead. In <c>ReconcileChangeTrackerFilesAsync</c> (the
+    /// <c>validate_workspace</c> change-tracker reconcile path, used when the caller omits
+    /// <c>changedFilePaths</c>), a timeout instead silently falls back to the unfiltered tracker list
+    /// with no verdict degradation. A repository large or cold enough to routinely exceed 10 seconds
+    /// should raise this rather than live with either degraded behavior.
     /// </summary>
     public TimeSpan GitStatusTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
