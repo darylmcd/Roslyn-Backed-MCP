@@ -1,3 +1,5 @@
+using System.Text;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
@@ -341,5 +343,156 @@ public sealed class UndoServiceTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(catAfterRetry, "// apply B",
             "Cat.cs should retain apply B's edit — only apply A was reverted.");
         Assert.AreNotEqual(catOriginal, catAfterRetry, "Cat.cs should still be at its post-apply-B state.");
+    }
+
+    // ---- composite-apply-undo-encoding-still-lossy: solution-snapshot revert encoding fidelity ----
+    //
+    // `RevertFromSolutionSnapshotAsync` collapsed each restore to a bare string, discarding the
+    // pre-apply `SourceText.Encoding`, then wrote through the encoding-less `AtomicFileWriter`
+    // overload — so a UTF-8-BOM or UTF-16 file reverted through the solution-snapshot path was
+    // silently rewritten as UTF-8-no-BOM. `EditService` always supplies file snapshots, so the
+    // solution-snapshot branch is unreachable from a normal apply; both tests below force it by
+    // calling `CaptureBeforeApply` directly with `fileSnapshots: null`. They cover the two
+    // collection phases separately: the Solution-diff phase and the disk-walk safety net.
+
+    /// <summary>
+    /// Phase-1 (Solution diff) coverage. The <c>utf8-nobom</c> row is the inverse guard: Roslyn
+    /// reports a no-preamble UTF-8 <c>SourceText.Encoding</c> for a BOM-less file, which
+    /// <c>AtomicFileWriter.ResolveWriteEncoding(Encoding?)</c> must normalize so the revert does
+    /// not ADD a BOM to a file that never had one.
+    /// </summary>
+    [TestMethod]
+    [DataRow("utf8-nobom")]
+    [DataRow("utf8-bom")]
+    [DataRow("utf16-bom")]
+    public async Task RevertAsync_SolutionSnapshotPath_SolutionDiff_PreservesOriginalEncoding(string encodingKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        ChangeTracker.Clear(workspaceId);
+        UndoService.Clear(workspaceId);
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var (encoding, preamble, originalBytes) = await SeedEncodedFileAsync(dogFilePath, encodingKind);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApplySolution, dogFilePath);
+
+        // A real apply, so the snapshot is diffed against a genuinely mutated workspace + disk.
+        var applyResult = await EditService.ApplyTextEditsAsync(
+            workspaceId,
+            dogFilePath,
+            new[] { new TextEditDto(1, 1, 1, 1, "// apply\n") },
+            "apply_text_edit",
+            CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, "Precondition: the apply should succeed.");
+
+        // EditService records file snapshots, which route RevertAsync down the fast path. Overwrite
+        // the pending snapshot with a solution-only one to force the solution-snapshot branch.
+        UndoService.CaptureBeforeApply(
+            workspaceId,
+            "solution-snapshot encoding round-trip",
+            preApplySolution,
+            fileSnapshots: null);
+
+        Assert.IsTrue(
+            await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "The solution-snapshot revert should succeed.");
+
+        CollectionAssert.AreEqual(
+            originalBytes,
+            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            $"revert_last_apply's solution-snapshot path must restore the exact pre-apply {encodingKind} bytes, " +
+            "including the byte-order mark, instead of rewriting the file as UTF-8-no-BOM.");
+    }
+
+    /// <summary>
+    /// Phase-2 (disk-walk safety net) coverage: the drift is disk-only, so
+    /// <c>preApplySolution.GetChanges(currentSolution)</c> is empty and the restore is collected by
+    /// the disk walk instead. UTF-16 is the strongest signal — a dropped preamble there also
+    /// corrupts every character, not just the first bytes.
+    /// </summary>
+    [TestMethod]
+    public async Task RevertAsync_SolutionSnapshotPath_DiskWalk_PreservesOriginalEncoding()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        ChangeTracker.Clear(workspaceId);
+        UndoService.Clear(workspaceId);
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var (encoding, preamble, originalBytes) = await SeedEncodedFileAsync(dogFilePath, "utf16-bom");
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preApplySolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        await MaterializeDocumentTextAsync(preApplySolution, dogFilePath);
+        UndoService.CaptureBeforeApply(
+            workspaceId,
+            "disk-walk encoding round-trip",
+            preApplySolution,
+            fileSnapshots: null);
+
+        // Disk-only drift: the workspace solution is untouched, so phase 1 finds nothing.
+        var originalText = encoding.GetString(originalBytes, preamble.Length, originalBytes.Length - preamble.Length);
+        await File.WriteAllBytesAsync(
+            dogFilePath,
+            preamble.Concat(encoding.GetBytes("// drifted\n" + originalText)).ToArray(),
+            CancellationToken.None);
+
+        Assert.IsTrue(
+            await UndoService.RevertAsync(workspaceId, CancellationToken.None),
+            "The disk-walk safety net should restore the drifted file and report success.");
+
+        CollectionAssert.AreEqual(
+            originalBytes,
+            await File.ReadAllBytesAsync(dogFilePath, CancellationToken.None),
+            "The disk-walk restore must re-emit the original UTF-16 byte-order mark and encoding.");
+    }
+
+    /// <summary>
+    /// Rewrites <paramref name="filePath"/> in the requested encoding, preserving its text, and
+    /// returns the encoding, its preamble, and the exact bytes now on disk.
+    /// </summary>
+    private static async Task<(Encoding Encoding, byte[] Preamble, byte[] OriginalBytes)> SeedEncodedFileAsync(
+        string filePath,
+        string encodingKind)
+    {
+        var text = await File.ReadAllTextAsync(filePath, CancellationToken.None);
+        Encoding encoding = encodingKind switch
+        {
+            "utf16-bom" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+        var preamble = encoding.GetPreamble();
+        var bytes = preamble.Concat(encoding.GetBytes(text)).ToArray();
+        await File.WriteAllBytesAsync(filePath, bytes, CancellationToken.None);
+        return (encoding, preamble, bytes);
+    }
+
+    /// <summary>
+    /// Forces the snapshot solution to hold <paramref name="filePath"/>'s text (and therefore its
+    /// detected <c>SourceText.Encoding</c>) in memory. Roslyn loads document text lazily, so an
+    /// un-materialized snapshot would re-read whatever is on disk at revert time and conclude
+    /// nothing changed. Real solution-based callers (<c>RefactoringService</c>) always read the
+    /// document while computing their change, so this only reproduces their state.
+    /// </summary>
+    private static async Task MaterializeDocumentTextAsync(Solution solution, string filePath)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var document = solution.Projects
+            .SelectMany(p => p.Documents)
+            .FirstOrDefault(d => d.FilePath is not null
+                && string.Equals(Path.GetFullPath(d.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(document, $"Expected '{filePath}' to be part of the loaded solution.");
+
+        var text = await document!.GetTextAsync(CancellationToken.None);
+        Assert.IsNotNull(
+            text.Encoding,
+            "Precondition: Roslyn must have detected an encoding for the seeded file — otherwise the " +
+            "test cannot distinguish a preserved encoding from the UTF-8-no-BOM fallback.");
     }
 }

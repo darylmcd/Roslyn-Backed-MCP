@@ -79,7 +79,21 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                     Directory.CreateDirectory(directory);
                 }
 
-                await AtomicFileWriter.WriteAllTextAsync(mutation.FilePath, mutation.UpdatedContent ?? string.Empty, ct, _logger).ConfigureAwait(false);
+                // composite-apply-undo-encoding-still-lossy: `CompositeFileMutation` carries only
+                // the replacement text, so the file's original BOM/encoding has to be recovered at
+                // write time from the pre-apply on-disk bytes — the same pattern
+                // `ProjectMutationService.ApplyProjectMutationAsync` uses. Without it every composite
+                // apply silently re-encoded the target as UTF-8-no-BOM.
+                var preApplyBytes = File.Exists(mutation.FilePath)
+                    ? await File.ReadAllBytesAsync(mutation.FilePath, ct).ConfigureAwait(false)
+                    : null;
+
+                await AtomicFileWriter.WriteAllTextAsync(
+                    mutation.FilePath,
+                    mutation.UpdatedContent ?? string.Empty,
+                    ct,
+                    _logger,
+                    encoding: AtomicFileWriter.ResolveWriteEncoding(preApplyBytes)).ConfigureAwait(false);
                 appliedFiles.Add(mutation.FilePath);
             }
 

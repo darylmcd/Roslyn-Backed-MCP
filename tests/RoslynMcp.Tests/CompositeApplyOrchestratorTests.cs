@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
@@ -175,6 +176,93 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsNotNull(result.Error);
         Assert.IsFalse(result.Error!.StartsWith("Partial composite apply: ", StringComparison.Ordinal),
             "A failure with zero prior writes is a clean failure, not a partial apply.");
+    }
+
+    /// <summary>
+    /// Regression guard for <c>composite-apply-undo-encoding-still-lossy</c>:
+    /// <c>apply_composite_preview</c> wrote every mutation through
+    /// <c>AtomicFileWriter.WriteAllTextAsync</c> with no <see cref="Encoding"/>, so a UTF-8-BOM or
+    /// UTF-16 source file was silently re-encoded as UTF-8-no-BOM on every composite apply. This is
+    /// the third write path PR #1157 (<c>mutation-write-paths-drop-original-encoding</c>) deferred.
+    /// The <c>utf8-nobom</c> row is the inverse guard: a file that had no BOM must not gain one.
+    /// </summary>
+    [TestMethod]
+    [DataRow("utf8-nobom")]
+    [DataRow("utf8-bom")]
+    [DataRow("utf16-bom")]
+    public async Task ApplyComposite_Preserves_Original_File_Encoding(string encodingKind)
+    {
+        var path = Path.Combine(_tempDir, "target.cs");
+        Encoding encoding = encodingKind switch
+        {
+            "utf16-bom" => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf8-bom" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+        var preamble = encoding.GetPreamble();
+
+        const string originalContent = "class C { }\n";
+        await File.WriteAllBytesAsync(
+            path,
+            preamble.Concat(encoding.GetBytes(originalContent)).ToArray(),
+            CancellationToken.None);
+
+        const string updatedContent = "class C { int Marker; }\n";
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1",
+            1,
+            "encoding round-trip",
+            [new CompositeFileMutation(path, updatedContent, DeleteFile: false)]);
+        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+
+        var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
+        Assert.IsTrue(
+            afterBytes.AsSpan().StartsWith(preamble),
+            $"apply_composite_preview must re-emit the original {encodingKind} byte-order mark instead of rewriting the file as UTF-8-no-BOM.");
+        if (preamble.Length == 0)
+        {
+            Assert.IsFalse(
+                afterBytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()),
+                "A file that had no BOM must not gain one.");
+        }
+
+        Assert.AreEqual(
+            updatedContent,
+            encoding.GetString(afterBytes, preamble.Length, afterBytes.Length - preamble.Length),
+            "The mutation must be readable back through the original encoding.");
+    }
+
+    /// <summary>
+    /// Companion guard to <see cref="ApplyComposite_Preserves_Original_File_Encoding"/>: a mutation
+    /// that CREATES a file (no pre-apply bytes on disk) must keep the historic UTF-8-no-BOM default
+    /// — <c>ResolveWriteEncoding(null)</c> must not be allowed to start emitting a preamble.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_NewFile_Is_Written_Utf8_Without_Bom()
+    {
+        var path = Path.Combine(_tempDir, "created.cs");
+        Assert.IsFalse(File.Exists(path));
+
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            "ws-1",
+            1,
+            "new file",
+            [new CompositeFileMutation(path, "class New { }\n", DeleteFile: false)]);
+        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+
+        var afterBytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
+        Assert.IsFalse(
+            afterBytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()),
+            "A newly created file must not gain a BOM.");
+        Assert.AreEqual("class New { }\n", Encoding.UTF8.GetString(afterBytes));
     }
 
     private sealed class RecordingLogger<T> : ILogger<T>
