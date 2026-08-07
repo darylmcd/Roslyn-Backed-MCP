@@ -1,6 +1,6 @@
 # edit-preview-validation-decomposition — Decompose edit validation and multi-file preview construction
 
-**row:** `edit-preview-validation-decomposition` · **pri:** `Low` · **size:** `M`
+**row:** `edit-preview-validation-decomposition` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

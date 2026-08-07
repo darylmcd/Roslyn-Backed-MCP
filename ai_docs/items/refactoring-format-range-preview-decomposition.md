@@ -1,6 +1,6 @@
 # refactoring-format-range-preview-decomposition — Decompose format-range preview orchestration
 
-**row:** `refactoring-format-range-preview-decomposition` · **pri:** `Low` · **size:** `M`
+**row:** `refactoring-format-range-preview-decomposition` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
