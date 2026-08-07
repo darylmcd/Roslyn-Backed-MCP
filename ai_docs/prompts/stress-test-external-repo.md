@@ -172,7 +172,7 @@ Composites dispatch multiple sub-queries internally; record end-to-end timing vs
 11. `symbol_impact_sweep` — pick a high-fan-out symbol from Phase 2. Composite of references + switch-exhaustiveness diagnostics + mapper callsites. Compare `_meta.elapsedMs` against `find_references` + `project_diagnostics` separately.
 12. `test_reference_map(projectName?)` — if tests present. Record timing and `coveragePercent`. Compare against `test_coverage` duration.
 13. `validate_workspace(runTests=false)` — compare end-to-end against the sum of `compile_check` + `project_diagnostics(severity=Error)` + `test_related_files`. Budget: composite ≤1.2× sum of parts.
-14. `validate_recent_git_changes` — if the external repo has git metadata. Record timing and the reported status (clean / compile-error / analyzer-error / test-failure).
+14. `validate_recent_git_changes` — if the external repo has git metadata. Record timing and the reported `overallStatus` — resolve the verdict against the canonical [`overallStatus` verdict table](../domains/tool-usage-guide.md#overallstatus-verdict-table) rather than a locally-restated value list.
 15. `trace_exception_flow` on a `throw` site in a hot file. Record timing and whether the response walks to a `catch` or reports unhandled-at-boundary.
 
 **Persist Phase 4 results.**
