@@ -391,7 +391,7 @@
     {
       "id": "compile-check-restorehint-empty-not-null",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "compile-check-restorehint-empty-not-null"
       ],
@@ -413,10 +413,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/compile-check-restorehint-empty-not-null",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1194",
+      "mergedAt": "2026-08-07T19:52:00Z",
       "notes": null,
       "fileSetHash": "f6fed0d271744e9bee35b4a3b0ff95e1c85b8cd53dffe2eab20df78474ac8fd6",
       "stanzaHash": "695b995513e0daaa8d1bb8b540abe3d20889b50a76df87ab1cffc8599ca47263",
