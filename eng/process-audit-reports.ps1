@@ -8,11 +8,12 @@
     full audit-report consolidation pipeline runs from one command:
 
       1. eng/stage-review-inbox.ps1
-         Discovers `*_mcp-server-audit.md`, `*_mcp-server-surface-test.md`,
-         `*_experimental-promotion.md`, and `*_roslyn-mcp-retro.md` under
-         either `audit-reports/` or `ai_docs/audit-reports/` across this
-         repo and every sibling under the parent folder. Self -> COPY,
-         siblings -> MOVE (defaults). Reports land in `review-inbox/`.
+         Discovers the recognized deep-review artifact shapes (canonical list:
+         see `eng/stage-review-inbox.ps1` `.DESCRIPTION` -> "Recognized shapes";
+         do not re-list the globs here) under either `audit-reports/` or
+         `ai_docs/audit-reports/` across this repo and every sibling under the
+         parent folder. Self -> COPY, siblings -> MOVE (defaults). Reports land
+         in `review-inbox/`.
 
       2. eng/aggregate-promotion-scorecards.ps1
          Probes the canonical repo-root `audit-reports/` first, then the

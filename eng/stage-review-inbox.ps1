@@ -4,10 +4,10 @@
     Stage deep-review artifacts (audits, retros, experimental-promotion reports) into review-inbox/ for backlog intake.
 
 .DESCRIPTION
-    Discovers the three deep-review artifact shapes across this repo + sibling repos under the
-    parent directory and copies them into this repo's review-inbox/ folder. Source filenames
-    already carry a repo-id prefix (e.g. 20260424T030145Z_roslyn-backed-mcp_roslyn-mcp-retro.md)
-    so no renaming is needed.
+    Discovers the deep-review artifact shapes listed below (see "Recognized shapes") across this
+    repo + sibling repos under the parent directory and copies them into this repo's review-inbox/
+    folder. Source filenames already carry a repo-id prefix (e.g.
+    20260424T030145Z_roslyn-backed-mcp_roslyn-mcp-retro.md) so no renaming is needed.
 
     Default behavior is **per-source**:
       - Sibling repos: MOVE (delete after staging). Sibling repos shouldn't
