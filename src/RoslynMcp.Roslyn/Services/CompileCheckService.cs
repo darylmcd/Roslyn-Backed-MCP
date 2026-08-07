@@ -72,7 +72,10 @@ public sealed class CompileCheckService : ICompileCheckService
         // without string-matching restoreHint prose. fileScopeHint (not `hint`) is the fallback
         // signal — BuildHint joins into an empty string, never null, when no hint applies.
         var requestedScope = ComputeRequestedScope(projectFilter, normalizedFileFilters);
-        var actualScope = fileScopeHint is not null ? ScopeSolution : requestedScope;
+        // projectList.Count > 0 guard: the zero-resolution file-scope arm sets fileScopeHint but
+        // compiles nothing, so reporting ActualScope=="solution" there would claim a widening
+        // that never happened. Only the multi-project fallback actually widens.
+        var actualScope = fileScopeHint is not null && projectList.Count > 0 ? ScopeSolution : requestedScope;
 
         return new CompileCheckDto(
             // A true Success requires that we actually evaluated at least one project.
@@ -259,8 +262,13 @@ public sealed class CompileCheckService : ICompileCheckService
         // and ship broken code. Fail loud with a structured hint — this mirrors what the
         // SampleSolution audit §9.8 repro produced (success:true, completedProjects:0,
         // staleAction:auto-reloaded) and is the specific shape that gave the false-green.
+        // fileScopeHint is null guard: the zero-resolution file-scope arm (added by
+        // compile-check-zero-resolution-false-success) now also yields projectCount==0, and it
+        // already carries a precise, actionable hint. Emitting the generic "workspace may have
+        // completed a reload" text alongside it would mislead. This combination could not occur
+        // before that fix, since the file-filter fallback always produced projectCount > 0.
         string? zeroProjectsHint = null;
-        if (!acc.Cancelled && projectCount == 0)
+        if (!acc.Cancelled && projectCount == 0 && fileScopeHint is null)
         {
             zeroProjectsHint = projectFilter is null
                 ? "compile_check evaluated 0 projects. The workspace may have completed a reload without re-populating its project list — call workspace_reload explicitly and retry, or verify workspace_load succeeded."
@@ -314,11 +322,23 @@ public sealed class CompileCheckService : ICompileCheckService
             return ([owningProjects.Single()], null);
         }
 
-        var reason = owningProjects.Count == 0
-            ? "did not resolve to any loaded workspace document"
-            : "resolved to multiple projects";
+        // compile-check-zero-resolution-false-success: a file scope that resolves to NO loaded
+        // workspace document must not widen to the full project list. Widening compiled every
+        // project and then dropped every returned diagnostic in ShouldReportDiagnostic (none of
+        // them can match a path that is not in the workspace), so a solution carrying thousands
+        // of real errors reported Success=true/ErrorCount=0. Returning an empty project list
+        // drives CompletedProjects==0/TotalProjects==0, which the Success precondition already
+        // treats as a failure — the same contract Item #6 established for a projectFilter miss.
+        if (owningProjects.Count == 0)
+        {
+            return ([],
+                "compile_check file scope did not resolve to any loaded workspace document; no project was compiled and no diagnostics were evaluated. Verify the supplied file paths exist in the loaded workspace (call workspace_status), or omit the file scope to compile the full solution.");
+        }
+
+        // owningProjects.Count > 1: the files genuinely span multiple projects, so widening the
+        // compile and filtering the returned diagnostics by path is the correct behaviour.
         return (filteredProjects,
-            $"compile_check file filter fallback: supplied file scope {reason}; compiled the full project scope and filtered returned diagnostics by file path.");
+            "compile_check file filter fallback: supplied file scope resolved to multiple projects; compiled the full project scope and filtered returned diagnostics by file path.");
     }
 
     private static HashSet<Project> FindOwningProjects(Solution solution, IReadOnlySet<string> normalizedFileFilters)
