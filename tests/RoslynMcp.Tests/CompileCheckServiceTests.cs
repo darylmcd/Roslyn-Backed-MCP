@@ -42,6 +42,38 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task CheckAsync_FileFilterResolvingToNoDocument_FailsLoudInsteadOfWidening()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Guarantee the solution carries real compile errors, so a widened full-solution compile
+        // would have plenty of diagnostics to (incorrectly) filter away by the bogus path.
+        var brokenPath = workspace.GetPath("SampleApp", "Program.cs");
+        await File.AppendAllTextAsync(
+            brokenPath,
+            $"{Environment.NewLine}this is not valid csharp{Environment.NewLine}",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+        var missingPath = workspace.GetPath("SampleLib", "NoSuchFile.cs");
+
+        var result = await CompileCheckService.CheckAsync(
+            workspace.WorkspaceId,
+            new CompileCheckOptions(SeverityFilter: "Error", FileFilter: missingPath),
+            CancellationToken.None);
+
+        Assert.IsFalse(result.Success,
+            "A file scope resolving to zero workspace documents must not report a vacuous green pass.");
+        Assert.AreEqual(0, result.TotalProjects,
+            "The zero-resolution arm must not widen to the full project list.");
+        Assert.AreEqual(0, result.CompletedProjects);
+        StringAssert.Contains(result.RestoreHint, "did not resolve to any loaded workspace document");
+        Assert.AreEqual("files", result.RequestedScope);
+        Assert.AreEqual(result.RequestedScope, result.ActualScope,
+            "Nothing was compiled, so no widening to solution scope may be claimed.");
+    }
+
+    [TestMethod]
     public async Task CheckAsync_FileFiltersAcrossProjects_FallsBackToFullScopeWithHint()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
