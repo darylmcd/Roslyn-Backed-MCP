@@ -21,3 +21,4 @@
 ## Context
 
 Spin-off from the `validate-workspace-compiler-category-status-mismatch` initiative (backlog-sweep plan `20260805T222513Z_backlog-sweep`, PR #1140). Both findings are documentation/defensive-coding hygiene, not functional bugs; consolidated per the sweep's filing gate (no standalone rows for low cosmetic items).
+Also fix a second XML-doc inversion in the same class: IWorkspaceValidationService.cs:53 (OverallStatus, timeout sentence) and :75 (TestRunResult, "Populated only when runTests=true; otherwise null") both contradict CreateTimeoutResult (WorkspaceValidationService.cs:929, no runTests parameter) — its 3 unconditional catch-handler call sites populate TestRunResult.FailureEnvelope with ErrorKind=="Timeout" even when runTests=false, per WorkspaceValidationTimeoutTests.cs:78. [source: PR #1187 code-quality review]

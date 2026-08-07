@@ -21,3 +21,4 @@
 ## Context
 
 Spin-off from the `mutation-write-paths-drop-original-encoding` initiative (backlog-sweep plan `20260806T023001Z_backlog-sweep`, PR #1157). All hygiene, not functional bugs; consolidated per the sweep's filing gate.
+Two more copies of the encoding-fixture test block landed in PR #1181 (tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs:196, UndoServiceTests.cs:464) — the `encodingKind switch` fixture pattern now appears in 5 test files total, up from 3. [source: PR #1181 code-quality review]

@@ -23,3 +23,4 @@
 ## Context
 
 Spin-off from the `direct-mutation-undo-byte-fidelity` initiative (backlog-sweep plan `20260805T222513Z_backlog-sweep`, PR #1144). Adjacent to open row `edit-preview-validation-decomposition` (touches a different region of `EditService.cs`) — sequence to avoid PR collision.
+Widen acceptance: FileSnapshotCapture.CaptureAsync (added by PR #1178) re-implements the exists/missing ternary inline instead of delegating to FromBytesOrFallback — a second independent copy of the same policy the class exists to own. Also fix the class XML doc, which overclaims "single owner... shared by every direct-file mutation path": RefactoringService.AddFileSnapshotAsync (RefactoringService.cs:1057-1089) still hand-rolls it. [source: PR #1178 code-quality review]
