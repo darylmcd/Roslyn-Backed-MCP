@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -17,12 +18,18 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<InterfaceExtractionService> _logger;
 
-    public InterfaceExtractionService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<InterfaceExtractionService> logger)
+    public InterfaceExtractionService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache,
+        ILogger<InterfaceExtractionService> logger)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -67,7 +74,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         // before we synthesize a new file.
         if (!alreadyImplements)
         {
-            await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+            await ValidateNoConflictsAsync(workspaceId, solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
         }
 
         // BUG-003: Match the interface accessibility to the source type so an internal class
@@ -377,8 +384,14 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
+    /// <remarks>
+    /// Reads compilations through the shared <see cref="ICompilationCache"/>: the only call site
+    /// passes the LIVE <see cref="IWorkspaceManager.GetCurrentSolution"/> snapshot taken before any
+    /// in-memory fork, so the version-keyed cache is a valid source. Mirrors
+    /// <c>CrossProjectRefactoringService.DetectExistingTypeConflictAsync</c>.
+    /// </remarks>
     private async Task ValidateNoConflictsAsync(
-        Solution solution, INamedTypeSymbol typeSymbol, string interfaceName, CancellationToken ct)
+        string workspaceId, Solution solution, INamedTypeSymbol typeSymbol, string interfaceName, CancellationToken ct)
     {
         var namespaceName = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
@@ -391,7 +404,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         {
             try
             {
-                var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+                var comp = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
                 if (comp?.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
                 {
                     throw new InvalidOperationException(
@@ -407,6 +420,14 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
     }
 
+    /// <remarks>
+    /// Deliberately NOT routed through <see cref="ICompilationCache"/>. The caller hands in a
+    /// FORKED solution (built with <c>WithDocumentSyntaxRoot</c> + <c>AddDocument</c> and not yet
+    /// applied to the workspace), so it carries the same workspace version as the live solution.
+    /// A version-keyed cache would either hand back the pre-fork compilation — which lacks the
+    /// synthesized interface document — or pollute the shared cache with an in-memory-only fork.
+    /// The raw <c>project.GetCompilationAsync</c> below is the correct read here.
+    /// </remarks>
     private static async Task<Solution> ReplaceConcreteUsagesAsync(
         Solution solution, ProjectId projectId, INamedTypeSymbol typeSymbol,
         string interfaceName, CancellationToken ct)
