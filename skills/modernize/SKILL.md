@@ -72,8 +72,7 @@ Execute each stage in order. Do not start stage N+1 until stage N validates clea
 - `clean` — proceed to the next stage.
 - `compile-error` / `analyzer-error` — stop. Surface `errorDiagnostics` to the user.
 - `test-failure` — stop. Surface `testRunResult.failures` to the user.
-- `test-zero-run` — `runTests: true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter — the zero-match is almost always a working-directory/filter-resolution race, not a real pass.
-- `timeout` — a validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry.
+- any other value (`test-zero-run`, `timeout`, and any verdict added since) — do **not** treat it as a pass. Follow the caller action in the canonical [`overallStatus` verdict table](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/domains/tool-usage-guide.md#overallstatus-verdict-table), then stop the stage if it is not recoverable.
 
 If validation fails after a successful apply, offer the user `revert_last_apply` to roll the stage back, then stop the skill.
 
@@ -118,7 +117,7 @@ For each stage, emit:
 - Scope: {files/types/diagnostic-id}
 - Preview: {files-touched}, {hunks}
 - Apply status: {applied | rolled_back | applied_with_errors}
-- Validation: {clean | compile-error | analyzer-error | test-failure}
+- Validation: {overallStatus verdict — see the canonical table at https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/domains/tool-usage-guide.md#overallstatus-verdict-table}
 - Rollback events: {count, if any}
 ```
 

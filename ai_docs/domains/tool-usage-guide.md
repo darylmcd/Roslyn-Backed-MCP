@@ -54,7 +54,8 @@ validate_recent_git_changes(workspaceId)
   → derives changedFilePaths from `git status --porcelain`
   → runs compile_check + project_diagnostics (errors) + test_related_files
   → scoped to the projects that own the touched files
-  → returns an aggregate envelope: overallStatus = clean | compile-error | analyzer-error | test-failure | test-zero-run | git-status-unknown | timeout
+  → returns an aggregate envelope carrying an overallStatus verdict
+    (all values + caller actions: see the verdict table below)
 ```
 
 Falls back to full-workspace scope with a `Warnings` entry when git is not
@@ -64,22 +65,8 @@ available on PATH, the solution directory is not inside a git repository, or
 than the touched-file set. The exception is a `git status` **timeout** (a
 fourth fallback cause, distinct from the three above): that path returns
 `overallStatus = git-status-unknown` specifically so callers do NOT trust a
-`clean` verdict computed over an unverified fallback scope — see below.
-
-Three additional `overallStatus` values beyond the original four:
-
-- `test-zero-run` — `runTests=true` but the discovered filter matched zero
-  tests. Re-run `test_run` standalone against the surfaced filter; the
-  zero-match is almost always a working-directory/filter-resolution race, not
-  a real pass.
-- `timeout` — a validation phase exceeded the 25-second internal cap. The
-  response carries `compileResult.cancelled=true` plus a `warnings` entry
-  naming the phase; safe to retry.
-- `git-status-unknown` — `validate_recent_git_changes`-only: the `git status`
-  scope-collection itself timed out, so a would-be `clean` verdict was
-  computed over an untrustworthy fallback scope instead of the real working
-  tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see
-  `ai_docs/runtime.md`) if `git status` is slow on this repo.
+`clean` verdict computed over an unverified fallback scope — see the
+[verdict table](#overallstatus-verdict-table).
 
 **Explicit file list (when not in a git repo or for targeted verify):**
 
@@ -114,6 +101,29 @@ format_check(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearc
 first — one call, scoped to touched files, aggregate pass/fail. Drop to the
 primitive triple only when the bundle's shape doesn't fit (e.g. you need
 compile-only verify without test discovery, or want to run a custom test filter).
+
+### `overallStatus` verdict table
+
+**Canonical source for the `overallStatus` verdict set.** Every other surface in
+this repo (skills, prompts, phase files) points here instead of restating the
+list — a restated list goes stale the moment a value is added. The values below
+are authoritative against `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs`
+(the `validate_workspace` / `validate_recent_git_changes` tool `Description`
+strings). Treat **only** `clean` as passing; every other value is non-passing.
+
+| Value | Reachable from | Caller action |
+|---|---|---|
+| `clean` | both | Proceed. Compile, Error-severity diagnostics, and (when `runTests=true`) the discovered tests all passed. |
+| `compile-error` | both | Stop. Read `errorDiagnostics` for the compiler errors and fix before re-running. |
+| `analyzer-error` | both | Stop. Read `errorDiagnostics` for the Error-severity analyzer hits and fix before re-running. |
+| `test-failure` | both | Stop. Read `testRunResult.failures` and fix before re-running. |
+| `test-zero-run` | both | `runTests=true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass. |
+| `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry. |
+| `git-status-unknown` | `validate_recent_git_changes` only | The `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope instead of the real working tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see [`runtime.md`](../runtime.md)) if `git status` is slow on this repo. |
+
+"both" = reachable from `validate_workspace` **and** `validate_recent_git_changes`.
+`git-status-unknown` is unique to `validate_recent_git_changes` because only that
+tool derives its scope from `git status --porcelain`.
 
 ### Shell fallbacks — CI-parity only
 
