@@ -352,9 +352,7 @@ public sealed class EditorConfigService : IEditorConfigService
         {
             var snapshot = new[]
             {
-                existingBytes is not null
-                    ? FileSnapshotDto.FromExistingBytes(editorconfigPath, existingBytes)
-                    : new FileSnapshotDto(editorconfigPath, OriginalText: null),
+                FileSnapshotCapture.FromBytesOrFallback(editorconfigPath, existingBytes, fallbackText: null),
             };
             _undoService.CaptureBeforeApply(
                 workspaceId,
