@@ -108,8 +108,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "fba7bdd23283780c2fb2c6bb1eeeb56e18ca3e65c5b86d7b381460803ee5569e",
-      "stanzaHash": "5506e018d3f85a4721ea0af4fb419c415663cea4ba6ecb0267de50fd7bba130e",
-      "reviewedStanzaHash": "5506e018d3f85a4721ea0af4fb419c415663cea4ba6ecb0267de50fd7bba130e"
+      "stanzaHash": "929da3894ae474c4490b84f44ddcd693da2355f502633c734f9587e2beb371ff",
+      "reviewedStanzaHash": "929da3894ae474c4490b84f44ddcd693da2355f502633c734f9587e2beb371ff"
     },
     {
       "id": "composite-apply-undo-encoding-still-lossy",
@@ -681,8 +681,8 @@
     }
   ],
   "conflictGraphInputHash": "7f4bca9d0e6d0653a4b1f7944c6d3ff3ae33140f4ff6e4c1f63cc14ce6d6b23e",
-  "planHash": "ef016ae5767ee038b4e39b71ab90dca0c5599bdc115298652a6d479fb413f711",
+  "planHash": "c652a13cc8dda170b5dc739e6ee1270cc4e977f739c78f4f9cc594a77f93bfbd",
   "backlogSnapshotHash": "137b40fd61491766b8deb0226790a2b3a5fa0400b5019b9eb54ab5d727144e47",
-  "reviewedPlanHash": "ef016ae5767ee038b4e39b71ab90dca0c5599bdc115298652a6d479fb413f711",
+  "reviewedPlanHash": "c652a13cc8dda170b5dc739e6ee1270cc4e977f739c78f4f9cc594a77f93bfbd",
   "reviewedBacklogSnapshotHash": "137b40fd61491766b8deb0226790a2b3a5fa0400b5019b9eb54ab5d727144e47"
 }
