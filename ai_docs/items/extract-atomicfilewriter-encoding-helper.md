@@ -23,3 +23,4 @@
 ## Context
 
 Spin-off from the `mutation-write-paths-drop-original-encoding` initiative (backlog-sweep plan `20260806T023001Z_backlog-sweep`, PR #1157). Cited in the initiative's own plan as a deferred rename to stay within the 4-file cap.
+PR #1181 (composite-apply-undo-encoding-still-lossy) adds another caller of the byte-sniff pattern this row wants extracted: CompositeApplyOrchestrator.cs:87 now full-reads every mutated file (ResolveWriteEncoding) then CsprojSemanticEquality.CreateSnapshot re-reads it via StreamReader.ReadToEnd for every non-delete mutation. [source: PR #1181 code-quality review]

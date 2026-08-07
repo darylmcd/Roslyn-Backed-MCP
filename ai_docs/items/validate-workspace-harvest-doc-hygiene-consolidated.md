@@ -19,3 +19,4 @@
 ## Context
 
 Spin-off from the `validate-workspace-diagnostic-harvest-reconcile` initiative (backlog-sweep plan `20260806T023001Z_backlog-sweep`, PR #1160). Doc-only hygiene.
+PR #1182 (validate-workspace-compiler-gate-scope-to-category) rewrote WorkspaceValidationService.cs:518-527 and dropped the "WorkspaceDiagnostics stays excluded, as before" sentence while adding Workspace-category prose — restore that invariant statement in the same comment block this row already anchors (WorkspaceValidationService.cs:511). [source: PR #1182 code-quality review]
