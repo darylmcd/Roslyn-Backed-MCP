@@ -1,6 +1,6 @@
-# core-dto-location-quartet-consolidation-primary — Decide public LocationDto migration contract
+# core-dto-location-quartet-consolidation-primary — Write LocationDto migration ADR + plan
 
-**row:** `core-dto-location-quartet-consolidation-primary` · **pri:** `Defer` · **size:** `L`
+**row:** `core-dto-location-quartet-consolidation-primary` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 
@@ -15,13 +15,15 @@
 - `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs`
 - `docs/release-policy.md`
 
-## Decision gate
+## Decision (resolved 2026-08-06)
 
-The execute-time public-contract review rejected the proposed `[JsonIgnore]` computed `Location` view: external consumers could not adopt it, so it would not satisfy the migration intent. This public repository requires an explicit compatibility and semver decision before implementation.
+**Operator decision: additive serialized nested `Location` field + legacy-flat-field deprecation window, NOT a major-version replacement.** This was raised as one of two `/defer-unblock` operator questions (the other two — `http-streamable-host-project`, `roslyn-mcp-cross-repo-steering-gap` — were resolved separately); the operator picked the additive path over a breaking major bump because it avoids forcing every consumer to migrate on this repo's timeline, consistent with Directive #4's ADR + migration-note requirement for this published repo's breaking changes — additive sidesteps the break entirely for the deprecation window.
+
+The earlier execute-time public-contract review had already rejected a `[JsonIgnore]`-only computed `Location` view (external consumers couldn't adopt it), which is why the decision needed to be explicit rather than defaulting to the path of least resistance.
 
 ## Acceptance
 
-- [ ] Record an ADR choosing either an additive serialized nested field plus legacy-flat deprecation, or a major-version replacement.
+- [ ] Record an ADR formalizing the additive-nested-field + legacy-flat-deprecation choice (not open — see Decision above; the ADR still needs to be written as a durable artifact).
 - [ ] Add migration guidance covering wire name/shape, null and partial-location semantics, the legacy-flat deprecation window, semver, record constructor compatibility, `with` expressions, and equality.
 - [ ] Treat a `[JsonIgnore]`-only property as insufficient adoption.
 - [ ] Split the selected migration into bounded producer/consumer groups before implementation planning.
