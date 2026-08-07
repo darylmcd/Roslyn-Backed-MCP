@@ -39,6 +39,8 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("files", result.RequestedScope);
         Assert.AreEqual(result.RequestedScope, result.ActualScope,
             "A file filter honoured by its single owning project must not report a widened scope.");
+        Assert.IsNull(result.RestoreHint,
+            "A clean scoped compile check with no CS0234 flood, zero-projects fallback, or file-filter widening must not carry a restoreHint.");
     }
 
     [TestMethod]
@@ -90,7 +92,8 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
 
         Assert.IsTrue(result.TotalProjects > 1,
             "File filters spanning multiple projects should fall back to the full project scope.");
-        Assert.IsNotNull(result.RestoreHint);
+        Assert.IsFalse(string.IsNullOrEmpty(result.RestoreHint),
+            "Fallback restoreHint must be non-empty when file filters span multiple projects.");
         StringAssert.Contains(result.RestoreHint, "file filter fallback");
         Assert.AreEqual("files", result.RequestedScope);
         Assert.AreEqual("solution", result.ActualScope);

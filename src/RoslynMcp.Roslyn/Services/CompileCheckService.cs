@@ -69,7 +69,7 @@ public sealed class CompileCheckService : ICompileCheckService
         // compile-check-multi-project-fallback-structured-scope: surface the requested-vs-actual
         // compile scope as structured fields so callers can detect the silent file-filter widening
         // without string-matching restoreHint prose. fileScopeHint (not `hint`) is the fallback
-        // signal — BuildHint joins into an empty string, never null, when no hint applies.
+        // signal.
         var requestedScope = ComputeRequestedScope(projectFilter, normalizedFileFilters);
         // projectList.Count > 0 guard: the zero-resolution file-scope arm sets fileScopeHint but
         // compiles nothing, so reporting ActualScope=="solution" there would claim a widening
@@ -274,8 +274,9 @@ public sealed class CompileCheckService : ICompileCheckService
                 : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
         }
 
-        return string.Join(" ", new[] { zeroProjectsHint, restoreHint, fileScopeHint }
+        var joined = string.Join(" ", new[] { zeroProjectsHint, restoreHint, fileScopeHint }
             .Where(static hint => !string.IsNullOrWhiteSpace(hint)));
+        return string.IsNullOrEmpty(joined) ? null : joined;
     }
 
     private static IReadOnlySet<string>? NormalizeFileFilters(string? fileFilter, IReadOnlyList<string>? fileFilters)
