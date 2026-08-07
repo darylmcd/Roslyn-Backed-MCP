@@ -557,9 +557,10 @@ public sealed class ProjectMutationService : IProjectMutationService
             var preApplyBytes = File.Exists(projectFilePath)
                 ? await File.ReadAllBytesAsync(projectFilePath, ct).ConfigureAwait(false)
                 : null;
-            var preApplySnapshot = preApplyBytes is not null
-                ? FileSnapshotDto.FromExistingBytes(normalizedProjectFilePath, preApplyBytes)
-                : new FileSnapshotDto(normalizedProjectFilePath, OriginalText: null);
+            var preApplySnapshot = FileSnapshotCapture.FromBytesOrFallback(
+                normalizedProjectFilePath,
+                preApplyBytes,
+                fallbackText: null);
             _undoService?.CaptureBeforeApply(
                 workspaceId,
                 $"Project mutation: {Path.GetFileName(projectFilePath)}",

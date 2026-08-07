@@ -81,11 +81,10 @@ public sealed class EditService : IEditService
         var normalizedFilePath = Path.GetFullPath(filePath);
         var fileSnapshots = new[]
         {
-            File.Exists(normalizedFilePath)
-                ? FileSnapshotDto.FromExistingBytes(
-                    normalizedFilePath,
-                    await File.ReadAllBytesAsync(normalizedFilePath, ct).ConfigureAwait(false))
-                : new FileSnapshotDto(normalizedFilePath, sourceText.ToString()),
+            await FileSnapshotCapture.CaptureAsync(
+                normalizedFilePath,
+                () => sourceText.ToString(),
+                ct).ConfigureAwait(false),
         };
         _undoService?.CaptureBeforeApply(
             workspaceId,
@@ -143,11 +142,10 @@ public sealed class EditService : IEditService
         var fileSnapshots = new List<FileSnapshotDto>(perFileSnapshots.Count);
         foreach (var t in perFileSnapshots)
         {
-            fileSnapshots.Add(File.Exists(t.NormalizedPath)
-                ? FileSnapshotDto.FromExistingBytes(
-                    t.NormalizedPath,
-                    await File.ReadAllBytesAsync(t.NormalizedPath, ct).ConfigureAwait(false))
-                : new FileSnapshotDto(t.NormalizedPath, t.SourceText.ToString()));
+            fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(
+                t.NormalizedPath,
+                () => t.SourceText.ToString(),
+                ct).ConfigureAwait(false));
         }
         _undoService?.CaptureBeforeApply(
             workspaceId,
