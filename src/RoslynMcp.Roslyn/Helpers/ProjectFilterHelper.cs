@@ -6,7 +6,7 @@ internal static class ProjectFilterHelper
 {
     public static IEnumerable<Project> FilterProjects(Solution solution, string? projectFilter)
     {
-        return projectFilter is null
+        return string.IsNullOrWhiteSpace(projectFilter)
             ? solution.Projects
             : solution.Projects.Where(p =>
                 string.Equals(p.Name, projectFilter, StringComparison.OrdinalIgnoreCase));

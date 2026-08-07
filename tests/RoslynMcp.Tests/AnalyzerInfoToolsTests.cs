@@ -3,7 +3,8 @@ using RoslynMcp.Core.Models;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Regression tests for non-deterministic <c>totalRules</c> in <c>list_analyzers</c>.
+/// Regression tests for non-deterministic <c>totalRules</c> in <c>list_analyzers</c>, and for
+/// project-filter normalization shared via <c>ProjectFilterHelper</c>.
 ///
 /// Root cause (list-analyzers-totalrules-variance): the service-layer deduplication guard
 /// exited early on the first project to reference an analyzer assembly, discarding rules
@@ -93,5 +94,26 @@ public sealed class AnalyzerInfoToolsTests : SharedWorkspaceTestBase
 
         Assert.IsTrue(unfilteredTotal >= filteredTotal,
             $"Unfiltered totalRules ({unfilteredTotal}) must be >= filtered totalRules ({filteredTotal}) for project '{firstProjectName}'.");
+    }
+
+    /// <summary>
+    /// A whitespace-only <c>projectFilter</c> must be treated as "no filter" (matching the
+    /// semantics <c>compile_check</c> already enforced), not as a literal filter that can never
+    /// match a real project name. Regression coverage for the shared root cause fixed in
+    /// <c>ProjectFilterHelper.FilterProjects</c> (project-filter-helper-whitespace-normalize) —
+    /// prior to the fix, a whitespace-only filter silently returned zero analyzers here.
+    /// </summary>
+    [TestMethod]
+    public async Task ListAnalyzers_WhitespaceOnlyProjectFilter_TreatedAsNoFilter()
+    {
+        var unfiltered = await AnalyzerInfoService.ListAnalyzersAsync(WorkspaceId, projectFilter: null, CancellationToken.None);
+        var whitespaceFiltered = await AnalyzerInfoService.ListAnalyzersAsync(WorkspaceId, projectFilter: " ", CancellationToken.None);
+
+        var unfilteredTotal = unfiltered.Sum(a => a.Rules.Count);
+        var whitespaceFilteredTotal = whitespaceFiltered.Sum(a => a.Rules.Count);
+
+        Assert.AreEqual(unfilteredTotal, whitespaceFilteredTotal,
+            $"A whitespace-only projectFilter must yield the same totalRules as no filter. Unfiltered={unfilteredTotal}, WhitespaceFiltered={whitespaceFilteredTotal}.");
+        Assert.IsTrue(whitespaceFilteredTotal > 0, "Whitespace-only projectFilter must not silently return zero rules.");
     }
 }

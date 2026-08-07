@@ -39,7 +39,6 @@ public sealed class CompileCheckService : ICompileCheckService
         CancellationToken ct)
     {
         var (projectFilter, emitValidation, severityFilter, fileFilter, offset, limit, fileFilters) = options;
-        projectFilter = string.IsNullOrWhiteSpace(projectFilter) ? null : projectFilter;
         var sw = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
