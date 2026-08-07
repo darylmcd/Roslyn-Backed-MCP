@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-07T18:50:33Z
+**updated_at:** 2026-08-07T19:28:54Z
 
 ## Agent contract
 
@@ -58,7 +58,6 @@
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-consolidation-primary | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `file-snapshot-capture-helper-consolidation` | Medium | — | **Extract a single shared byte-exact pre-apply snapshot-capture helper** — the exists->bytes/missing->fallback decision is inlined at 5 independent call sites; split-candidate (L). [type: refactor] [source: PR #1144 review] | L | items/file-snapshot-capture-helper-consolidation.md |
-| `project-filter-helper-whitespace-normalize` | Medium | — | **Normalize whitespace-only projectFilter inside ProjectFilterHelper** — 17 other FilterProjects call sites (FormatVerifyService, AnalyzerInfoService, etc.) still silently return zero-project results on a blank filter. [type: bug] [source: PR #1163 review] | M | items/project-filter-helper-whitespace-normalize.md |
 
 ## Low
 
@@ -104,7 +103,6 @@
 | `file-edits-dto-ordering-contract-and-hash-test` | Low | — | **Clarify FileEditsDto.Edits ordering contract + tighten equality test** — param doc says 'any order' but new Equals/GetHashCode make order load-bearing; test asserts an unguaranteed hash-inequality detail. [type: docs] [source: PR #1149 review] | S | items/file-edits-dto-ordering-contract-and-hash-test.md |
 | `compile-check-restorehint-empty-not-null` | Low | — | **compile_check restoreHint returns "" instead of null** — BuildHint's own summary claims null on no hint, but string.Join over an empty sequence returns empty string; every clean response carries restoreHint:"". [type: bug] [source: PR #1151 review] | S | items/compile-check-restorehint-empty-not-null.md |
 | `compile-check-scope-vocab-and-untested-branches` | Low | — | **Consolidated cleanup: untested ComputeRequestedScope branches + duplicated scope vocabulary** — project/solution branches have no test; the files/project/solution vocabulary is restated in 4 unlinked places. [type: test] [source: PR #1151 review] | M | items/compile-check-scope-vocab-and-untested-branches.md |
-| `workspace-validation-dead-path-and-duplicated-default` | Low | — | **Consolidated cleanup: dead status-degrade wrapper + duplicated 10s default** — DegradeStatusWhenGitStatusUnknown can never fire on the timeout branch; the default timeout is hardcoded twice. [type: refactor] [source: PR #1152 review] | M | items/workspace-validation-dead-path-and-duplicated-default.md |
 | `extract-atomicfilewriter-encoding-helper` | Low | — | **Extract BOM/encoding resolution out of AtomicFileWriter into a neutrally-named helper** — a non-atomic writer (EditorConfigService) now depends on AtomicFileWriter solely as an encoding sniffer; CsprojSemanticEquality misused the same way. [type: refactor] [source: PR #1157 review] | M | items/extract-atomicfilewriter-encoding-helper.md |
 | `composite-apply-encoding-hygiene-consolidated` | Low | — | **Consolidated cleanup: duplicated test fixture + stale doc + ambiguous overload names** — encoding-fixture block copy-pasted 3x; class doc overstates the fix's coverage; ResolveWriteEncoding overloads are ambiguous. [type: test] [source: PR #1157 review] | S | items/composite-apply-encoding-hygiene-consolidated.md |
 | `lru-eviction-test-hygiene-consolidated` | Low | — | **Consolidated test hygiene: orphaned gate-holding task on assert failure + unexplained timeout override** — evictionCompleted.SetResult isn't in a finally; a 5min RequestTimeout override has no comment. [type: test] [source: PR #1159 review] | S | items/lru-eviction-test-hygiene-consolidated.md |

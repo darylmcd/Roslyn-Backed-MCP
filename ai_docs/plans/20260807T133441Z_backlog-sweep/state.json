@@ -253,7 +253,7 @@
     {
       "id": "project-filter-helper-whitespace-normalize",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "project-filter-helper-whitespace-normalize"
       ],
@@ -276,10 +276,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/project-filter-helper-whitespace-normalize",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1191",
+      "mergedAt": "2026-08-07T19:12:48Z",
       "notes": null,
       "fileSetHash": "c989a3c5aaaf4830cc3657b49eb6c7b4a5cfaafa6d23b8f7b54423bee1f0ff5b",
       "stanzaHash": "acfb0d0b5e7f3406db508df1aec4bf9e0207fe76c6c86299b65eff238504f888",
@@ -425,7 +425,7 @@
     {
       "id": "workspace-validation-dead-path-and-duplicated-default",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-validation-dead-path-and-duplicated-default"
       ],
@@ -447,10 +447,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-validation-dead-path-and-duplicated-default",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1192",
+      "mergedAt": "2026-08-07T19:27:32Z",
       "notes": null,
       "fileSetHash": "a31531a21a7c2f4042e7b84a9e89697576bb5f306047377acebf1b39883aaf4e",
       "stanzaHash": "aad422807ec601227fd7d4dcd538795bbc71994b7528bc9dacafce9e70c0a577",
