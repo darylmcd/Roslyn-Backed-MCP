@@ -517,9 +517,14 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     //
     // The corroboration rule below extends the trust boundary ComputeOverallStatus already commits to
     // (compile.ErrorCount is the SOLE compile-error signal) from the verdict string to the count and
-    // the list. AnalyzerDiagnostics merges unconditionally — those are the CA*/IDE* rows this stage
-    // exists to contribute. WorkspaceDiagnostics stays excluded, as before. The gate is applied
-    // BEFORE the concat so the Severity filter and DistinctBy dedup semantics are untouched.
+    // the list. The gate is scoped to Category=="Compiler" rows WITHIN the CompilerDiagnostics arm —
+    // not the whole arm. Any other row riding along in that arm (today only the synthetic WORKSPACE001
+    // row DiagnosticService emits with Category=="Workspace" when a project's compilation fails to
+    // materialize) merges unconditionally, exactly like AnalyzerDiagnostics does two lines below —
+    // those are the CA*/IDE* rows this stage exists to contribute, and WORKSPACE001 is a genuine
+    // "failed to load this project's compilation" signal, not a phantom this gate was built to catch.
+    // The gate is applied BEFORE the concat so the Severity filter and DistinctBy dedup semantics are
+    // untouched.
     //
     // The gate keys on compile_check's AUTHORITY, not merely on its count. compile.ErrorCount is
     // authoritative only when the compile pass actually finished: CompileCheckService.CheckAsync
@@ -529,8 +534,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // In that shape ErrorCount==0 means "did not look", not "found nothing", and the second harvest
     // is the ONLY view of real CS* errors in the un-compiled projects. Dropping those rows would
     // turn a timed-out validation into a false "clean" on the pre-ship gate — strictly worse than
-    // the phantom-row false positive this initiative set out to fix. So the compiler arm merges
-    // whenever compile_check either corroborates (ErrorCount > 0) or forfeits authority
+    // the phantom-row false positive this initiative set out to fix. So a Category=="Compiler" row
+    // merges whenever compile_check either corroborates (ErrorCount > 0) or forfeits authority
     // (Cancelled, or CompletedProjects < TotalProjects). Only a complete, genuinely-green compile
     // pass suppresses an uncorroborated Compiler-category row. Today Cancelled is the sole way
     // CompletedProjects can lag TotalProjects, but the incompleteness test is the invariant that
@@ -548,12 +553,18 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 && compile.TotalProjects is int total
                 && completed < total);
 
+        var compilerCategoryRows = diagResult.CompilerDiagnostics
+            .Where(d => string.Equals(d.Category, "Compiler", StringComparison.Ordinal));
+        var nonCompilerCategoryRows = diagResult.CompilerDiagnostics
+            .Where(d => !string.Equals(d.Category, "Compiler", StringComparison.Ordinal));
+
         var corroboratedCompilerRows = compile.ErrorCount > 0 || compileIncomplete
-            ? diagResult.CompilerDiagnostics
-            : Array.Empty<DiagnosticDto>();
+            ? compilerCategoryRows
+            : Enumerable.Empty<DiagnosticDto>();
 
         return compile.Diagnostics
             .Concat(corroboratedCompilerRows)
+            .Concat(nonCompilerCategoryRows)
             .Concat(diagResult.AnalyzerDiagnostics)
             .Where(d => string.Equals(d.Severity, "Error", StringComparison.Ordinal))
             .DistinctBy(d => (d.Id, d.FilePath, d.StartLine, d.StartColumn))

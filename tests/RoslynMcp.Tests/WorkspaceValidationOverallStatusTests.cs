@@ -487,4 +487,69 @@ public sealed class WorkspaceValidationOverallStatusTests
         Assert.AreEqual(2, merged.Length, "both harvests contribute; the shared row dedups exactly once.");
         Assert.AreEqual("compile-error", status);
     }
+
+    // ---- validate-workspace-compiler-gate-scope-to-category: gate scoped to Category=="Compiler" ----
+
+    /// <summary>
+    /// Acceptance-bullet-2 repro: a complete, genuinely-green compile pass (Cancelled=false,
+    /// CompletedProjects==TotalProjects, ErrorCount==0) plus a synthetic WORKSPACE001
+    /// (Category=="Workspace") row riding in the same CompilerDiagnostics arm. The corroboration gate
+    /// must apply ONLY to Category=="Compiler" rows — WORKSPACE001 is a genuine "failed to load this
+    /// project's compilation" signal and must survive, driving the verdict away from "clean".
+    /// </summary>
+    [TestMethod]
+    public void MergeErrorDiagnostics_CleanCompile_WorkspaceCategoryRow_Survives_AndIsNotClean()
+    {
+        var compileClean = CleanCompile();
+        var diagResult = DiagResult(
+            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null)]);
+
+        var merged = WorkspaceValidationService.MergeErrorDiagnostics(compileClean, diagResult);
+        var status = WorkspaceValidationService.ComputeOverallStatus(compileClean, merged, null, runTests: false);
+
+        Assert.AreEqual(1, merged.Length, "a Workspace-category row is not subject to the compiler-arm corroboration gate and must survive a clean, complete compile pass.");
+        Assert.AreEqual("WORKSPACE001", merged[0].Id);
+        Assert.AreNotEqual("clean", status, "a real 'failed to load compilation' signal must not be reported as a clean build.");
+        Assert.AreEqual("analyzer-error", status, "compile.ErrorCount is 0, so the surviving row degrades to analyzer-error rather than compile-error.");
+    }
+
+    /// <summary>
+    /// Proves the partition is per-row, not per-arm: with the SAME clean, complete compile pass, a
+    /// WORKSPACE001 (Category=="Workspace") row and an uncorroborated phantom (Category=="Compiler")
+    /// row both ride in CompilerDiagnostics. Only the Workspace-category row survives — the
+    /// Compiler-category row is still dropped by the corroboration gate.
+    /// </summary>
+    [TestMethod]
+    public void MergeErrorDiagnostics_MixedCategoryRows_OnlyNonCompilerRowSurvives()
+    {
+        var compileClean = CleanCompile();
+        var diagResult = DiagResult(
+            compilerDiagnostics: [
+                new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null),
+                new DiagnosticDto("CS0103", "x", "Error", "Compiler", "Y.cs", 2, 1, 2, 5)
+            ]);
+
+        var merged = WorkspaceValidationService.MergeErrorDiagnostics(compileClean, diagResult);
+
+        Assert.AreEqual(1, merged.Length, "the partition is per-row: the Workspace-category row survives while the Compiler-category row is still gated.");
+        Assert.AreEqual("WORKSPACE001", merged[0].Id);
+    }
+
+    /// <summary>
+    /// Regression guard: an incomplete/cancelled compile pass plus a WORKSPACE001 row still merges —
+    /// this combination already worked pre-fix (the whole arm was unconditionally merged whenever the
+    /// compile pass forfeited authority) and must keep working once the gate is scoped per-row.
+    /// </summary>
+    [TestMethod]
+    public void MergeErrorDiagnostics_CancelledCompile_WorkspaceCategoryRow_StillMerges()
+    {
+        var cancelled = CancelledCompile(completedProjects: 1, totalProjects: 4);
+        var diagResult = DiagResult(
+            compilerDiagnostics: [new DiagnosticDto("WORKSPACE001", "Could not get compilation for project 'P'", "Error", "Workspace", "P.csproj", null, null, null, null)]);
+
+        var merged = WorkspaceValidationService.MergeErrorDiagnostics(cancelled, diagResult);
+
+        Assert.AreEqual(1, merged.Length, "a Workspace-category row must still merge when the compile pass is incomplete, mirroring the pre-existing Compiler-category authority-gate behavior.");
+        Assert.AreEqual("WORKSPACE001", merged[0].Id);
+    }
 }
