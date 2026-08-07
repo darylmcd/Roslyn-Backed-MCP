@@ -1,6 +1,6 @@
 ---
 name: backlog-intake-extractor
-description: Extract, dedupe, classify, and rank actionable items from deep-review artifacts in `review-inbox/` (`*_mcp-server-audit.md`, `*_experimental-promotion.md`, `*_roslyn-mcp-retro.md`). Returns a compact structured row list + notes. Used as Phase 1 of the `/backlog-intake` skill to protect main-agent context from multi-thousand-line source reads.
+description: Extract, dedupe, classify, and rank actionable items from deep-review artifacts (server audits, surface tests, experimental-promotion reports, session retros) staged in `review-inbox/`. Returns a compact structured row list + notes. Used as Phase 1 of the `/backlog-intake` skill to protect main-agent context from multi-thousand-line source reads.
 tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
@@ -19,11 +19,16 @@ Missing required field → emit `ERROR: missing <field>` and exit.
 
 ## Context
 
-The Roslyn-Backed-MCP repo is a C# MCP server that exposes Roslyn-powered tools (refactor, analyze, review, …) to Claude Code. It is consumed as a plugin by several sibling C# repos and by itself. Review files come in three shapes:
+The Roslyn-Backed-MCP repo is a C# MCP server that exposes Roslyn-powered tools (refactor, analyze, review, …) to Claude Code. It is consumed as a plugin by several sibling C# repos and by itself.
 
-- `*_mcp-server-audit.md` — audits exercising the server's tools against a real codebase. Findings split between "bug in the audited codebase" and "gap/limitation in the MCP server tools."
-- `*_experimental-promotion.md` — audits of whether an experimental feature is ready for promotion.
-- `*_roslyn-mcp-retro.md` — session retrospectives on using the server. Richest source of items actionable in THIS repo.
+**Which artifact shapes exist is defined in exactly one place:** `eng/stage-review-inbox.ps1` `.DESCRIPTION` → **Recognized shapes**. Read that block (it is short) rather than assuming a fixed list — the set grows. Do not re-list the globs here.
+
+Interpretation notes for the shape families you will encounter (guidance only, NOT an authoritative list — a shape present in `review-inbox/` but not described below still gets extracted using the general rules):
+
+- **Server audits** — exercise the server's tools against a real codebase. Findings split between "bug in the audited codebase" and "gap/limitation in the MCP server tools."
+- **Surface tests** — consumer-facing sweeps of the server's live tool surface. Same bug-vs-gap split as server audits.
+- **Experimental-promotion reports** — audits of whether an experimental feature is ready for promotion.
+- **Session retros** (single- and multi-session) — retrospectives on using the server. Richest source of items actionable in THIS repo.
 
 ## Scope
 

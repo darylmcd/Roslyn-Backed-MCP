@@ -45,9 +45,9 @@ Default (no flags): stage if `review-inbox/` is empty, verify against CHANGELOG,
 
 Skip this phase if `--skip-stage` is set.
 
-`eng/stage-review-inbox.ps1` discovers TWO artifact shapes from this repo and configured siblings:
+`eng/stage-review-inbox.ps1` discovers artifacts from this repo and configured siblings. The canonical list of recognized shapes lives in that script's `.DESCRIPTION` → **Recognized shapes** block — read it there; do not re-list the globs here. Those shapes fall into TWO handling categories:
 
-1. **Prose audit / retro / promotion reports** (`*_mcp-server-audit.md`, `*_experimental-promotion.md`, `*_roslyn-mcp-retro.md`) — moved into `review-inbox/` for the existing extraction flow.
+1. **Prose audit / retro / promotion reports** — moved into `review-inbox/` for the existing extraction flow.
 2. **`backlog.d/<finding-id>.md` fragments** — discovered at `<sibling-repo-root>/backlog.d/*.md` and at this repo's `backlog.d/`. Disambiguated from prose reports by the `severity:` frontmatter key; canonical schema at `ai_docs/items/backlog-d-fragment-schema.md`.
 
 ```bash
