@@ -20,6 +20,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `experimental-promotion-analysis.md` | Promotion history and criteria for experimental -> stable changes |
 | `large-solution-profiling-baseline.md` | Methodology and notes for profiling large MSBuild solutions |
 | `mcp-json-examples/README.md` | Copy-ready `.mcp.json` examples and when to use them; indexes `mcp-json-examples/minimal.mcp.json` and `mcp-json-examples/with-overrides.mcp.json` |
+| `decisions/0001-locationdto-nested-field-migration.md` | ADR: additive nested `Location` field on `SymbolDto`/`DiagnosticDto`/`TypeUsageDto`, legacy-flat-field deprecation window, and the bounded producer/consumer migration stages |
 
 ## Claude Code Plugin
 
