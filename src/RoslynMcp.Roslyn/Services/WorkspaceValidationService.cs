@@ -19,7 +19,9 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class WorkspaceValidationService : IWorkspaceValidationService
 {
     private const int MaxRelatedTestsCap = 50;
-    private static readonly TimeSpan DefaultGitStatusTimeout = TimeSpan.FromSeconds(10);
+    // workspace-validation-dead-path-and-duplicated-default: single-source the 10-second default
+    // onto ValidationServiceOptions.GitStatusTimeout rather than re-declaring the literal here.
+    private static readonly TimeSpan DefaultGitStatusTimeout = new ValidationServiceOptions().GitStatusTimeout;
     private static readonly TimeSpan DefaultValidationPhaseTimeout = TimeSpan.FromSeconds(25);
 
     private static readonly Action<ILogger, int, string, Exception?> LogProcessKillFailed =
@@ -168,9 +170,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         }
         catch (InternalValidationTimeoutException ex)
         {
-            return DegradeStatusWhenGitStatusUnknown(
-                CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings),
-                gitTimedOut);
+            // workspace-validation-dead-path-and-duplicated-default: no DegradeStatusWhenGitStatusUnknown
+            // wrapper here. CreateTimeoutResult always reports OverallStatus "timeout", and the degrade
+            // only rewrites "clean", so the wrapper was a structural no-op on this branch. Mirrors the
+            // bare-return shape ValidateAsync's own timeout catch already uses.
+            return CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings);
         }
     }
 
