@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-06T07:01:18Z
+**updated_at:** 2026-08-06T22:03:36Z
 
 ## Agent contract
 
@@ -66,6 +66,7 @@
 | `single-source-overallstatus-verdict-table` | Medium | — | **Single-source the validate_workspace overallStatus verdict table** — the caller-action prose is now byte-identical across 4+ files with no shared source; 3 more surfaces still enumerate only the stale 4-value set. [type: docs] [source: PR #1169 review] | S | items/single-source-overallstatus-verdict-table.md |
 | `workspace-validation-service-overallstatus-xmldoc-inverted` | Medium | — | **IWorkspaceValidationService OverallStatus XML doc has skipped/timeout inverted** — skipped is documented but never emitted; timeout is emitted but not documented. [type: docs] [source: PR #1169 review] | M | items/workspace-validation-service-overallstatus-xmldoc-inverted.md |
 | `tool-di-resolution-leak-pin-compile-check-test-run` | Medium | — | **Extend the ILoggerFactory schema-leak pin to compile_check and test_run** — the DI-resolution leak-guard test's hardcoded tool array wasn't updated when those 2 tools gained the same DI parameter. [type: test] [source: PR #1172 review] | M | items/tool-di-resolution-leak-pin-compile-check-test-run.md |
+| `core-dto-location-quartet-consolidation-primary` | Medium | — | **Write LocationDto migration ADR + plan** — decision made 2026-08-06: additive nested field + legacy-flat deprecation (not major-version replacement). Record the ADR, then split into bounded migration stages. [type: refactor] [source: backlog-sweep-20260716-review] | L | items/core-dto-location-quartet-consolidation-primary.md |
 
 ## Low
 
@@ -126,9 +127,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `http-streamable-host-project` | Defer | — | **HTTP Streamable host project** — parked until a concrete remote-deployment driver (named users, auth/observability/tenancy plan approved and staffed); multi-week design. | — | items/http-streamable-host-project.md |
-| `roslyn-mcp-cross-repo-steering-gap` | Defer | — | **Cross-repo steering gap** — parked on product decision: push adoption (consumer AGENTS.md steering / lower first-hop cost) or accept current usage. Premise corrected 2026-06-08 — usage is real, gap is frequency/reach. Weaker evidence — frequency inference. [type: docs] | — | items/roslyn-mcp-cross-repo-steering-gap.md |
 | `workspace-process-pool-or-daemon` | Defer | — | **Workspace daemon / process pool** — parked until a worse-than-OrchardCore profile or daily-use evidence shows `workspace_load`/reload P95 blocking work after `workspace_warm`. | — | items/workspace-process-pool-or-daemon.md |
-| `core-dto-location-quartet-consolidation-primary` | Defer | — | **Decide public LocationDto migration contract** — park until an ADR chooses serialized additive deprecation or major removal; an ignored in-process view is not migration. [type: decision] [source: backlog-sweep-20260716-review] | L | items/core-dto-location-quartet-consolidation-primary.md |
 
 ## Refs
 
