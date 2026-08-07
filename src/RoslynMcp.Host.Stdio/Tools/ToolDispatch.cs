@@ -350,20 +350,20 @@ internal static class ToolDispatch
     /// (<c>workspace_load(path, evictPolicy: "lru")</c>), just without the round trip.
     /// </para>
     /// <para>
-    /// <b>What the LRU scan does and does not protect
-    /// (<c>lru-eviction-concurrent-reader-safety-overstated</c>):</b> <c>WorkspaceManager</c>'s
-    /// eviction scan skips only sessions holding their <c>LoadLock</c>, which is acquired
-    /// exclusively while a <c>workspace_load</c>/reload is in flight. It does <b>not</b> consult
-    /// <c>WorkspaceExecutionGate</c>'s per-workspace reader/writer lock, so a workspace with
-    /// in-flight reads or writes can still be evicted and disposed mid-operation; that caller
-    /// observes <see cref="WorkspaceEvictedException"/> (a <see cref="KeyNotFoundException"/>) on
-    /// its next <c>WorkspaceManager</c> lookup. Earlier revisions of these remarks claimed an
-    /// in-flight workspace is never yanked out from under a concurrent caller — that guarantee
-    /// holds for the load path only, not for gated readers/writers. The gap is documented rather
-    /// than closed because <c>WorkspaceExecutionGate</c> already depends on
-    /// <c>IWorkspaceManager</c>, so gating eviction from inside <c>WorkspaceManager</c> would be a
-    /// DI cycle. Pinned by
-    /// <c>WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_EvictsAnyway_AndReaderObservesEviction</c>.
+    /// <b>What LRU eviction protects (<c>lru-eviction-gate-layer-execution</c>):</b> candidate
+    /// SELECTION skips only sessions holding their <c>LoadLock</c> — acquired exclusively while a
+    /// <c>workspace_load</c>/reload is in flight — so selection alone is not a safety boundary.
+    /// Eviction EXECUTION supplies it: <c>WorkspaceManager</c> closes the chosen candidate under
+    /// <c>IWorkspaceExecutionGate.RunWriteAsync</c> (reached through a lazily-resolved gate
+    /// reference, which is what keeps the back-edge from being a constructor-level DI cycle), the
+    /// same per-workspace writer-lock nesting <c>workspace_close</c> and <c>workspace_reload</c>
+    /// use. An in-flight gated reader or writer therefore drains BEFORE its workspace is removed
+    /// and disposed, instead of being yanked out from under mid-operation. What remains possible
+    /// is the ordinary between-calls case: a caller idle between two tool calls can find its
+    /// workspace evicted and observes <see cref="WorkspaceEvictedException"/> (a
+    /// <see cref="KeyNotFoundException"/>) on the next lookup — which is exactly what this helper
+    /// recovers from. Pinned by
+    /// <c>WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_BlocksUntilReaderDrains</c>.
     /// </para>
     /// <para>
     /// A failed reload is not additionally surfaced by this helper: the caller rethrows the

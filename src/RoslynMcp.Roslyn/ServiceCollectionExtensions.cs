@@ -26,6 +26,14 @@ public static class ServiceCollectionExtensions
             var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
             return new WorkspaceExecutionGate(opts, sp.GetRequiredService<IWorkspaceManager>());
         });
+        // lru-eviction-gate-layer-execution: WorkspaceManager needs a back-reference to the gate
+        // so cap-pressure LRU eviction can run under the evicted workspace's per-workspace writer
+        // lock. WorkspaceExecutionGate's constructor already takes IWorkspaceManager, so a direct
+        // injection would be a DI cycle. Registering the Lazy<T> breaks it: constructing the Lazy
+        // resolves nothing, and its factory only calls GetRequiredService on first .Value access —
+        // which happens during an eviction, long after both singletons are cached.
+        services.AddSingleton(sp =>
+            new Lazy<IWorkspaceExecutionGate>(() => sp.GetRequiredService<IWorkspaceExecutionGate>()));
         services.AddSingleton<IDotnetCommandRunner>(sp =>
             new DotnetCommandRunner(sp.GetRequiredService<ILogger<DotnetCommandRunner>>()));
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
