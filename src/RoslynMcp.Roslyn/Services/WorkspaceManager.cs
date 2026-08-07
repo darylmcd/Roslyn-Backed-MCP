@@ -74,6 +74,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// reference stripping, extracted from <see cref="LoadIntoSessionAsync"/>.
     /// </summary>
     private readonly UnresolvedAnalyzerReferenceStripper _analyzerReferenceStripper;
+    /// <summary>
+    /// lru-eviction-gate-layer-execution: lazily-resolved back-reference to the execution gate,
+    /// used to run cap-pressure LRU eviction under the evicted workspace's per-workspace WRITER
+    /// lock so in-flight gated readers/writers drain before the session is disposed.
+    /// <para>
+    /// The indirection is load-bearing: <see cref="WorkspaceExecutionGate"/>'s own constructor
+    /// takes <see cref="IWorkspaceManager"/>, so a direct back-reference would be a
+    /// constructor-level DI cycle. <see cref="Lazy{T}"/> defers the container lookup to first
+    /// <c>.Value</c> access — by which point both singletons are already constructed and cached.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> when unwired (direct test construction). On that path eviction
+    /// falls back to the historic ungated <see cref="Close"/>, which keeps the constructor
+    /// change purely additive for the test call sites that do not need the guarantee.
+    /// </para>
+    /// </summary>
+    private readonly Lazy<IWorkspaceExecutionGate>? _evictionGate;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
@@ -101,8 +118,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IPreviewStore previewStore,
         IFileWatcherService fileWatcher,
         WorkspaceManagerOptions? options = null,
-        IWorkspaceCacheStore? cacheStore = null)
-        : this(logger, previewStore, fileWatcher, options, cacheStore, sessionLoader: null)
+        IWorkspaceCacheStore? cacheStore = null,
+        Lazy<IWorkspaceExecutionGate>? evictionGate = null)
+        : this(logger, previewStore, fileWatcher, options, cacheStore, sessionLoader: null, evictionGate: evictionGate)
     {
     }
 
@@ -121,7 +139,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IWorkspaceCacheStore? cacheStore,
         WorkspaceSessionLoader? sessionLoader,
         RestoreStalenessDetector? restoreStalenessDetector = null,
-        UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null)
+        UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null,
+        Lazy<IWorkspaceExecutionGate>? evictionGate = null)
     {
         _logger = logger;
         _previewStore = previewStore;
@@ -131,6 +150,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
         _restoreStalenessDetector = restoreStalenessDetector ?? new RestoreStalenessDetector();
         _analyzerReferenceStripper = analyzerReferenceStripper ?? new UnresolvedAnalyzerReferenceStripper();
+        _evictionGate = evictionGate;
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
     }
@@ -247,25 +267,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 // LoadIntoSessionAsync, so this filter excludes exactly the sessions that are
                 // mid-workspace_load / mid-reload — and nothing else.
                 //
-                // lru-eviction-concurrent-reader-safety-overstated: the filter does NOT exclude
-                // a session with in-flight reads or writes. Ordinary tool calls serialise on
-                // WorkspaceExecutionGate's per-workspace reader/writer lock, which this scan
-                // never consults, so the Close() below can remove and dispose a session while a
-                // gated reader is still running against it. The in-flight caller then observes
-                // WorkspaceEvictedException (a KeyNotFoundException) on its next WorkspaceManager
-                // lookup, because Close() removes the session from _sessions and records the
-                // eviction before disposing it.
+                // lru-eviction-gate-layer-execution: the LoadLock filter alone does NOT exclude a
+                // session with in-flight gated reads or writes, so candidate SELECTION is not a
+                // safety boundary. Eviction EXECUTION supplies it: EvictForCapAsync runs Close()
+                // under WorkspaceExecutionGate's per-workspace WRITER lock (see that method), the
+                // same nesting workspace_close / workspace_reload use (WorkspaceTools.cs), so
+                // in-flight readers/writers drain before the session is removed and disposed.
+                // Pinned by
+                // WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_BlocksUntilReaderDrains.
                 //
-                // Contrast workspace_close / workspace_reload (WorkspaceTools.cs), which nest
-                // gate.RunWriteAsync inside gate.RunLoadGateAsync so in-flight readers drain
-                // first. LRU eviction is the one lifecycle transition that skips that pattern:
-                // WorkspaceExecutionGate's constructor already takes IWorkspaceManager, so taking
-                // the gate from here would be a constructor-level DI cycle. Closing the gap means
-                // moving eviction *execution* (not just candidate selection) up into the gate
-                // layer. Characterised by
-                // WorkspaceCapLruEvictionTests.LruEviction_WhileGatedReadInFlight_EvictsAnyway_AndReaderObservesEviction.
-                //
-                // If all sessions are locked, fall through to the Strict error path.
+                // If all sessions are mid-load, fall through to the Strict error path.
                 var lruCandidate = _sessions.Values
                     .Where(s => s.LoadLock.CurrentCount > 0)
                     .OrderBy(s => s.LastAccessedUtc)
@@ -278,9 +289,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                         lruCandidate.WorkspaceId,
                         lruCandidate.LastAccessedUtc,
                         fullPath);
-                    Close(lruCandidate.WorkspaceId);
+                    await EvictForCapAsync(lruCandidate.WorkspaceId, ct).ConfigureAwait(false);
 
-                    // After Close() the semaphore slot has been released — retry immediately.
+                    // The eviction released a semaphore slot (or a concurrent caller already
+                    // evicted this candidate and released it) — retry immediately.
                     if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
                     {
                         // The slot was consumed by a concurrent caller between the Close() and
@@ -380,6 +392,72 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 _workspaceSlots.Release();
             }
         }
+    }
+
+    /// <summary>
+    /// lru-eviction-gate-layer-execution: close a cap-pressure LRU eviction candidate under
+    /// <see cref="IWorkspaceExecutionGate"/>'s per-workspace WRITER lock, so any in-flight gated
+    /// reader or writer on that workspace drains before the session is removed and disposed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shape is copied from <c>workspace_close</c> (<c>WorkspaceTools.CloseWorkspace</c>):
+    /// <c>RunWriteAsync(id, …, applyStalenessPolicy: false)</c> — staleness policy is off because
+    /// an auto-reload of a workspace we are about to dispose is pure waste and can throw when the
+    /// on-disk solution is already gone — followed by <c>RemoveGate(id)</c> STRICTLY AFTER the
+    /// write completes, never from inside the closure, so the registry entry is dropped only once
+    /// the writer lock it guards has been released. Doing so also fixes an adjacent leak: the old
+    /// direct-<see cref="Close"/> eviction path never called <c>RemoveGate</c>, so every
+    /// LRU-evicted workspace left an orphaned lock entry in the gate's registry.
+    /// </para>
+    /// <para>
+    /// Reentrancy is safe. In production <c>LoadAsync</c> already runs inside
+    /// <c>gate.RunLoadGateAsync</c>, whose <c>WithGlobalThrottle</c> depth counter lets this
+    /// nested <c>RunWriteAsync</c> reuse the throttle slot instead of consuming a second one —
+    /// the identical nesting <c>workspace_close</c> and <c>workspace_reload</c> already rely on.
+    /// The writer lock taken here is for the EVICTED workspace, never the one being loaded, so it
+    /// cannot self-deadlock.
+    /// </para>
+    /// <para>
+    /// When no gate is wired (<c>_evictionGate is null</c> — direct test construction) this falls
+    /// back to the historic ungated <see cref="Close"/> so the added constructor parameter stays
+    /// purely additive.
+    /// </para>
+    /// </remarks>
+    private async Task EvictForCapAsync(string workspaceId, CancellationToken ct)
+    {
+        if (_evictionGate is null)
+        {
+            Close(workspaceId);
+            return;
+        }
+
+        var gate = _evictionGate.Value;
+        try
+        {
+            await gate.RunWriteAsync(
+                workspaceId,
+                _ =>
+                {
+                    Close(workspaceId);
+                    return Task.FromResult(true);
+                },
+                ct,
+                applyStalenessPolicy: false).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException)
+        {
+            // A concurrent caller (another LRU eviction, or an explicit workspace_close) already
+            // removed this candidate between our selection scan and the writer-lock acquisition.
+            // The gate raises KeyNotFoundException from either its pre-lock existence check or
+            // EnsureWorkspaceStillExists inside the lock. Nothing left to evict — and that caller
+            // owns the RemoveGate for the id — so return and let the caller's slot retry decide
+            // between proceeding and the Strict error path, mirroring the existing
+            // "slot consumed by a concurrent caller" fallback.
+            return;
+        }
+
+        gate.RemoveGate(workspaceId);
     }
 
     public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
