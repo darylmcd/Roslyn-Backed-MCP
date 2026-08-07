@@ -97,13 +97,24 @@ public sealed class ToolDiResolutionTests
     }
 
     [TestMethod]
-    public void WorkspaceLifecycleTools_DoNotExposeLoggerFactoryInMcpInputSchema()
+    public void ToolMethods_DoNotExposeLoggerFactoryInMcpInputSchema()
     {
         using var provider = BuildHostServiceProvider(includeMcpTools: true);
         var tools = provider.GetServices<McpServerTool>()
             .ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
 
-        foreach (var toolName in new[] { "workspace_load", "workspace_reload", "workspace_close" })
+        var toolAssembly = typeof(ServerTools).Assembly;
+        var loggerFactoryToolNames = toolAssembly.GetTypes()
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+            .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null)
+            .Where(m => m.GetParameters().Any(p => p.ParameterType == typeof(ILoggerFactory)))
+            .Select(m => m.GetCustomAttribute<McpServerToolAttribute>()!.Name!)
+            .ToList();
+
+        Assert.IsTrue(loggerFactoryToolNames.Count > 0,
+            "No [McpServerTool] methods with an ILoggerFactory parameter were discovered — test fixture broken.");
+
+        foreach (var toolName in loggerFactoryToolNames)
         {
             Assert.IsTrue(tools.TryGetValue(toolName, out var tool),
                 $"{toolName} must be registered by WithToolsFromAssembly.");
