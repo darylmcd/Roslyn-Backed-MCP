@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-10T20:59:03Z
+**updated_at:** 2026-08-10T21:25:43Z
 
 ## Agent contract
 
@@ -61,7 +61,6 @@
 | `overallstatus-verdict-table-remaining-restatements` | Medium | — | **Convert the last two overallStatus restatements to canonical-table pointers** — a prompt and a skill still hardcode the stale 4-value set. [type: docs] [source: PR #1184 code-quality review] | S | items/overallstatus-verdict-table-remaining-restatements.md |
 | `compile-check-buildhint-whitespace-discriminator-mismatch` | Medium | — | **Align BuildHint's zero-projects discriminator with ProjectFilterHelper whitespace semantics** — line 272 still uses `projectFilter is null`, inconsistent with the rest of the file since PR #1191. [type: bug] [source: PR #1191/#1194 code-quality review] | S | items/compile-check-buildhint-whitespace-discriminator-mismatch.md |
 | `fixall-blank-projectname-silent-wrong-target` | Medium | — | **fix_all project scope silently targets the first project on a blank projectName** — ProjectFilterHelper's new blank-means-no-filter semantics made FixAllService's single-project resolution silently wrong instead of erroring. [type: bug] [source: PR #1191 code-quality review] | M | items/fixall-blank-projectname-silent-wrong-target.md |
-| `test-temp-root-shared-cleanup-race` | Medium | — | **Per-run test temp root** — `AssemblyCleanup.cs:14` recursively deletes the SHARED `%TEMP%\RoslynMcpTests` parent, so the first concurrent test run to finish wipes the others fixtures; scope it per run + declare `parallel_safety`. [type: bug] [source: 2026-08-10 backlog-sweep] | S | items/test-temp-root-shared-cleanup-race.md |
 | `surface-test-audit-artifact-gate-and-scorecard-staleness` | Medium | — | **True up audit-artifact docs + detect a frozen scorecard** — the README still calls the now-tracked scorecard gitignored, `.audit-state.json` would self-report as a P1 leak, and nothing observes `serverVersion` staleness. [type: docs] [source: PR #1202 cq review] | M | items/surface-test-audit-artifact-gate-and-scorecard-staleness.md |
 | `compilation-cache-analyzers-entry-guard` | Medium | — | **Guard already-canceled callers in `GetCompilationWithAnalyzersAsync`** — `CompilationCache.cs:114` starts the analyzer build before checking the caller token, unlike its guarded `:85` sibling; drop the stale asymmetry caveat. [type: bug] [source: PR #1203 cq review] | M | items/compilation-cache-analyzers-entry-guard.md |
 | `elicitation-trychoice-cancellation-swallow` | Medium | — | **Stop reporting elicitation cancellation as user-declined** — the bare `catch { return null; }` at `ElicitationChoicePrompt.cs:122` absorbs `OperationCanceledException`, so callers answer with the additive list response. [type: bug] [source: PR #1205 cq review] | M | items/elicitation-trychoice-cancellation-swallow.md |
@@ -116,6 +115,7 @@
 | `compile-check-eviction-retry-nonrecovering-coverage` | Low | — | **Cover compile_check's non-recovering eviction-retry arm** — reload-fails and bogus-id-no-reload shapes are unreachable from any test for the compile_check sibling of the already-tested test_run path. [type: test] [source: PR #1167 review] | M | items/compile-check-eviction-retry-nonrecovering-coverage.md |
 | `elicitation-doc-drift-and-delegate-chain` | Low | elicitation-trychoice-cancellation-swallow | **Single-source the TryElicitChoiceAsync docs + collapse the 3-hop forwarders** — the param/returns block is byte-identical in 3 files and the coordinator summary claims a body that moved; the middle hops carry no production traffic. [type: refactor] [source: PR #1205 cq review] | M | items/elicitation-doc-drift-and-delegate-chain.md |
 | `group-c-compilation-cache-gate-hardening` | Low | — | **Harden the opt-in group-c cache gate before a consumer is wired** — the liveness check is evaluated once before the project loop while the cache re-reads the workspace version per call, so a mid-scan bump can serve a stale snapshot. [type: refactor] [source: PR #1207 cq review] | M | items/group-c-compilation-cache-gate-hardening.md |
+| `filewatcher-clearstale-timeout-flake-triage` | Low | — | **Make the ClearStale awaiter test deterministic** — re-filed: `known-flakes.md` cited this row id but the row was gone, so the fix was untracked. Replace the wall-clock bound at `ExternalEditStalenessTests.cs:405` with a signal assertion. [type: test] [source: known-flakes dangling cite] | S | items/filewatcher-clearstale-timeout-flake-triage.md |
 
 ## Defer
 

@@ -24,7 +24,7 @@ public sealed class PersistentCompositeStorageTests
     public void Setup()
     {
         _root = Path.Combine(
-            Path.GetTempPath(), "RoslynMcpTests", "PersistentCompositeStorage", Guid.NewGuid().ToString("N"));
+            TestTempRoot.Current, "PersistentCompositeStorage", Guid.NewGuid().ToString("N"));
     }
 
     [TestCleanup]

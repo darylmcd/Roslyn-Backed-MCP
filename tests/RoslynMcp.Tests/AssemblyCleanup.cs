@@ -11,17 +11,15 @@ public static class AssemblyLifecycle
         // with file watcher disposal.
         TestBase.DisposeAssemblyResources();
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests");
-        if (Directory.Exists(tempRoot))
-        {
-            try
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
-            catch
-            {
-                // Best-effort cleanup — another test runner instance may hold a lock.
-            }
-        }
+        // Delete THIS run's subtree only — never the shared parent. Deleting
+        // `%TEMP%/RoslynMcpTests` wholesale meant the first assembly to finish destroyed every
+        // concurrently-running assembly's in-flight fixtures (row
+        // test-temp-root-shared-cleanup-race); the old best-effort catch here protected only the
+        // deleter, never the victim, which observed a DirectoryNotFoundException mid-test.
+        TestTempRoot.DeleteCurrent();
+
+        // Per-run roots would otherwise accumulate forever when a host crashes before cleanup.
+        // Age-gated so a live sibling run is never a candidate.
+        TestTempRoot.ReapAbandonedRuns();
     }
 }

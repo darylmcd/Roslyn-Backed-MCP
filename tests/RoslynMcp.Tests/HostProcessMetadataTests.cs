@@ -39,7 +39,7 @@ public sealed class HostProcessMetadataTests
     {
         // Each test gets a clean temp dir so they cannot pollute each other. Persisted
         // metadata is per-user, so without isolation a parallel test runner would race.
-        _tempDir = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "host-process-" + Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(TestTempRoot.Current, "host-process-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
 
         // Provider is a process-wide singleton; reset between tests so a leaked snapshot

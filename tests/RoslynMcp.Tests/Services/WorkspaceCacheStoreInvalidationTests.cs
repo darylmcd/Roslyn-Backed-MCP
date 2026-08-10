@@ -24,7 +24,7 @@ public sealed class WorkspaceCacheStoreInvalidationTests
     [TestInitialize]
     public void Setup()
     {
-        _cacheRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "WorkspaceCacheStoreInvalidation", Guid.NewGuid().ToString("N"));
+        _cacheRoot = Path.Combine(TestTempRoot.Current, "WorkspaceCacheStoreInvalidation", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_cacheRoot);
         _store = new WorkspaceCacheStore(_cacheRoot);
     }

@@ -9,7 +9,7 @@ internal static class TestFixtureFileSystem
     {
         var sampleRoot = Path.GetDirectoryName(sampleSolutionPath)
             ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
-        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
+        var tempRoot = Path.Combine(TestTempRoot.Current, Guid.NewGuid().ToString("N"));
         CopyDirectory(sampleRoot, tempRoot);
         CopyRepositorySupportFiles(repositoryRootPath, tempRoot);
 

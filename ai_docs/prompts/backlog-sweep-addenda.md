@@ -41,6 +41,34 @@ The full pattern→tool table lives in [ai_docs/bootstrap-read-tool-primer.md](.
 
 5–30× faster and structurally accurate vs textual matching.
 
+## Parallel-execution safety
+
+```yaml
+parallel_safety:
+  parallelSafe: true
+  rationale: |
+    Test artifacts are isolated per test-assembly PROCESS, so two concurrent
+    `ci_equivalent` / `dotnet test` runs on one machine do not contend on shared
+    filesystem state. Every temp path is built under `TestTempRoot.Current`
+    (`tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs`) =
+    `%TEMP%/RoslynMcpTests/run-<pid>-<rand>/`, and `[AssemblyCleanup]` deletes only
+    that subtree — never the shared parent.
+  evidence: |
+    Two concurrent `dotnet test` invocations over the fixture-heavy undo/edit/
+    project-mutation set: 74 passed each, 0 DirectoryNotFoundException
+    (2026-08-10). The same command before the isolation landed produced 6
+    failures. Row: test-temp-root-shared-cleanup-race.
+  scope_caveat: |
+    The evidence covers the fixture-copy path, which is where the contention was.
+    It is NOT a proof that every test in the suite is parallel-safe. Flip
+    parallelSafe back to false (which forces `/backlog-sweep:execute` serial mode
+    and engages `bsweep-state.mjs ci-lock-acquire`) if a NEW machine-global
+    dependency appears — a fixed port, a shared database, an HKCU/%AppData% write,
+    or any test writing outside `TestTempRoot.Current`.
+```
+
+**Regression guard:** `tests/RoslynMcp.Tests/TestTempRootTests.cs` asserts the load-bearing property — the abandoned-run reaper never deletes a *live* sibling run's directory, and never deletes the shared parent. A new temp path must combine against `TestTempRoot.Current`; re-deriving `Path.GetTempPath()` + `"RoslynMcpTests"` at a call site puts that path outside the isolation and re-opens the race.
+
 ## Hotspot files (parallel-mode wave rule: ≤1 per wave)
 
 These files are touched by many initiatives by structural inevitability. The global executor's parallel-mode picker enforces ≤ 1 hotspot-touching initiative per wave.

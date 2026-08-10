@@ -146,8 +146,7 @@ public sealed class MsBuildEvaluationCacheTests : TestBase
     private static ProjectFixture CreateProjectFixture(string fileName, string content)
     {
         var tempRoot = Path.Combine(
-            Path.GetTempPath(),
-            "RoslynMcpTests",
+            TestTempRoot.Current,
             "MsBuildEvaluationCacheTests",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);

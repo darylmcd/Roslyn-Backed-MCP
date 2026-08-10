@@ -24,7 +24,7 @@ public sealed class ExperimentalAgeAuditScriptTests
     [TestInitialize]
     public void TestInitialize()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "ExperimentalAgeAudit", Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(TestTempRoot.Current, "ExperimentalAgeAudit", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
     }
 
