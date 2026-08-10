@@ -32,8 +32,12 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// only that caller's own await of the shared entry: it must not cancel the shared compilation
 /// pass itself, and it must not affect any other caller reading the same cache slot at the same
 /// workspace version. A caller whose token is already canceled on entry observes
-/// <see cref="OperationCanceledException"/> without a compilation pass being started or an entry
-/// being installed. Conversely, an entry whose shared work ends up canceled or faulted must be
+/// <see cref="OperationCanceledException"/> in both cases. <see cref="GetCompilationAsync"/>
+/// additionally guarantees that no compilation pass is started and no entry is installed for such
+/// a caller; <see cref="GetCompilationWithAnalyzersAsync"/> does NOT yet carry that entry guard —
+/// an already-canceled caller there can still trigger the analyzer-bound build before observing
+/// cancellation. Closing that gap is tracked separately and is deliberately out of this change's
+/// scope. Conversely, an entry whose shared work ends up canceled or faulted must be
 /// dropped so the next caller re-populates it instead of replaying the failure until the next
 /// workspace version bump.
 /// </para>
