@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Elicitation;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 
@@ -49,8 +50,11 @@ internal static class ElicitationAllowlistPolicy
     /// <summary>
     /// Capability-check helper: returns <see langword="true"/> when the connected client
     /// declares the <c>elicitation</c> capability per MCP 2025-06-18 § Client Capabilities.
-    /// Public so initiative #9 (<c>elicit-disambiguation-on-multi-symbol-resolve</c>) can
-    /// reuse the same predicate without copy-pasting the null-coalescing dance.
+    /// Thin delegate onto <see cref="ElicitationChoicePrompt.HasElicitation"/>, which is the
+    /// canonical home — the predicate lives in the cycle-free
+    /// <c>RoslynMcp.Host.Stdio.Elicitation</c> namespace so <c>Tools</c> can call it without
+    /// importing <c>Middleware</c>. Retained here so this class's historical static call
+    /// surface (and its test suite) keeps compiling unchanged.
     /// </summary>
     /// <param name="capabilities">
     /// The <see cref="McpServer.ClientCapabilities"/> snapshot, typically obtained as
@@ -62,7 +66,7 @@ internal static class ElicitationAllowlistPolicy
     /// <c>capabilities.Elicitation</c> are non-null. Zero-allocation and side-effect-free.
     /// </returns>
     public static bool HasElicitation(ClientCapabilities? capabilities) =>
-        capabilities?.Elicitation is not null;
+        ElicitationChoicePrompt.HasElicitation(capabilities);
 
     /// <summary>
     /// Defense-in-depth predicate: returns <see langword="true"/> when the parameter name
