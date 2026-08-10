@@ -1,6 +1,6 @@
 # Self-hosted GitHub Actions runner
 
-This repo runs a hybrid CI model (**active since 2026-05-08**): maintainer PRs run on a self-hosted Windows runner; fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs use GitHub-hosted Linux runners. See [Activation](#activation) for the exact conditional.
+This repo runs a hybrid CI model (**active since 2026-05-08**): maintainer PRs run on a self-hosted Windows runner; fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs use GitHub-hosted Linux runners. A `route` job (**active since 2026-08-10** — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)) probes the self-hosted runner's live status and falls back maintainer PRs to hosted Linux when it is offline, so a sleeping/wedged box no longer queues PRs indefinitely. See [Activation](#activation) for the exact conditional.
 
 ## Why hybrid
 
@@ -36,7 +36,51 @@ There is exactly one runner, and it lives on the maintainer's interactive deskto
 - **Power:** disable system sleep while on AC (`powercfg /change standby-timeout-ac 0`); display sleep is fine. A sleeping box looks *online* to GitHub for a few minutes, then jobs queue silently.
 - **Service recovery:** set the runner service to restart on failure (`sc.exe failure "actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev" reset= 86400 actions= restart/60000/restart/60000/restart/60000`).
 - **Wedged job:** cancel the run in the Actions UI (`gh run cancel <id>`); the runner frees the slot at job cleanup and picks up the next queued run.
-- **No hosted fallback exists:** `runs-on` is evaluated before any job runs, and probing runner health from a router job needs a PAT with repo-admin scope (the workflow `GITHUB_TOKEN` cannot read the runners API). Tracked in the backlog; until then, a hosted fallback for a stuck PR is manual — re-run the job after temporarily reverting the `runs-on` conditional, or just keep the runner alive.
+- **Hosted fallback:** a `route` job probes runner status before `validate` starts and falls maintainer PRs back to `ubuntu-latest` when the self-hosted runner is offline — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner). This requires an operator-provisioned PAT secret; without it, CI keeps working exactly as before (self-hosted routing, no fallback) rather than blocking.
+
+## Hosted fallback for an offline runner
+
+**Active since 2026-08-10.** `runs-on` is evaluated before any job runs, so
+routing around an offline/wedged self-hosted runner needs a job that runs
+*first* and feeds its decision through job outputs. `.github/workflows/ci.yml`
+has a `route` job (always runs, cheap, `ubuntu-latest`) ahead of `validate`:
+
+- For fork PRs, dependabot PRs, `workflow_dispatch`, and scheduled runs, `route`
+  outputs `ubuntu-latest` unconditionally and never calls the runners API —
+  the security boundary (§ Security model) is unchanged, because those events
+  never reach the self-hosted-eligible code path in the first place.
+- For maintainer pull_request events, `route` calls
+  `GET /repos/{owner}/{repo}/actions/runners` using a PAT from the
+  `RUNNER_STATUS_PAT` repo secret (the workflow `GITHUB_TOKEN` cannot read
+  this endpoint — it requires repo-admin scope) and checks for at least one
+  runner with `status: online` carrying the `roslynmcp-dev` label.
+  - **Runner online:** routes to `["self-hosted", "roslynmcp-dev"]` — same
+    behavior as before this row shipped.
+  - **Runner offline (or absent from the runners list entirely):** routes to
+    `ubuntu-latest` so the PR runs immediately instead of queueing behind the
+    single self-hosted slot.
+  - **`RUNNER_STATUS_PAT` secret absent, invalid, or the API call fails for
+    any other reason:** routes to `["self-hosted", "roslynmcp-dev"]` — the
+    known-working current behavior. A missing or broken PAT never blocks or
+    breaks CI; it just means the fallback isn't active.
+
+### Operator setup (required for the fallback to actually route)
+
+Without this secret, CI works exactly as it did before this row — self-hosted
+routing for maintainer PRs, hosted for fork/dependabot — it just can't detect
+an offline runner. To enable the fallback:
+
+1. GitHub → Settings → Developer settings → **Fine-grained personal access
+   tokens** → generate new token.
+2. Repository access: `darylmcd/Roslyn-Backed-MCP` only.
+3. Permissions: **Administration: Read-only** (this is the scope that grants
+   read access to `GET /repos/{owner}/{repo}/actions/runners`; no other
+   permission is required).
+4. Repo → Settings → Secrets and variables → Actions → **New repository
+   secret** → name it `RUNNER_STATUS_PAT`, paste the token value.
+
+No workflow change is needed after adding the secret — `route` picks it up
+on the next PR run.
 
 ## Starting the runner
 

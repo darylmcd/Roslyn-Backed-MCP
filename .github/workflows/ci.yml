@@ -23,15 +23,109 @@ permissions:
   contents: read
 
 jobs:
+  # Hosted-fallback router — see docs/self-hosted-runner.md
+  # § Hosted fallback for an offline runner.
+  #
+  # runs-on is evaluated before any job executes, so routing around an
+  # offline/wedged self-hosted runner requires a job that runs first and
+  # feeds its decision through `needs.route.outputs`. This job always
+  # completes (never skipped) so `validate`'s implicit `needs: route`
+  # success() gate is never itself the reason validate gets skipped.
+  #
+  # Security boundary (must not change): fork PRs and dependabot PRs are
+  # routed to ubuntu-latest unconditionally, without ever calling the
+  # runners API — this job replicates the exact maintainer-PR predicate
+  # from the original runs-on conditional and only probes runner status on
+  # that branch. See docs/self-hosted-runner.md § Security model.
+  route:
+    name: Route runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      runs_on: ${{ steps.decide.outputs.runs_on }}
+    steps:
+      - name: Decide target runner
+        id: decide
+        shell: pwsh
+        env:
+          # Fine-grained PAT with Administration:read on this repo, stored
+          # as the RUNNER_STATUS_PAT secret. The workflow GITHUB_TOKEN
+          # cannot read the runners API (repo-admin scope). Operator setup
+          # is documented in docs/self-hosted-runner.md § Availability;
+          # until the secret is added this always falls back to the
+          # current self-hosted routing (never blocks CI).
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_PAT }}
+        run: |
+          $selfHostedJson = '["self-hosted","roslynmcp-dev"]'
+          $hostedJson = '"ubuntu-latest"'
+
+          $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
+          if ($isMaintainerPr -ne 'true') {
+            # Fork PRs, dependabot PRs, workflow_dispatch, and schedule runs
+            # never reach the self-hosted runner regardless of router
+            # output or runner status — preserves the security boundary in
+            # docs/self-hosted-runner.md § Security model. No API call is
+            # made on this branch.
+            Write-Host "Not a maintainer pull_request event - hosted routing (unconditional)."
+            "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            Write-Host "::notice title=Router::RUNNER_STATUS_PAT secret is not set - defaulting to self-hosted routing (current behavior)."
+            "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          $apiErr = [System.IO.Path]::GetTempFileName()
+          try {
+            $apiJson = gh api "repos/${{ github.repository }}/actions/runners" 2>$apiErr | Out-String
+            $apiStderr = Get-Content -Raw -LiteralPath $apiErr -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrWhiteSpace($apiStderr)) {
+              Write-Host "gh api stderr (non-fatal unless the call also failed):`n$apiStderr"
+            }
+            if ($LASTEXITCODE -ne 0) {
+              throw "gh api exited $LASTEXITCODE"
+            }
+
+            $data = $apiJson | ConvertFrom-Json -ErrorAction Stop
+            $online = @($data.runners) | Where-Object {
+              $_.status -eq 'online' -and (@($_.labels | ForEach-Object { $_.name }) -contains 'roslynmcp-dev')
+            }
+            if ($online.Count -gt 0) {
+              Write-Host "Self-hosted runner (label roslynmcp-dev) is online - routing to self-hosted."
+              "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            } else {
+              Write-Host "::notice title=Router::No online self-hosted runner with label roslynmcp-dev - routing to ubuntu-latest fallback."
+              "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            }
+          } catch {
+            # Missing secret is handled above; this branch is an invalid
+            # PAT, an API/schema failure, or a transient outage. Per
+            # acceptance criterion 3, degrade to the known-working current
+            # behavior (self-hosted) rather than guessing offline.
+            Write-Host "::notice title=Router::Runner status probe failed ($($_.Exception.Message)) - defaulting to self-hosted routing (current behavior)."
+            "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } finally {
+            Remove-Item -LiteralPath $apiErr -Force -ErrorAction SilentlyContinue
+          }
+
   validate:
+    needs: route
     # Hybrid runner model — see docs/self-hosted-runner.md.
     # Maintainer pull_request events run on the self-hosted Windows runner
-    # (faster wall-clock than hosted Linux). Fork PRs, dependabot PRs,
-    # workflow_dispatch, and scheduled runs stay on GitHub-hosted Linux:
-    # fork/dependabot PRs execute third-party-selected code in tests, which
-    # must not run on the maintainer's box, and routing dependabot to hosted
-    # also stops its PR waves from queueing behind the single self-hosted slot.
-    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+    # (faster wall-clock than hosted Linux) when it is online; the `route`
+    # job above probes runner status and falls back to hosted Linux when it
+    # is offline/wedged so PRs stop queueing indefinitely (see
+    # docs/self-hosted-runner.md § Hosted fallback for an offline runner).
+    # Fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs always
+    # stay on GitHub-hosted Linux regardless of router output: fork/dependabot
+    # PRs execute third-party-selected code in tests, which must not run on
+    # the maintainer's box, and routing dependabot to hosted also stops its
+    # PR waves from queueing behind the single self-hosted slot. The `route`
+    # job encodes this same predicate and never calls the runners API for
+    # those events, so the security boundary is unchanged.
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
     # Healthy self-hosted runs are ~9-11 min with the live network tests included;
     # the PR path now excludes TestCategory=Network, so 20 min is real headroom.
     # The 10-25min spread previously observed here (and the temporary 40-min
