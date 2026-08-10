@@ -1,7 +1,7 @@
 ---
 name: mcp-server-surface-test
 installed_as: roslyn-mcp:mcp-server-surface-test
-description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
+description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (a tool ending in `server_info` — `mcp__roslyn__server_info` or, on a marketplace-plugin install, `mcp__plugin_roslyn-mcp_roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
 user-invocable: true
 argument-hint: "[<target-repo-path>] [--quick | --full | --cleanup-only] [--output-mode=findings | fragments] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
 ---
@@ -14,10 +14,10 @@ Run a Roslyn MCP server audit against a loaded C# repo. The skill bundles two pr
 
 This skill is a **null-op without the Roslyn MCP server**. The audit's entire purpose is to exercise the server's live surface — without it, the run produces no audit-grade evidence.
 
-1. Verify `mcp__roslyn__server_info` appears in your current tool surface and call it. The response must include `connection.state: "ready"`.
-2. If the call fails, the tool is missing, or `connection.state` is `initializing` / `degraded` / absent, **stop and report**:
+1. Verify a tool ending in `server_info` appears in your current tool surface, under **either** registration form — `mcp__roslyn__server_info` for a dev-build/self-hosted install, or `mcp__plugin_roslyn-mcp_roslyn__server_info` for the marketplace-plugin install — and call whichever form resolves. Both forms are the same server; only the client-side prefix differs. The response must include `connection.state: "ready"`.
+2. If **neither** form resolves, the call fails, or `connection.state` is `initializing` / `degraded` / absent, **stop and report**:
 
-   > *"This skill requires the Roslyn MCP server (`mcp__roslyn__*` tools must be callable, `connection.state` must be `ready`). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in your client config — confirm `mcp__roslyn__server_info` returns `ready`, then re-invoke this skill."*
+   > *"This skill requires the Roslyn MCP server (its tools must be callable under one of the two registration forms — `mcp__roslyn__*` for a dev-build/self-hosted install, or `mcp__plugin_roslyn-mcp_roslyn__*` for the marketplace-plugin install — and `connection.state` must be `ready`). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in your client config — confirm the `server_info` tool returns `ready` under whichever prefix your tool surface exposes, then re-invoke this skill."*
 
    Do **not** substitute `Read`, `Grep`, `Bash: dotnet build`, or any other host-side fallback. There is no generic non-MCP audit fallback in this skill — a broken server precondition halts the run.
 
@@ -27,7 +27,7 @@ This skill is a **null-op without the Roslyn MCP server**. The audit's entire pu
 
 ### Target repo (default: current Claude Code session's repo root)
 
-The audit needs a C# workspace to load via `mcp__roslyn__workspace_load`. By default the audit targets the **current session's repo root**. Override the target in two equivalent ways:
+The audit needs a C# workspace to load via the `workspace_load` tool (`mcp__roslyn__workspace_load` for a dev-build/self-hosted install, or `mcp__plugin_roslyn-mcp_roslyn__workspace_load` for the marketplace-plugin install). By default the audit targets the **current session's repo root**. Override the target in two equivalent ways:
 
 - `--target=<absolute-path-or-repo-root>` — explicit flag form.
 - *(bare path)* — any single token in `$ARGUMENTS` that resolves to an existing directory containing a `.sln`/`.slnx`/`.csproj` file.
@@ -167,7 +167,7 @@ The script is invoked manually (no automatic scheduler).
 
 ## Hard rules
 
-- **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
+- **Server-required.** No generic non-MCP fallback exists. If the `server_info` tool is not callable under **either** registration form (`mcp__roslyn__server_info` for a dev-build/self-hosted install, `mcp__plugin_roslyn-mcp_roslyn__server_info` for the marketplace-plugin install), or `connection.state` is not `ready`, halt. A missing bare-prefixed literal alone is **not** grounds to halt — probe the namespaced form before deciding.
 - **Read-only against `main`.** All apply-mode mutations confine to the disposable worktree the prompt creates. Never push or merge from inside this skill.
 - **No PR.** This skill produces an audit report, not a refactor PR. Phase 6 mutations are exercised as apply-tool fixtures inside the disposable worktree and torn down at run end.
 - **Cite, don't summarize.** Every finding must reference a concrete file:line and a tool call — no abstract claims.

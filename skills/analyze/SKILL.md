@@ -20,12 +20,12 @@ When the tool list or workflows are unclear, call **`server_info`**, read the **
 
 ## Connectivity precheck
 
-Before running any `mcp__roslyn__*` tool call, probe the server once:
+Before running any Roslyn MCP tool call, probe the server once. The server's tools surface under **either** of two registration forms depending on how it was installed — bare `mcp__roslyn__*` for a dev-build/self-hosted install, or namespaced `mcp__plugin_roslyn-mcp_roslyn__*` for the marketplace-plugin install. Both are the same server; only the client-side prefix differs, so probe for the tool *suffix* and use whichever prefix your tool surface exposes.
 
-1. Call `mcp__roslyn__server_info` — confirm the response includes `connection.state: "ready"`.
-2. If the call fails OR `connection.state` is `initializing` / `degraded` / absent, bail with this message to the user and stop the skill:
+1. Call the tool ending in `server_info` — `mcp__roslyn__server_info` for a dev-build/self-hosted install, or `mcp__plugin_roslyn-mcp_roslyn__server_info` for the marketplace-plugin install — and confirm the response includes `connection.state: "ready"`.
+2. If **neither** form resolves, the call fails, OR `connection.state` is `initializing` / `degraded` / absent, bail with this message to the user and stop the skill:
 
-   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run `mcp__roslyn__server_heartbeat` to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See the [Connection-state signals reference](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/runtime.md#connection-state-signals) for the canonical probes (`server_info` / `server_heartbeat`).
+   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run the `server_heartbeat` tool — `mcp__roslyn__server_heartbeat` for a dev-build/self-hosted install, or `mcp__plugin_roslyn-mcp_roslyn__server_heartbeat` for the marketplace-plugin install — to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See the [Connection-state signals reference](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/runtime.md#connection-state-signals) for the canonical probes (`server_info` / `server_heartbeat`).
 
 3. If `connection.state` is `"ready"`, proceed with the rest of the workflow. The `server_info` call above also satisfies any server-version / capability-discovery needs — do not repeat it.
 
