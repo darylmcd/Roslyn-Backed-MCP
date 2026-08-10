@@ -1061,7 +1061,12 @@ public sealed class RefactoringService : IRefactoringService
         bool missingFileIsNew,
         CancellationToken ct)
     {
-        var filePath = document?.FilePath;
+        if (document is null)
+        {
+            return;
+        }
+
+        var filePath = document.FilePath;
         if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
         {
             return;
@@ -1077,11 +1082,6 @@ public sealed class RefactoringService : IRefactoringService
         string? fallbackText = null;
         if (existingBytes is null && !missingFileIsNew)
         {
-            if (document is null)
-            {
-                return;
-            }
-
             fallbackText = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         }
 

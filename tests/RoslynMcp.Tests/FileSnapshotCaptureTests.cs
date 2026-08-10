@@ -5,7 +5,10 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Direct unit coverage for <c>FileSnapshotCapture</c>, the shared owner of the pre-apply
-/// exists/missing snapshot policy previously hand-rolled at four call sites
+/// exists/missing snapshot policy previously hand-rolled at six call sites — <c>EditService</c>
+/// twice, <c>EditorConfigService</c>, <c>ProjectMutationService</c>,
+/// <c>RefactoringService.AddFileSnapshotAsync</c> and
+/// <c>RefactoringService.AddProjectFileSnapshotAsync</c>
 /// (<c>file-snapshot-capture-helper-consolidation</c>). Pure temp-directory tests — no MSBuild
 /// workspace required.
 /// </summary>

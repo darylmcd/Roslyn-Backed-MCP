@@ -3,7 +3,8 @@ using RoslynMcp.Core.Services;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Single owner of the pre-apply file-snapshot policy for every mutation path in the server
+/// Single owner of the pre-apply file-snapshot policy for every mutation path that captures a
+/// <see cref="FileSnapshotDto"/>
 /// (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a file held before
 /// the mutation — or the knowledge that it held none — produce the
 /// <see cref="FileSnapshotDto"/> <c>revert_last_apply</c> needs.
