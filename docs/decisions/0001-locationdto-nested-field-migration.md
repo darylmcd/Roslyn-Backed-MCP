@@ -24,13 +24,15 @@ Together with `LocationDto` these form the "location quartet." The duplication c
 Two constraints make this more than a mechanical refactor:
 
 1. **These DTOs are the wire shape of stable tool responses.** `docs/release-policy.md` states that "Stable tools/resources keep backward-compatible request and response shapes within a release line" and that "Breaking a stable request/response contract is a major-version change." Replacing the flat fields with a nested object changes the JSON emitted to every consumer of `symbol_search`, `find_references`, `compile_check`, `project_diagnostics`, `find_type_usages`, and their peers.
-2. **The blast radius is large.** The backlog item's Evidence records direct removal spanning at least 12 production files and 6 test files. Producers of the quartet span **nine** files, and the sets are per-DTO — an all-DTO count cannot be derived from a single `rg`:
+2. **The blast radius is large.** The backlog item's Evidence records direct removal spanning at least 12 production files and 6 test files. Producers of the three **flat-field** DTOs — `SymbolDto`, `DiagnosticDto`, `TypeUsageDto`, i.e. the three the migration actually touches — span **nine** files, and the sets are per-DTO, so an all-DTO count cannot be derived from a single `rg`:
 
    - **`DiagnosticDto` — eight files** (`rg -l "new DiagnosticDto\(" src`): `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs`, `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs`, `src/RoslynMcp.Roslyn/Services/CompileCheckService.cs`, `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs`, `src/RoslynMcp.Roslyn/Services/ScriptingService.cs`, `src/RoslynMcp.Roslyn/Services/SnippetAnalysisService.cs`, `src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs`, `src/RoslynMcp.Roslyn/Services/WorkspaceDiagnosticsSink.cs`.
    - **`SymbolDto` — one file** (`rg -l "new SymbolDto\(" src`): `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs` — the sole `SymbolDto` producer, which therefore double-duties as a `DiagnosticDto` producer too and is the one overlap between the sets.
    - **`TypeUsageDto` — one file** (`rg -l "new TypeUsageDto\(" src`): `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs:312` — the sole `TypeUsageDto` producer, and absent from the `DiagnosticDto` sweep entirely.
 
-   Nine distinct files in union. A `DiagnosticDto`-only survey misses `MutationAnalysisService.cs` and so cannot be used to scope Stage 1, which appends `Location` to all three DTOs.
+   Nine distinct files in union. A `DiagnosticDto`-only survey misses `MutationAnalysisService.cs` and so cannot be used to scope Stage 1, which appends `Location` to all three DTOs. **This list is the single source for the Stage 1 file set — the Stage 1 bullet below cross-references it rather than restating it, because this enumeration has been wrong twice.**
+
+   `LocationDto` itself — the quartet's fourth member — is constructed at `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs` and `src/RoslynMcp.Roslyn/Services/RecordFieldAdditionService.cs:455` (`rg -l "new LocationDto\(" src`), for a ten-file quartet-wide union. Those sites need no Stage 1 change (they already emit a `LocationDto`), which is why the nine above, not the ten, is the migration's scope.
 
 An earlier execute-time public-contract review proposed a third path — expose `Location` as a computed, `[JsonIgnore]`-decorated property over the existing flat fields — and rejected it, because a property that is never serialized gives external consumers nothing to adopt: the wire shape would be unchanged, so no consumer could ever migrate off the flat fields, and the deduplication would exist only for in-process C# callers.
 
@@ -139,10 +141,7 @@ The work is split into bounded stages. **Stage 1 is out of scope for this ADR** 
 ### Stage 1 — producer-side introduction (future backlog row)
 
 - Append `LocationDto? Location = null` to `SymbolDto`, `DiagnosticDto`, and `TypeUsageDto`.
-- Populate it in the **nine** confirmed producers, per DTO (see constraint 2 for the per-DTO `rg` commands — a `DiagnosticDto`-only sweep is NOT sufficient to scope this bullet):
-  - `DiagnosticDto` (eight): `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs`, `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs`, `src/RoslynMcp.Roslyn/Services/CompileCheckService.cs`, `src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs`, `src/RoslynMcp.Roslyn/Services/ScriptingService.cs`, `src/RoslynMcp.Roslyn/Services/SnippetAnalysisService.cs`, `src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs`, `src/RoslynMcp.Roslyn/Services/WorkspaceDiagnosticsSink.cs`.
-  - `SymbolDto` (one): `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs` — already in the list above; the sets' only overlap.
-  - `TypeUsageDto` (one): `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs`.
+- Populate it in the **nine** confirmed producers enumerated per DTO in **constraint 2 above** — eight for `DiagnosticDto`, one for `SymbolDto` (`SymbolMapper.cs`, the sets' only overlap), one for `TypeUsageDto` (`MutationAnalysisService.cs`). That list is the single source; do NOT re-derive this file set from a `DiagnosticDto`-only `rg`, which silently omits the sole `TypeUsageDto` producer.
 - Resolve the `TypeUsageDto.Classification` enum-vs-string mismatch called out in section 1.
 - Sweep coordinate-mutating `with` expressions (section 6) and equality-dependent assertions (section 7).
 - Ship as a minor version; call out the equality caveat and the strict-schema caveat in release notes.
