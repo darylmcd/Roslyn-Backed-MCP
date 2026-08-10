@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests.Skills;
 
@@ -22,6 +23,15 @@ namespace RoslynMcp.Tests.Skills;
 ///      (`ai_docs/`, `backlog.md`, `eng/`, etc.) — a redundant in-process echo of the
 ///      `verify-skills-are-generic.ps1` gate, kept here so a build-only contributor (no `pwsh`) still
 ///      catches genericity drift.
+///   5. The canonical promotion scorecard (`audit-reports/_latest-promotion-scorecard.json`) is
+///      git-TRACKED in this repo. It is the release-gating input read by
+///      `eng/aggregate-promotion-scorecards.ps1`; without history a lost refresh is silent and
+///      unrecoverable (the 2026-05-31 run computed a fresh scorecard that never reached disk).
+///   6. `prompts/phases/output-and-close.md` states at BOTH artifact-write sites that
+///      `&lt;audited-repo-root&gt;` means the audited repo's PRIMARY checkout — never the disposable
+///      Phase-6 worktree — requires copy-back before worktree teardown, and exempts the two
+///      canonical artifact paths from the run-end primary-checkout clean gate (otherwise every
+///      future run on a repo that tracks the scorecard self-reports a false `audit-prompt-leak`).
 ///
 /// The prompt bodies (`prompts/quick.md`, `prompts/full.md`) are intentionally NOT scanned for tool
 /// names here — the maintainer prompt has the same exemption (the prompt's "live catalog wins"
@@ -31,6 +41,11 @@ namespace RoslynMcp.Tests.Skills;
 public sealed class McpServerSurfaceTestSkillTests
 {
     private const string SkillName = "mcp-server-surface-test";
+
+    /// <summary>
+    /// Canonical promotion-scorecard path, repo-relative with forward slashes (git pathspec form).
+    /// </summary>
+    private const string CanonicalScorecardPath = "audit-reports/_latest-promotion-scorecard.json";
 
     [TestMethod]
     public void Skill_FilePresent_AtExpectedPath()
@@ -141,6 +156,55 @@ public sealed class McpServerSurfaceTestSkillTests
         StringAssert.Contains(contents, "nextPhase");
         StringAssert.Contains(contents, "resume");
         StringAssert.Contains(contents, "cleanup path");
+    }
+
+    [TestMethod]
+    public void CanonicalPromotionScorecard_IsGitTracked()
+    {
+        if (!GitFixtureRunner.IsAvailable(out var gitUnavailableReason))
+        {
+            Assert.Inconclusive($"git is not available on PATH — cannot assert tracked state. {gitUnavailableReason}");
+        }
+
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var tracked = GitFixtureRunner.RunGitCapture(repoRoot, "ls-files", "--", CanonicalScorecardPath);
+
+        Assert.IsFalse(
+            string.IsNullOrWhiteSpace(tracked),
+            $"`{CanonicalScorecardPath}` is not git-tracked. It is the release-gating input read by " +
+            "eng/aggregate-promotion-scorecards.ps1; untracked it has no history, so a refresh that " +
+            "never reaches disk (the 2026-05-31 loss) is silent and unrecoverable. Keep the " +
+            "`audit-reports/*` + `!audit-reports/_latest-promotion-scorecard.json` .gitignore pair " +
+            "intact — the contents form is load-bearing because git does not descend into an " +
+            "excluded directory.");
+    }
+
+    [TestMethod]
+    public void OutputAndClosePhase_PinsArtifactWritesToPrimaryCheckout()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var phasePath = Path.Combine(
+            repoRoot, "skills", SkillName, "prompts", "phases", "output-and-close.md");
+        var contents = File.ReadAllText(phasePath);
+
+        // Both artifact-write sites (prose report + scorecard) must pin `<audited-repo-root>` to the
+        // primary checkout, or a run that treats the disposable Phase-6 worktree as the audited root
+        // loses both artifacts at teardown.
+        var primaryCheckoutMentions = Regex.Matches(contents, "PRIMARY checkout").Count;
+        Assert.IsTrue(
+            primaryCheckoutMentions >= 2,
+            $"output-and-close.md names the PRIMARY checkout {primaryCheckoutMentions} time(s); both " +
+            "artifact-write sites (prose report and _latest-promotion-scorecard.json) must state that " +
+            "`<audited-repo-root>` is the audited repo's primary checkout, never the disposable " +
+            $"Phase-6 worktree. Path: {phasePath}");
+
+        // Copy-back before teardown — teardown is irreversible.
+        StringAssert.Contains(contents, "BEFORE `git worktree remove`");
+
+        // The run-end clean gate must exempt the two canonical artifact paths, otherwise every run
+        // against a repo that TRACKS the scorecard files a false `audit-prompt-leak` P1 against itself.
+        StringAssert.Contains(contents, "Exemption — the two canonical run artifacts");
+        StringAssert.Contains(contents, "Do not file `audit-prompt-leak` for those two paths");
     }
 
     [TestMethod]

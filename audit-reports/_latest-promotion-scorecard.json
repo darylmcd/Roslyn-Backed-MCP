@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-16T06:25:47Z",
+  "noWorktree": false,
+  "auditedRepo": "roslyn-backed-mcp",
+  "auditReportPath": "audit-reports/20260516T062547Z_roslyn-backed-mcp_mcp-server-surface-test.md",
+  "serverVersion": "1.38.1",
+  "catalogVersion": "2026.04",
+  "experimentalSurface": {
+    "tools": 58,
+    "resources": 4,
+    "prompts": 20
+  },
+  "scorecard": [
+    {
+      "kind": "tool",
+      "name": "workspace_warm",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-0 prewarm=true completed in 2042 ms; coldCompilationCount=4 reported",
+        "every subsequent read in this audit ran cache-warm (p50 well under reader budget)",
+        "schema accurate vs live behavior"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_consumers",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-3 returned 13 file rollups for WorkspaceManager (descending site count, ascending file path)",
+        "kinds set { ctor, invocation, other, field } correctly populated",
+        "p50 elapsedMs=11 (well within solution-scan budget)"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_mutations",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-3 returned 5 mutating members for WorkspaceManager with 90 external callers (callerPhase=PostConstruction tagged)",
+        "mutationScope classifier present on every member",
+        "p50 elapsedMs=1106"
+      ],
+      "blockers": [
+        "FLAG-3A - single-valued MutationScope misses compound IO+CollectionWrite (LoadAsync, GetSourceGeneratedDocumentsAsync); consider [Flags] enum"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_property_writes",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-3 ObjectInitializer write detected on TestServiceContainer.WorkspaceManager (writeKind correct)",
+        "phase-3 elapsedMs=7"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_relationships",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-3 totals + 4 buckets (definitions/references/implementations/baseMembers) returned correctly for WorkspaceManager",
+        "auto-promote (preferDeclaringMember=true default) works",
+        "p50 elapsedMs=8"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_impact_sweep",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-3 summary=true + maxItemsPerCategory=20 caps work as documented",
+        "categories references/switchExhaustivenessIssues/mapperCallsites/persistenceLayerFindings populated correctly",
+        "p50 elapsedMs=147 (within solution-scan budget)"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "impact_analysis",
+      "category": "symbols",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-3 summary=true response correctly paginated (40 refs, 25 declarations, 2 projects)",
+        "p50 elapsedMs=7"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "semantic_search",
+      "category": "search",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-11 'async methods returning Task<bool>' - 7 hits, structured fallback, debug.parsedTokens/appliedPredicates correctly exposed",
+        "phase-11 'classes implementing IDisposable' - 14 hits, implementing-interface predicate",
+        "p50 elapsedMs=65"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "semantic_grep",
+      "category": "search",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-11 regex ^Run.*Async$ on identifiers - 20 hits, all real Run*Async methods",
+        "p50 elapsedMs=12"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "get_di_registrations",
+      "category": "analysis",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-11 91 registrations, 90 distinct service types, all Singleton",
+        "overrideChains correctly identified 1 dead PreviewStoreOptions registration",
+        "lifetimeMismatchCount=0; summary=true page works"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "find_reflection_usages",
+      "category": "analysis",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-11 28 usages grouped into 7 kinds (typeof/Activator.CreateInstance/Type.GetField/FieldInfo.GetValue/FieldInfo.SetValue/Assembly.Load/Assembly.LoadFrom)",
+        "p50 elapsedMs=764"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "format_check",
+      "category": "analysis",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-6 found 6 format-drift files on main HEAD in RoslynMcp.Roslyn (using-order violations vs dotnet_sort_system_directives_first=true)",
+        "p50 elapsedMs=1164 across 126 documents"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "apply_with_verify",
+      "category": "apply",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-6 6l staleness rejection clean (workspace auto-reloaded mid-queue; status=apply_failed with actionable 'Please create a new preview.' error)",
+        "tool envelope structure matches description"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "apply_multi_file_edit",
+      "category": "apply",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-6 2-file batch applied atomically with verify=true",
+        "verification.status=clean, postErrorCount=0",
+        "p50 elapsedMs=1460"
+      ],
+      "blockers": [
+        "FLAG-6B - workspace_changes split the atomic batch into 2 ledger entries (same timestamp, no batchId correlation) - ledger UX confusing for revert_apply_by_sequence callers"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "apply_text_edit",
+      "category": "apply",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-6 verify=true attached compile_check, postErrorCount=0",
+        "audit-only writes in phases 9/8b cleanly reverted via revert_last_apply or revert_apply_by_sequence"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "preview_multi_file_edit",
+      "category": "apply",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-6 token round-trip clean (preview->apply via preview_multi_file_edit_apply)",
+        "staleAction=auto-reloaded visible on later read after intervening write"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "revert_apply_by_sequence",
+      "category": "apply",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-9 non-tip rollback succeeded (CompilationCache.cs at seq 12 reverted while ChangeTracker.cs at seq 13 remained applied; compile_check clean after)",
+        "phase-9 negative probe(99999) returned reverted=false, reason=unknown-sequence with actionable message"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "validate_workspace",
+      "category": "validation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-8 overallStatus=clean in all 3 invocations (auto-scoped, fabricated path, full bundle)",
+        "phase-8 fabricated path 'nonexistent.cs' correctly surfaced as unknownFilePaths instead of crash",
+        "bundle composes compile_check + diagnostics + related-tests as documented"
+      ],
+      "blockers": [
+        "FLAG-7B - ChangeTracker auto-scoped list still includes .editorconfig after a successful git checkout revert (disk-content reconcile gap)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "validate_recent_git_changes",
+      "category": "validation",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-8 overallStatus=clean against worktree git metadata; 6 git-derived files matches git status",
+        "no crashes on dirty tree"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_type_preview",
+      "category": "scaffolding",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-12 produces 'internal sealed class' default (v1.8+)",
+        "phase-12 auto-implements interface stubs with NotImplementedException + required usings (v1.17+)",
+        "p50 elapsedMs=21"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_test_preview",
+      "category": "scaffolding",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-12 MSTest auto-detected from RoslynMcp.Tests PackageReference",
+        "[DoNotParallelize] attribute inferred from sibling test scaffolding",
+        "constructor-arg expressions correct (new WorkspaceManagerOptions() for concrete record-like type; default(IInterface)! for interfaces with TODO comments)"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "add_package_reference_preview",
+      "category": "project-mutation",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-13 correct XML diff for new ItemGroup/PackageReference",
+        "Central package management warning emitted (Add 'X' to Directory.Packages.props before building) - actionable CPM awareness"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "set_project_property_preview",
+      "category": "project-mutation",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-13 correct XML diff for Nullable=enable",
+        "Inheritance warning emitted (Property 'Nullable' is already set via Directory.Build.props - redundant entry) - actionable"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "set_editorconfig_option",
+      "category": "editorconfig",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-7 + phase-8b W2 write applied; file path resolved correctly",
+        "revert via git checkout cleaned cleanly"
+      ],
+      "blockers": [
+        "FLAG-7A (P2) - duplicate-key append when value already matches; cascades to set_diagnostic_severity via shared writer"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "set_diagnostic_severity",
+      "category": "editorconfig",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-8b W3 added 1 line; reverted via git checkout cleanly"
+      ],
+      "blockers": [
+        "Inherits FLAG-7A from set_editorconfig_option shared writer"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "add_pragma_suppression",
+      "category": "editorconfig",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-8b W4 pragma inserted at correct line",
+        "revert_last_apply round-trip clean (revertedOperation matched)"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "find_overrides",
+      "category": "navigation",
+      "currentTier": "experimental",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 1,
+      "evidence": [
+        "phase-14 returned count=0 for System.IDisposable.Dispose despite 14+ implementations in the workspace"
+      ],
+      "blockers": [
+        "FLAG-14A (P2) - cross-tool inconsistency with member_hierarchy.overrides; cannot recommend promote until semantic is converged",
+        "want a fresh probe at a virtual method (not interface) before final judgment"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "member_hierarchy",
+      "category": "navigation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-3 returned baseMembers=[IDisposable.Dispose] correctly for WorkspaceManager.Dispose",
+        "p50 elapsedMs=186"
+      ],
+      "blockers": [
+        "FLAG-3C (P2) - overrides bucket mis-classifies sibling interface implementations as overrides"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "callers_callees",
+      "category": "navigation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-3 returned 8 callers + 32 callees for LoadAsync overload",
+        "totalCallers/totalCallees fields populated"
+      ],
+      "blockers": [
+        "FLAG-3B (P3) - previewText asymmetry (callers populated, callees null)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_search",
+      "category": "search",
+      "currentTier": "stable",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-3 search by name PASS with kind filter",
+        "phase-17 empty-query returns clean note (no crash)",
+        "totalCount/hasMore pagination works"
+      ],
+      "blockers": [
+        "FLAG-8A (P2) - broad query at limit=100 exceeds MCP response cap; consider auto-clamp or default-summary"
+      ]
+    },
+    {
+      "kind": "resource",
+      "name": "source_file_lines",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-15 lines/1-20 returns 20 lines prefixed with documented marker comment",
+        "phase-15 lines/10-5 (invalid range) returns structured InvalidArgument error",
+        "1-based inclusive shape matches description"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_full",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 0,
+      "evidence": [],
+      "blockers": [
+        "scoped-but-skipped - paginated siblings exercise the same data path"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "discover_capabilities",
+      "category": "guided",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 3,
+      "evidence": [
+        "phase-16 rendered text lists 43 refactoring tools + 6 guided prompts + workflows; every tool name exists in live catalog",
+        "no hallucinated tools",
+        "p50 elapsedMs=93"
+      ],
+      "blockers": []
+    }
+  ],
+  "summary": {
+    "promote": 18,
+    "keep-experimental": 8,
+    "needs-more-evidence": 5,
+    "deprecate": 0,
+    "blocked": 0,
+    "not-scored-scoped-but-skipped": "approximately 51 (most experimental entries not exercised in this run; see coverage ledger for status)"
+  }
+}
