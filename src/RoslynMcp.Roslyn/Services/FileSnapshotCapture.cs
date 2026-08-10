@@ -3,9 +3,9 @@ using RoslynMcp.Core.Services;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Single owner of the pre-apply file-snapshot policy shared by every direct-file mutation
-/// path (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a file held
-/// before the mutation — or the knowledge that it held none — produce the
+/// Owner of the pre-apply file-snapshot policy for the direct-file mutation paths that
+/// delegate to it (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a
+/// file held before the mutation — or the knowledge that it held none — produce the
 /// <see cref="FileSnapshotDto"/> <c>revert_last_apply</c> needs.
 /// <para>
 /// The policy is one line, but it was hand-rolled as an independent ternary at every call
@@ -15,6 +15,12 @@ namespace RoslynMcp.Roslyn.Services;
 /// purpose — <c>AtomicFileWriter.ResolveWriteEncoding</c> — and must not read the file
 /// twice: they call <see cref="FromBytesOrFallback"/> with the bytes they already hold,
 /// while callers with nothing pre-read call <see cref="CaptureAsync"/>.
+/// </para>
+/// <para>
+/// Ownership is not yet universal: <c>RefactoringService.AddFileSnapshotAsync</c> still
+/// hand-rolls the same exists/missing ternary rather than calling in here. That last copy
+/// is tracked by row <c>file-snapshot-capture-helper-consolidation</c>; until it migrates,
+/// this type owns the policy for the four delegating paths named above only.
 /// </para>
 /// </summary>
 internal static class FileSnapshotCapture
@@ -64,10 +70,10 @@ internal static class FileSnapshotCapture
     {
         if (!File.Exists(filePath))
         {
-            return new FileSnapshotDto(filePath, fallbackTextFactory?.Invoke());
+            return FromBytesOrFallback(filePath, bytes: null, fallbackTextFactory?.Invoke());
         }
 
         var bytes = await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false);
-        return FileSnapshotDto.FromExistingBytes(filePath, bytes);
+        return FromBytesOrFallback(filePath, bytes, fallbackText: null);
     }
 }
