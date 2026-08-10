@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -23,7 +24,11 @@ namespace RoslynMcp.Tests;
 /// <see cref="SymbolRelationshipService"/>; group-b core adds <see cref="BuildService"/>,
 /// <see cref="FixAllService"/>, <see cref="BulkRefactoringService"/>, and
 /// <see cref="CrossProjectRefactoringService"/>; the group-b tail adds
-/// <see cref="InterfaceExtractionService"/>.
+/// <see cref="InterfaceExtractionService"/>; group c adds the three forked-solution-hazard static
+/// helpers <see cref="SymbolResolver.ResolveByMetadataNameAsync"/>,
+/// <see cref="SymbolResolver.FindClosestMatchesAsync"/>, and
+/// <see cref="SymbolHandleSerializer.FindAllByMetadataNameAsync"/> — whose routing is opt-in and
+/// gated on the supplied solution being the live workspace solution.
 /// <para>
 /// A reference-equality check alone cannot prove adoption — Roslyn memoizes a
 /// <see cref="Compilation"/> on its owning <see cref="Project"/>, so two direct calls would also
@@ -683,6 +688,131 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
                 CancellationToken.None));
 
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    /// <summary>
+    /// Group-c tail: <see cref="SymbolResolver.ResolveByMetadataNameAsync"/> routes its per-project
+    /// compilation fetch through the shared cache when handed the LIVE workspace solution plus a
+    /// cache + workspaceId. The new parameters are optional and default to <c>null</c>, so this test
+    /// (not any production caller) is the opt-in consumer for this batch.
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolResolver_ResolveByMetadataNameAsync_LiveSolution_RoutesThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            var symbol = await SymbolResolver.ResolveByMetadataNameAsync(
+                solution, "SampleLib.Dog", CancellationToken.None, cache, workspace.WorkspaceId);
+            Assert.IsNotNull(symbol, "SampleLib.Dog must resolve — otherwise the cached path is untested.");
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    /// <summary>
+    /// Group-c tail: <see cref="SymbolResolver.FindClosestMatchesAsync"/> (the symbol-not-found
+    /// nearest-match error path) routes its per-project compilation fetch through the shared cache
+    /// when handed the LIVE workspace solution plus a cache + workspaceId.
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolResolver_FindClosestMatchesAsync_LiveSolution_RoutesThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            // Deliberately misspelled so the helper walks every project scoring candidates rather
+            // than short-circuiting; it has no early exit, so any non-blank query drives the fetch.
+            var matches = await SymbolResolver.FindClosestMatchesAsync(
+                solution, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspace.WorkspaceId);
+            Assert.IsTrue(matches.Count > 0, "The nearest-match scan should surface candidates for a near-miss query.");
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    /// <summary>
+    /// Group-c tail: <see cref="SymbolHandleSerializer.FindAllByMetadataNameAsync"/> (the
+    /// multi-result disambiguation counterpart) routes its per-project compilation fetch through the
+    /// shared cache when handed the LIVE workspace solution plus a cache + workspaceId.
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolHandleSerializer_FindAllByMetadataNameAsync_LiveSolution_RoutesThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+            var symbols = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+                solution, "SampleLib.Dog", CancellationToken.None, cache, workspace.WorkspaceId);
+            Assert.IsTrue(symbols.Count > 0, "SampleLib.Dog must resolve — otherwise the cached path is untested.");
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    /// <summary>
+    /// The HAZARD half of group c, and the reason the three helpers took an opt-in parameter rather
+    /// than an unconditional cache call: <see cref="ICompilationCache"/> keys on
+    /// <c>(workspaceId, ProjectId, workspaceVersion)</c> only, so serving a FORKED solution from it
+    /// would return a compilation built from the LIVE document text while the caller reasons about
+    /// different text. <see cref="SymbolResolver.CanUseCompilationCache"/> rejects any solution that
+    /// is not reference-equal to <c>Workspace.CurrentSolution</c>, so all three migrated helpers fall
+    /// back to the raw per-project fetch — asserted here as a hard zero cache call count even though
+    /// a cache AND a workspaceId were both supplied.
+    /// <para>
+    /// The known forked caller today is
+    /// <c>CrossProjectRefactoringService.PreviewDependencyInversionAsync</c>, which passes a
+    /// never-applied solution to <see cref="SymbolResolver.ResolveByMetadataNameAsync"/> and does not
+    /// pass the new optional parameters at all — so it is doubly protected. Deliberately still on the
+    /// raw path and untouched by this batch: <c>InterfaceExtractionService.ReplaceConcreteUsagesAsync</c>,
+    /// the two <c>RefactoringService</c> fetches, and <c>TypeMoveService</c> — all of which compile
+    /// forked solutions.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task MigratedHelpers_ForkedSolution_DoNotRouteThroughCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        var liveSolution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var dogDocument = liveSolution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
+        var originalText = await dogDocument.GetTextAsync(CancellationToken.None);
+
+        // A fork, never applied to the workspace: same Workspace back-reference, but NOT the
+        // workspace's CurrentSolution — exactly the shape PreviewDependencyInversionAsync builds.
+        var forkedSolution = liveSolution.WithDocumentText(
+            dogDocument.Id,
+            SourceText.From(originalText.ToString() + Environment.NewLine + "// fork marker"));
+
+        Assert.AreNotSame(liveSolution, forkedSolution,
+            "WithDocumentText must produce a distinct solution instance for this test to mean anything.");
+
+        var resolved = await SymbolResolver.ResolveByMetadataNameAsync(
+            forkedSolution, "SampleLib.Dog", CancellationToken.None, cache, workspace.WorkspaceId);
+        Assert.IsNotNull(resolved, "The forked solution must still resolve the symbol via the raw fetch.");
+
+        var all = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+            forkedSolution, "SampleLib.Dog", CancellationToken.None, cache, workspace.WorkspaceId);
+        Assert.IsTrue(all.Count > 0, "The forked solution must still resolve the symbol via the raw fetch.");
+
+        _ = await SymbolResolver.FindClosestMatchesAsync(
+            forkedSolution, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspace.WorkspaceId);
+
+        Assert.AreEqual(0, cache.GetCompilationCallCount,
+            "A forked (never-applied) solution must NEVER be served from the version-keyed compilation " +
+            "cache — the cache would hand back a compilation of the LIVE document text. All three " +
+            "migrated helpers must fall through to project.GetCompilationAsync when the liveness gate " +
+            "rejects the solution, even though a cache and a workspaceId were supplied.");
     }
 
     /// <summary>
