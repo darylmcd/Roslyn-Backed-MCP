@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
@@ -101,6 +102,97 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
 
         // Must not throw: pre-fix this rethrew the first caller's OperationCanceledException.
         _ = await cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Covers the branch the two already-canceled tests above cannot reach: a caller that cancels
+    /// AFTER its request is in flight. Those tests short-circuit inside
+    /// <c>ObserveWithCallerToken</c>'s already-canceled check, so the <c>WaitAsync(ct)</c> branch —
+    /// the one that actually decouples a mid-flight cancellation from the shared entry — was never
+    /// exercised. Caller A starts with a live token and is canceled with no intervening
+    /// <c>await</c>, so the synchronous already-canceled check has provably already run and
+    /// committed to <c>WaitAsync</c>; caller B must still get a real compilation from the same
+    /// entry.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCompilationAsync_CallerCanceledMidFetch_DoesNotAffectOtherCaller()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var cache = new CompilationCache(WorkspaceManager);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+
+        using var midFetch = new CancellationTokenSource();
+
+        // No await between these two statements: the shared compile pass is started and observed
+        // through the caller's still-uncanceled token before the cancellation is requested.
+        var pending = cache.GetCompilationAsync(workspace.WorkspaceId, project, midFetch.Token);
+        var statusAtCancelTime = pending.Status;
+        midFetch.Cancel();
+
+        Assert.IsTrue(
+            statusAtCancelTime is not (TaskStatus.RanToCompletion or TaskStatus.Canceled or TaskStatus.Faulted),
+            $"Caller A's task was already in terminal state '{statusAtCancelTime}' before its token was " +
+            "canceled, so this test no longer exercises the mid-flight WaitAsync branch. A yield point " +
+            "added to GetCompilationAsync ahead of ObserveWithCallerToken would cause this — the test " +
+            "must be reworked rather than relaxed.");
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+            () => pending,
+            "A caller canceling mid-fetch must observe its own cancellation.");
+
+        var compilation = await cache.GetCompilationAsync(workspace.WorkspaceId, project, CancellationToken.None);
+        Assert.IsNotNull(compilation,
+            "Caller B reads the same (workspaceId, project) key at the unchanged workspace version, so " +
+            "caller A's mid-flight cancellation must not have canceled the shared compilation pass.");
+    }
+
+    /// <summary>
+    /// Covers <c>CompilationCache.EvictWhenBroken</c>'s compare-and-remove: an entry whose shared
+    /// task ends up faulted must be dropped so the next caller re-populates instead of replaying the
+    /// failure until the workspace version bumps. Reflection is the only deterministic route — the
+    /// real shared task is always started with <see cref="CancellationToken.None"/> and there is no
+    /// reliable way to force a genuine Roslyn compile fault from a test workspace, so the
+    /// <c>NotOnRanToCompletion</c> continuation never fires in the tests above. The continuation is
+    /// registered <c>ExecuteSynchronously</c> against an already-faulted antecedent, so it evicts
+    /// inline and needs no polling.
+    /// </summary>
+    [TestMethod]
+    public void EvictWhenBroken_FaultedSharedTask_RemovesEntryForNextCaller()
+    {
+        var entryType = typeof(CompilationCache).GetNestedType("CompilationEntry", BindingFlags.NonPublic);
+        Assert.IsNotNull(entryType,
+            "CompilationCache.CompilationEntry should remain discoverable by reflection — this test is " +
+            "deliberately implementation-coupled and must be updated alongside any rename.");
+
+        var evictWhenBroken = typeof(CompilationCache).GetMethod(
+            "EvictWhenBroken",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(evictWhenBroken,
+            "CompilationCache.EvictWhenBroken should remain discoverable by reflection — this test is " +
+            "deliberately implementation-coupled and must be updated alongside any rename.");
+
+        var mapType = typeof(ConcurrentDictionary<,>).MakeGenericType(typeof((string, ProjectId)), entryType);
+        var map = Activator.CreateInstance(mapType)!;
+        var faulted = Task.FromException<Compilation?>(new InvalidOperationException("synthetic compile fault"));
+        var entry = Activator.CreateInstance(
+            entryType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [1, faulted],
+            culture: null)!;
+        (string, ProjectId) key = ("workspace-under-test", ProjectId.CreateNewId());
+
+        mapType.GetProperty("Item")!.SetValue(map, entry, [key]);
+        Assert.IsTrue(
+            (bool)mapType.GetMethod("ContainsKey")!.Invoke(map, [key])!,
+            "Pre-seeding the synthetic cache map must succeed for the eviction assertion to mean anything.");
+
+        evictWhenBroken.MakeGenericMethod(entryType).Invoke(null, [map, key, entry, faulted]);
+
+        Assert.IsFalse(
+            (bool)mapType.GetMethod("ContainsKey")!.Invoke(map, [key])!,
+            "A faulted shared task must evict its own cache entry so the next caller re-populates " +
+            "instead of replaying the fault until the workspace version bumps.");
     }
 
     [TestMethod]

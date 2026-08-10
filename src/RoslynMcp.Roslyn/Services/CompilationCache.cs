@@ -77,6 +77,16 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
             return ObserveWithCallerToken(existing.Compilation, ct);
         }
 
+        // An already-canceled caller must not pay for — or install — a compile pass it can never
+        // observe. The shared task below is deliberately started with CancellationToken.None, so
+        // once it is running nothing can stop it; short-circuiting here mirrors
+        // ObserveWithCallerToken's own already-canceled check and restores the pre-cache behavior
+        // of handing a canceled token straight to Roslyn.
+        if (ct.IsCancellationRequested)
+        {
+            return Task.FromCanceled<Compilation?>(ct);
+        }
+
         // Cache miss or stale: install a fresh task. Multiple concurrent first-callers may
         // race here; AddOrUpdate's atomicity ensures only one entry is stored, and any racer
         // that lost will see the winner's task on the next read. The lost-racer's task will

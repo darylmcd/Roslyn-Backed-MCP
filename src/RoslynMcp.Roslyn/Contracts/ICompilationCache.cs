@@ -26,6 +26,17 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// <c>(workspaceId, projectId, version)</c> tuple starts the underlying compilation; subsequent
 /// concurrent callers await the same in-flight task instead of racing.
 /// </para>
+/// <para>
+/// Cancellation is per-caller, never per-entry. The token a caller passes to
+/// <see cref="GetCompilationAsync"/> or <see cref="GetCompilationWithAnalyzersAsync"/> cancels
+/// only that caller's own await of the shared entry: it must not cancel the shared compilation
+/// pass itself, and it must not affect any other caller reading the same cache slot at the same
+/// workspace version. A caller whose token is already canceled on entry observes
+/// <see cref="OperationCanceledException"/> without a compilation pass being started or an entry
+/// being installed. Conversely, an entry whose shared work ends up canceled or faulted must be
+/// dropped so the next caller re-populates it instead of replaying the failure until the next
+/// workspace version bump.
+/// </para>
 /// </remarks>
 public interface ICompilationCache
 {
