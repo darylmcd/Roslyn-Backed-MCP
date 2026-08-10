@@ -36,8 +36,8 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// additionally guarantees that no compilation pass is started and no entry is installed for such
 /// a caller; <see cref="GetCompilationWithAnalyzersAsync"/> does NOT yet carry that entry guard —
 /// an already-canceled caller there can still trigger the analyzer-bound build before observing
-/// cancellation. Closing that gap is tracked separately and is deliberately out of this change's
-/// scope. Conversely, an entry whose shared work ends up canceled or faulted must be
+/// cancellation. Closing that gap is deliberately out of this change's scope.
+/// Conversely, an entry whose shared work ends up canceled or faulted must be
 /// dropped so the next caller re-populates it instead of replaying the failure until the next
 /// workspace version bump.
 /// </para>
