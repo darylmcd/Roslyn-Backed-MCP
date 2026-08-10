@@ -547,7 +547,14 @@ $RECYCLE.BIN/
 
 # Per-run audit output from /mcp-server-surface-test (prose reports + scorecards).
 # Findings consolidate via eng/process-audit-reports.ps1 -> review-inbox/ -> /backlog-intake.
-audit-reports/
+# Contents-form (`audit-reports/*`, NOT `audit-reports/`) is load-bearing: git never descends
+# into an excluded *directory*, so the negation below would be inert under the directory form.
+# Only _latest-promotion-scorecard.json is tracked — it is the release-gating input read by
+# eng/aggregate-promotion-scorecards.ps1 and needs history so a lost refresh shows up as an
+# absent diff instead of failing silently. Prose reports, _aggregated-promotion-scorecard.json,
+# and _ledger-skeleton.tsv stay ignored (derived/scratch).
+audit-reports/*
+!audit-reports/_latest-promotion-scorecard.json
 
 # Flat staging directory for /backlog-intake. Prose reports stage here from sibling
 # repos and get archived into review-inbox/archive/<batch-id>/ after intake. The flat
