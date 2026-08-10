@@ -3,24 +3,25 @@ using RoslynMcp.Core.Services;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Owner of the pre-apply file-snapshot policy for the direct-file mutation paths that
-/// delegate to it (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a
-/// file held before the mutation — or the knowledge that it held none — produce the
+/// Single owner of the pre-apply file-snapshot policy for every mutation path in the server
+/// (<c>file-snapshot-capture-helper-consolidation</c>): given the bytes a file held before
+/// the mutation — or the knowledge that it held none — produce the
 /// <see cref="FileSnapshotDto"/> <c>revert_last_apply</c> needs.
 /// <para>
 /// The policy is one line, but it was hand-rolled as an independent ternary at every call
 /// site (<see cref="EditService"/> twice, <see cref="EditorConfigService"/>,
-/// <see cref="ProjectMutationService"/>), so a fix to one never reached the others. Two
-/// entry points exist because two of those callers already read the bytes for a SECOND
-/// purpose — <c>AtomicFileWriter.ResolveWriteEncoding</c> — and must not read the file
-/// twice: they call <see cref="FromBytesOrFallback"/> with the bytes they already hold,
-/// while callers with nothing pre-read call <see cref="CaptureAsync"/>.
+/// <see cref="ProjectMutationService"/>, <c>RefactoringService.AddFileSnapshotAsync</c> and
+/// <c>RefactoringService.AddProjectFileSnapshotAsync</c>), so a fix to one never reached the
+/// others. All of them now delegate here, and no production call site outside this type
+/// names <see cref="FileSnapshotDto.FromExistingBytes"/>.
 /// </para>
 /// <para>
-/// Ownership is not yet universal: <c>RefactoringService.AddFileSnapshotAsync</c> still
-/// hand-rolls the same exists/missing ternary rather than calling in here. That last copy
-/// is tracked by row <c>file-snapshot-capture-helper-consolidation</c>; until it migrates,
-/// this type owns the policy for the four delegating paths named above only.
+/// Two entry points exist because some callers already read the bytes for a SECOND purpose —
+/// <c>AtomicFileWriter.ResolveWriteEncoding</c>, or a three-way missing-file branch — and
+/// must not read the file twice: they call <see cref="FromBytesOrFallback"/> with the bytes
+/// they already hold, while callers with nothing pre-read call <see cref="CaptureAsync"/>
+/// (which itself delegates to <see cref="FromBytesOrFallback"/> on both branches, so the
+/// ternary exists exactly once).
 /// </para>
 /// </summary>
 internal static class FileSnapshotCapture
