@@ -211,7 +211,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1202",
       "mergedAt": "2026-08-10T19:42:38Z",
-      "notes": null,
+      "notes": "MISNOMER — shipped the PREREQUISITE only, not a scorecard refresh. PR #1202 made audit-reports/_latest-promotion-scorecard.json git-tracked and pinned the surface-test artifact writes to the primary checkout; it did NOT regenerate the snapshot, which still reads serverVersion 1.38.1 / generatedAt 2026-05-16 against a 2.3.8 server (Directory.Build.props:8). Parent row promotion-tier-execution-batch acceptance bullet 1 remains UNMET and the row stays open. Reviewer info finding on the id was not actioned; read this note, not the initiative name.",
       "fileSetHash": "f63a3cc77f90ad4ec614bf541920aebc5a9b71451159328b559b3cbc96c21dbd",
       "stanzaHash": "02dfadf536db48c93be178a8fc26e557a76795656327b7c1d60604128f3b1d5f",
       "reviewedStanzaHash": "02dfadf536db48c93be178a8fc26e557a76795656327b7c1d60604128f3b1d5f"
@@ -313,10 +313,10 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1204",
       "mergedAt": "2026-08-10T20:29:58Z",
-      "notes": null,
+      "notes": "RE-SCOPED at execute time — productionFiles/productionFilesTouched above are the PRE-re-scope values and are NOT what shipped. AS SHIPPED (PR #1204, 4 files at Rule 3's cap): skills/mcp-server-surface-test/SKILL.md, prompts/quick.md, prompts/full.md, prompts/phases/setup-and-analysis.md. skills/analyze/SKILL.md was REVERTED to base and deferred. The stale array could not be corrected in place because this initiative is terminal and bsweep-state.mjs correctly refuses stanza-merge on terminal records; plan.md stanza 9's Scope row carries the corrected list. fileSetHash is therefore stale for this initiative — do not drive a Rule-3 audit off it. Reason for the re-scope: the planned 2-file scope was INERT (SKILL.md Step 2 routes into prompts/quick.md|full.md, which re-imposed the same bare-literal halt).",
       "fileSetHash": "61a308d57d4ee2e775ec7bbb1635bd460d70fb3045eb0c559307b7adfc9d0b88",
-      "stanzaHash": "a3ba38a0bc0edd3b5cec90c1d896a07eb2dd2672ae812764313fcdc16766ab76",
-      "reviewedStanzaHash": "a3ba38a0bc0edd3b5cec90c1d896a07eb2dd2672ae812764313fcdc16766ab76"
+      "stanzaHash": "114153db0cb7f0917d40cd518cabc74491f7e01e840b0723bb4b818bb6819043",
+      "reviewedStanzaHash": "114153db0cb7f0917d40cd518cabc74491f7e01e840b0723bb4b818bb6819043"
     }
   ],
   "anchorVerification": "pending",
@@ -429,10 +429,10 @@
     }
   ],
   "conflictGraphInputHash": "006f0d8320f1e7ff0b7895851c9b3ec3ce5f1e7e0ac5afe7526cc51d37fe0285",
-  "planHash": "418416702d7b770df0ba96c72f32025bed9f862778ae8337badb16de3ba06226",
-  "backlogSnapshotHash": "6bcded0f68b28904388d42d93e386af445aa9d4f1b0def417cf102af2db59f62",
-  "reviewedPlanHash": "418416702d7b770df0ba96c72f32025bed9f862778ae8337badb16de3ba06226",
-  "reviewedBacklogSnapshotHash": "6bcded0f68b28904388d42d93e386af445aa9d4f1b0def417cf102af2db59f62",
+  "planHash": "cce1ab61e668e78d9da3c0f7c6967b62332aeef1b4438c0dbf17e7905729afd3",
+  "backlogSnapshotHash": "77a495fc42690cf52d217ad6e3e735d7f9ee743c19486367c730de597fc46432",
+  "reviewedPlanHash": "cce1ab61e668e78d9da3c0f7c6967b62332aeef1b4438c0dbf17e7905729afd3",
+  "reviewedBacklogSnapshotHash": "77a495fc42690cf52d217ad6e3e735d7f9ee743c19486367c730de597fc46432",
   "completed": true,
   "completedAt": "2026-08-10T20:45:42.063Z"
 }
