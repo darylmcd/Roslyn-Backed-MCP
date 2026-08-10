@@ -6,7 +6,9 @@
      the Phase 0 live-catalog capture + glob-based skill discovery in this prompt
      pick up the change automatically — no appendix edit required. -->
 
-> **This prompt is a null-op without the Roslyn MCP server.** If `mcp__roslyn__server_info` is not callable in your current tool list, stop and ask the user to start the server. The very first step of Phase -1 verifies this as a hard gate.
+> **This prompt is a null-op without the Roslyn MCP server.** If **no** tool whose name ends in `server_info` is callable in your current tool list, stop and ask the user to start the server. The very first step of Phase -1 verifies this as a hard gate.
+
+> **Tool prefix — match by suffix, never by prefix.** Your MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool surfaces as `mcp__roslyn__server_info` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__server_info` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — every prefix is valid. Wherever this document names a tool by its bare name (`server_info`, `workspace_load`, …), call whichever tool in your current surface **ends in** that name. Every gate below halts only when **no** tool ends in the required suffix.
 
 > **Primary purpose:** produce (1) an MCP server audit (bugs, incorrect results, gaps) and (2) an experimental-tier promotion scorecard against one loaded C# repo. **Mechanism:** real refactoring plus tool calls that exercise the full surface. The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) lives in `/surface-audit`, not here.
 

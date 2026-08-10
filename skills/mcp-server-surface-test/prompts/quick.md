@@ -2,7 +2,9 @@
 
 <!-- purpose: Bounded read-only smoke pass for the Roslyn MCP server's live surface against a loaded C# repo. Target runtime ≤15 minutes. No apply-mode mutations, no disposable worktree, no test runs, no network-dependent calls. -->
 
-> **This prompt is a null-op without the Roslyn MCP server.** If `mcp__roslyn__server_info` is not callable in your current tool list, stop and ask the user to start the server.
+> **This prompt is a null-op without the Roslyn MCP server.** If **no** tool whose name ends in `server_info` is callable in your current tool list, stop and ask the user to start the server.
+
+> **Tool prefix — match by suffix, never by prefix.** Your MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool surfaces as `mcp__roslyn__server_info` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__server_info` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — every prefix is valid. Wherever this document names a tool by its bare name (`server_info`, `workspace_load`, …), call whichever tool in your current surface **ends in** that name. Every gate below halts only when **no** tool ends in the required suffix.
 
 > **Primary purpose:** produce a fast read-only assessment of whether the loaded C# repo's Roslyn MCP surface is healthy enough that `--full` would yield clean evidence. No promotion scorecard. No apply round-trips. Findings still render through Phase 19 (dual-path emission — see *Finding emission* below).
 
@@ -38,7 +40,7 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 
 ### Phase -1: MCP server precondition (MUST run first, hard gate)
 
-1. **Check the tool list.** Verify `mcp__roslyn__server_info` appears in your current tool surface. If it does not, STOP and tell the user the skill requires the Roslyn MCP server to be started.
+1. **Check the tool list.** Verify that some tool whose name **ends in** `server_info` appears in your current tool surface (resolve by suffix — see *Tool prefix* above). If **none** does, STOP and tell the user the skill requires the Roslyn MCP server to be started.
 2. **Call `server_info`.** Capture `version`, `catalogVersion`, `runtime`, `os`, `connection.state`, `surface.{tools,resources,prompts}.{stable,experimental}` counts, `surface.registered.parityOk`, and `resourceServerNames.{canonical,aliases,probeGuidance}`. Halt if `connection.state != ready` or `parityOk == false`.
 3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog` using the live resource server handle selected from `server_info.resourceServerNames` when your client requires one; prefer `roslyn` when present and otherwise match an alias exactly. Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name unless that exact alias is listed. Confirm per-category counts match `server_info.surface`.
 4. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once. A non-`healthy` status before any further call is a P1 finding.

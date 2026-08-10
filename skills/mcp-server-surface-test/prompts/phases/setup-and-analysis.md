@@ -9,9 +9,11 @@
 
 This prompt is a contract with the Roslyn MCP server. Without it, nothing below is meaningful.
 
-1. **Check the tool list.** Verify `mcp__roslyn__server_info` appears in your current tool surface. If it does not, STOP and tell the user:
+> **Tool prefix — match by suffix, never by prefix.** Your MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool surfaces as `mcp__roslyn__server_info` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__server_info` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — every prefix is valid. Wherever this document names a tool by its bare name (`server_info`, `workspace_load`, …), call whichever tool in your current surface **ends in** that name. Every gate below halts only when **no** tool ends in the required suffix.
 
-   > *"This prompt requires the Roslyn MCP server (mcp__roslyn__* tools must be callable). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in `.mcp.json` / `settings.json` — confirm `mcp__roslyn__server_info` is available, then rerun."*
+1. **Check the tool list.** Verify that some tool whose name **ends in** `server_info` appears in your current tool surface. If **none** does, STOP and tell the user:
+
+   > *"This prompt requires the Roslyn MCP server — a tool whose name ends in `server_info` must be callable. The prefix does not matter: your client assigns it from the registration path, so it may be `mcp__roslyn__…`, `mcp__plugin_roslyn-mcp_roslyn__…`, or anything else. Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in `.mcp.json` / `settings.json` — confirm a `server_info` tool is available under whichever prefix your tool surface exposes, then rerun."*
 
    Do **not** substitute `Read`, `Grep`, `Bash: dotnet build`, or similar host-side fallbacks. The entire point of this audit is to exercise the MCP server; a run without it produces no audit-grade evidence.
 
