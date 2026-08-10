@@ -9,13 +9,15 @@
 
 This prompt is a contract with the Roslyn MCP server. Without it, nothing below is meaningful.
 
-1. **Check the tool list.** Verify `mcp__roslyn__server_info` appears in your current tool surface. If it does not, STOP and tell the user:
+> **Tool prefix — resolve it once from `server_info`, then pin it.** Your MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool surfaces as `mcp__roslyn__server_info` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__server_info` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — every prefix is valid, and a missing specific prefix literal is never itself grounds to halt. Resolve the prefix **once**, at the first gate, then pin it. **(1) Scan** your current tool surface for **every** tool whose name ends in `server_info`. `server_info` is a common MCP tool name, so there may be more than one candidate and some may belong to other servers entirely. **(2) Identify** the Roslyn one by its **response shape**, never by its prefix: a Roslyn `server_info` response carries `connection.state`, `catalogVersion`, and `surface.*`. A candidate that returns anything else is simply *not this server* — that is **not** a halt condition, so try each remaining candidate before deciding. **(3) Pin** the winning candidate's prefix and resolve **every** later bare tool name in this skill — including its phase sub-files (`workspace_load`, `find_references`, `get_symbol_outline`, …) — under **that one pinned prefix only**. Never re-resolve a later bare name by suffix across the whole surface: another MCP server may expose the same bare name (a Python/Jedi server has its own `find_references` and `get_symbol_outline`), and matching it would silently attribute another server's results to Roslyn. Every gate in this skill — including its phase sub-files — halts only when **no** tool ending in `server_info` returns a Roslyn-shaped response.
 
-   > *"This prompt requires the Roslyn MCP server (mcp__roslyn__* tools must be callable). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in `.mcp.json` / `settings.json` — confirm `mcp__roslyn__server_info` is available, then rerun."*
+1. **Check the tool list and pin the prefix.** Call each tool whose name **ends in** `server_info` until one returns a Roslyn-shaped response, then pin that tool's prefix for every later call in this run (see *Tool prefix* above). If **no** candidate does, STOP and tell the user:
+
+   > *"This prompt requires the Roslyn MCP server — some tool whose name ends in `server_info` must be callable and return a Roslyn-shaped response (`connection.state`, `catalogVersion`, `surface.*`). The prefix does not matter: your client assigns it from the registration path, so it may be `mcp__roslyn__…`, `mcp__plugin_roslyn-mcp_roslyn__…`, or anything else. Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in `.mcp.json` / `settings.json` — confirm a Roslyn `server_info` tool is available under whichever prefix your tool surface exposes, then rerun."*
 
    Do **not** substitute `Read`, `Grep`, `Bash: dotnet build`, or similar host-side fallbacks. The entire point of this audit is to exercise the MCP server; a run without it produces no audit-grade evidence.
 
-2. **Call `server_info`.** Capture:
+2. **Read the pinned `server_info` response.** Capture:
    - `version`, `catalogVersion`, `runtime`, `os`.
    - `surface.tools.{stable,experimental}`, `surface.resources.{stable,experimental}`, `surface.prompts.{stable,experimental}`, `surface.registered.*`, `surface.registered.parityOk` (must be `true`; `false` is a P2 finding).
    - `resourceServerNames.canonical`, `.aliases[]`, and `.probeGuidance`. When the client asks for a resource server name, use the actually-listed server handle that matches this hint. Prefer `roslyn` when present; otherwise match an alias exactly. Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name unless that exact underscore alias is listed by the host.
@@ -27,7 +29,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 5. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once before Phase 1's first semantic call. Capture `status` (`healthy` / `degraded` / `unhealthy`), `staleness` indicators, and any returned remediation hints. A non-`healthy` status before any mutation is a P1 finding — surface it and either reload or halt; do not march on against a degraded workspace. (`server_heartbeat` covers transport readiness; `workspace_health` covers per-workspace state.)
 
-**Hard-gate checkpoint:** Is `server_info` callable? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
+**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
 
 ---
 
