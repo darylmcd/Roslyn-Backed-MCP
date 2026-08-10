@@ -30,3 +30,9 @@ The consequence is that **no production caller opts in yet**, which is why all t
 
 - The forked-solution case this gate exists for is real and confirmed live: `CrossProjectRefactoringService.cs:236` calls `ResolveByMetadataNameAsync(updatedSolution, ...)` with a forked solution and must never be opted in.
 - Confirmed forked exclusions that must stay on the raw path: `InterfaceExtractionService:515`, `RefactoringService:415`, `TypeMoveService:217`.
+
+## Amendment — 2026-08-10 (cold review of sweep 20260810T175048Z)
+
+- **Add a FOURTH acceptance bullet — the gate does not validate what its doc claims.** `SymbolResolver.cs:51-68` checks `ReferenceEquals(solution, solution.Workspace.CurrentSolution)` — liveness with respect to the solution's OWN workspace. It never confirms that `solution.Workspace` is the workspace identified by the `workspaceId` used as the cache key. A live solution belonging to workspace B, passed with `workspaceId: "A"`, therefore passes the gate and is stored/served under A's key. The XML doc at `:41-44` asserts this is "semantically `solution == IWorkspaceManager.GetCurrentSolution(workspaceId)`" — it is not.
+  - [ ] The gate rejects (falls back to the raw path) when `solution.Workspace` does not correspond to `workspaceId`, or the doc comment is corrected to describe the weaker check it actually performs. A test passes a live solution from one workspace with another workspace's id and asserts no cache hit under the wrong key.
+- Unreachable today (no production caller opts in — see `compilation-cache-wire-group-c-consumer`), which is why this is hardening rather than a live bug. Fix it BEFORE that row wires a consumer.

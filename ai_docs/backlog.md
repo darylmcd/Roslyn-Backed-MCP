@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-10T20:46:22Z
+**updated_at:** 2026-08-10T20:59:03Z
 
 ## Agent contract
 
@@ -66,6 +66,7 @@
 | `compilation-cache-analyzers-entry-guard` | Medium | — | **Guard already-canceled callers in `GetCompilationWithAnalyzersAsync`** — `CompilationCache.cs:114` starts the analyzer build before checking the caller token, unlike its guarded `:85` sibling; drop the stale asymmetry caveat. [type: bug] [source: PR #1203 cq review] | M | items/compilation-cache-analyzers-entry-guard.md |
 | `elicitation-trychoice-cancellation-swallow` | Medium | — | **Stop reporting elicitation cancellation as user-declined** — the bare `catch { return null; }` at `ElicitationChoicePrompt.cs:122` absorbs `OperationCanceledException`, so callers answer with the additive list response. [type: bug] [source: PR #1205 cq review] | M | items/elicitation-trychoice-cancellation-swallow.md |
 | `shipped-skills-hardcode-bare-roslyn-tool-prefix` | Medium | — | **Prefix-agnostic shipped skills** — VERIFY FIRST whether the plugin-prefix surface-test entry gate misfires, then sweep shipped `skills/**` + retro prompt to suffix-based tool references via the genericity guard. [type: bug] [source: 2026-06-08 retro follow-up] | L | items/shipped-skills-hardcode-bare-roslyn-tool-prefix.md |
+| `compilation-cache-wire-group-c-consumer` | Medium | group-c-compilation-cache-gate-hardening | **Wire a production consumer of the group-c cache params** — PR #1207 added optional `compilationCache`/`workspaceId` but every `src/` call site passes the 3-arg form, so the cache path is unreachable; also re-establish the lost raw-site inventory. [type: refactor] [source: 2026-08-10 sweep cold review] | M | items/compilation-cache-wire-group-c-consumer.md |
 
 ## Low
 
