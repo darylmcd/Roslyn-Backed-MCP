@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -189,19 +190,34 @@ public static class SymbolHandleSerializer
     /// ambiguity (overload set, partial-class siblings, member-vs-type collisions) ahead of
     /// elicitation should call this and inspect <c>Count &gt; 1</c>.
     /// </remarks>
+    /// <param name="compilationCache">
+    /// compilation-cache-adoption-read-side: optional shared compilation cache. When supplied together
+    /// with <paramref name="workspaceId"/> AND <paramref name="solution"/> is the live workspace
+    /// solution, the per-project compilation fetch is routed through it. Omitted (the default) or a
+    /// forked solution takes the raw fetch — see
+    /// <see cref="SymbolResolver.CanUseCompilationCache"/>.
+    /// </param>
+    /// <param name="workspaceId">The workspace session identifier, required to key the cache.</param>
     public static async Task<IReadOnlyList<ISymbol>> FindAllByMetadataNameAsync(
-        Solution solution, string metadataName, CancellationToken ct)
+        Solution solution,
+        string metadataName,
+        CancellationToken ct,
+        ICompilationCache? compilationCache = null,
+        string? workspaceId = null)
     {
         ArgumentNullException.ThrowIfNull(solution);
         if (string.IsNullOrWhiteSpace(metadataName)) return Array.Empty<ISymbol>();
 
         var matches = new List<ISymbol>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var useCache = SymbolResolver.CanUseCompilationCache(solution, compilationCache, workspaceId);
 
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = useCache
+                ? await compilationCache!.GetCompilationAsync(workspaceId!, project, ct).ConfigureAwait(false)
+                : await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             // Type-by-full-name fast path — collect, do not return early.
