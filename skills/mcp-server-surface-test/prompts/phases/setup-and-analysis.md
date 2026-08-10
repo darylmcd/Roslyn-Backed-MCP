@@ -29,7 +29,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 5. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once before Phase 1's first semantic call. Capture `status` (`healthy` / `degraded` / `unhealthy`), `staleness` indicators, and any returned remediation hints. A non-`healthy` status before any mutation is a P1 finding — surface it and either reload or halt; do not march on against a degraded workspace. (`server_heartbeat` covers transport readiness; `workspace_health` covers per-workspace state.)
 
-**Hard-gate checkpoint:** Is `server_info` callable? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
+**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
 
 ---
 
