@@ -1061,31 +1061,31 @@ public sealed class RefactoringService : IRefactoringService
         bool missingFileIsNew,
         CancellationToken ct)
     {
-        var filePath = document?.FilePath;
+        if (document is null)
+        {
+            return;
+        }
+
+        var filePath = document.FilePath;
         if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
         {
             return;
         }
 
-        if (File.Exists(filePath))
+        var existingBytes = File.Exists(filePath)
+            ? await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false)
+            : null;
+
+        // Only the missing-file case has a fallback to compute, and only when the file is not
+        // brand new. GetTextAsync stays inside this branch deliberately: materializing the whole
+        // SourceText is wasted work on the common file-exists path.
+        string? fallbackText = null;
+        if (existingBytes is null && !missingFileIsNew)
         {
-            snapshots.Add(FileSnapshotDto.FromExistingBytes(
-                filePath,
-                await File.ReadAllBytesAsync(filePath, ct).ConfigureAwait(false)));
-            return;
+            fallbackText = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         }
 
-        if (missingFileIsNew)
-        {
-            snapshots.Add(new FileSnapshotDto(filePath, OriginalText: null));
-            return;
-        }
-
-        if (document is not null)
-        {
-            var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
-            snapshots.Add(new FileSnapshotDto(filePath, sourceText.ToString()));
-        }
+        snapshots.Add(FileSnapshotCapture.FromBytesOrFallback(filePath, existingBytes, fallbackText));
     }
 
     private static async Task AddProjectFileSnapshotAsync(
@@ -1102,9 +1102,10 @@ public sealed class RefactoringService : IRefactoringService
             return;
         }
 
-        snapshots.Add(FileSnapshotDto.FromExistingBytes(
+        snapshots.Add(FileSnapshotCapture.FromBytesOrFallback(
             projectPath,
-            await File.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false)));
+            await File.ReadAllBytesAsync(projectPath, ct).ConfigureAwait(false),
+            fallbackText: null));
     }
 
     private static string GetDefaultFixId(string diagnosticId) =>
