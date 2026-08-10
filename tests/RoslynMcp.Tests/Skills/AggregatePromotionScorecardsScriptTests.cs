@@ -27,7 +27,7 @@ public sealed class AggregatePromotionScorecardsScriptTests
     [TestInitialize]
     public void TestInitialize()
     {
-        _siblingParent = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "AggregatePromotionScorecards", Guid.NewGuid().ToString("N"));
+        _siblingParent = Path.Combine(TestTempRoot.Current, "AggregatePromotionScorecards", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_siblingParent);
     }
 

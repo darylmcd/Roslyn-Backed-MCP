@@ -199,8 +199,7 @@ public sealed class ProjectOutputTypeTests : TestBase
     private static ProjectFixture CreateProjectFixture(string fileName, string content)
     {
         var tempRoot = Path.Combine(
-            Path.GetTempPath(),
-            "RoslynMcpTests",
+            TestTempRoot.Current,
             "ProjectOutputTypeTests",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);

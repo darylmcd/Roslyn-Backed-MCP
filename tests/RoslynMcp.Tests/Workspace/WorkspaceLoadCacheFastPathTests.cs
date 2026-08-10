@@ -40,8 +40,7 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
     public void Setup()
     {
         _cacheRoot = Path.Combine(
-            Path.GetTempPath(),
-            "RoslynMcpTests",
+            TestTempRoot.Current,
             "WorkspaceLoadCacheFastPath",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_cacheRoot);

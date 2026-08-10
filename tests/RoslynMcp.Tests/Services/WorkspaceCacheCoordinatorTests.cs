@@ -14,8 +14,7 @@ public sealed class WorkspaceCacheCoordinatorTests
     public void Setup()
     {
         _root = Path.Combine(
-            Path.GetTempPath(),
-            "RoslynMcpTests",
+            TestTempRoot.Current,
             "WorkspaceCacheCoordinator",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);

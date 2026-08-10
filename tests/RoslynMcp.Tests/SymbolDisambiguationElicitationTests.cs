@@ -229,8 +229,7 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
 
         using var workspace = new AdhocWorkspace();
         var sharedSourcePath = Path.Combine(
-            Path.GetTempPath(),
-            "RoslynMcpTests",
+            TestTempRoot.Current,
             "DuplicateCandidates",
             "SharedSourceType.cs");
         var references = new[]

@@ -31,7 +31,7 @@ public sealed class ArchiveOldReportsScriptTests
     [TestInitialize]
     public void TestInitialize()
     {
-        _tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "ArchiveOldReports", Guid.NewGuid().ToString("N"));
+        _tempRoot = Path.Combine(TestTempRoot.Current, "ArchiveOldReports", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempRoot);
     }
 

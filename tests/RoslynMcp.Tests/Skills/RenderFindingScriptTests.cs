@@ -25,7 +25,7 @@ public sealed class RenderFindingScriptTests
     [TestInitialize]
     public void TestInitialize()
     {
-        _tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "RenderFinding", Guid.NewGuid().ToString("N"));
+        _tempRoot = Path.Combine(TestTempRoot.Current, "RenderFinding", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempRoot);
     }
 

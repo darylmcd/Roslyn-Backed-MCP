@@ -152,7 +152,7 @@ public sealed class ServiceCollectionExtensionsTests
     [TestMethod]
     public void AddRoslynServices_PersistentCompositeStorage_ReceivesLogger()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "PersistentCompositeStorage", Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(TestTempRoot.Current, "PersistentCompositeStorage", Guid.NewGuid().ToString("N"));
         try
         {
             var services = new ServiceCollection();

@@ -22,7 +22,7 @@ public sealed class RestoreStalenessDetectorTests
     [TestInitialize]
     public void Initialize()
     {
-        _tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "RestoreStaleness", Guid.NewGuid().ToString("N"));
+        _tempRoot = Path.Combine(TestTempRoot.Current, "RestoreStaleness", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempRoot);
     }
 
