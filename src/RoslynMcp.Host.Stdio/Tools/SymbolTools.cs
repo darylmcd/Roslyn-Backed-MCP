@@ -5,7 +5,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
-using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -90,7 +90,7 @@ public static class SymbolTools
             // client supports MCP elicitation do we open the blocking operator picker and return ONLY
             // the chosen symbol with a chosenViaElicitation marker. If elicitation is unsupported OR
             // the user declines, fall through to the existing list shape.
-            if (allowElicitation && paged.Count > 1 && StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
+            if (allowElicitation && paged.Count > 1 && ElicitationChoicePrompt.HasElicitation(server?.ClientCapabilities))
             {
                 var options = new List<(string Key, string Label)>(paged.Count);
                 for (var i = 0; i < paged.Count; i++)
@@ -102,7 +102,7 @@ public static class SymbolTools
                     options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), label));
                 }
 
-                var chosenKey = await StructuredCallToolFilter.TryElicitChoiceAsync(
+                var chosenKey = await ElicitationChoicePrompt.TryElicitChoiceAsync(
                     server,
                     paramName: "choice",
                     title: "Pick a symbol",
@@ -930,7 +930,7 @@ public static class SymbolTools
         }
 
         // Try elicitation only when the caller explicitly opted in AND the client supports it.
-        if (allowElicitation && StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
+        if (allowElicitation && ElicitationChoicePrompt.HasElicitation(server?.ClientCapabilities))
         {
             var options = new List<(string Key, string Label)>(candidates.Count);
             for (var i = 0; i < candidates.Count; i++)
@@ -938,7 +938,7 @@ public static class SymbolTools
                 options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), labels[i]));
             }
 
-            var chosenKey = await StructuredCallToolFilter.TryElicitChoiceAsync(
+            var chosenKey = await ElicitationChoicePrompt.TryElicitChoiceAsync(
                 server,
                 paramName: "choice",
                 title: "Pick a symbol",

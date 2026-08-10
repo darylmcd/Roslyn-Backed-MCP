@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Elicitation;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 
@@ -271,67 +272,22 @@ internal static class StructuredCallElicitationCoordinator
     /// </param>
     /// <param name="cancellationToken">Cancellation token (request-scoped).</param>
     /// <returns>The chosen <c>Key</c> on accept; <see langword="null"/> on decline / cancel / unsupported / error.</returns>
-    public static async Task<string?> TryElicitChoiceAsync(
+    /// <remarks>
+    /// Thin delegate onto <see cref="ElicitationChoicePrompt.TryElicitChoiceAsync"/>, which is the
+    /// canonical home — the picker lives in the cycle-free
+    /// <c>RoslynMcp.Host.Stdio.Elicitation</c> namespace so <c>Tools</c> can call it without
+    /// importing <c>Middleware</c>. Retained here so this class's historical static call surface
+    /// (and its test suite) keeps compiling unchanged.
+    /// </remarks>
+    public static Task<string?> TryElicitChoiceAsync(
         McpServer? server,
         string paramName,
         string title,
         string description,
         IReadOnlyList<(string Key, string Label)> options,
-        CancellationToken cancellationToken)
-    {
-        if (server is null) return null;
-        if (!ElicitationAllowlistPolicy.HasElicitation(server.ClientCapabilities)) return null;
-        if (string.IsNullOrEmpty(paramName) || options is null || options.Count == 0) return null;
-
-        var oneOf = new List<ElicitRequestParams.EnumSchemaOption>(options.Count);
-        for (var i = 0; i < options.Count; i++)
-        {
-            var (key, label) = options[i];
-            if (string.IsNullOrEmpty(key)) continue;
-            oneOf.Add(new ElicitRequestParams.EnumSchemaOption
-            {
-                Const = key,
-                Title = string.IsNullOrEmpty(label) ? key : label,
-            });
-        }
-        if (oneOf.Count == 0) return null;
-
-        var request = new ElicitRequestParams
-        {
-            Message = description,
-            RequestedSchema = new ElicitRequestParams.RequestSchema
-            {
-                Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
-                {
-                    [paramName] = new ElicitRequestParams.TitledSingleSelectEnumSchema
-                    {
-                        Title = title,
-                        Description = description,
-                        OneOf = oneOf,
-                    },
-                },
-                Required = [paramName],
-            },
-        };
-
-        ElicitResult result;
-        try
-        {
-            result = await server.ElicitAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // ElicitAsync can throw InvalidOperationException (transport gone, capability
-            // mismatch) or McpException (client-side error). Either way, the disambiguation
-            // path falls through to the additive list response — never masks a real failure.
-            return null;
-        }
-
-        if (!result.IsAccepted || result.Content is null) return null;
-        if (!result.Content.TryGetValue(paramName, out var chosen)) return null;
-        var chosenKey = chosen.ValueKind == JsonValueKind.String ? chosen.GetString() : null;
-        return string.IsNullOrEmpty(chosenKey) ? null : chosenKey;
-    }
+        CancellationToken cancellationToken) =>
+        ElicitationChoicePrompt.TryElicitChoiceAsync(
+            server, paramName, title, description, options, cancellationToken);
 
     /// <summary>
     /// Inspects <paramref name="ex"/> for the InvalidArgument-shaped binding-failure
