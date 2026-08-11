@@ -313,8 +313,20 @@ public class WorkspaceExecutionGateTests
         Assert.IsTrue(closeCompleted);
     }
 
+    // test-run-unfiltered-bare-error-rootcause: this test used to pin the BUG, not the fix — it
+    // asserted a bare TaskCanceledException/OperationCanceledException escaped when the gate's
+    // OWN internal RequestTimeout fired while the caller's CancellationToken.None was never
+    // cancelled. That raw OCE is indistinguishable from genuine caller-initiated cancellation to
+    // every layer above (StructuredCallToolFilter and the MCP SDK's own dispatcher both treat any
+    // OperationCanceledException as cooperative cancellation and forward it unformatted), and the
+    // SDK's own top-level catch-all only recognizes cancellation tied to the AMBIENT per-request
+    // token — so it fell through to the SDK's hardcoded "An error occurred invoking '{tool}'."
+    // fallback: the exact bare string from every test_run repro in this row's evidence. Now the
+    // gate reclassifies its own timeout into a TimeoutException before it escapes (mirroring
+    // GatedCommandExecutor.ExecuteAsync / WorkspaceValidationService), which
+    // ToolErrorHandler.ClassifyAndFormat already maps to category="Timeout".
     [TestMethod]
-    public async Task RunReadAsync_RespectsRequestTimeout()
+    public async Task RunReadAsync_RequestTimeoutFires_ThrowsTimeoutExceptionNotBareOperationCanceled()
     {
         var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions
@@ -323,12 +335,67 @@ public class WorkspaceExecutionGateTests
             },
             new FakeGateWorkspaceManager());
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
             gate.RunReadAsync(WorkspaceA, async ct =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 return 0;
             }, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, WorkspaceA,
+            "The timeout message should identify which workspace's gated operation timed out.");
+        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS",
+            "The message should point the caller at the env var that controls this timeout.");
+    }
+
+    // Counterpart to the reclassification above: TRUE caller-initiated cancellation (the client's
+    // own token fires, not the gate's internal deadline) must still propagate as an unclassified
+    // OperationCanceledException so it reaches the MCP SDK's protocol-level cancel path — the
+    // `when (!ct.IsCancellationRequested && ...)` guard exists specifically to preserve this.
+    [TestMethod]
+    public async Task RunReadAsync_CallerCancellation_PropagatesAsOperationCanceledNotTimeoutException()
+    {
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = TimeSpan.FromSeconds(30),
+            },
+            new FakeGateWorkspaceManager());
+
+        using var callerCts = new CancellationTokenSource();
+
+        var run = gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            return 0;
+        }, callerCts.Token);
+
+        callerCts.Cancel();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => run);
+    }
+
+    // RunLoadGateAsync (workspace_load/workspace_reload/workspace_close) shares the same
+    // timeoutCts/linkedCts construction as RunPerWorkspaceAsync and was exposed to the identical
+    // gap — pin the reclassification there too.
+    [TestMethod]
+    public async Task RunLoadGateAsync_RequestTimeoutFires_ThrowsTimeoutExceptionNotBareOperationCanceled()
+    {
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = TimeSpan.FromMilliseconds(150),
+            },
+            new FakeGateWorkspaceManager());
+
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+            gate.RunLoadGateAsync(async ct =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                return 0;
+            }, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
     }
 
     [TestMethod]
@@ -465,6 +532,35 @@ public class WorkspaceExecutionGateTests
             "StaleAction must remain null when reload swallows KeyNotFoundException — the envelope would otherwise falsely claim an auto-reload.");
         Assert.IsNull(metrics.StaleReloadMs,
             "StaleReloadMs must also remain null when no reload completed.");
+    }
+
+    // test-run-unfiltered-bare-error-rootcause (finding 1, second review pass): RunPerWorkspaceAsync's
+    // try block originally started AFTER ApplyStalenessPolicyAsync, so a gate-internal timeout
+    // firing WHILE the auto-reload's own ReloadAsync call was in flight escaped the
+    // reclassification catch entirely — the identical bare-error bug via a code path the first
+    // fix cycle missed (the method's own parallel-fanout-auto-reload-timeout-floor comment already
+    // documented that reload can consume "some, possibly all" of the request-timeout budget). The
+    // try now wraps the staleness-policy/reload leg too.
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_RequestTimeoutFiresDuringReload_ThrowsTimeoutExceptionNotBareOperationCanceled()
+    {
+        var manager = new FakeGateWorkspaceManager(reloadDelayMs: 5000);
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                OnStale = StalenessPolicy.AutoReload,
+                RequestTimeout = TimeSpan.FromMilliseconds(150),
+            },
+            manager);
+
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+            gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, WorkspaceA,
+            "The timeout message should identify which workspace's gated operation timed out.");
+        Assert.AreEqual(1, manager.ReloadCount, "The reload attempt should have started before the timeout fired.");
     }
 
     /// <summary>

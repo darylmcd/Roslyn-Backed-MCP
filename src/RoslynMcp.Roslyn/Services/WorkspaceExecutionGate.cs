@@ -26,6 +26,25 @@ namespace RoslynMcp.Roslyn.Services;
 /// a configurable per-request timeout (default 2 minutes) and a sliding-window rate limiter
 /// (default 120 requests per 60 seconds).
 /// </para>
+///
+/// <para>
+/// <b>Per-request timeout classification (test-run-unfiltered-bare-error-rootcause):</b> when
+/// the internal timeout fires WHILE the caller's own <see cref="CancellationToken"/> is still
+/// live, both <see cref="RunLoadGateAsync{T}"/> and <see cref="RunPerWorkspaceAsync{T}"/>
+/// reclassify the resulting <see cref="OperationCanceledException"/> into a
+/// <see cref="TimeoutException"/> before it leaves this class — mirroring the pattern already
+/// used by <c>GatedCommandExecutor.ExecuteAsync</c> and <c>WorkspaceValidationService</c> for
+/// their own internal timeout sources. Without this, an unclassified OCE from an internal
+/// timeout is indistinguishable from genuine caller-initiated cancellation to every layer above
+/// (the SDK request filter and the MCP SDK's own dispatcher both treat any
+/// <see cref="OperationCanceledException"/> as cooperative cancellation and let it propagate
+/// unformatted), and the SDK's own top-level catch-all only recognizes cancellation tied to the
+/// AMBIENT per-request token — an internal-timeout OCE fails that check and falls through to the
+/// SDK's bare <c>"An error occurred invoking '{tool}'."</c> fallback with no category, no tool
+/// name, and no <c>_meta</c>. Genuine caller cancellation (<c>ct.IsCancellationRequested</c>
+/// true) is deliberately left unclassified so it still reaches the MCP protocol-level cancel
+/// path.
+/// </para>
 /// </remarks>
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
@@ -101,18 +120,32 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var linked = linkedCts.Token;
 
-        return await WithGlobalThrottle(async () =>
+        try
         {
-            await _loadGate.WaitAsync(linked).ConfigureAwait(false);
-            try
+            return await WithGlobalThrottle(async () =>
             {
-                return await RunWithMetricsAsync("load", queueStopwatch, () => action(linked)).ConfigureAwait(false);
-            }
-            finally
-            {
-                _loadGate.Release();
-            }
-        }, linked).ConfigureAwait(false);
+                await _loadGate.WaitAsync(linked).ConfigureAwait(false);
+                try
+                {
+                    return await RunWithMetricsAsync("load", queueStopwatch, () => action(linked)).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _loadGate.Release();
+                }
+            }, linked).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
+            // see the identical catch in RunPerWorkspaceAsync below for the full mechanism. This
+            // load-gate leg (workspace_load/workspace_reload/workspace_close) shares the same
+            // timeoutCts/linkedCts construction and was therefore exposed to the same gap.
+            throw new TimeoutException(
+                $"The gated load operation did not complete within the request timeout of " +
+                $"{_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS if this " +
+                "operation is expected to run longer.");
+        }
     }
 
     /// <summary>
@@ -182,52 +215,94 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var linked = linkedCts.Token;
 
-        // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
-        // acquired, so an auto-reload path runs under the same load gate as explicit
-        // workspace_reload calls — the reload's own write-locking is handled by WorkspaceManager.
-        // workspace_close skips this: reloading requires the on-disk solution, which may already
-        // be deleted while the in-memory session is still registered (F21 / missing worktree).
-        var autoReloaded = false;
-        if (applyStalenessPolicy)
+        try
         {
-            autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
-
-            // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
-            // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
-            // for infrastructure work the caller cannot control. Reset the deadline to give the
-            // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
-            // reads from hitting the 5-second floor when the reload finishes in <2s but the
-            // remaining budget is already exhausted.
+            // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
+            // acquired, so an auto-reload path runs under the same load gate as explicit
+            // workspace_reload calls — the reload's own write-locking is handled by
+            // WorkspaceManager. workspace_close skips this: reloading requires the on-disk
+            // solution, which may already be deleted while the in-memory session is still
+            // registered (F21 / missing worktree).
             //
-            // The extension fires only when ApplyStalenessPolicyAsync reports a successful
-            // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
-            // the original deadline stands. The token must not already be cancelled (e.g. the
-            // caller cancelled, or the reload itself used all budget) — in that case we let the
-            // existing OperationCanceledException propagate unchanged.
-            if (autoReloaded && !linked.IsCancellationRequested)
+            // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
+            // this leg is now INSIDE the try so a gate-internal timeout firing during
+            // ApplyStalenessPolicyAsync's own ReloadAsync call (see the comment below on
+            // parallel-fanout-auto-reload-timeout-floor: the reload can consume "some, possibly
+            // all" of the request-timeout budget) is caught by the same reclassification catch
+            // as the rest of this method, instead of escaping unclassified.
+            var autoReloaded = false;
+            if (applyStalenessPolicy)
             {
-                timeoutCts.CancelAfter(_requestTimeout);
-            }
-        }
+                autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
 
-        return await WithGlobalThrottle(async () =>
-        {
-            var rwLock = _rwLocks.Get(workspaceId);
-            if (isWrite)
+                // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
+                // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
+                // for infrastructure work the caller cannot control. Reset the deadline to give the
+                // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
+                // reads from hitting the 5-second floor when the reload finishes in <2s but the
+                // remaining budget is already exhausted.
+                //
+                // The extension fires only when ApplyStalenessPolicyAsync reports a successful
+                // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
+                // the original deadline stands. The token must not already be cancelled (e.g. the
+                // caller cancelled, or the reload itself used all budget) — in that case the catch
+                // below reclassifies a gate-internal timeout into TimeoutException, or lets a
+                // genuine caller cancellation propagate as OperationCanceledException unchanged.
+                if (autoReloaded && !linked.IsCancellationRequested)
+                {
+                    timeoutCts.CancelAfter(_requestTimeout);
+                }
+            }
+
+            return await WithGlobalThrottle(async () =>
             {
-                using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
+                var rwLock = _rwLocks.Get(workspaceId);
+                if (isWrite)
+                {
+                    using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
+                    {
+                        EnsureWorkspaceStillExists(workspaceId);
+                        return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
+                    }
+                }
+
+                using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
                 {
                     EnsureWorkspaceStillExists(workspaceId);
                     return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
                 }
-            }
-
-            using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
-            {
-                EnsureWorkspaceStillExists(workspaceId);
-                return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
-            }
-        }, linked).ConfigureAwait(false);
+            }, linked).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
+            // without this reclassification, a gate-internal RequestTimeout (armed above, default
+            // 2 minutes, ROSLYNMCP_REQUEST_TIMEOUT_SECONDS) that fires while the CALLER's own `ct`
+            // is still live throws a raw OperationCanceledException bound to `linked`/`timeoutCts`
+            // — not `ct`. Both the SDK request-filter (StructuredCallToolFilter) and, for
+            // test_run specifically, RunTestsOnceAsync's own inline catch deliberately rethrow any
+            // OperationCanceledException unclassified so genuine CLIENT-initiated cancellation
+            // reaches the MCP SDK's protocol-level cancel path unchanged. But the SDK's own
+            // top-level tools/call catch-all (ModelContextProtocol.Core, McpServerImpl, pinned
+            // 1.4.1) only takes that path when the AMBIENT per-request cancellationToken is the
+            // one that fired; otherwise it falls through to its hardcoded
+            // "An error occurred invoking '{tool}'." fallback — zero category, zero tool,
+            // zero schemaHint, zero _meta. That fallback string is the literal, verbatim text
+            // reported across every test_run bare-error repro in this row's evidence (2026-05-21,
+            // 2026-05-31, 2026-06-08, 2026-08-05), and the 2026-08-05 repro's measured 120.37s
+            // runtime before the bare error is a near-exact match for this gate's 120s
+            // (2-minute) default RequestTimeout — a large/unfiltered `dotnet test` run is simply
+            // far more likely to cross that ceiling than the sub-second reads most other tools
+            // perform, which is why the symptom is essentially test_run-exclusive. Reclassifying
+            // to TimeoutException here — the same pattern GatedCommandExecutor.ExecuteAsync and
+            // WorkspaceValidationService already apply to THEIR OWN internal timeout CTS's — routes
+            // it through ToolErrorHandler.ClassifyAndFormat's existing "Timeout" category instead
+            // of letting it slip past every structured-envelope layer in the server.
+            throw new TimeoutException(
+                $"The gated operation on workspace '{workspaceId}' did not complete within the request " +
+                $"timeout of {_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS " +
+                "if this operation is expected to run longer.");
+        }
     }
 
     /// <summary>
