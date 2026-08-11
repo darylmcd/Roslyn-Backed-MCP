@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T19:58:40Z
+**updated_at:** 2026-08-11T20:53:38Z
 
 ## Agent contract
 
@@ -119,6 +119,7 @@
 | `isolated-workspace-slnx-surgery-consolidation` | Low | — | **Consolidate copied-.slnx project-list surgery into IsolatedWorkspaceTestBase** — 3 inline variants of slnx XDocument surgery exist across the test assembly; one hardcodes the filename instead of using SolutionPath. [type: refactor] [source: compile-check-buildhint-whitespace-discriminator-mismatch cq review] | S | items/isolated-workspace-slnx-surgery-consolidation.md |
 | `fixalltools-projectname-stale-optional-description` | Low | — | **fix_all's projectName MCP description is stale after the blank-projectName guard** — Description still says 'Optional' though scope:project now requires it. [type: docs] [source: fixall-blank-projectname-silent-wrong-target spec review] | S | items/fixalltools-projectname-stale-optional-description.md |
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
+| `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
 
 ## Defer
 

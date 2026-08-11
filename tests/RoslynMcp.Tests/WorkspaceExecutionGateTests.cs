@@ -313,8 +313,20 @@ public class WorkspaceExecutionGateTests
         Assert.IsTrue(closeCompleted);
     }
 
+    // test-run-unfiltered-bare-error-rootcause: this test used to pin the BUG, not the fix — it
+    // asserted a bare TaskCanceledException/OperationCanceledException escaped when the gate's
+    // OWN internal RequestTimeout fired while the caller's CancellationToken.None was never
+    // cancelled. That raw OCE is indistinguishable from genuine caller-initiated cancellation to
+    // every layer above (StructuredCallToolFilter and the MCP SDK's own dispatcher both treat any
+    // OperationCanceledException as cooperative cancellation and forward it unformatted), and the
+    // SDK's own top-level catch-all only recognizes cancellation tied to the AMBIENT per-request
+    // token — so it fell through to the SDK's hardcoded "An error occurred invoking '{tool}'."
+    // fallback: the exact bare string from every test_run repro in this row's evidence. Now the
+    // gate reclassifies its own timeout into a TimeoutException before it escapes (mirroring
+    // GatedCommandExecutor.ExecuteAsync / WorkspaceValidationService), which
+    // ToolErrorHandler.ClassifyAndFormat already maps to category="Timeout".
     [TestMethod]
-    public async Task RunReadAsync_RespectsRequestTimeout()
+    public async Task RunReadAsync_RequestTimeoutFires_ThrowsTimeoutExceptionNotBareOperationCanceled()
     {
         var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions
@@ -323,12 +335,67 @@ public class WorkspaceExecutionGateTests
             },
             new FakeGateWorkspaceManager());
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
             gate.RunReadAsync(WorkspaceA, async ct =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), ct);
                 return 0;
             }, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, WorkspaceA,
+            "The timeout message should identify which workspace's gated operation timed out.");
+        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS",
+            "The message should point the caller at the env var that controls this timeout.");
+    }
+
+    // Counterpart to the reclassification above: TRUE caller-initiated cancellation (the client's
+    // own token fires, not the gate's internal deadline) must still propagate as an unclassified
+    // OperationCanceledException so it reaches the MCP SDK's protocol-level cancel path — the
+    // `when (!ct.IsCancellationRequested && ...)` guard exists specifically to preserve this.
+    [TestMethod]
+    public async Task RunReadAsync_CallerCancellation_PropagatesAsOperationCanceledNotTimeoutException()
+    {
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = TimeSpan.FromSeconds(30),
+            },
+            new FakeGateWorkspaceManager());
+
+        using var callerCts = new CancellationTokenSource();
+
+        var run = gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            return 0;
+        }, callerCts.Token);
+
+        callerCts.Cancel();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => run);
+    }
+
+    // RunLoadGateAsync (workspace_load/workspace_reload/workspace_close) shares the same
+    // timeoutCts/linkedCts construction as RunPerWorkspaceAsync and was exposed to the identical
+    // gap — pin the reclassification there too.
+    [TestMethod]
+    public async Task RunLoadGateAsync_RequestTimeoutFires_ThrowsTimeoutExceptionNotBareOperationCanceled()
+    {
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = TimeSpan.FromMilliseconds(150),
+            },
+            new FakeGateWorkspaceManager());
+
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+            gate.RunLoadGateAsync(async ct =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                return 0;
+            }, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
     }
 
     [TestMethod]

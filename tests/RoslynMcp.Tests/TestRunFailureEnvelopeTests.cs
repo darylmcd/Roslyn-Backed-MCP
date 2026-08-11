@@ -164,19 +164,40 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.AreEqual(1, result.Failed);
     }
 
-    // test-run-unfiltered-bare-error-rootcause: root cause was NOT an exception escaping
-    // ClassifyAndFormat (hypothesis b — already ruled out; RunTestsOnceAsync's catch(Exception)
-    // wraps every exception from RunTestsAsync). It was hypothesis (a) in a form specific to
-    // test_run: dotnet test can PRODUCE valid TRX output (not crash) while a genuinely large
-    // number of tests fail, and TestFailureDto.Message/StackTrace were unbounded per-entry AND
-    // the Failures list was unbounded in count — unlike StdOut/StdErr (capped at 12000 chars by
-    // DotnetCommandRunner). A broad/unfiltered run with many real failures could therefore
-    // serialize a payload of unbounded size that fails opaquely during response transport,
-    // outside any of this server's own try/catch envelopes. The two tests below cover both
-    // halves of the fix: per-entry truncation (DotnetOutputParser) and list pagination
-    // (ValidationTools.RunTests), mirroring the test_discover/project_diagnostics payload-budget
-    // pattern. A large SYNTHETIC failure set is used instead of this repo's real 1000+-test
-    // suite — same signal, without spinning up a slow `dotnet test` invocation.
+    // test-run-unfiltered-bare-error-rootcause: post-review correction. The original claim here —
+    // "RunTestsOnceAsync's catch(Exception) wraps every exception, so nothing escapes
+    // ClassifyAndFormat" — was FALSE: OperationCanceledException, WorkspaceEvictedException, and a
+    // gate-precheck KeyNotFoundException all deliberately escape RunTestsOnceAsync's inline catch
+    // (see the comments there). Of those, KeyNotFoundException/WorkspaceEvictedException are
+    // caught and reformatted one layer up by StructuredCallToolFilter's generic catch (pinned by
+    // WorkspaceEvictionAutoRetryTests) — they never reach the bare SDK fallback. But
+    // OperationCanceledException is deliberately rethrown BOTH by RunTestsOnceAsync AND by
+    // StructuredCallToolFilter, on the assumption it always means client-initiated cancellation
+    // that the MCP SDK's own dispatcher handles correctly. That assumption held for every OTHER
+    // gated tool's normal (sub-second) run time, but not for test_run: WorkspaceExecutionGate's
+    // per-request timeout (default 2 minutes, ROSLYNMCP_REQUEST_TIMEOUT_SECONDS) armed an
+    // internal, gate-owned CancellationTokenSource that was NOT the ambient per-request token the
+    // MCP SDK's own top-level catch-all checks — so when a large/unfiltered `dotnet test` run
+    // (which routinely exceeds 2 minutes; TestTimeout defaults to 10 minutes and never got a
+    // chance to fire first) crossed that gate ceiling, the resulting OperationCanceledException
+    // fell through every structured-envelope layer in the server and hit the MCP SDK's own
+    // hardcoded "An error occurred invoking '{tool}'." fallback verbatim — the exact bare string
+    // from every recorded repro (including the 2026-08-05 retro's measured 120.37s runtime, a
+    // near-exact match for the gate's 120s default). This is now fixed at the source:
+    // WorkspaceExecutionGate reclassifies its own timeout-driven OperationCanceledException into a
+    // TimeoutException (see WorkspaceExecutionGateTests.
+    // RunReadAsync_RequestTimeoutFires_ThrowsTimeoutExceptionNotBareOperationCanceled), which
+    // ToolErrorHandler.ClassifyAndFormat already maps to category="Timeout" — closing the actual
+    // escape hatch, not just this tool's symptom.
+    //
+    // The payload-budget hardening below is real and worth keeping (dotnet test CAN produce valid
+    // TRX output while a genuinely large number of tests fail, and the Failures list was
+    // previously unbounded), but it was never confirmed as the cause of the recorded bare-error
+    // repros — no repro was ever measured against the actual MCP output cap. Kept as defense in
+    // depth, mirroring the test_discover/project_diagnostics payload-budget pattern. The two tests
+    // below cover both halves: per-entry truncation (DotnetOutputParser) and list pagination
+    // (ValidationTools.RunTests). A large SYNTHETIC failure set is used instead of this repo's
+    // real 1000+-test suite — same signal, without spinning up a slow `dotnet test` invocation.
 
     [TestMethod]
     public void ParseTestRun_FailureWithHugeMessageAndStackTrace_TruncatesFromTheHead()

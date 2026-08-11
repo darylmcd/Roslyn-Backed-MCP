@@ -315,12 +315,16 @@ public static class ValidationTools
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.ReportStage(progress, 3, 3, "done");
 
-                // test-run-unfiltered-bare-error-rootcause: Failures carries every failing test
-                // with an unbounded Message/StackTrace (now head-truncated by DotnetOutputParser)
-                // and, pre-fix, an unbounded COUNT — a broad/unfiltered run with a genuinely large
-                // failure count could serialize a multi-hundred-KB-to-MB response that fails
-                // opaquely outside this method's own try/catch (the overflow happens during
-                // response transport, after this call already returned successfully). Page the
+                // test-run-unfiltered-bare-error-rootcause: defense-in-depth hardening, kept
+                // alongside the confirmed root-cause fix in WorkspaceExecutionGate (see the catch
+                // around WithGlobalThrottle in RunPerWorkspaceAsync / RunLoadGateAsync). Failures
+                // carries every failing test with an unbounded Message/StackTrace (now
+                // head-truncated by DotnetOutputParser) and, pre-fix, an unbounded COUNT — a
+                // broad/unfiltered run with a genuinely large failure count could still serialize
+                // a multi-hundred-KB-to-MB response, though no recorded repro was ever measured
+                // against the actual MCP output cap to confirm this was the cause (see the
+                // TestRunFailureEnvelopeTests comment for the confirmed mechanism: a gate
+                // per-request-timeout OperationCanceledException escaping unclassified). Page the
                 // list the same way test_discover pages test cases: aggregate counts (Total/
                 // Passed/Failed/Skipped) always reflect the full run; only the per-failure detail
                 // array is capped, with failuresTotal/hasMoreFailures so callers can tell.
@@ -345,6 +349,16 @@ public static class ValidationTools
             }
             catch (OperationCanceledException)
             {
+                // test-run-unfiltered-bare-error-rootcause: deliberately NOT formatted here —
+                // genuine caller/client cancellation must reach the MCP SDK's protocol-level
+                // cancel path unchanged, not a tool-error envelope. This used to also be the
+                // (unintended) escape hatch for WorkspaceExecutionGate's own internal
+                // per-request-timeout OperationCanceledException, which produced the bare
+                // "An error occurred invoking 'test_run'." SDK fallback string on any run
+                // exceeding the gate's default 2-minute ceiling. The gate now reclassifies its
+                // own timeout into a TimeoutException before it reaches this catch (see
+                // WorkspaceExecutionGate.RunPerWorkspaceAsync), so anything still caught here is
+                // true caller-initiated cancellation.
                 throw;
             }
             catch (WorkspaceEvictedException)
