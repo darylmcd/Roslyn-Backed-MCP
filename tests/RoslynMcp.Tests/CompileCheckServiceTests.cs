@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
@@ -123,5 +124,41 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("files", result.RequestedScope,
             "Whitespace-only projectFilter must not be classified as a project-scoped request.");
         StringAssert.Contains(result.RestoreHint, "file filter fallback");
+    }
+
+    [TestMethod]
+    public async Task CheckAsync_WhitespaceOnlyProjectFilterWithZeroProjects_ReportsWorkspaceReloadHintNotFilterMismatch()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Strip every <Project> entry so the copied solution loads with zero projects. This is
+        // the only way to reach BuildHint's zeroProjectsHint branch with a whitespace-only
+        // projectFilter: ProjectFilterHelper.FilterProjects treats whitespace as "no filter" and
+        // returns solution.Projects, so a normal (non-empty) sample solution would still resolve
+        // to >0 projects regardless of the filter's whitespace-ness.
+        var solutionFilePath = workspace.GetPath("SampleSolution.slnx");
+        var solutionDocument = XDocument.Load(solutionFilePath, LoadOptions.PreserveWhitespace);
+        solutionDocument.Root?.Elements("Project").Remove();
+        solutionDocument.Save(solutionFilePath, SaveOptions.DisableFormatting);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var result = await CompileCheckService.CheckAsync(
+            workspace.WorkspaceId,
+            new CompileCheckOptions(SeverityFilter: "Error", ProjectFilter: "   "),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, result.TotalProjects,
+            "The zero-project solution must resolve to zero projects regardless of the whitespace-only filter.");
+        Assert.IsFalse(result.Success,
+            "Zero evaluated projects must not report a vacuous success.");
+        StringAssert.Contains(result.RestoreHint, "call workspace_reload explicitly",
+            "A whitespace-only projectFilter is not a real filter — the zero-projects hint must fire the generic " +
+            "workspace-reload wording (string.IsNullOrWhiteSpace discriminator), matching every other whitespace " +
+            "guard in this file since PR #1191.");
+        Assert.IsFalse(
+            result.RestoreHint!.Contains("did not match any project", StringComparison.Ordinal),
+            "A whitespace-only projectFilter must never be treated as a literal (nonexistent) project name, so " +
+            $"the filter-mismatch wording must not fire. Got: {result.RestoreHint}");
     }
 }
