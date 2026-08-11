@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T03:02:39Z
+**updated_at:** 2026-08-11T13:12:22Z
 
 ## Agent contract
 
@@ -55,7 +55,6 @@
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the scorecard against the current v2.3.x surface (snapshot still v1.38.1; tracking prerequisite shipped #1202), then ship experimental→stable promotions in bounded batches. Catalog hotspot. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-stage-followups | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
-| `interface-extraction-conflict-check-hardening` | Medium | — | **Harden InterfaceExtractionService conflict check** — the same-name conflict throw is uncovered by tests and its per-project catch unconditionally swallows failures into LogDebug. [type: bug] [source: PR #1179 code-quality review] | S | items/interface-extraction-conflict-check-hardening.md |
 | `core-dto-location-quartet-stage-followups` | Medium | — | **File ADR 0001's Stage 1 (producer population) and Stage 3 (flat-field deprecation) rows** — both stages were deferred to "future backlog row" and never filed. [type: refactor] [source: PR #1180 code-quality review] | M | items/core-dto-location-quartet-stage-followups.md |
 | `overallstatus-verdict-table-remaining-restatements` | Medium | — | **Convert the last two overallStatus restatements to canonical-table pointers** — a prompt and a skill still hardcode the stale 4-value set. [type: docs] [source: PR #1184 code-quality review] | S | items/overallstatus-verdict-table-remaining-restatements.md |
 | `compile-check-buildhint-whitespace-discriminator-mismatch` | Medium | — | **Align BuildHint's zero-projects discriminator with ProjectFilterHelper whitespace semantics** — line 272 still uses `projectFilter is null`, inconsistent with the rest of the file since PR #1191. [type: bug] [source: PR #1191/#1194 code-quality review] | S | items/compile-check-buildhint-whitespace-discriminator-mismatch.md |
@@ -117,6 +116,7 @@
 | `filewatcher-clearstale-timeout-flake-triage` | Low | — | **Make the ClearStale awaiter test deterministic** — re-filed: `known-flakes.md` cited this row id but the row was gone, so the fix was untracked. Replace the wall-clock bound at `ExternalEditStalenessTests.cs:405` with a signal assertion. [type: test] [source: known-flakes dangling cite] | S | items/filewatcher-clearstale-timeout-flake-triage.md |
 | `ci-yml-doc-citations-brittle-line-numbers` | Low | — | **Replace brittle ci.yml:<line> citations with anchor names** — docs/self-hosted-runner.md cites exact ci.yml line numbers that drift on any edit. [type: docs] [source: PR #1211 code-quality review] | S | items/ci-yml-doc-citations-brittle-line-numbers.md |
 | `ci-router-runner-label-duplication` | Low | — | **Single-source the roslynmcp-dev runner label in the ci.yml route job** — the label is hardcoded independently in the runs_on payload and the online-runner filter; drift silently disables the fallback. [type: refactor] [source: PR #1211 code-quality review] | S | items/ci-router-runner-label-duplication.md |
+| `interface-extraction-catch-chain-dead-rethrow` | Low | — | **Drop the dead InvalidOperationException rethrow; cover the narrowed catch** — narrowing left a vestigial no-op clause; the new IOException/UnauthorizedAccessException filter is untested. [type: bug] [source: interface-extraction-conflict-check-hardening cq review] | S | items/interface-extraction-catch-chain-dead-rethrow.md |
 
 ## Defer
 
