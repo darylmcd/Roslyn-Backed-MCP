@@ -89,14 +89,7 @@ After a successful apply, run the post-edit validation bundle:
 validate_workspace(workspaceId, runTests: true)
 ```
 
-This composes `compile_check` + error-severity diagnostics + `test_related_files` + `test_run` over the changed file set. The response's `overallStatus` field is one of:
-
-- `clean` — proceed to next refactor or commit.
-- `compile-error` — production code broke. Inspect `errorDiagnostics`.
-- `analyzer-error` — a CA*/IDE* analyzer reports a new error. Inspect `errorDiagnostics`.
-- `test-failure` — related tests failed after the edit. Inspect `testRunResult.failures`.
-- `test-zero-run` — `runTests: true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter — the zero-match is almost always a working-directory/filter-resolution race, not a real pass.
-- `timeout` — a validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry.
+This composes `compile_check` + error-severity diagnostics + `test_related_files` + `test_run` over the changed file set. Inspect the response's `overallStatus` field against the canonical [`overallStatus` verdict table](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/domains/tool-usage-guide.md#overallstatus-verdict-table) and follow its caller action for the returned value.
 
 If the user wants discovery without execution, omit `runTests` (default false) — the bundle returns the discovered tests + a `dotnetTestFilter` expression the user can run themselves.
 

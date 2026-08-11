@@ -31,7 +31,7 @@ All 12 `ai_docs/plans/*_backlog-sweep/state.json` plans are `phase: complete`, e
 ## Row state lines
 
 - `ci-runner-offline-hosted-fallback-router`: landed (baseRef=fb935d58491ecc02595ebdc748950c1a0f56ddd3, PR #1211, merge 07384b59a0c2c8368e22b3c42a2faac6db3310f9; 1 code-quality fix cycle — HIGH: catch-block missing exit 0; 2 backlog sketches filed as follow-on rows)
-- `interface-extraction-conflict-check-hardening`: implementing (baseRef=9b2411339bf2d8bf0a06ebaa0b495f8f78c27dcc)
+- `interface-extraction-conflict-check-hardening`: landed (baseRef=9b2411339bf2d8bf0a06ebaa0b495f8f78c27dcc, PR #1213, merge 49384715; 2 medium code-quality findings filed as spin-off row interface-extraction-catch-chain-dead-rethrow; cleaned up a stale uncommitted worktree at .worktrees/topn-row2 left by the crashed prior session, same row, superseded weaker fix)
 - `overallstatus-verdict-table-remaining-restatements`: selected
 - `compile-check-buildhint-whitespace-discriminator-mismatch`: selected
 - `fixall-blank-projectname-silent-wrong-target`: selected

@@ -338,10 +338,7 @@ public static partial class RoslynPrompts
                 Always prefer `apply_with_verify(previewToken)` — it runs the apply, then `compile_check`, and auto-reverts on new errors. Surface the resulting `status` (`applied` / `rolled_back` / `applied_with_errors`).
 
                 ## Stage 4 — Validate
-                Run `validate_workspace(workspaceId, runTests: true)`. Inspect `overallStatus`:
-                - `clean` — done.
-                - `compile-error` / `analyzer-error` — read `errorDiagnostics` and decide next action.
-                - `test-failure` — read `testRunResult.failures` and decide next action.
+                Run `validate_workspace(workspaceId, runTests: true)`. Inspect `overallStatus` against the canonical [`overallStatus` verdict table](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/domains/tool-usage-guide.md#overallstatus-verdict-table) and follow its caller action for the returned value.
 
                 ## Stage 5 — Optional repeat
                 If the intent implies more work, return to Stage 1 with the next sub-intent. Use `workspace_changes` to keep a session-wide ledger.
