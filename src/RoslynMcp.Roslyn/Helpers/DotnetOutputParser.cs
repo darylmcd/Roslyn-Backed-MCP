@@ -17,6 +17,19 @@ internal static partial class DotnetOutputParser
 
     private const int FailureTailMaxChars = 2000;
 
+    // test-run-unfiltered-bare-error-rootcause: unlike StdOut/StdErr (bounded to 12000 chars by
+    // DotnetCommandRunner), TRX-parsed per-test Message/StackTrace were previously unbounded AND
+    // the Failures list carried every failing test with no cap. A broad/unfiltered run with a
+    // nontrivial failure count (e.g. a flaky-test class or a whole-suite run touching a real
+    // regression) could accumulate a multi-hundred-KB-to-MB JSON payload — well past the MCP
+    // output cap that also bit test_discover/project_diagnostics (see those tools' `summary`/
+    // pagination fixes) — causing the response to fail opaquely outside any of this server's own
+    // try/catch envelopes (see ValidationTools.RunTests, which now also paginates the Failures
+    // list). Truncate from the head (not the tail, unlike StdOut/StdErr) since the assertion
+    // message and the throw-site frame are the most diagnostically useful part of each.
+    private const int TestFailureMessageMaxChars = 500;
+    private const int TestFailureStackTraceMaxChars = 1500;
+
     /// <summary>
     /// Parses MSBuild-style diagnostic lines from <c>dotnet build</c> standard output.
     /// </summary>
@@ -196,6 +209,21 @@ internal static partial class DotnetOutputParser
             : value[^FailureTailMaxChars..];
     }
 
+    /// <summary>
+    /// Bounds a per-test-failure <c>Message</c>/<c>StackTrace</c> value to <paramref name="maxChars"/>,
+    /// keeping the HEAD (unlike <see cref="Tail"/>, which keeps the tail for command StdOut/StdErr
+    /// where the final lines are most relevant). For an assertion message or a stack trace, the
+    /// start — the assertion text, the throw-site frame — is what a caller needs to diagnose the
+    /// failure; appends a marker so truncation is visible rather than silent.
+    /// </summary>
+    private static string? TruncateHead(string? value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        return value.Length <= maxChars
+            ? value
+            : value[..maxChars] + "... [truncated]";
+    }
+
     private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures) ParseSingleTrxFile(string trxPath)
     {
         if (!File.Exists(trxPath))
@@ -242,8 +270,8 @@ internal static partial class DotnetOutputParser
                 return new TestFailureDto(
                     DisplayName: GetDisplayName(fullyQualifiedName),
                     FullyQualifiedName: fullyQualifiedName,
-                    Message: messageEl?.Value ?? "Test failed",
-                    StackTrace: stackEl?.Value);
+                    Message: TruncateHead(messageEl?.Value, TestFailureMessageMaxChars) ?? "Test failed",
+                    StackTrace: TruncateHead(stackEl?.Value, TestFailureStackTraceMaxChars));
             })
             .ToList();
 

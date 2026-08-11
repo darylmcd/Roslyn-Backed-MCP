@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** `test_run` no longer risks an opaque "An error occurred invoking 'test_run'" on a broad/unfiltered run with a genuinely large number of failing tests. Root cause: `dotnet test` can produce valid TRX output (not crash) while many tests fail, and each `TestFailureDto.Message`/`StackTrace` was unbounded AND the `Failures` list carried every failure with no cap — unlike `StdOut`/`StdErr`, which `DotnetCommandRunner` already bounds to 12000 chars — so a run with hundreds of real failures could serialize a multi-hundred-KB-to-MB payload that failed during response transport, outside any of the tool's own structured envelopes. `DotnetOutputParser` now head-truncates each failure's `Message`/`StackTrace`, and `test_run` now paginates the `failures` array (`failuresOffset`/`failuresLimit`, default limit 25) with `failuresTotal`/`hasMoreFailures` metadata — the same payload-budget pattern already used by `test_discover`'s offset/limit pagination. Aggregate `Total`/`Passed`/`Failed`/`Skipped` counts always reflect the full run, never truncated. (test-run-unfiltered-bare-error-rootcause)

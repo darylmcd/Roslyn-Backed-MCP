@@ -164,6 +164,200 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.AreEqual(1, result.Failed);
     }
 
+    // test-run-unfiltered-bare-error-rootcause: root cause was NOT an exception escaping
+    // ClassifyAndFormat (hypothesis b — already ruled out; RunTestsOnceAsync's catch(Exception)
+    // wraps every exception from RunTestsAsync). It was hypothesis (a) in a form specific to
+    // test_run: dotnet test can PRODUCE valid TRX output (not crash) while a genuinely large
+    // number of tests fail, and TestFailureDto.Message/StackTrace were unbounded per-entry AND
+    // the Failures list was unbounded in count — unlike StdOut/StdErr (capped at 12000 chars by
+    // DotnetCommandRunner). A broad/unfiltered run with many real failures could therefore
+    // serialize a payload of unbounded size that fails opaquely during response transport,
+    // outside any of this server's own try/catch envelopes. The two tests below cover both
+    // halves of the fix: per-entry truncation (DotnetOutputParser) and list pagination
+    // (ValidationTools.RunTests), mirroring the test_discover/project_diagnostics payload-budget
+    // pattern. A large SYNTHETIC failure set is used instead of this repo's real 1000+-test
+    // suite — same signal, without spinning up a slow `dotnet test` invocation.
+
+    [TestMethod]
+    public void ParseTestRun_FailureWithHugeMessageAndStackTrace_TruncatesFromTheHead()
+    {
+        var hugeMessage = "Assert.Equal() Failure: expected [A] but got [B]. " + new string('m', 5000);
+        var hugeStackTrace = "   at RoslynMcp.Tests.SomeFixture.TestMethod() line 1\n" + new string('s', 5000);
+        var trxPath = WriteTrxFixture([("RoslynMcp.Tests.SomeFixture.TestMethod", hugeMessage, hugeStackTrace)]);
+
+        try
+        {
+            var execution = FakeExecution(exitCode: 1, stdOut: "Test run complete.", stdErr: string.Empty);
+            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+
+            Assert.AreEqual(1, result.Failures.Count);
+            var failure = result.Failures[0];
+
+            Assert.IsTrue(failure.Message.Length < hugeMessage.Length,
+                "A 5000+ char failure message must be truncated.");
+            StringAssert.StartsWith(failure.Message, "Assert.Equal() Failure: expected [A] but got [B].",
+                "Truncation must keep the HEAD (the assertion text), not the tail.");
+            StringAssert.EndsWith(failure.Message, "[truncated]");
+
+            Assert.IsNotNull(failure.StackTrace);
+            Assert.IsTrue(failure.StackTrace!.Length < hugeStackTrace.Length,
+                "A 5000+ char stack trace must be truncated.");
+            StringAssert.StartsWith(failure.StackTrace, "   at RoslynMcp.Tests.SomeFixture.TestMethod() line 1",
+                "Truncation must keep the HEAD (the throw-site frame), not the tail.");
+            StringAssert.EndsWith(failure.StackTrace, "[truncated]");
+        }
+        finally
+        {
+            File.Delete(trxPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunTests_LargeUnfilteredFailureCount_PaginatesInsteadOfUnboundedPayload()
+    {
+        const int syntheticFailureCount = 400;
+        var runner = new LargeFailureSetTestRunnerService(
+            total: 1247, passed: 847, failed: syntheticFailureCount, skipped: 0, failureCount: syntheticFailureCount);
+
+        var json = await ValidationTools.RunTests(
+            new PassthroughGate(),
+            runner,
+            workspaceId: "ws-test-run-large-failure-set",
+            projectName: null,
+            filter: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsFalse(root.TryGetProperty("error", out _),
+            $"A run that produced valid TRX output (even with many failures) must return a structured " +
+            $"result, not a bare invocation error / error envelope. Actual: {json[..Math.Min(json.Length, 500)]}");
+
+        // Aggregate counts always reflect the FULL run, never truncated.
+        Assert.AreEqual(1247, root.GetProperty("total").GetInt32());
+        Assert.AreEqual(847, root.GetProperty("passed").GetInt32());
+        Assert.AreEqual(syntheticFailureCount, root.GetProperty("failed").GetInt32());
+
+        // The per-failure detail array is capped at the default limit (25), with paging metadata
+        // so callers can tell more exist — same shape family as test_discover's offset/limit/hasMore.
+        Assert.AreEqual(0, root.GetProperty("failuresOffset").GetInt32());
+        Assert.AreEqual(25, root.GetProperty("failuresLimit").GetInt32());
+        Assert.AreEqual(syntheticFailureCount, root.GetProperty("failuresTotal").GetInt32());
+        Assert.IsTrue(root.GetProperty("hasMoreFailures").GetBoolean());
+        Assert.AreEqual(25, root.GetProperty("failures").GetArrayLength(),
+            "Default failuresLimit=25 must cap the returned array regardless of how many tests failed.");
+
+        // The whole point: the response must stay bounded even though the run produced 400
+        // failures. Without pagination this payload would scale with failureCount and could
+        // reach the multi-hundred-KB range that triggers the opaque bare-error failure mode.
+        Assert.IsTrue(json.Length < 50_000,
+            $"Paginated test_run response should stay well under typical MCP output budgets; was {json.Length} chars.");
+    }
+
+    [TestMethod]
+    public async Task RunTests_FailuresOffsetAndLimit_PageThroughAllFailures()
+    {
+        const int syntheticFailureCount = 30;
+        var runner = new LargeFailureSetTestRunnerService(
+            total: 30, passed: 0, failed: syntheticFailureCount, skipped: 0, failureCount: syntheticFailureCount);
+
+        var firstPage = await ValidationTools.RunTests(
+            new PassthroughGate(), runner, workspaceId: "ws-page-1", projectName: null, filter: null,
+            failuresOffset: 0, failuresLimit: 20, progress: null, ct: CancellationToken.None);
+        var secondPage = await ValidationTools.RunTests(
+            new PassthroughGate(), runner, workspaceId: "ws-page-2", projectName: null, filter: null,
+            failuresOffset: 20, failuresLimit: 20, progress: null, ct: CancellationToken.None);
+
+        using var firstDoc = JsonDocument.Parse(firstPage);
+        using var secondDoc = JsonDocument.Parse(secondPage);
+
+        Assert.AreEqual(20, firstDoc.RootElement.GetProperty("failures").GetArrayLength());
+        Assert.IsTrue(firstDoc.RootElement.GetProperty("hasMoreFailures").GetBoolean());
+
+        Assert.AreEqual(10, secondDoc.RootElement.GetProperty("failures").GetArrayLength(),
+            "The second page should return the remaining 10 failures (30 total - 20 already paged).");
+        Assert.IsFalse(secondDoc.RootElement.GetProperty("hasMoreFailures").GetBoolean(),
+            "hasMoreFailures must be false once the offset+returned count reaches the total.");
+    }
+
+    private static string WriteTrxFixture(IReadOnlyList<(string TestName, string Message, string StackTrace)> failures)
+    {
+        var ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
+        var unitTestResults = string.Join("\n", failures.Select(f => $"""
+            <UnitTestResult testName="{f.TestName}" outcome="Failed">
+              <Output>
+                <ErrorInfo>
+                  <Message>{System.Security.SecurityElement.Escape(f.Message)}</Message>
+                  <StackTrace>{System.Security.SecurityElement.Escape(f.StackTrace)}</StackTrace>
+                </ErrorInfo>
+              </Output>
+            </UnitTestResult>
+            """));
+
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <TestRun xmlns="{ns}">
+              <Results>
+            {unitTestResults}
+              </Results>
+              <ResultSummary outcome="Failed">
+                <Counters total="{failures.Count}" executed="{failures.Count}" passed="0" failed="{failures.Count}" notExecuted="0" />
+              </ResultSummary>
+            </TestRun>
+            """;
+
+        var path = Path.Combine(Path.GetTempPath(), $"roslynmcp-testrun-fixture-{Guid.NewGuid():N}.trx");
+        File.WriteAllText(path, xml);
+        return path;
+    }
+
+    private sealed class LargeFailureSetTestRunnerService : ITestRunnerService
+    {
+        private readonly int _total;
+        private readonly int _passed;
+        private readonly int _failed;
+        private readonly int _skipped;
+        private readonly int _failureCount;
+
+        public LargeFailureSetTestRunnerService(int total, int passed, int failed, int skipped, int failureCount)
+        {
+            _total = total;
+            _passed = passed;
+            _failed = failed;
+            _skipped = skipped;
+            _failureCount = failureCount;
+        }
+
+        public Task<TestRunResultDto> RunTestsAsync(
+            string workspaceId, string? projectName, string? filter, CancellationToken ct)
+        {
+            var failures = Enumerable.Range(0, _failureCount)
+                .Select(i => new TestFailureDto(
+                    DisplayName: $"TestMethod_Should_Do_Something_When_Given_Input_{i}",
+                    FullyQualifiedName: $"RoslynMcp.Tests.SomeNamespace.SomeFixture{i}.TestMethod_{i}",
+                    Message: $"Assert.Equal() Failure: expected [ExpectedValue{i}] but got [ActualValue{i}].",
+                    StackTrace: string.Join("\n", Enumerable.Range(0, 10).Select(f =>
+                        $"   at RoslynMcp.Tests.SomeFixture{i}.TestMethod{f}() line {100 + f}"))))
+                .ToList();
+
+            var execution = new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: ["test"],
+                WorkingDirectory: "C:/fake",
+                TargetPath: "C:/fake/proj.sln",
+                ExitCode: 1,
+                Succeeded: false,
+                DurationMs: 120_370,
+                StdOut: string.Empty,
+                StdErr: string.Empty);
+
+            return Task.FromResult(new TestRunResultDto(
+                execution, _total, _passed, _failed, _skipped, failures));
+        }
+    }
+
     [TestMethod]
     public async Task RunTests_ToolRunnerThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
