@@ -8,13 +8,15 @@ GitHub-hosted runners are 2-vcpu Linux machines that take ~10 min to run the ful
 
 ## Security model — read this first
 
-GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo (the authoritative expression lives in `.github/workflows/ci.yml`):
+GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo (**active since 2026-08-10** — the authoritative predicate now lives in the `route` job's maintainer-PR check, `.github/workflows/ci.yml:62`; see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)):
 
 ```yaml
-runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+$isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
 ```
 
-This conditional says: **only the maintainer's own non-fork, non-dependabot PRs use the self-hosted runner**. A fork-PR attacker can never reach it because their `head.repo.fork == true`. Dependabot PRs are also routed to hosted Linux: although they are non-fork branches, their diffs pull third-party package versions whose code executes during `dotnet test` — a supply-chain compromise of a bumped package must not run on the maintainer's box.
+This says: **only the maintainer's own non-fork, non-dependabot PRs are even eligible for the self-hosted runner**. A fork-PR attacker can never reach it — `route` detects `head.repo.fork == true` and routes to `ubuntu-latest` unconditionally, without ever calling the runners API. Dependabot PRs are routed to hosted Linux the same way: although they are non-fork branches, their diffs pull third-party package versions whose code executes during `dotnet test` — a supply-chain compromise of a bumped package must not run on the maintainer's box.
+
+`validate`'s own `runs-on` (`.github/workflows/ci.yml:128`) is just `${{ fromJSON(needs.route.outputs.runs_on) }}` — it has no security logic of its own; it consumes whatever `route` decided. The security boundary lives entirely in `route`'s maintainer-PR check above, which runs before any runners-API call and is unaffected by that call's outcome.
 
 **Residual risk:** if the maintainer ever clones a malicious branch into their own fork+PRs it (e.g., copying someone else's untrusted patch onto their own branch), it would run on the self-hosted runner. Maintainer discipline mitigates this.
 
@@ -165,15 +167,28 @@ When a job is running on it: `status: "online"`, `busy: true`.
 
 ## Activation
 
-**Active as of 2026-05-08.** The CI workflow (`.github/workflows/ci.yml`) uses this conditional:
+**Active as of 2026-05-08 (routing mechanism updated 2026-08-10 — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)).** The CI workflow (`.github/workflows/ci.yml`) now splits routing across two jobs instead of one inline `runs-on:` conditional: a `route` job (`ci.yml:40-111`) computes the target runner list, and `validate` (`ci.yml:113-128`) just consumes it:
 
 ```yaml
 jobs:
+  route:
+    outputs:
+      runs_on: ${{ steps.decide.outputs.runs_on }}
+    steps:
+      - id: decide
+        run: |
+          $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
+          # non-maintainer events -> "ubuntu-latest" (no API call, ever)
+          # maintainer PRs -> probes the runners API and picks self-hosted
+          # or ubuntu-latest based on live status; missing/broken PAT falls
+          # back to self-hosted (current behavior, never blocks CI)
+
   validate:
-    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
 ```
 
-The conditional says: ONLY maintainer non-fork, non-dependabot pull_request events route to self-hosted. Everything else (workflow_dispatch, schedule, fork PRs, dependabot PRs) stays on `ubuntu-latest`. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux), the security boundary on fork/dependabot PRs, and keeps dependabot's PR waves from queueing behind the single self-hosted slot.
+The routing decision says the same thing it always has: ONLY maintainer non-fork, non-dependabot pull_request events are even eligible for self-hosted — and, since 2026-08-10, only when the runner is actually online (see the fallback section above). Everything else (workflow_dispatch, schedule, fork PRs, dependabot PRs) stays on `ubuntu-latest`, decided by `route` without ever calling the runners API. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux), the security boundary on fork/dependabot PRs, and keeps dependabot's PR waves from queueing behind the single self-hosted slot.
 
 **Pre-activation checklist:**
 
@@ -185,7 +200,7 @@ The conditional says: ONLY maintainer non-fork, non-dependabot pull_request even
 
 After activation, push a no-op test PR to verify the workflow lands on the self-hosted runner and completes faster than baseline.
 
-**Rollback if anything breaks:** revert the `runs-on:` line to `ubuntu-latest`. Self-hosted runner stays registered but idle.
+**Rollback if anything breaks:** set `validate`'s `runs-on:` (`ci.yml:128`) directly to `ubuntu-latest` (and drop `needs: route`, or leave it — an unused `needs` is harmless). The `route` job can stay in place unused, or be deleted along with it. Self-hosted runner stays registered but idle.
 
 ## Troubleshooting
 
@@ -193,13 +208,13 @@ After activation, push a no-op test PR to verify the workflow lands on the self-
 
 **Runner picks up the job but fails on `dotnet build`.** Verify .NET SDK 10.x is installed for the service account (NetworkService by default — `dotnet` may not be on its PATH even if it's on yours). Either install machine-wide via the standard installer (default) or run the service under your user account: `.\svc.cmd install $env:USERNAME`.
 
-**Workflow stuck pending after activation.** GitHub queues self-hosted jobs that don't match available runners. Re-verify the labels in the runs-on conditional match the runner's labels (`roslynmcp-dev`).
+**Workflow stuck pending after activation.** GitHub queues self-hosted jobs that don't match available runners. Re-verify the label list the `route` job emits (`$selfHostedJson = '["self-hosted","roslynmcp-dev"]'` in `ci.yml`, consumed by `validate`'s `runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}`) matches the runner's registered labels (`roslynmcp-dev`).
 
 ## Removing the runner
 
 If you decide to abandon the self-hosted approach:
 
-1. Revert `.github/workflows/ci.yml` to `runs-on: ubuntu-latest` if activated.
+1. Revert `.github/workflows/ci.yml`'s `validate` job to `runs-on: ubuntu-latest` if activated (and remove the `route` job entirely, since nothing else depends on it).
 2. Stop the service: `Stop-Service -Name <service-name>` (find via `Get-Service | Where-Object { $_.Name -like 'actions.runner.*' }`).
 3. Generate a removal token: `gh api -X POST repos/darylmcd/Roslyn-Backed-MCP/actions/runners/remove-token`.
 4. From the runner directory: `.\config.cmd remove --token <removal-token>` — this deregisters from GitHub AND uninstalls the Windows service.

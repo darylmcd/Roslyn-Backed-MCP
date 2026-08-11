@@ -106,6 +106,13 @@ jobs:
             # behavior (self-hosted) rather than guessing offline.
             Write-Host "::notice title=Router::Runner status probe failed ($($_.Exception.Message)) - defaulting to self-hosted routing (current behavior)."
             "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            # Without this, $LASTEXITCODE stays non-zero from the failed `gh api`
+            # call above, and GitHub's pwsh step wrapper appends
+            # `if ($LASTEXITCODE) { exit $LASTEXITCODE }` after this script - which
+            # would fail this step (and therefore `route`) even though we degraded
+            # gracefully. `finally` below still runs before this exit takes effect
+            # (PowerShell guarantees finally runs even when exit unwinds a try/catch).
+            exit 0
           } finally {
             Remove-Item -LiteralPath $apiErr -Force -ErrorAction SilentlyContinue
           }
