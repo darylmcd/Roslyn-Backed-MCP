@@ -121,6 +121,20 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
             return await ObserveWithCallerToken(existing.Bound, ct).ConfigureAwait(false);
         }
 
+        // An already-canceled caller must not pay for — or install — an analyzer-bound build pass
+        // it can never observe. Mirrors the guard in GetCompilationAsync (see remarks there): the
+        // shared task below is started detached via CancellationToken.None, so once it is running
+        // nothing can stop it. Awaiting Task.FromCanceled (rather than ct.ThrowIfCancellationRequested)
+        // is deliberate: the async-method-builder's exception path preserves a directly-thrown
+        // OperationCanceledException's exact type when the caller observes it, whereas a task already
+        // in the Canceled state (no captured cancellation exception) surfaces as TaskCanceledException
+        // on await — matching ObserveWithCallerToken's identical guard and the TaskCanceledException
+        // contract this method's existing tests already assert on.
+        if (ct.IsCancellationRequested)
+        {
+            return await Task.FromCanceled<CompilationWithAnalyzers?>(ct).ConfigureAwait(false);
+        }
+
         // Same shared-task discipline as GetCompilationAsync: the analyzer-bound task is started
         // detached from any caller's token, and the nested GetCompilationAsync it performs is
         // therefore detached too.
