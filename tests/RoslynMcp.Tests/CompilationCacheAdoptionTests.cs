@@ -110,6 +110,47 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// Regression cover for <c>compilation-cache-analyzers-entry-guard</c>: mirrors the entry guard
+    /// <see cref="GetCompilationAsync"/> already has at <c>CompilationCache.cs:85</c>. Before the
+    /// fix, <see cref="CompilationCache.GetCompilationWithAnalyzersAsync"/>'s cache-miss branch
+    /// unconditionally called <c>BuildCompilationWithAnalyzersAsync</c> and installed an
+    /// <c>_analyzerBound</c> entry before checking the caller's token — an already-canceled caller
+    /// still paid for (and cached) an analyzer-bound build it could never observe. This test proves
+    /// both effects are now short-circuited: the caller observes its own cancellation, and no
+    /// <c>_analyzerBound</c> entry exists for the key afterward (the entry is only installed
+    /// alongside the build call, so its absence proves the build itself never started).
+    /// </summary>
+    [TestMethod]
+    public async Task GetCompilationWithAnalyzersAsync_AlreadyCanceledCaller_DoesNotStartBuildOrInstallEntry()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var cache = new CompilationCache(WorkspaceManager);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+
+        using var canceled = new CancellationTokenSource();
+        await canceled.CancelAsync();
+
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+            () => cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, canceled.Token),
+            "An already-canceled caller must observe its own cancellation before any analyzer-bound " +
+            "build starts, mirroring GetCompilationAsync's entry guard.");
+
+        var analyzerBoundField = typeof(CompilationCache).GetField(
+            "_analyzerBound", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(analyzerBoundField,
+            "CompilationCache._analyzerBound should remain discoverable by reflection — this test is " +
+            "deliberately implementation-coupled and must be updated alongside any rename.");
+
+        var analyzerBoundMap = (System.Collections.IDictionary)analyzerBoundField!.GetValue(cache)!;
+        var key = (workspace.WorkspaceId, project.Id);
+        Assert.IsFalse(
+            analyzerBoundMap.Contains(key),
+            "An already-canceled caller must not install an _analyzerBound entry — an entry here would " +
+            "mean BuildCompilationWithAnalyzersAsync (and its nested uncancelable GetCompilationAsync) " +
+            "started for a caller that can never observe the result.");
+    }
+
+    /// <summary>
     /// Covers the branch the two already-canceled tests above cannot reach: a caller that cancels
     /// AFTER its request is in flight. Those tests short-circuit inside
     /// <c>ObserveWithCallerToken</c>'s already-canceled check, so the <c>WaitAsync(ct)</c> branch —

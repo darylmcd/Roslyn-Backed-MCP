@@ -34,8 +34,8 @@ All 12 `ai_docs/plans/*_backlog-sweep/state.json` plans are `phase: complete`, e
 - `interface-extraction-conflict-check-hardening`: landed (baseRef=9b2411339bf2d8bf0a06ebaa0b495f8f78c27dcc, PR #1213, merge 49384715; 2 medium code-quality findings filed as spin-off row interface-extraction-catch-chain-dead-rethrow; cleaned up a stale uncommitted worktree at .worktrees/topn-row2 left by the crashed prior session, same row, superseded weaker fix)
 - `overallstatus-verdict-table-remaining-restatements`: landed (baseRef=493847153b6bd22180e2ad255c42bec47ae22051, PR #1214, merge 63000b42; S-row light ceremony, single combined review verdict pass, 0 findings)
 - `compile-check-buildhint-whitespace-discriminator-mismatch`: landed (baseRef=63000b428a8f6edfab4d1c522b68585ccd51df5f, PR #1215, merge e35fede7; 1 spec-compliance fix cycle — missing changelog fragment; 1 low code-quality finding filed as spin-off row isolated-workspace-slnx-surgery-consolidation)
-- `fixall-blank-projectname-silent-wrong-target`: implemented (baseRef=e35fede79bf3efe3eb5fdfe5663c1fe31498be7c; both reviews pass; 2 spin-off rows filed — fixalltools-projectname-stale-optional-description, fixall-scope-required-validation-hoist)
-- `compilation-cache-analyzers-entry-guard`: selected
+- `fixall-blank-projectname-silent-wrong-target`: landed (baseRef=e35fede79bf3efe3eb5fdfe5663c1fe31498be7c, PR #1216, merge 2b98e58c; both reviews pass; 2 spin-off rows filed — fixalltools-projectname-stale-optional-description, fixall-scope-required-validation-hoist)
+- `compilation-cache-analyzers-entry-guard`: implemented (baseRef=2b98e58ce268d9c52ebff61b5f8a8e5f2def207b; both reviews pass; 1 medium spin-off row filed — compilation-cache-cancellation-test-contract-drift)
 - `elicitation-trychoice-cancellation-swallow`: selected
 - `test-run-unfiltered-bare-error-rootcause`: selected
 
