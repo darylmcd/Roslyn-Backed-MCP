@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T15:03:50Z
+**updated_at:** 2026-08-11T19:48:56Z
 
 ## Agent contract
 
@@ -61,6 +61,7 @@
 | `shipped-skills-hardcode-bare-roslyn-tool-prefix` | Medium | — | **Prefix-agnostic shipped skills** — VERIFY FIRST whether the plugin-prefix surface-test entry gate misfires, then sweep shipped `skills/**` + retro prompt to suffix-based tool references via the genericity guard. [type: bug] [source: 2026-06-08 retro follow-up] | L | items/shipped-skills-hardcode-bare-roslyn-tool-prefix.md |
 | `compilation-cache-wire-group-c-consumer` | Medium | group-c-compilation-cache-gate-hardening | **Wire a production consumer of the group-c cache params** — PR #1207 added optional `compilationCache`/`workspaceId` but every `src/` call site passes the 3-arg form, so the cache path is unreachable; also re-establish the lost raw-site inventory. [type: refactor] [source: 2026-08-10 sweep cold review] | M | items/compilation-cache-wire-group-c-consumer.md |
 | `compilation-cache-cancellation-test-contract-drift` | Medium | compilation-cache-wire-group-c-consumer | **Align CompilationCache cancellation tests with the documented OperationCanceledException contract** — over-exact assertions dictate production exception shape; a poisoning test is now unreachable. [type: chore] [source: compilation-cache-analyzers-entry-guard cq review] | M | items/compilation-cache-cancellation-test-contract-drift.md |
+| `elicitation-inflight-cancellation-test-harness-deadlock` | Medium | — | **Investigate whether cancelling mid-flight elicitation hangs the server** — an in-flight-cancellation regression test deadlocked indefinitely across 3 fix attempts; root cause unresolved. [type: chore] [source: elicitation-trychoice-cancellation-swallow spec review] | M | items/elicitation-inflight-cancellation-test-harness-deadlock.md |
 
 ## Low
 
