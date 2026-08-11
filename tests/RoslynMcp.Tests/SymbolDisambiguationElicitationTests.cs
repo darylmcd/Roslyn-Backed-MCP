@@ -310,26 +310,30 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "Metadata-name candidates must be deduped by symbolHandle before returning an ambiguity envelope.");
     }
 
-    // ── (c) cancellation must propagate, not be reported as decline ─────────
+    // ── cancellation must propagate, not be reported as decline ─────────────
     // elicitation-trychoice-cancellation-swallow: TryElicitChoiceAsync's try/catch around
     // server.ElicitAsync used to be a bare `catch { return null; }`, which absorbed
     // OperationCanceledException alongside the two expected SDK failure shapes
     // (InvalidOperationException, McpException). Callers (SymbolTools.GoToDefinition /
     // FindReferences / SearchSymbols) treat a null return as "user declined" and answer
     // with the additive candidate-list response — so a cancelled request looked
-    // indistinguishable from a deliberate decline. These tests pin that cancellation now
-    // propagates out of TryElicitChoiceAsync instead.
+    // indistinguishable from a deliberate decline. This test pins that a pre-cancelled
+    // token now propagates out of TryElicitChoiceAsync instead. It does NOT cover
+    // cancellation that arrives while a request is genuinely in flight against an
+    // unresponsive client — two independent attempts at that variant deadlocked the test
+    // process; see the tracked follow-up elicitation-inflight-cancellation-test-harness-deadlock.
 
     [TestMethod]
+    [Timeout(15_000)]
     public async Task TryElicitChoiceAsync_PreCancelledToken_PropagatesCancellation_NotAdditiveListFallback()
     {
         // A real McpServer/McpClient pair (over an in-memory duplex pipe, same pattern as
         // ExpandedSurfaceIntegrationTests.CreateServerWithSanctionedRootAsync) is required
         // to reach the try body at all: HasElicitation must return true, which needs a
         // genuine post-handshake ClientCapabilities.Elicitation, not a null/fake server.
-        // The client's ElicitationHandler never completes, simulating a request that is
-        // still in flight server-side when the caller's own token is cancelled — exactly
-        // the race TryElicitChoiceAsync must not mask.
+        // The client's ElicitationHandler never completes; the token below is cancelled
+        // BEFORE the call, not while the request is in flight (see the section comment
+        // above for why the in-flight variant isn't covered here).
         await using var harness = await CreateServerWithHangingElicitationAsync(CancellationToken.None);
 
         using var cts = new CancellationTokenSource();
@@ -371,9 +375,11 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     /// so <c>server.ClientCapabilities.Elicitation</c> is genuinely populated via the MCP
     /// initialize handshake and <c>server.ElicitAsync</c> genuinely round-trips to a client. The
     /// client's <see cref="McpClientHandlers.ElicitationHandler"/> never completes, so any
-    /// <c>elicitation/create</c> request stays pending until the caller's own token cancels it —
-    /// letting tests assert on the server-side cancellation behavior in isolation from whether the
-    /// client ever actually answers.
+    /// <c>elicitation/create</c> request stays pending indefinitely — letting a test pre-cancel
+    /// the caller's own token before the call in isolation from whether the client ever
+    /// actually answers. Cancelling AFTER the request is dispatched (a genuinely in-flight
+    /// race) is NOT safe to test against this harness: it deadlocks — see
+    /// elicitation-inflight-cancellation-test-harness-deadlock.
     /// </summary>
     private static async Task<ElicitationServerHarness> CreateServerWithHangingElicitationAsync(CancellationToken ct)
     {

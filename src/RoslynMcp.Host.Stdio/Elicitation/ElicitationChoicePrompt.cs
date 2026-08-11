@@ -155,7 +155,7 @@ internal static class ElicitationChoicePrompt
     /// </summary>
     private static void LogElicitFailure(McpServer server, Exception ex) =>
         server.Services?.GetService<ILoggerFactory>()?
-            .CreateLogger("RoslynMcp.Elicitation.ElicitationChoicePrompt")
+            .CreateLogger(typeof(ElicitationChoicePrompt).FullName ?? nameof(ElicitationChoicePrompt))
             .LogDebug(
                 ex,
                 "TryElicitChoiceAsync: elicitation request failed with {ExceptionType}; falling back to the additive list response.",
