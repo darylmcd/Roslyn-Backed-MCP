@@ -413,9 +413,17 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                 }
             }
             catch (InvalidOperationException) { throw; }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _logger.LogDebug(ex, "Skipping conflict check in project '{ProjectName}'", project.Name);
+                // GetCompilationAsync ultimately re-reads source documents from disk; a file
+                // deleted/locked out from under the live solution snapshot between the caller's
+                // GetCurrentSolution() and this read is the realistic failure mode here (matches
+                // the IOException/UnauthorizedAccessException narrowing used elsewhere in this
+                // codebase for compile/file-retrieval catches, e.g. NuGetDependencyService,
+                // RestoreStalenessDetector). Warn — not Debug — because this project's conflict
+                // check is silently skipped, which is a real degradation of the guarantee this
+                // method exists to provide.
+                _logger.LogWarning(ex, "Skipping conflict check in project '{ProjectName}': compilation could not be retrieved", project.Name);
             }
         }
     }

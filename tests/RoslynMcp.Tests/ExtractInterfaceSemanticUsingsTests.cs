@@ -485,6 +485,72 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractInterface_Throws_When_SameNamed_Type_Already_Exists_In_Project()
+    {
+        // Backlog: interface-extraction-conflict-check-hardening (PR #1179 code-quality
+        // review). Proves the ICompilationCache-routed conflict check in
+        // ValidateNoConflictsAsync (InterfaceExtractionService.cs ~393-421) still detects a
+        // same-name collision: pre-create an UNRELATED type with the exact name the extraction
+        // would produce, in the target type's namespace. The target type does not implement
+        // that type, so the "already implements" no-op short-circuit (line ~69-78) is not
+        // taken and the conflict check must run and throw.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        await File.WriteAllTextAsync(Path.Combine(sampleLibDir, "IConflictCheckService.cs"),
+            """
+            namespace SampleLib;
+
+            public class IConflictCheckService
+            {
+                public int Value { get; set; }
+            }
+            """);
+
+        var servicePath = Path.Combine(sampleLibDir, "ConflictCheckService.cs");
+        await File.WriteAllTextAsync(servicePath,
+            """
+            namespace SampleLib;
+
+            public class ConflictCheckService
+            {
+                public int Compute() => 42;
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                    workspaceId,
+                    servicePath,
+                    typeName: "ConflictCheckService",
+                    interfaceName: "IConflictCheckService",
+                    memberNames: null,
+                    replaceUsages: false,
+                    CancellationToken.None));
+
+            StringAssert.Contains(
+                ex.Message,
+                "already exists in project",
+                $"Conflict message must explain the collision. Actual: {ex.Message}");
+            StringAssert.Contains(
+                ex.Message,
+                "Choose a different interface name",
+                $"Conflict message must guide the caller to pick a different name. Actual: {ex.Message}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
