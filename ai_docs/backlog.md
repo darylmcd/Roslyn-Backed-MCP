@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-10T21:25:43Z
+**updated_at:** 2026-08-11T02:42:59Z
 
 ## Agent contract
 
@@ -54,7 +54,6 @@
 |----|-----|------|----|------|--------|
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the scorecard against the current v2.3.x surface (snapshot still v1.38.1; tracking prerequisite shipped #1202), then ship experimental→stable promotions in bounded batches. Catalog hotspot. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
-| `ci-runner-offline-hosted-fallback-router` | Medium | — | **Hosted-fallback router for the self-hosted runner** — add an ubuntu router job that probes runner online-status and feeds `runs-on` via needs-outputs so PRs stop queueing 2–14.5h when the box is asleep/wedged. Operator gate: needs a repo-admin-scope PAT secret (workflow GITHUB_TOKEN cannot read the runners API). [type: infra] [source: 2026-07-14 CI-hang investigation] | S | items/ci-runner-offline-hosted-fallback-router.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-stage-followups | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `interface-extraction-conflict-check-hardening` | Medium | — | **Harden InterfaceExtractionService conflict check** — the same-name conflict throw is uncovered by tests and its per-project catch unconditionally swallows failures into LogDebug. [type: bug] [source: PR #1179 code-quality review] | S | items/interface-extraction-conflict-check-hardening.md |
 | `core-dto-location-quartet-stage-followups` | Medium | — | **File ADR 0001's Stage 1 (producer population) and Stage 3 (flat-field deprecation) rows** — both stages were deferred to "future backlog row" and never filed. [type: refactor] [source: PR #1180 code-quality review] | M | items/core-dto-location-quartet-stage-followups.md |
