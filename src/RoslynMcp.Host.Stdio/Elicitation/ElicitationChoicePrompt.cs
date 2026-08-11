@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -119,11 +122,20 @@ internal static class ElicitationChoicePrompt
         {
             result = await server.ElicitAsync(request, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (InvalidOperationException ex)
         {
-            // ElicitAsync can throw InvalidOperationException (transport gone, capability
-            // mismatch) or McpException (client-side error). Either way, the disambiguation
-            // path falls through to the additive list response — never masks a real failure.
+            // Transport gone / capability mismatch. The disambiguation path falls through
+            // to the additive list response — never masks a real failure. Named explicitly
+            // (rather than a broad `catch` or an `is not OperationCanceledException` filter)
+            // so cancellation propagates and any genuinely unexpected exception type is not
+            // silently absorbed either (elicitation-trychoice-cancellation-swallow).
+            LogElicitFailure(server, ex);
+            return null;
+        }
+        catch (McpException ex)
+        {
+            // Client-side error response to the elicitation request. Same fallback as above.
+            LogElicitFailure(server, ex);
             return null;
         }
 
@@ -132,4 +144,20 @@ internal static class ElicitationChoicePrompt
         var chosenKey = chosen.ValueKind == JsonValueKind.String ? chosen.GetString() : null;
         return string.IsNullOrEmpty(chosenKey) ? null : chosenKey;
     }
+
+    /// <summary>
+    /// Logs the swallowed <see cref="InvalidOperationException"/> / <see cref="McpException"/>
+    /// at Debug so the additive-list fallback is discoverable during troubleshooting instead of
+    /// disappearing silently (elicitation-trychoice-cancellation-swallow). Resolves the logger
+    /// from <see cref="McpServer.Services"/> — the same DI-lookup pattern
+    /// <c>StructuredCallToolFilter</c> uses — and no-ops when no <see cref="ILoggerFactory"/> is
+    /// registered (e.g. in unit tests that construct a server without a full DI container).
+    /// </summary>
+    private static void LogElicitFailure(McpServer server, Exception ex) =>
+        server.Services?.GetService<ILoggerFactory>()?
+            .CreateLogger(typeof(ElicitationChoicePrompt).FullName ?? nameof(ElicitationChoicePrompt))
+            .LogDebug(
+                ex,
+                "TryElicitChoiceAsync: elicitation request failed with {ExceptionType}; falling back to the additive list response.",
+                ex.GetType().Name);
 }

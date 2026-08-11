@@ -957,7 +957,10 @@ public static class SymbolTools
                     symbolHandle: handles[idx], metadataName: null);
                 return new DisambiguationOutcome(chosenLocator, null);
             }
-            // user declined / cancelled / SDK error → fall through to the additive list shape.
+            // user declined / SDK error → fall through to the additive list shape. Cancellation
+            // is NOT included here: TryElicitChoiceAsync lets OperationCanceledException
+            // propagate unhandled (elicitation-trychoice-cancellation-swallow), so a cancelled
+            // request never reaches this fallback — it unwinds past this method instead.
         }
 
         // Fallback list envelope (byte-identical regardless of whether elicitation was tried).
