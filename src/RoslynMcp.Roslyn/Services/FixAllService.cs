@@ -232,6 +232,19 @@ public sealed class FixAllService : IFixAllService
 
         if (fixAllScope == FixAllScope.Project)
         {
+            if (string.IsNullOrWhiteSpace(projectName))
+            {
+                // fixall-blank-projectname-silent-wrong-target: ProjectFilterHelper treats a blank
+                // projectName as "no filter" (returns every project), which used to make the
+                // FirstOrDefault below silently resolve to solution.Projects.First() instead of
+                // erroring. Mirror MsBuildEvaluationService.ResolveRoslynProject's guard so scope
+                // 'project' fails loud on a missing/whitespace projectName instead of guessing.
+                throw new ArgumentException(
+                    "The 'projectName' parameter is required when scope is 'project'. Pass the project name, " +
+                    "e.g. { \"scope\": \"project\", \"projectName\": \"MyApp.Core\" }.",
+                    nameof(projectName));
+            }
+
             var projects = ProjectFilterHelper.FilterProjects(solution, projectName);
             var proj = projects.FirstOrDefault()
                 ?? throw new InvalidOperationException($"Project not found: {projectName}");
