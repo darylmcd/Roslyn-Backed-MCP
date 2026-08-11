@@ -269,7 +269,7 @@ public sealed class CompileCheckService : ICompileCheckService
         string? zeroProjectsHint = null;
         if (!acc.Cancelled && projectCount == 0 && fileScopeHint is null)
         {
-            zeroProjectsHint = projectFilter is null
+            zeroProjectsHint = string.IsNullOrWhiteSpace(projectFilter)
                 ? "compile_check evaluated 0 projects. The workspace may have completed a reload without re-populating its project list — call workspace_reload explicitly and retry, or verify workspace_load succeeded."
                 : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
         }
