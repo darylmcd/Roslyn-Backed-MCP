@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T13:52:57Z
+**updated_at:** 2026-08-11T14:14:51Z
 
 ## Agent contract
 
@@ -56,7 +56,6 @@
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-stage-followups | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `core-dto-location-quartet-stage-followups` | Medium | — | **File ADR 0001's Stage 1 (producer population) and Stage 3 (flat-field deprecation) rows** — both stages were deferred to "future backlog row" and never filed. [type: refactor] [source: PR #1180 code-quality review] | M | items/core-dto-location-quartet-stage-followups.md |
-| `fixall-blank-projectname-silent-wrong-target` | Medium | — | **fix_all project scope silently targets the first project on a blank projectName** — ProjectFilterHelper's new blank-means-no-filter semantics made FixAllService's single-project resolution silently wrong instead of erroring. [type: bug] [source: PR #1191 code-quality review] | M | items/fixall-blank-projectname-silent-wrong-target.md |
 | `surface-test-audit-artifact-gate-and-scorecard-staleness` | Medium | — | **True up audit-artifact docs + detect a frozen scorecard** — the README still calls the now-tracked scorecard gitignored, `.audit-state.json` would self-report as a P1 leak, and nothing observes `serverVersion` staleness. [type: docs] [source: PR #1202 cq review] | M | items/surface-test-audit-artifact-gate-and-scorecard-staleness.md |
 | `compilation-cache-analyzers-entry-guard` | Medium | — | **Guard already-canceled callers in `GetCompilationWithAnalyzersAsync`** — `CompilationCache.cs:114` starts the analyzer build before checking the caller token, unlike its guarded `:85` sibling; drop the stale asymmetry caveat. [type: bug] [source: PR #1203 cq review] | M | items/compilation-cache-analyzers-entry-guard.md |
 | `elicitation-trychoice-cancellation-swallow` | Medium | — | **Stop reporting elicitation cancellation as user-declined** — the bare `catch { return null; }` at `ElicitationChoicePrompt.cs:122` absorbs `OperationCanceledException`, so callers answer with the additive list response. [type: bug] [source: PR #1205 cq review] | M | items/elicitation-trychoice-cancellation-swallow.md |
@@ -116,6 +115,8 @@
 | `ci-router-runner-label-duplication` | Low | — | **Single-source the roslynmcp-dev runner label in the ci.yml route job** — the label is hardcoded independently in the runs_on payload and the online-runner filter; drift silently disables the fallback. [type: refactor] [source: PR #1211 code-quality review] | S | items/ci-router-runner-label-duplication.md |
 | `interface-extraction-catch-chain-dead-rethrow` | Low | — | **Drop the dead InvalidOperationException rethrow; cover the narrowed catch** — narrowing left a vestigial no-op clause; the new IOException/UnauthorizedAccessException filter is untested. [type: bug] [source: interface-extraction-conflict-check-hardening cq review] | S | items/interface-extraction-catch-chain-dead-rethrow.md |
 | `isolated-workspace-slnx-surgery-consolidation` | Low | — | **Consolidate copied-.slnx project-list surgery into IsolatedWorkspaceTestBase** — 3 inline variants of slnx XDocument surgery exist across the test assembly; one hardcodes the filename instead of using SolutionPath. [type: refactor] [source: compile-check-buildhint-whitespace-discriminator-mismatch cq review] | S | items/isolated-workspace-slnx-surgery-consolidation.md |
+| `fixalltools-projectname-stale-optional-description` | Low | — | **fix_all's projectName MCP description is stale after the blank-projectName guard** — Description still says 'Optional' though scope:project now requires it. [type: docs] [source: fixall-blank-projectname-silent-wrong-target spec review] | S | items/fixalltools-projectname-stale-optional-description.md |
+| `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 
 ## Defer
 
