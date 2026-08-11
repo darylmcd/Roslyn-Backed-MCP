@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T02:42:59Z
+**updated_at:** 2026-08-11T03:02:39Z
 
 ## Agent contract
 
@@ -115,6 +115,8 @@
 | `elicitation-doc-drift-and-delegate-chain` | Low | elicitation-trychoice-cancellation-swallow | **Single-source the TryElicitChoiceAsync docs + collapse the 3-hop forwarders** — the param/returns block is byte-identical in 3 files and the coordinator summary claims a body that moved; the middle hops carry no production traffic. [type: refactor] [source: PR #1205 cq review] | M | items/elicitation-doc-drift-and-delegate-chain.md |
 | `group-c-compilation-cache-gate-hardening` | Low | — | **Harden the opt-in group-c cache gate before a consumer is wired** — the liveness check is evaluated once before the project loop while the cache re-reads the workspace version per call, so a mid-scan bump can serve a stale snapshot. [type: refactor] [source: PR #1207 cq review] | M | items/group-c-compilation-cache-gate-hardening.md |
 | `filewatcher-clearstale-timeout-flake-triage` | Low | — | **Make the ClearStale awaiter test deterministic** — re-filed: `known-flakes.md` cited this row id but the row was gone, so the fix was untracked. Replace the wall-clock bound at `ExternalEditStalenessTests.cs:405` with a signal assertion. [type: test] [source: known-flakes dangling cite] | S | items/filewatcher-clearstale-timeout-flake-triage.md |
+| `ci-yml-doc-citations-brittle-line-numbers` | Low | — | **Replace brittle ci.yml:<line> citations with anchor names** — docs/self-hosted-runner.md cites exact ci.yml line numbers that drift on any edit. [type: docs] [source: PR #1211 code-quality review] | S | items/ci-yml-doc-citations-brittle-line-numbers.md |
+| `ci-router-runner-label-duplication` | Low | — | **Single-source the roslynmcp-dev runner label in the ci.yml route job** — the label is hardcoded independently in the runs_on payload and the online-runner filter; drift silently disables the fallback. [type: refactor] [source: PR #1211 code-quality review] | S | items/ci-router-runner-label-duplication.md |
 
 ## Defer
 
