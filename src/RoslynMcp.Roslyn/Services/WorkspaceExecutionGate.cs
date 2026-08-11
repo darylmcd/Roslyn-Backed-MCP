@@ -215,36 +215,44 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
         var linked = linkedCts.Token;
 
-        // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
-        // acquired, so an auto-reload path runs under the same load gate as explicit
-        // workspace_reload calls — the reload's own write-locking is handled by WorkspaceManager.
-        // workspace_close skips this: reloading requires the on-disk solution, which may already
-        // be deleted while the in-memory session is still registered (F21 / missing worktree).
-        var autoReloaded = false;
-        if (applyStalenessPolicy)
-        {
-            autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
-
-            // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
-            // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
-            // for infrastructure work the caller cannot control. Reset the deadline to give the
-            // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
-            // reads from hitting the 5-second floor when the reload finishes in <2s but the
-            // remaining budget is already exhausted.
-            //
-            // The extension fires only when ApplyStalenessPolicyAsync reports a successful
-            // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
-            // the original deadline stands. The token must not already be cancelled (e.g. the
-            // caller cancelled, or the reload itself used all budget) — in that case we let the
-            // existing OperationCanceledException propagate unchanged.
-            if (autoReloaded && !linked.IsCancellationRequested)
-            {
-                timeoutCts.CancelAfter(_requestTimeout);
-            }
-        }
-
         try
         {
+            // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
+            // acquired, so an auto-reload path runs under the same load gate as explicit
+            // workspace_reload calls — the reload's own write-locking is handled by
+            // WorkspaceManager. workspace_close skips this: reloading requires the on-disk
+            // solution, which may already be deleted while the in-memory session is still
+            // registered (F21 / missing worktree).
+            //
+            // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
+            // this leg is now INSIDE the try so a gate-internal timeout firing during
+            // ApplyStalenessPolicyAsync's own ReloadAsync call (see the comment below on
+            // parallel-fanout-auto-reload-timeout-floor: the reload can consume "some, possibly
+            // all" of the request-timeout budget) is caught by the same reclassification catch
+            // as the rest of this method, instead of escaping unclassified.
+            var autoReloaded = false;
+            if (applyStalenessPolicy)
+            {
+                autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+
+                // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
+                // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
+                // for infrastructure work the caller cannot control. Reset the deadline to give the
+                // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
+                // reads from hitting the 5-second floor when the reload finishes in <2s but the
+                // remaining budget is already exhausted.
+                //
+                // The extension fires only when ApplyStalenessPolicyAsync reports a successful
+                // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
+                // the original deadline stands. The token must not already be cancelled (e.g. the
+                // caller cancelled, or the reload itself used all budget) — in that case we let the
+                // existing OperationCanceledException propagate unchanged.
+                if (autoReloaded && !linked.IsCancellationRequested)
+                {
+                    timeoutCts.CancelAfter(_requestTimeout);
+                }
+            }
+
             return await WithGlobalThrottle(async () =>
             {
                 var rwLock = _rwLocks.Get(workspaceId);

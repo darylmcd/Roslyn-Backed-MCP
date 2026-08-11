@@ -534,6 +534,35 @@ public class WorkspaceExecutionGateTests
             "StaleReloadMs must also remain null when no reload completed.");
     }
 
+    // test-run-unfiltered-bare-error-rootcause (finding 1, second review pass): RunPerWorkspaceAsync's
+    // try block originally started AFTER ApplyStalenessPolicyAsync, so a gate-internal timeout
+    // firing WHILE the auto-reload's own ReloadAsync call was in flight escaped the
+    // reclassification catch entirely — the identical bare-error bug via a code path the first
+    // fix cycle missed (the method's own parallel-fanout-auto-reload-timeout-floor comment already
+    // documented that reload can consume "some, possibly all" of the request-timeout budget). The
+    // try now wraps the staleness-policy/reload leg too.
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_RequestTimeoutFiresDuringReload_ThrowsTimeoutExceptionNotBareOperationCanceled()
+    {
+        var manager = new FakeGateWorkspaceManager(reloadDelayMs: 5000);
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                OnStale = StalenessPolicy.AutoReload,
+                RequestTimeout = TimeSpan.FromMilliseconds(150),
+            },
+            manager);
+
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+            gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, WorkspaceA,
+            "The timeout message should identify which workspace's gated operation timed out.");
+        Assert.AreEqual(1, manager.ReloadCount, "The reload attempt should have started before the timeout fired.");
+    }
+
     /// <summary>
     /// workspace-close-missing-solution-on-disk: closing must not run the stale auto-reload
     /// preamble (reload requires the solution file on disk).

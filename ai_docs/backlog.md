@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T20:53:38Z
+**updated_at:** 2026-08-11T21:07:09Z
 
 ## Agent contract
 
@@ -63,6 +63,7 @@
 | `elicitation-inflight-cancellation-test-harness-deadlock` | Medium | — | **Investigate whether cancelling mid-flight elicitation hangs the server** — an in-flight-cancellation regression test deadlocked indefinitely across 3 fix attempts; root cause unresolved. [type: chore] [source: elicitation-trychoice-cancellation-swallow spec review] | M | items/elicitation-inflight-cancellation-test-harness-deadlock.md |
 | `elicitation-inmemory-harness-consolidation` | Medium | — | **Extract a shared in-memory MCP client/server test harness** — two byte-identical ~110-line harnesses exist in the same test assembly, differing only in transport name + client handlers. [type: refactor] [source: elicitation-trychoice-cancellation-swallow cq review] | S | items/elicitation-inmemory-harness-consolidation.md |
 | `elicitation-tryelicitchoice-swallow-path-coverage` | Medium | — | **Cover the retained InvalidOperationException/McpException swallow paths in TryElicitChoiceAsync** — the narrowed catch has zero test coverage; the 2-type enumeration's provenance is an already-proven-incomplete comment. [type: chore] [source: elicitation-trychoice-cancellation-swallow cq review] | S | items/elicitation-tryelicitchoice-swallow-path-coverage.md |
+| `test-run-failures-pagination-truncation` | Medium | — | **Re-implement test_run failures pagination/truncation as its own unit** — reverted from test-run-unfiltered-bare-error-rootcause (wrong hypothesis); measure real MCP output cap first. [type: hardening] | M | items/test-run-failures-pagination-truncation.md |
 
 ## Low
 
@@ -120,6 +121,7 @@
 | `fixalltools-projectname-stale-optional-description` | Low | — | **fix_all's projectName MCP description is stale after the blank-projectName guard** — Description still says 'Optional' though scope:project now requires it. [type: docs] [source: fixall-blank-projectname-silent-wrong-target spec review] | S | items/fixalltools-projectname-stale-optional-description.md |
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 | `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
+| `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | S | items/gate-timeout-exception-drops-inner-oce.md |
 
 ## Defer
 

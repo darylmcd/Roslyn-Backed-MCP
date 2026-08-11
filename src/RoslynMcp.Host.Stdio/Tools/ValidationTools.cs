@@ -188,7 +188,7 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source. The `failures` array is paginated (see failuresOffset/failuresLimit) and each entry's Message/StackTrace is truncated — a broad/unfiltered run with many genuine failures would otherwise produce an unbounded payload that fails outside any structured envelope; failuresTotal/hasMoreFailures tell you when more exist.")]
+    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source.")]
     [McpToolMetadata("validation", "stable", false, false,
         "Run dotnet test for the workspace or a selected project.")]
     public static Task<string> RunTests(
@@ -197,15 +197,12 @@ public static class ValidationTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name or file path")] string? projectName = null,
         [Description("Optional: dotnet test filter expression")] string? filter = null,
-        [Description("Number of failing tests to skip before returning results (default: 0)")] int failuresOffset = 0,
-        [Description("Maximum number of failing tests to return (default: 25). Aggregate counts (Total/Passed/Failed/Skipped) are never truncated — only the per-failure detail array is paginated to keep the response within MCP output budgets.")] int failuresLimit = 25,
         IProgress<ProgressNotificationValue>? progress = null,
         IWorkspaceManager? workspaceManager = null,
         ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
         => RunTestsWithEvictionRetryAsync(
-            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter,
-            failuresOffset, failuresLimit, progress, loggerFactory, ct);
+            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter, progress, loggerFactory, ct);
 
     /// <summary>
     /// <c>workspace-eviction-no-auto-retry-on-tool-call</c> — runs <c>test_run</c> once and, when
@@ -242,17 +239,13 @@ public static class ValidationTools
         string workspaceId,
         string? projectName,
         string? filter,
-        int failuresOffset,
-        int failuresLimit,
         IProgress<ProgressNotificationValue>? progress,
         ILoggerFactory? loggerFactory,
         CancellationToken ct)
     {
         try
         {
-            return await RunTestsOnceAsync(
-                    gate, testRunnerService, workspaceId, projectName, filter,
-                    failuresOffset, failuresLimit, progress, ct)
+            return await RunTestsOnceAsync(gate, testRunnerService, workspaceId, projectName, filter, progress, ct)
                 .ConfigureAwait(false);
         }
         catch (KeyNotFoundException ex)
@@ -277,9 +270,7 @@ public static class ValidationTools
                 throw;
             }
 
-            return await RunTestsOnceAsync(
-                    gate, testRunnerService, reloadedId, projectName, filter,
-                    failuresOffset, failuresLimit, progress, ct)
+            return await RunTestsOnceAsync(gate, testRunnerService, reloadedId, projectName, filter, progress, ct)
                 .ConfigureAwait(false);
         }
     }
@@ -290,8 +281,6 @@ public static class ValidationTools
         string workspaceId,
         string? projectName,
         string? filter,
-        int failuresOffset,
-        int failuresLimit,
         IProgress<ProgressNotificationValue>? progress,
         CancellationToken ct)
     {
@@ -305,60 +294,14 @@ public static class ValidationTools
         {
             try
             {
-                if (failuresLimit <= 0)
-                    throw new ArgumentException("failuresLimit must be greater than 0.", nameof(failuresLimit));
-                if (failuresOffset < 0)
-                    throw new ArgumentException("failuresOffset must be non-negative.", nameof(failuresOffset));
-
                 ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
                 ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.ReportStage(progress, 3, 3, "done");
-
-                // test-run-unfiltered-bare-error-rootcause: defense-in-depth hardening, kept
-                // alongside the confirmed root-cause fix in WorkspaceExecutionGate (see the catch
-                // around WithGlobalThrottle in RunPerWorkspaceAsync / RunLoadGateAsync). Failures
-                // carries every failing test with an unbounded Message/StackTrace (now
-                // head-truncated by DotnetOutputParser) and, pre-fix, an unbounded COUNT — a
-                // broad/unfiltered run with a genuinely large failure count could still serialize
-                // a multi-hundred-KB-to-MB response, though no recorded repro was ever measured
-                // against the actual MCP output cap to confirm this was the cause (see the
-                // TestRunFailureEnvelopeTests comment for the confirmed mechanism: a gate
-                // per-request-timeout OperationCanceledException escaping unclassified). Page the
-                // list the same way test_discover pages test cases: aggregate counts (Total/
-                // Passed/Failed/Skipped) always reflect the full run; only the per-failure detail
-                // array is capped, with failuresTotal/hasMoreFailures so callers can tell.
-                var failuresTotal = result.Failures.Count;
-                var pagedFailures = result.Failures.Skip(failuresOffset).Take(failuresLimit).ToList();
-                var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
-
-                return JsonSerializer.Serialize(new
-                {
-                    result.Execution,
-                    result.Total,
-                    result.Passed,
-                    result.Failed,
-                    result.Skipped,
-                    failures = pagedFailures,
-                    failuresOffset,
-                    failuresLimit,
-                    failuresTotal,
-                    hasMoreFailures,
-                    result.FailureEnvelope,
-                }, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }
             catch (OperationCanceledException)
             {
-                // test-run-unfiltered-bare-error-rootcause: deliberately NOT formatted here —
-                // genuine caller/client cancellation must reach the MCP SDK's protocol-level
-                // cancel path unchanged, not a tool-error envelope. This used to also be the
-                // (unintended) escape hatch for WorkspaceExecutionGate's own internal
-                // per-request-timeout OperationCanceledException, which produced the bare
-                // "An error occurred invoking 'test_run'." SDK fallback string on any run
-                // exceeding the gate's default 2-minute ceiling. The gate now reclassifies its
-                // own timeout into a TimeoutException before it reaches this catch (see
-                // WorkspaceExecutionGate.RunPerWorkspaceAsync), so anything still caught here is
-                // true caller-initiated cancellation.
                 throw;
             }
             catch (WorkspaceEvictedException)
