@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T21:07:09Z
+**updated_at:** 2026-08-11T21:24:04Z
 
 ## Agent contract
 
@@ -71,7 +71,6 @@
 |----|-----|------|----|------|--------|
 | `workspace-id-optional-readonly-surface-full-sweep` | Low | — | **workspaceId optional full sweep** — flip the remaining ~45 read-only tools REQUIRED→OPTIONAL; gate on the pilot's `_meta.autoResolution` adoption signal; sub-batch per `*Tools.cs` file. [type: feature] [source: 2026-06-09 backlog-sweep execute] | L | items/workspace-id-optional-readonly-surface-full-sweep.md |
 | `tool-surface-pagination-or-tool-sets` | Low | — | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |
-| `test-run-unfiltered-bare-error-rootcause` | Low | — | **test_run bare-error root cause** — determine TRX-overflow vs escaped-exception cause of the bare "An error occurred invoking test_run", then fix per cause. [source: 2026-05-31 surface-test + 2026-06-08 retro] | M | items/test-run-unfiltered-bare-error-rootcause.md |
 | `apply-composite-preview-destructive-misnomer` | Low | — | **apply_composite_preview misnomer** — rename to `apply_composite` or loudly document that this `_preview`-suffixed tool applies (published surface — Directive #4 ADR + migration note). [source: 2026-05-31 surface-test] | M | items/apply-composite-preview-destructive-misnomer.md |
 | `change-signature-callsite-summary-stale-row-comments` | Low | — | **Stale row id in prompt/test comments** — restore a bounded row for the callsite-summary limitation or rewrite the comments without the dead `change-signature-preview-callsite-summary` pointer. [type: docs] | S | items/change-signature-callsite-summary-stale-row-comments.md |
 | `surface-test-shipped-prompt-local-skill-reference` | Low | — | **Shipped prompt cites maintainer-local .claude path** — replace with portable wording; consider genericity-guard rejection of `.claude/skills/` refs in shipped prompts. [type: docs] | M | items/surface-test-shipped-prompt-local-skill-reference.md |
@@ -121,7 +120,7 @@
 | `fixalltools-projectname-stale-optional-description` | Low | — | **fix_all's projectName MCP description is stale after the blank-projectName guard** — Description still says 'Optional' though scope:project now requires it. [type: docs] [source: fixall-blank-projectname-silent-wrong-target spec review] | S | items/fixalltools-projectname-stale-optional-description.md |
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 | `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
-| `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | S | items/gate-timeout-exception-drops-inner-oce.md |
+| `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | M | items/gate-timeout-exception-drops-inner-oce.md |
 
 ## Defer
 

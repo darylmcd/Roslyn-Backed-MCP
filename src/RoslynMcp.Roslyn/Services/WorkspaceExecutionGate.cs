@@ -245,8 +245,9 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 // The extension fires only when ApplyStalenessPolicyAsync reports a successful
                 // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
                 // the original deadline stands. The token must not already be cancelled (e.g. the
-                // caller cancelled, or the reload itself used all budget) — in that case we let the
-                // existing OperationCanceledException propagate unchanged.
+                // caller cancelled, or the reload itself used all budget) — in that case the catch
+                // below reclassifies a gate-internal timeout into TimeoutException, or lets a
+                // genuine caller cancellation propagate as OperationCanceledException unchanged.
                 if (autoReloaded && !linked.IsCancellationRequested)
                 {
                     timeoutCts.CancelAfter(_requestTimeout);

@@ -1,6 +1,6 @@
 # gate-timeout-exception-drops-inner-oce — TimeoutException reclassification sites drop the original OperationCanceledException
 
-**row:** `gate-timeout-exception-drops-inner-oce` · **pri:** `Low` · **size:** `S`
+**row:** `gate-timeout-exception-drops-inner-oce` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 
