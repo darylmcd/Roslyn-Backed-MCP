@@ -24,6 +24,9 @@ using RoslynMcp.Analyzers.ServerSurfaceCatalog;
 
 namespace RoslynMcp.Tests;
 
+// ReferenceAssemblies.Net.Net80 extracts into Microsoft.CodeAnalysis.Testing's process-global
+// test-packages cache; concurrent first-use can observe or leave a partial package directory.
+[DoNotParallelize]
 [TestClass]
 public sealed class StdoutWriteAnalyzerTests
 {

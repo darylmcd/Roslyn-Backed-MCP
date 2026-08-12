@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-12T20:58:18Z
+**updated_at:** 2026-08-12T21:00:08Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `analyzer-test-reference-cache-parallelism-race` | High | — | **Serialize analyzer harness reference-assembly extraction** — prevent the three analyzer test classes from concurrently mutating Microsoft.CodeAnalysis.Testing's process-global test-packages cache. [type: test] [source: PR #1221 CI] | S | items/analyzer-test-reference-cache-parallelism-race.md |
 
 ## Medium
 
