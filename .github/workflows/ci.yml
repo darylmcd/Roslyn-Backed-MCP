@@ -133,14 +133,12 @@ jobs:
     # job encodes this same predicate and never calls the runners API for
     # those events, so the security boundary is unchanged.
     runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
-    # Healthy self-hosted runs are ~9-11 min with the live network tests included;
-    # the PR path now excludes TestCategory=Network, so 20 min is real headroom.
-    # The 10-25min spread previously observed here (and the temporary 40-min
-    # budget) was root-caused to DotnetCommandRunner waiting unboundedly for pipe
-    # EOF while MSBuild reuse nodes / VBCSCompiler held inherited handles — fixed
-    # at the source (dotnet-runner-nodereuse-pipe-hang), so a hung child now
-    # fails its own command timeout instead of absorbing the job budget.
-    timeout-minutes: 20
+    # Self-hosted validation currently completes in ~10-15 min, but hosted Linux
+    # is materially slower: a July dependabot run needed 17m49s, and two fresh
+    # August dependabot runs reached the former 20-min cap without reporting a
+    # test failure. Keep 30 min of runner-class headroom while the per-command
+    # timeouts below still fail a wedged dotnet child well before the job cap.
+    timeout-minutes: 30
     env:
       # Fail-fast command timeouts for the integration tests (TestBase binds these
       # ROSLYNMCP_*_TIMEOUT_SECONDS vars). Production defaults (5/10/5 min) are
