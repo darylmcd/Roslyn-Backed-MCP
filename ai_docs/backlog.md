@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-11T21:24:04Z
+**updated_at:** 2026-08-12T20:58:18Z
 
 ## Agent contract
 
@@ -47,6 +47,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `analyzer-test-reference-cache-parallelism-race` | High | — | **Serialize analyzer harness reference-assembly extraction** — prevent the three analyzer test classes from concurrently mutating Microsoft.CodeAnalysis.Testing's process-global test-packages cache. [type: test] [source: PR #1221 CI] | S | items/analyzer-test-reference-cache-parallelism-race.md |
 
 ## Medium
 
@@ -79,7 +80,6 @@
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
-| `ci-policy-cache-version-stale-cite` | Low | — | **CI_POLICY.md cites a stale actions/cache version** — `CI_POLICY.md:12` says `actions/cache@v4` but `ci.yml:96` uses `actions/cache@v5`; sync the cite. [type: docs] [source: 2026-06-20 top-n row-2 implementer finding] | S | items/ci-policy-cache-version-stale-cite.md |
 | `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Low | — | **Couple the NuGet timeout-test wait bound to HttpTimeout** — the 30s hang-guard literal's `>> HttpTimeout(3s)` coupling is prose-only; derive it from a multiple of HttpTimeout, or close won't-fix. [type: test] [source: 2026-06-20 top-n row-4 cq] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
 | `filewatcher-markstaleifrelevant-stale-precedence-comment` | Low | — | **MarkStaleIfRelevant comment claims external-edit precedence the code lacks** — `FileWatcherService.cs:154-155` says external edits take precedence / no-downgrade, but `MarkStaleWithReason` (:247) is unconditional last-writer-wins; fix or delete the stale comment. [type: docs] [source: 2026-06-21 top-n cold-review] | S | items/filewatcher-markstaleifrelevant-stale-precedence-comment.md |
 | `analysis-services-dedup-reference-classifiers` | Low | — | **Unify the three independent reference-site classifiers in Roslyn analysis services** — merge ConsumerAnalysisService.ClassifyDependencyKind, TypeConsumersService.ClassifyKind. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-dedup-reference-classifiers.md |
@@ -121,6 +121,7 @@
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 | `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
 | `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | M | items/gate-timeout-exception-drops-inner-oce.md |
+| `upgrade-matrix-version-drift-guard` | Low | — | **Guard upgrade-matrix package pins against drift** — sync the two stale versions and compare documented exact pins with Directory.Packages.props in the AI-doc gate. [type: docs] [source: 2026-08-12 open-PR audit] | M | items/upgrade-matrix-version-drift-guard.md |
 
 ## Defer
 
