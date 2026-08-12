@@ -98,18 +98,47 @@ if ($ExcludeNetworkTests) {
     # live scan still runs as a canary on hosted runners.
     $testFilter += "&TestCategory!=Network"
 }
-if ($NoCoverage) {
-    dotnet test $solutionPath -c $Configuration --no-build --nologo `
-        --filter $testFilter `
-        --logger "console;verbosity=minimal"
-} else {
-    dotnet test $solutionPath -c $Configuration --no-build --nologo `
-        --filter $testFilter `
-        --collect:"XPlat Code Coverage" `
-        --results-directory $coverageDir `
-        --logger "console;verbosity=minimal"
+
+# Microsoft.CodeAnalysis.Testing extracts ReferenceAssemblies packages beneath
+# Path.GetTempPath()/test-packages. A long-lived self-hosted runner therefore carried a
+# partially-extracted package from one CI job into the next. Give each testhost invocation a
+# private temp root so extraction state has the same lifetime as this gate, while leaving the
+# parent PowerShell process's TEMP/TMP and every other concurrent gate untouched.
+$testTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
+    "RoslynMcpTestRuns\$([Guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
+Write-Host "Testhost temp root: $testTempRoot"
+try {
+    $testEnvironment = @(
+        "--environment", "TEMP=$testTempRoot",
+        "--environment", "TMP=$testTempRoot"
+    )
+    if ($NoCoverage) {
+        dotnet test $solutionPath -c $Configuration --no-build --nologo `
+            --filter $testFilter `
+            --logger "console;verbosity=minimal" `
+            @testEnvironment
+    } else {
+        dotnet test $solutionPath -c $Configuration --no-build --nologo `
+            --filter $testFilter `
+            --collect:"XPlat Code Coverage" `
+            --results-directory $coverageDir `
+            --logger "console;verbosity=minimal" `
+            @testEnvironment
+    }
+    Invoke-DotnetStep "dotnet test"
 }
-Invoke-DotnetStep "dotnet test"
+finally {
+    # Child builds can leave VBCSCompiler/MSBuild servers holding files below the private temp
+    # root. This is the repository's sanctioned Windows lock-release step; the runner executes
+    # one validation job at a time, and hosted runners are single-job ephemeral machines.
+    dotnet build-server shutdown
+    Invoke-DotnetStep "dotnet build-server shutdown"
+
+    if (Test-Path -LiteralPath $testTempRoot -PathType Container) {
+        Remove-Item -LiteralPath $testTempRoot -Recurse -Force
+    }
+}
 
 # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
 # tooling has platform-specific issues. Disable for the verification publish step;
