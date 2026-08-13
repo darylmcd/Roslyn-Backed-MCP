@@ -150,6 +150,33 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
     }
 
     /// <summary>
+    /// group-c-compilation-cache-gate-hardening: authoritative liveness check for the read-side
+    /// opt-in gate. Reference-equality against <see cref="IWorkspaceManager.GetCurrentSolution"/>
+    /// for the CALLER-SUPPLIED <paramref name="workspaceId"/> — not against the solution's own
+    /// <see cref="Solution.Workspace"/> back-reference, which cannot distinguish a live solution
+    /// belonging to a different workspace from one belonging to this cache slot's workspace.
+    /// </summary>
+    public bool IsLiveSolution(string workspaceId, Solution solution)
+    {
+        if (solution is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return ReferenceEquals(solution, _workspaceManager.GetCurrentSolution(workspaceId));
+        }
+        catch (StaleWorkspaceTransitionException)
+        {
+            // The workspace is mid-reload (or its last reload failed) and has no valid snapshot to
+            // compare against. Degrade to the raw per-project fetch rather than throwing out of a
+            // read-side helper — mirrors the ObjectDisposedException defense this check replaced.
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Applies the calling caller's <see cref="CancellationToken"/> to a shared cached task
     /// without canceling that task for anyone else. An already-canceled token short-circuits so
     /// the caller sees <see cref="OperationCanceledException"/> deterministically, matching the
