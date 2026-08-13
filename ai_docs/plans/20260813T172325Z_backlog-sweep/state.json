@@ -3,10 +3,10 @@
   "generatedAt": "2026-08-13T17:23:25.942Z",
   "backlogSnapshot": "2026-08-13T05:18:24Z",
   "addendaLoaded": true,
-  "phase": "complete",
+  "phase": "review-cycle-2-done",
   "cycleCount": 1,
   "maxCycles": 2,
-  "reviewStatus": "failed",
+  "reviewStatus": "passed-with-warnings",
   "readyForExecute": false,
   "initiatives": [
     {
@@ -472,7 +472,7 @@
       "toolPolicy": "edit-only",
       "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "scheduleHint": "heroic-last",
+      "scheduleHint": null,
       "dependsOn": [],
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -501,7 +501,7 @@
       "toolPolicy": "edit-only",
       "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "scheduleHint": "heroic-last",
+      "scheduleHint": null,
       "dependsOn": [],
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -530,7 +530,7 @@
       "toolPolicy": "edit-only",
       "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "scheduleHint": "heroic-last",
+      "scheduleHint": null,
       "dependsOn": [],
       "deepenerStatus": "ok",
       "deepenerFlags": {
@@ -684,82 +684,52 @@
   "planHash": "b0f961c90a38dc971ae71aee60ddaf95b5ba056309914ceadbd262381068c942",
   "backlogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152",
   "reviewFindings": {
-    "block": 5,
+    "block": 0,
     "warn": 2,
     "info": 11
   },
   "lastReviewFindings": [
     {
-      "initiativeId": "shipped-skills-prefix-gate-batch-2",
-      "severity": "block",
-      "rule": "5b",
-      "evidence": "fanoutEstimate: null while Diagnosis cites a real probe (\"a Grep for the hard-gate marker `Roslyn MCP is not connected` across `skills/**` returns exactly 17 SKILL.md files\" — reviewer-verified: 17) and concludes \"each content batch's blast radius is then exactly its own self-contained file list, verified\"; Risks reports \"13 gate-carrying SKILL.md files remain after this batch\". Record the measured count (4, matching productionFilesTouched) instead of null. New since cycle 0 — introduced by remediation (introducedByRemediation: true)."
-    },
-    {
-      "initiativeId": "shipped-skills-prefix-usage-audit-tail",
-      "severity": "block",
-      "rule": "5b",
-      "evidence": "fanoutEstimate: null while Diagnosis states \"Fanout: none of the four is a gate site and none is asserted-against by any guard today, so each edit is self-contained — blast radius equals the file list\" and Risks cites grep counts (\"each contain exactly one bare-literal occurrence (confirmed by grep)\"). A measured blast radius of 4 is reported in prose but dropped as null in state. New since cycle 0 — introduced by remediation (introducedByRemediation: true)."
-    },
-    {
-      "initiativeId": "shipped-skills-prefix-genericity-guard-glob",
-      "severity": "block",
-      "rule": "5b",
-      "evidence": "fanoutEstimate: null while Risks explicitly reports a measured probe: \"Fanout is bounded and verified rather than assumed: the broadened glob adds exactly 6 files to the scan and exactly 3 of them produce hits, so the blast radius is 1 script plus 3 content files\" (reviewer-verified: exactly 6 non-SKILL.md files exist under skills/). Record 4, not null. New since cycle 0 — introduced by remediation (introducedByRemediation: true)."
-    },
-    {
-      "initiativeId": "elicitation-forwarder-collapse-haselicitation",
-      "severity": "block",
-      "rule": "5b",
-      "evidence": "Direct state/prose contradiction: Risks says \"Fanout probe (Shape-B ...): grep for `HasElicitation` across `src/` returns 5 production files ... `fanoutEstimate: 4`, equal to `productionFilesTouched`; not oversized\" (reviewer-verified: 5 files), yet stateFields records fanoutEstimate: null. Record the measured 4. New since cycle 0 — introduced by remediation (introducedByRemediation: true)."
-    },
-    {
-      "initiativeId": "elicitation-forwarder-collapse-trychoice-docs",
-      "severity": "block",
-      "rule": "5b",
-      "evidence": "Direct state/prose contradiction: Risks says \"grep for `TryElicitChoiceAsync` across `src/` returns 4 production files ... `fanoutEstimate: 3`, equal to `productionFilesTouched`; not oversized\" (reviewer-verified: 4 files), yet stateFields records fanoutEstimate: null. Record the measured 3. New since cycle 0 — introduced by remediation (introducedByRemediation: true)."
-    },
-    {
       "initiativeId": "edit-preview-validation-decomposition",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Adjacent-order initiatives 11 (edit-preview-validation-decomposition) and 12 (extract-atomicfilewriter-encoding-helper) share src/RoslynMcp.Roslyn/Services/EditService.cs; planner Step 6 should have separated them in the order. Unchanged from cycle 0."
+      "evidence": "Adjacent-order initiatives 11 and 12 share src/RoslynMcp.Roslyn/Services/EditService.cs; planner Step 6 should have separated them. Unchanged from cycles 0 and 1."
     },
     {
       "initiativeId": "elicitation-forwarder-collapse-trychoice-docs",
       "severity": "warn",
       "rule": "C2-wave-conflict",
-      "evidence": "Adjacent-order initiatives 13.01 and 13.02 share 3 production files (StructuredCallToolFilter.cs, StructuredCallElicitationCoordinator.cs, ElicitationChoicePrompt.cs). The dependsOn edge makes the serialization deliberate and correct, but the wave scheduler must still not co-schedule them; separating their order values would make that structural rather than dependsOn-dependent."
+      "evidence": "Adjacent-order 13.01 and 13.02 share all 3 of 13.02 production files; dependsOn makes the serialization correct, but separating order values would make wave-separation structural rather than scheduler-dependent."
     },
     {
       "initiativeId": "path-boundary-link-swap-toctou",
       "severity": "info",
       "rule": "C2-wave-conflict",
-      "evidence": "Initiative 1 conflicts with 2 peers (orders 11, 12) on src/RoslynMcp.Roslyn/Services/EditService.cs; expect serial scheduling."
+      "evidence": "Initiative 1 conflicts with 2 peers (orders 11, 12) on EditService.cs; expect serial scheduling."
     },
     {
       "initiativeId": "edit-preview-validation-decomposition",
       "severity": "info",
       "rule": "C2-wave-conflict",
-      "evidence": "Initiative 11 conflicts with 2 peers (orders 1, 12) on src/RoslynMcp.Roslyn/Services/EditService.cs; expect serial scheduling."
+      "evidence": "Initiative 11 conflicts with 2 peers (orders 1, 12) on EditService.cs; expect serial scheduling."
     },
     {
       "initiativeId": "extract-atomicfilewriter-encoding-helper",
       "severity": "info",
       "rule": "C2-wave-conflict",
-      "evidence": "Initiative 12 conflicts with 2 peers (orders 1, 11) on src/RoslynMcp.Roslyn/Services/EditService.cs; expect serial scheduling."
+      "evidence": "Initiative 12 conflicts with 2 peers (orders 1, 11) on EditService.cs; expect serial scheduling."
     },
     {
       "initiativeId": "extract-atomicfilewriter-encoding-helper",
       "severity": "info",
       "rule": "3",
-      "evidence": "gate-forced-companion citation is complete (gate: C# compiler CS1061/CS0117; evidence: find_references returned 4 + 3 refs across 5 files with file:line; total: 4 base + 3 = 7) and sits exactly at the 7-file ceiling — one additional compiler-surfaced call site forces a split."
+      "evidence": "gate-forced-companion citation is complete (gate: C# compiler CS1061/CS0117; evidence: find_references 4 + 3 refs across 5 files with file:line; total 4 base + 3 = 7) and sits exactly at the 7-file ceiling — one more compiler-surfaced call site forces a split."
     },
     {
       "initiativeId": "elicitation-inflight-cancellation-test-harness-deadlock",
       "severity": "info",
       "rule": "3",
-      "evidence": "Scope is bimodal: state fields record only the guaranteed-floor branch (0 production files, 2 test files). The declared contingency branch adds up to 2 production files + 1 new test file; still within Rules 3/4, but every recorded budget field describes the floor only."
+      "evidence": "Scope is bimodal: state fields record only the guaranteed-floor branch (0 production, 2 test). Contingency branch adds up to 2 production + 1 new test file; within Rules 3/4 but unrecorded in every budget field."
     },
     {
       "initiativeId": "elicitation-inflight-cancellation-test-harness-deadlock",
@@ -771,31 +741,31 @@
       "initiativeId": "elicitation-inflight-cancellation-test-harness-deadlock",
       "severity": "info",
       "rule": "C2-wave-conflict",
-      "evidence": "Contingency branch names src/RoslynMcp.Host.Stdio/Elicitation/ElicitationChoicePrompt.cs (owned by initiative 13) and src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs (owned by initiative 8) — latent conflict edges (3,13) and (3,8) that the graph cannot see because productionFiles is []."
+      "evidence": "Contingency branch names ElicitationChoicePrompt.cs (owned by 13.01/13.02) and WorkspaceExecutionGate.cs (owned by order 8) — latent edges (3,13.x) and (3,8) the graph cannot see because productionFiles is []."
     },
     {
       "initiativeId": "gate-owned-timeout-cts-oce-classification-audit",
       "severity": "info",
       "rule": "3",
-      "evidence": "Zero production and zero test file changes; the deliverable is prose in the PR description + the backlog item's Evidence. The audit rationale must land in a tracked artifact (ai_docs/items/<id>.md + changelog.d fragment) or the PR is an empty diff."
+      "evidence": "Zero production and zero test file changes; the audit rationale must land in ai_docs/items/<id>.md + a changelog.d fragment or the PR is an empty diff."
     },
     {
       "initiativeId": "filewatcher-clearstale-timeout-flake-triage",
       "severity": "info",
       "rule": "3",
-      "evidence": "productionFilesTouched=0 but Scope also modifies ai_docs/known-flakes.md, which is not in Rule 3's exclusion list (tests, CHANGELOG, backlog.md, plan/state.json) — should count as 1. No cap impact; inconsistent with initiatives 5 and 14, which do count ai_docs/ files."
+      "evidence": "productionFilesTouched=0 but Scope also modifies ai_docs/known-flakes.md, which is not a Rule 3 exclusion — should count as 1. No cap impact; inconsistent with initiatives 5 and 14."
     },
     {
       "initiativeId": "shipped-skills-prefix-gate-batch-2",
       "severity": "info",
       "rule": "backlog-sync-consistency",
-      "evidence": "All three split children (6.01/6.02/6.03) declare rowsClosed: [] — the parent row shipped-skills-hardcode-bare-roslyn-tool-prefix stays OPEN after the whole sweep by design (13 of 17 gate files remain). Execute-side row-closing must tolerate the empty set and not close the row from state.json.backlogRowsClosed."
+      "evidence": "All three split children declare backlogRowsClosed: [] — parent row shipped-skills-hardcode-bare-roslyn-tool-prefix stays OPEN by design (13 of 17 gate files remain). Execute-side row-closing must tolerate the empty set."
     },
     {
       "initiativeId": "shipped-skills-prefix-gate-batch-2",
       "severity": "info",
       "rule": "schedule-hint",
-      "evidence": "6.01/6.02/6.03 all carry scheduleHint: heroic-last inherited from the split parent, yet each is a cheap doc-only batch (26-45K, 4 files, fanoutOversize: false). Per the addenda case study, heroic-last often resolves to defer-at-closeout — which would drop all three and leave the parent row wholly untouched. Consider clearing the hint now that the oversize forcing is gone."
+      "evidence": "RESOLVED by orchestrator: scheduleHint heroic-last cleared to null on 6.01/6.02/6.03 (inherited from the split parent; each child is a 4-file batch with fanoutOversize false and fanout == files)."
     }
   ]
 }
