@@ -644,6 +644,184 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractType_ConstructorRequested_RefusesWithStructuredBlockingDependency()
+    {
+        // Regression for `type-extraction-member-shape-validation` (1/3): a constructor's identifier
+        // is ALWAYS the source type's name, so `GetMemberName` mapped it to that name and
+        // `PartitionMembers` happily selected it. Neither `BuildNewFileRoot` nor
+        // `EnsurePublicAccessibility` retargets a constructor identifier, so the declaration was
+        // emitted verbatim inside `public sealed class {newTypeName}` — an ill-formed member named
+        // after the OLD type (CS1520-class breakage). It must be refused with structured data now.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ConstructorShapeFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ConstructorShapeFixture",
+                "{",
+                "    public ConstructorShapeFixture() { }",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, fixturePath, "ConstructorShapeFixture", ["ConstructorShapeFixture"], "ComputeHelper",
+                    null, CancellationToken.None));
+
+            Assert.IsTrue(ex.BlockingDependencies.Count > 0,
+                "the constructor refusal must carry structured blocking dependencies, not prose only");
+            Assert.IsTrue(ex.BlockingDependencies.Any(d =>
+                    string.Equals(d.Member, "ConstructorShapeFixture", StringComparison.Ordinal)),
+                "the blocking dependency must be attributed to the requested constructor name");
+            Assert.IsTrue(ex.BlockingDependencies.Any(d => d.Reason.Contains("constructor", StringComparison.Ordinal)),
+                $"the reason must say why the shape is refused. Actual: {string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason))}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_MultiDeclaratorField_SplitsOnlyRequestedVariables()
+    {
+        // Regression for `type-extraction-member-shape-validation` (2/3): `GetMemberName` named a
+        // field by its FIRST declarator only, so requesting "a" from `private int a = 1, b = 2;`
+        // moved the whole declaration and silently dragged `b` along (and requesting "b" matched
+        // nothing at all). The declaration must now be split, with attributes/modifiers/type and
+        // every initializer preserved on BOTH halves — including the retained, non-extracted one.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "MultiDeclaratorFieldFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class MultiDeclaratorFieldFixture",
+                "{",
+                "    private int a = 1, b = 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "MultiDeclaratorFieldFixture", ["a"], "ValueHolder", null,
+                CancellationToken.None);
+
+            Assert.IsNotNull(result);
+
+            var newFileDiff = result.Changes.FirstOrDefault(
+                c => c.FilePath.EndsWith("ValueHolder.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(newFileDiff, "preview must emit a change entry for the new extracted type file");
+            var newFileAdded = AddedDiffLines(newFileDiff!.UnifiedDiff);
+
+            Assert.IsTrue(newFileAdded.Any(l => l.Contains("a = 1", StringComparison.Ordinal)),
+                $"the requested declarator (with its initializer) must move to the new type. Diff:\n{newFileDiff.UnifiedDiff}");
+            Assert.IsFalse(newFileAdded.Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"\bb\b")),
+                $"the unrequested sibling declarator must NOT be dragged into the new type. Diff:\n{newFileDiff.UnifiedDiff}");
+
+            var sourceDiff = result.Changes.FirstOrDefault(
+                c => c.FilePath.EndsWith("MultiDeclaratorFieldFixture.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(sourceDiff, "preview must emit a change entry for the edited source file");
+            var sourceAdded = AddedDiffLines(sourceDiff!.UnifiedDiff);
+
+            Assert.IsTrue(sourceAdded.Any(l => l.Contains("private int b = 2;", StringComparison.Ordinal)),
+                $"the retained half must keep the original modifiers, type and initializer. Diff:\n{sourceDiff.UnifiedDiff}");
+            Assert.IsFalse(sourceAdded.Any(l => l.Contains("a = 1", StringComparison.Ordinal)),
+                $"the extracted declarator must be gone from the source type. Diff:\n{sourceDiff.UnifiedDiff}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_AmbiguousOverload_RefusesWithStructuredCandidates()
+    {
+        // Regression for `type-extraction-member-shape-validation` (3/3): `PartitionMembers` removed
+        // a name from its pending set on the FIRST source-order match, so for an overloaded name the
+        // first-declared overload was extracted and every later same-named overload silently fell
+        // through to the keep list — the caller was never told a choice had been made for them.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "OverloadShapeFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class OverloadShapeFixture",
+                "{",
+                "    private int Foo(int x) => x;",
+                "    private int Foo(string s) => s.Length;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ExtractTypeBlockingDependencyException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, fixturePath, "OverloadShapeFixture", ["Foo"], "FooHelper", null,
+                    CancellationToken.None));
+
+            Assert.IsTrue(ex.BlockingDependencies.Count >= 2,
+                $"every ambiguous candidate must be reported, not just the first. Actual count: {ex.BlockingDependencies.Count}");
+            Assert.IsTrue(ex.BlockingDependencies.All(d => string.Equals(d.Member, "Foo", StringComparison.Ordinal)),
+                "each candidate entry must be attributed to the ambiguous requested name");
+
+            var reasons = string.Join(" | ", ex.BlockingDependencies.Select(d => d.Reason));
+            StringAssert.Contains(reasons, "(int x)",
+                "the refusal must list each candidate's signature so the caller can disambiguate");
+            StringAssert.Contains(reasons, "(string s)",
+                "the refusal must list each candidate's signature so the caller can disambiguate");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    /// <summary>
+    /// Returns the added ('+') lines of a unified diff with the marker stripped, skipping the
+    /// '+++' file header.
+    /// </summary>
+    private static string[] AddedDiffLines(string unifiedDiff)
+    {
+        return unifiedDiff
+            .Split('\n')
+            .Where(line => line.StartsWith('+') && !line.StartsWith("+++"))
+            .Select(line => line.TrimEnd('\r')[1..])
+            .ToArray();
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
