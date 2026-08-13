@@ -1,0 +1,493 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-08-13T17:23:25.942Z",
+  "backlogSnapshot": "2026-08-13T05:18:24Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "path-boundary-link-swap-toctou",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "path-boundary-link-swap-toctou"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "4171a6885a5ca97a074ec6a87ffbf8fd4104d4f31be51109f9d7811af5407894"
+    },
+    {
+      "id": "type-extraction-member-shape-validation",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "type-extraction-member-shape-validation"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "3b2d85be8212371e4ac913034ef6a2f779d938c3286210ad006267c9b9163a51"
+    },
+    {
+      "id": "elicitation-inflight-cancellation-test-harness-deadlock",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "elicitation-inflight-cancellation-test-harness-deadlock"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "d2513558d44871253b07cff146522c342d0280856117b5c0fa2596491e964603"
+    },
+    {
+      "id": "test-run-failures-pagination-truncation",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-run-failures-pagination-truncation"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "8045a66fbbc41ad0b23a862a5eeeaf5b27dbe9890b29b5205f2ff8849ad2cb75"
+    },
+    {
+      "id": "surface-test-audit-artifact-gate-and-scorecard-staleness",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "surface-test-audit-artifact-gate-and-scorecard-staleness"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "635b18fb883d1eede41291eec78b20657e9b3eea9876387d9022666af2b93afa"
+    },
+    {
+      "id": "shipped-skills-hardcode-bare-roslyn-tool-prefix",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "shipped-skills-hardcode-bare-roslyn-tool-prefix"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "d24bfd774a48756352f4548e8d83e8903a3f435fbf9f368896eb8473c44f5149"
+    },
+    {
+      "id": "group-c-compilation-cache-gate-hardening",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "group-c-compilation-cache-gate-hardening"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "2427afa920f39ce37e7102fa2330b010fcb8999cbae63982075c79fdfe755abf"
+    },
+    {
+      "id": "gate-timeout-exception-drops-inner-oce",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "gate-timeout-exception-drops-inner-oce"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "bundleCandidatePeers": [
+        "gate-owned-timeout-cts-oce-classification-audit"
+      ],
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "ff9be4e5566df8ba159c1981e56932fe506f8273a31003035075205e328dca90"
+    },
+    {
+      "id": "gate-owned-timeout-cts-oce-classification-audit",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "gate-owned-timeout-cts-oce-classification-audit"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "bundleCandidatePeers": [
+        "gate-timeout-exception-drops-inner-oce"
+      ],
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "c64b4c3898d83e2ddda542e4bccf642a11b885a04312b9af8939063f2c41389f"
+    },
+    {
+      "id": "filewatcher-clearstale-timeout-flake-triage",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "filewatcher-clearstale-timeout-flake-triage"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "f60a0f4d8c10a4a4e166fc42b047760af491975167850159a8af9d1a040f2f73"
+    },
+    {
+      "id": "edit-preview-validation-decomposition",
+      "order": 11,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "edit-preview-validation-decomposition"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "d620d532224058cfacbb33495b718aa3ce1b1b15ad7cc9f23db3717a3d7da2b9"
+    },
+    {
+      "id": "extract-atomicfilewriter-encoding-helper",
+      "order": 12,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "extract-atomicfilewriter-encoding-helper"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "cc3e5b168234578fd424fa844d0a88e22e17d52e75b5c8e8a70c188fa5fdf878"
+    },
+    {
+      "id": "elicitation-doc-drift-and-delegate-chain",
+      "order": 13,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "elicitation-doc-drift-and-delegate-chain"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "2b7f289fa6d4b374b473ddb833e06a51362844a933418d34fdfcd8665972abfc"
+    },
+    {
+      "id": "deep-review-shape-list-single-source",
+      "order": 14,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "deep-review-shape-list-single-source"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "120f9e937e0c73ca741420726627afe34c68fd30d5a660fb6a1df4989fa8d993"
+    },
+    {
+      "id": "legacy-sln-slnx-parity-drift",
+      "order": 15,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "legacy-sln-slnx-parity-drift"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "5fbf0dbe1cfb4d55b863d0b8d679449528930a9776399912ddf3492d5aae923f"
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "conflictGraphInputHash": "9a4ef46eeede8c66f2ca90243e154e7e34eeafc406c50c96124c4301f078a69a",
+  "planHash": "b3bb04618b8cb79b5c835290e0cb8c3063136a91398d78e66aaa15149e5ca7c9",
+  "backlogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152"
+}
