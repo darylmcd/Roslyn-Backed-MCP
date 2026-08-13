@@ -16,22 +16,24 @@ Pre-existing flaky tests that subagents and the orchestrator should ignore when 
 |---|---|---|---|
 | `RoslynMcp.Tests.WorkspaceExecutionGateTests.AutoReload_ResetsTimeoutBudget_ToolActionGetsFullBudget` | 2026-05-17 | `TaskCanceledException` at [`WorkspaceExecutionGate.WithGlobalThrottle`](../src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs#L124) line 124 | Timing-sensitive: test asserts a 250ms tool budget resets after a 200ms simulated reload, leaving ~50ms for the action's `Task.Delay(50)`. Under self-hosted CI runner load the reload slips past 200ms, exhausting the budget. Evidence: failed first runs on PR #803 + PR #804 during sweep `20260517T025647Z` (2026-05-17); both passed on retry without code changes; PR #805 in the same wave passed first try (load varied). Fix-or-track: real fix is widening the 250ms tool budget or replacing the timing-dependent assertion with a counter-based one; track separately if recurrence becomes blocking. |
 
-## Retired entries
-
-| Test FQN / pattern | Registered | Retired | Resolution |
-|---|---|---|---|
-| `RoslynMcp.Tests.FileWatcherClearStaleAwaiterTests.ClearStale_ReleasesAwaiterParkedOnPriorSignal_RatherThanStrandingIt` | 2026-07-22 | 2026-08-13 | `System.TimeoutException` from a wall-clock `parked.WaitAsync(...)` bound that slipped under self-hosted-runner thread-pool load (PRs #1034, #1085, #1086 — all on diffs unrelated to `FileWatcherService`). Root cause was the test, not the production code: `ClearStale` cancels the outgoing `TaskCompletionSource` synchronously, so the timer was never needed. Fixed under row `filewatcher-clearstale-timeout-flake-triage` by parking with `CancellationToken.None` (raw signal task, no `Task.WaitAsync` wrapper) and asserting `IsCompleted`/`IsCanceled` synchronously the instant `ClearStale` returns. |
+> **This registry lists ONLY live flakes.** A resolved flake is DELETED outright, never moved to a
+> "retired"/"historical" section and never left behind in prose. The orchestrator contract matches a
+> failure against this file by test FQN + symptom, and that match does not care which heading the text
+> sits under — so a retained entry keeps waving through genuine failures of a test that is no longer
+> flaky. Git history is the archive for resolved entries; the resolving PR is the record.
 
 ## Re-triage against the shared-temp-root race (2026-08-10)
 
-The registered `WorkspaceExecutionGateTests` entry above (and the since-retired `FileWatcherClearStaleAwaiterTests` entry) were re-checked against the fixture-destroying race fixed by row `test-temp-root-shared-cleanup-race` (`[AssemblyCleanup]` used to delete the shared `%TEMP%/RoslynMcpTests` parent, so a concurrent test assembly's in-flight fixtures vanished mid-run).
+The registered `WorkspaceExecutionGateTests` entry above was re-checked against the fixture-destroying race fixed by row `test-temp-root-shared-cleanup-race` (`[AssemblyCleanup]` used to delete the shared `%TEMP%/RoslynMcpTests` parent, so a concurrent test assembly's in-flight fixtures vanished mid-run).
 
-**Neither is explained by that race.** They are a different symptom class:
+(A second entry was re-checked in the same pass; it has since been resolved and deleted per the rule above.)
 
-| | This race | The registered flakes |
+**It is not explained by that race.** It is a different symptom class:
+
+| | This race | The registered flake |
 |---|---|---|
-| Exception | `DirectoryNotFoundException` / `IOException` on a fixture path | `TaskCanceledException` / `TimeoutException` |
+| Exception | `DirectoryNotFoundException` / `IOException` on a fixture path | `TaskCanceledException` |
 | Failure point | Fixture *write* time, before the code under test runs | Inside a timing-bounded `await` in the code under test |
 | Trigger | A sibling test-assembly process finishing first | Wall-clock slip under host load |
 
-So the "self-hosted CI runner load" attribution **stands** — it was not a mis-attribution. Recorded here because the reverse was initially suspected during the 2026-08-10 sweep, and the suspicion was wrong: a name/among-flakes coincidence is not evidence, and the symptom signatures do not overlap. Do not fold these into that row.
+So the "self-hosted CI runner load" attribution **stands** — it was not a mis-attribution. Recorded here because the reverse was initially suspected during the 2026-08-10 sweep, and the suspicion was wrong: a name/among-flakes coincidence is not evidence, and the symptom signatures do not overlap. Do not fold it into that row.
