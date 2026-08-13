@@ -88,7 +88,7 @@ internal static class StructuredCallElicitationCoordinator
 
         // Layer 3: client must support elicitation. server.ClientCapabilities.Elicitation
         // is established at initialize-handshake time; this is a property read, not an RPC.
-        if (!ElicitationAllowlistPolicy.HasElicitation(context.Server?.ClientCapabilities))
+        if (!ElicitationChoicePrompt.HasElicitation(context.Server?.ClientCapabilities))
         {
             return null;
         }

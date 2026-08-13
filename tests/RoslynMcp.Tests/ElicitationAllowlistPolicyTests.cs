@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
 
 namespace RoslynMcp.Tests;
@@ -10,8 +11,16 @@ namespace RoslynMcp.Tests;
 /// policy members <b>directly</b> (not through the filter's thin delegates), pinning the
 /// decomposed unit on its own so the policy contract is guarded even if the filter's forwarding
 /// surface changes. The pre-existing <c>StructuredCallToolFilterElicitationTests</c> continue to
-/// assert the same guarantees through the filter delegates, proving the delegates are
-/// behavior-preserving.
+/// assert the same guarantees through the filter's remaining delegates
+/// (<c>IsSensitiveFieldName</c>, <c>IsElicitationAllowedFor</c>,
+/// <c>IsWorkspaceIdRecoveryAllowedFor</c>), proving those delegates are behavior-preserving.
+///
+/// <para>
+/// The <c>HasElicitation</c> assertions below target
+/// <see cref="ElicitationChoicePrompt.HasElicitation"/> — its sole definition since the
+/// <c>elicitation-forwarder-collapse-haselicitation</c> initiative deleted the
+/// <see cref="ElicitationAllowlistPolicy"/> and <see cref="StructuredCallToolFilter"/> forwarders.
+/// </para>
 /// </summary>
 [TestClass]
 public sealed class ElicitationAllowlistPolicyTests
@@ -26,7 +35,7 @@ public sealed class ElicitationAllowlistPolicyTests
             Elicitation = new ElicitationCapability(),
         };
 
-        Assert.IsTrue(ElicitationAllowlistPolicy.HasElicitation(capabilities),
+        Assert.IsTrue(ElicitationChoicePrompt.HasElicitation(capabilities),
             "An ElicitationCapability instance present on ClientCapabilities means the client " +
             "supports elicitation/create — the elicit recovery path is permitted.");
     }
@@ -34,7 +43,7 @@ public sealed class ElicitationAllowlistPolicyTests
     [TestMethod]
     public void HasElicitation_WhenCapabilitiesNull_ReturnsFalse()
     {
-        Assert.IsFalse(ElicitationAllowlistPolicy.HasElicitation(null),
+        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(null),
             "Null ClientCapabilities means no handshake-established capability set; refuse to elicit.");
     }
 
@@ -43,7 +52,7 @@ public sealed class ElicitationAllowlistPolicyTests
     {
         var capabilities = new ClientCapabilities();
 
-        Assert.IsFalse(ElicitationAllowlistPolicy.HasElicitation(capabilities),
+        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(capabilities),
             "Client must explicitly advertise the elicitation capability; absence means refuse.");
     }
 

@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
 
 namespace RoslynMcp.Tests;
@@ -56,7 +57,7 @@ public sealed class StructuredCallToolFilterElicitationTests
             Elicitation = new ElicitationCapability(),
         };
 
-        Assert.IsTrue(StructuredCallToolFilter.HasElicitation(capabilities),
+        Assert.IsTrue(ElicitationChoicePrompt.HasElicitation(capabilities),
             "An ElicitationCapability instance present on ClientCapabilities means the " +
             "client supports elicitation/create — the elicit recovery path is permitted.");
     }
@@ -124,7 +125,7 @@ public sealed class StructuredCallToolFilterElicitationTests
     {
         // Pre-initialize-handshake or a transport that doesn't establish capabilities —
         // the filter MUST NOT call ElicitAsync; it falls through to the existing envelope.
-        Assert.IsFalse(StructuredCallToolFilter.HasElicitation(null),
+        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(null),
             "Null ClientCapabilities means no handshake-established capability set; refuse to elicit.");
     }
 
@@ -138,7 +139,7 @@ public sealed class StructuredCallToolFilterElicitationTests
             // No Elicitation set, no Roots set, no Sampling set.
         };
 
-        Assert.IsFalse(StructuredCallToolFilter.HasElicitation(capabilities),
+        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(capabilities),
             "Client must explicitly advertise the elicitation capability; absence means refuse.");
     }
 

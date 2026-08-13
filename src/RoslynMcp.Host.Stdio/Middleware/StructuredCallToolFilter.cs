@@ -227,14 +227,6 @@ internal static class StructuredCallToolFilter
     }
 
     /// <summary>
-    /// Thin delegate preserving the historical static call surface. The policy lives in
-    /// <see cref="ElicitationAllowlistPolicy.HasElicitation"/>; kept here so existing callers
-    /// (<c>SymbolTools</c>, the filter test suites) compile unchanged.
-    /// </summary>
-    public static bool HasElicitation(ClientCapabilities? capabilities) =>
-        ElicitationAllowlistPolicy.HasElicitation(capabilities);
-
-    /// <summary>
     /// Thin delegate preserving the historical static call surface. See
     /// <see cref="ElicitationAllowlistPolicy.IsSensitiveFieldName"/>.
     /// </summary>
