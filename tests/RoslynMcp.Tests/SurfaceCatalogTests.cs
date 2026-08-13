@@ -283,6 +283,33 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void AllMcpToolMethodDescriptions_AreWithinClientLimit()
+    {
+        const int maxDescriptionCharacters = 2_000;
+        var assembly = typeof(ServerTools).Assembly;
+        var violations = assembly.GetTypes()
+            .SelectMany(type => type.GetMethods(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+            .Select(method => new
+            {
+                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
+                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
+            })
+            .Where(entry => entry.Tool is not null
+                && entry.Description is not null
+                && entry.Description.Description.Length > maxDescriptionCharacters)
+            .OrderBy(entry => entry.Tool!.Name, StringComparer.Ordinal)
+            .Select(entry => $"{entry.Tool!.Name}: {entry.Description!.Description.Length} chars")
+            .ToArray();
+
+        Assert.AreEqual(
+            0,
+            violations.Length,
+            $"MCP tool method descriptions must be <= {maxDescriptionCharacters} characters " +
+            "so clients do not truncate them. Violations:\n  " + string.Join("\n  ", violations));
+    }
+
+    [TestMethod]
     public void GetCompletions_DescriptionAndCatalogGuideMemberAccessPositioning()
     {
         var method = typeof(SymbolTools).GetMethod(

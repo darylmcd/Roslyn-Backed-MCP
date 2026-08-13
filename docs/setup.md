@@ -23,6 +23,38 @@
 | Legacy Visual Studio solution | `Roslyn-Backed-MCP.sln` | `dotnet build Roslyn-Backed-MCP.sln` | Prefer `RoslynMcp.slnx` for day-to-day work. |
 | Sample solutions | `samples/*/` | `dotnet build` per sample `.slnx` | Used for integration tests and manual scenarios. |
 
+## Configure the filesystem boundary
+
+Path-accepting tools and query-anchored solution discovery use a server-owned allowlist. Set
+`ROSLYNMCP_SANCTIONED_ROOTS` before starting the host. Separate multiple roots with the platform's
+`Path.PathSeparator`: semicolon (`;`) on Windows, colon (`:`) on macOS/Linux. Relative paths are
+resolved against the host process working directory, so a repository-scoped `.mcp.json` normally
+uses `.`:
+
+```json
+{
+  "mcpServers": {
+    "roslyn": {
+      "type": "stdio",
+      "command": "roslynmcp",
+      "env": {
+        "ROSLYNMCP_SANCTIONED_ROOTS": "."
+      }
+    }
+  }
+}
+```
+
+An empty allowlist rejects path access. `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true` temporarily
+restores the former unbounded behavior only when no roots are configured; it never bypasses a
+non-empty configured boundary. Client Roots are not an authority and cannot widen configured
+access. Sibling-worktree widening requires both the server-owned
+`ROSLYNMCP_ALLOW_ROOT_EXPANSION=true` setting and `expandSanctionedRoots=true` on the individual
+`workspace_load` request. Both default to false; request input alone cannot widen access, and the
+widening is limited to each configured root's immediate parent. See
+[ADR 0002](decisions/0002-configured-sanctioned-root-boundary.md) for the decision and migration
+details.
+
 ## CI artifacts
 
 GitHub Actions `ci` workflow uploads:

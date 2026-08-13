@@ -415,7 +415,7 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     [TestMethod]
-    public async Task LoadWorkspace_NotificationFailure_ReturnsStatusAndLogsDebug()
+    public async Task LoadWorkspace_ReturnsStatus_AndNotificationHelperLogsFailures()
     {
         const string expectedWorkspaceId = "test-ws-load-notify";
         var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "NotifyFailure.slnx");
@@ -426,9 +426,12 @@ public sealed class WorkspaceCloseDrainTests
         var commandRunner = new RecordingDotnetCommandRunner();
         var logger = new RecordingLogger();
         var loggerFactory = new RecordingLoggerFactory(logger);
+        await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+            Path.GetTempPath(),
+            CancellationToken.None);
 
         var json = await WorkspaceTools.LoadWorkspace(
-            server: null!,
+            server: session.Server,
             gate: gate,
             workspace: fakeWorkspace,
             warmService: new ThrowingWorkspaceWarmService(),
@@ -443,6 +446,11 @@ public sealed class WorkspaceCloseDrainTests
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual(expectedWorkspaceId, doc.RootElement.GetProperty("workspaceId").GetString(),
             "Resource-list notification failures are non-fatal; workspace_load must still return its status payload.");
+
+        // The connected test server accepts the notification. Exercise the same internal helper
+        // with a missing transport context to pin its failure logging independently of path
+        // validation, which now correctly rejects null/no-options workspace-load calls.
+        await WorkspaceTools.NotifyResourcesChangedAsync(null!, "workspace_load", logger);
 
         Assert.IsTrue(
             SpinWait.SpinUntil(

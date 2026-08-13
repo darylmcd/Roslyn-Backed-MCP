@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Security;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 
@@ -13,18 +14,22 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 ///   <item><b>File-anchored</b> — if the call carries a <c>filePath</c>-like argument, walk up
 ///   from that file's directory to the nearest <c>.slnx</c>/<c>.sln</c> (preferred) or
 ///   <c>.csproj</c>.</item>
-///   <item><b>Query-anchored</b> — otherwise, ask the client for its declared roots
-///   (<c>roots/list</c>, mirroring <see cref="ClientRootPathValidator"/>) and scan each root's
-///   top level plus one level down for solution files.</item>
+///   <item><b>Query-anchored</b> — otherwise, scan each server-configured sanctioned root's top
+///   level plus one level down for solution files.</item>
 /// </list>
 /// Discovery is deliberately conservative: it reports <see cref="DiscoveryStatus.Unique"/> only
 /// when exactly one candidate is found, <see cref="DiscoveryStatus.Ambiguous"/> when two or more
 /// are found (the caller fast-fails listing them rather than guessing), and
-/// <see cref="DiscoveryStatus.None"/> when nothing is found or no roots are declared (the caller
+/// <see cref="DiscoveryStatus.None"/> when nothing is found or no roots are configured (the caller
 /// falls back to the binder/elicitation path). It never assumes the process CWD.
 /// </summary>
 internal static class SolutionDiscoveryHelper
 {
+    private static readonly StringComparer FileSystemPathComparer =
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
     // Argument keys that carry a source-file path, in preference order. `filePath` is the
     // dominant convention across the read-only tool surface; `path`/`file` are rarer variants.
     private static readonly string[] FilePathArgumentKeys = ["filePath", "path", "file"];
@@ -41,8 +46,8 @@ internal static class SolutionDiscoveryHelper
 
     // solutiondiscoveryhelper-hotpath-perf: short-TTL memoization of the query-anchored root scan.
     // A burst of workspaceId-omitted read-only dispatches (no workspace loaded) would otherwise
-    // re-walk every declared client root's top level + one level down on every call. Keyed by the
-    // sorted, ordinal-case-insensitive root-directory set; scoped to the cold no-workspace path
+    // re-walk every configured root's top level + one level down on every call. Keyed by the
+    // sorted root-directory set using platform path casing; scoped to the cold no-workspace path
     // only, where a short staleness window (a solution created inside the TTL is not seen until
     // expiry) is low-stakes because the caller falls back to binder/elicitation regardless.
     private static readonly TimeSpan RootScanCacheTtl = TimeSpan.FromSeconds(10);
@@ -85,21 +90,28 @@ internal static class SolutionDiscoveryHelper
     internal static async Task<DiscoveryResult> TryDiscoverAsync(
         IDictionary<string, JsonElement>? arguments,
         McpServer? server,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SecurityOptions? securityOptions = null)
     {
+        var options = ConfiguredRootBoundary.ResolveOptions(server, securityOptions);
+
         // solutiondiscoveryhelper-hotpath-perf: off-load the synchronous ancestor-walk directory I/O
         // to the thread pool so it does not block the calling async continuation's thread. .NET has
         // no true async Directory API, so Task.Run off-loading plus the walk's own depth cap is the
         // correct "off the hot synchronous path" fix. The method's own behavior/signature is
         // unchanged — only how its single caller invokes it.
-        var fileAnchored = await Task.Run(() => TryDiscoverFromFilePath(arguments), cancellationToken)
+        var fileAnchored = await Task.Run(
+            () => TryDiscoverFromFilePathWithinBoundary(arguments, options),
+            cancellationToken)
             .ConfigureAwait(false);
         if (fileAnchored.Status != DiscoveryStatus.None)
         {
             return fileAnchored;
         }
 
-        return await TryDiscoverFromRootsAsync(server, cancellationToken).ConfigureAwait(false);
+        return await Task.Run(
+            () => TryDiscoverFromConfiguredRoots(options, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -109,6 +121,53 @@ internal static class SolutionDiscoveryHelper
     internal static DiscoveryResult TryDiscoverFromFilePath(IDictionary<string, JsonElement>? arguments)
     {
         var filePath = ExtractFilePath(arguments);
+        return TryDiscoverFromFilePath(filePath, canonicalBoundaryRoots: null);
+    }
+
+    private static DiscoveryResult TryDiscoverFromFilePathWithinBoundary(
+        IDictionary<string, JsonElement>? arguments,
+        SecurityOptions options)
+    {
+        var filePath = ExtractFilePath(arguments);
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return DiscoveryResult.None;
+        }
+
+        var configuredRoots = ConfiguredRootBoundary.GetCanonicalRoots(options);
+        if (configuredRoots.Count == 0)
+        {
+            return options.PathValidationFailOpen
+                ? TryDiscoverFromFilePath(filePath, canonicalBoundaryRoots: null)
+                : DiscoveryResult.None;
+        }
+
+        string canonicalFilePath;
+        try
+        {
+            canonicalFilePath = ConfiguredRootBoundary.ResolvePath(filePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
+                                   or UnauthorizedAccessException)
+        {
+            return DiscoveryResult.None;
+        }
+
+        if (!ConfiguredRootBoundary.IsPathUnderAnyRoot(
+                canonicalFilePath,
+                configuredRoots,
+                expandSanctionedRoots: false))
+        {
+            return DiscoveryResult.None;
+        }
+
+        return TryDiscoverFromFilePath(canonicalFilePath, configuredRoots);
+    }
+
+    private static DiscoveryResult TryDiscoverFromFilePath(
+        string? filePath,
+        IReadOnlyList<string>? canonicalBoundaryRoots)
+    {
         if (string.IsNullOrWhiteSpace(filePath))
         {
             return DiscoveryResult.None;
@@ -127,13 +186,28 @@ internal static class SolutionDiscoveryHelper
         var levelsWalked = 0;
         while (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
         {
-            var solutions = EnumerateByExtensions(directory, SolutionExtensions);
+            if (canonicalBoundaryRoots is not null
+                && !ConfiguredRootBoundary.IsPathUnderAnyRoot(
+                    directory,
+                    canonicalBoundaryRoots,
+                    expandSanctionedRoots: false))
+            {
+                break;
+            }
+
+            var solutions = EnumerateByExtensions(
+                directory,
+                SolutionExtensions,
+                canonicalBoundaryRoots);
             if (solutions.Count > 0)
             {
                 return DiscoveryResult.FromCandidates(solutions);
             }
 
-            var projects = EnumerateByExtensions(directory, ProjectExtensions);
+            var projects = EnumerateByExtensions(
+                directory,
+                ProjectExtensions,
+                canonicalBoundaryRoots);
             if (projects.Count > 0)
             {
                 return DiscoveryResult.FromCandidates(projects);
@@ -159,40 +233,16 @@ internal static class SolutionDiscoveryHelper
     }
 
     /// <summary>
-    /// Query-anchored discovery: fetch the client's declared roots and scan them. Returns
-    /// <see cref="DiscoveryStatus.None"/> when the client declares no roots capability, returns
-    /// no roots, or the roots request fails (advertised-but-unsupported clients).
+    /// Query-anchored discovery: scan the canonical server-configured sanctioned roots. Returns
+    /// <see cref="DiscoveryStatus.None"/> when no roots are configured or no candidate exists.
     /// </summary>
-#pragma warning disable MCP9005 // Stdio compatibility until mcp-roots-query-discovery-migration replaces roots/list discovery.
-    private static async Task<DiscoveryResult> TryDiscoverFromRootsAsync(
-        McpServer? server, CancellationToken cancellationToken)
+    private static DiscoveryResult TryDiscoverFromConfiguredRoots(
+        SecurityOptions options,
+        CancellationToken cancellationToken)
     {
-        if (server is null || server.ClientCapabilities?.Roots is null)
-        {
-            return DiscoveryResult.None;
-        }
-
-        IReadOnlyList<string> rootDirectories;
-        try
-        {
-            var rootsResult = await server.RequestRootsAsync(new ListRootsRequestParams(), cancellationToken)
-                .ConfigureAwait(false);
-            rootDirectories = rootsResult.Roots
-                .Where(root => root.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                .Select(TryDecodeLocalPath)
-                .Where(path => path is not null)
-                .Select(path => path!)
-                .ToArray();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Advertised-but-unsupported roots, transport hiccup, etc. — treat as zero candidates.
-            return DiscoveryResult.None;
-        }
-
+        var rootDirectories = ConfiguredRootBoundary.GetCanonicalRoots(options);
         return ScanDirectoriesForSolutionsCached(rootDirectories, cancellationToken);
     }
-#pragma warning restore MCP9005
 
     /// <summary>
     /// solutiondiscoveryhelper-hotpath-perf: short-TTL memoized wrapper around
@@ -210,7 +260,7 @@ internal static class SolutionDiscoveryHelper
             return DiscoveryResult.None;
         }
 
-        var cacheKey = string.Join('\0', rootDirectories.OrderBy(d => d, StringComparer.OrdinalIgnoreCase));
+        var cacheKey = string.Join('\0', rootDirectories.OrderBy(d => d, FileSystemPathComparer));
         var nowUtc = DateTime.UtcNow;
 
         if (s_rootScanCache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > nowUtc)
@@ -225,7 +275,8 @@ internal static class SolutionDiscoveryHelper
 
     /// <summary>
     /// Pure, testable scan: for each root directory, collect solution files at the top level and
-    /// one level down. Distinct, case-insensitive. Bounded (one level of recursion only) so the
+    /// one level down. Distinct using the platform filesystem comparison. Bounded (one level of
+    /// recursion only) so the
     /// cold-path scan cannot walk an arbitrarily deep tree.
     /// </summary>
     internal static DiscoveryResult ScanDirectoriesForSolutions(
@@ -239,12 +290,17 @@ internal static class SolutionDiscoveryHelper
                 continue;
             }
 
-            found.AddRange(EnumerateByExtensions(rootDirectory, SolutionExtensions));
+            found.AddRange(EnumerateByExtensions(
+                rootDirectory,
+                SolutionExtensions,
+                rootDirectories));
 
-            IEnumerable<string> subdirectories;
+            string[] subdirectories;
             try
             {
-                subdirectories = Directory.EnumerateDirectories(rootDirectory);
+                // Materialize inside the guarded block: EnumerateDirectories is lazy and can
+                // otherwise throw during foreach, outside this best-effort discovery boundary.
+                subdirectories = Directory.GetDirectories(rootDirectory);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -254,24 +310,70 @@ internal static class SolutionDiscoveryHelper
             foreach (var subdirectory in subdirectories)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                found.AddRange(EnumerateByExtensions(subdirectory, SolutionExtensions));
+                if (IsLinkedDirectory(subdirectory))
+                {
+                    // Never follow a symlink/junction child out of the configured physical root.
+                    // Configured roots themselves were canonicalized before this bounded scan.
+                    continue;
+                }
+
+                found.AddRange(EnumerateByExtensions(
+                    subdirectory,
+                    SolutionExtensions,
+                    rootDirectories));
             }
         }
 
-        var distinct = found.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var distinct = found
+            .Distinct(FileSystemPathComparer)
+            .OrderBy(path => path, FileSystemPathComparer)
+            .ToArray();
         return DiscoveryResult.FromCandidates(distinct);
     }
 
-    private static IReadOnlyList<string> EnumerateByExtensions(string directory, string[] extensions)
+    private static bool IsLinkedDirectory(string path)
+    {
+        try
+        {
+            return (new DirectoryInfo(path).Attributes & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable child cannot contribute a safe discovery candidate.
+            return true;
+        }
+    }
+
+    private static IReadOnlyList<string> EnumerateByExtensions(
+        string directory,
+        string[] extensions,
+        IReadOnlyList<string>? canonicalBoundaryRoots = null)
     {
         var matches = new List<string>();
         foreach (var extension in extensions)
         {
             try
             {
-                matches.AddRange(Directory.EnumerateFiles(directory, "*" + extension));
+                foreach (var match in Directory.EnumerateFiles(directory, "*" + extension))
+                {
+                    if (canonicalBoundaryRoots is null)
+                    {
+                        matches.Add(match);
+                        continue;
+                    }
+
+                    var canonicalMatch = ConfiguredRootBoundary.ResolvePath(match);
+                    if (ConfiguredRootBoundary.IsPathUnderAnyRoot(
+                            canonicalMatch,
+                            canonicalBoundaryRoots,
+                            expandSanctionedRoots: false))
+                    {
+                        matches.Add(canonicalMatch);
+                    }
+                }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
+                                       or UnauthorizedAccessException)
             {
                 // Unreadable directory — skip it; discovery is best-effort.
             }
@@ -303,17 +405,4 @@ internal static class SolutionDiscoveryHelper
         return null;
     }
 
-#pragma warning disable MCP9005 // Root is confined to the tracked legacy roots/list compatibility path above.
-    private static string? TryDecodeLocalPath(Root root)
-    {
-        try
-        {
-            return new Uri(root.Uri).LocalPath;
-        }
-        catch (UriFormatException)
-        {
-            return null;
-        }
-    }
-#pragma warning restore MCP9005
 }

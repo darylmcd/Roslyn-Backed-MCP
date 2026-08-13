@@ -44,7 +44,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
         var legacyJson = await AnalysisTools.GetDiagnosticDetails(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             diagnosticService: DiagnosticService,
             workspaceId: WorkspaceId,
@@ -57,7 +57,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
             ct: CancellationToken.None);
 
         var aliasJson = await AnalysisTools.GetDiagnosticDetails(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             diagnosticService: DiagnosticService,
             workspaceId: WorkspaceId,
@@ -87,7 +87,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
         var bothJson = await AnalysisTools.GetDiagnosticDetails(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             diagnosticService: DiagnosticService,
             workspaceId: WorkspaceId,
@@ -112,7 +112,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
-                server: null!,
+                server: await GetPathAuthorizedServerAsync(),
                 gate: WorkspaceExecutionGate,
                 diagnosticService: DiagnosticService,
                 workspaceId: WorkspaceId,
@@ -134,7 +134,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await AnalysisTools.GetDiagnosticDetails(
-                server: null!,
+                server: await GetPathAuthorizedServerAsync(),
                 gate: WorkspaceExecutionGate,
                 diagnosticService: DiagnosticService,
                 workspaceId: WorkspaceId,
@@ -341,12 +341,13 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
     public async Task GoToDefinition_CaretOnWhitespace_ReportsPositionSpecificMessage()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
+        var server = await GetPathAuthorizedServerAsync();
 
         var json = await ToolExecutionTestHarness.RunAsync(
             "go_to_definition",
             () =>
             SymbolTools.GoToDefinition(
-                server: null!,
+                server: server,
                 workspaceManager: WorkspaceManager,
                 gate: WorkspaceExecutionGate,
                 symbolNavigationService: SymbolNavigationService,

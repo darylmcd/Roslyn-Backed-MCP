@@ -4,7 +4,10 @@
      Method: live stdio probe of the installed v2.3.8 binary (initialize + tools/list +
      prompts/list + resources/list), source-level surface inventory, SDK release-note
      research, MCP spec/best-practices research. Token figures = ceil(chars/4) on wire
-     JSON; treat as ±15%. No build/test run (self-hosted runner constraint). -->
+     JSON; treat as ±15%. No build/test run (self-hosted runner constraint).
+     CORRECTION: the installed v2.3.8 probe predated repo PR #1223, while the audited
+     checkout already pinned ModelContextProtocol 2.1.0. SDK-current conclusions below
+     distinguish the historical installed binary from checkout ground truth. -->
 
 ## 1. Measured startup surface (wire probe, v2.3.8, protocol 2025-06-18)
 
@@ -28,32 +31,34 @@
 - 18 disjoint consolidation groups; max merge 173→~113; **risk-aligned merge (buckets preserved) 173→~117**, est. net ~10–13k tokens.
 - Every apply takes only `previewToken` (+workspaceId) — structural proof for the apply merges. `symbol_refactor_preview` already ships the kind-discriminated pattern.
 
-## 3. Gating: taxonomy exists, zero enforcement
+## 3. Gating: surface-wide tier enforcement
 
-- Registration is blanket `WithToolsFromAssembly()` (Program.cs:55-57); no env/CLI gate; `supportTier` consumed only by reporting (catalog summary, server_info, promotion diff) — never at registration/list time.
-- Prompts/resources are on-demand; catalog resource is paginated + cap-safe.
+- `ROSLYNMCP_TOOL_TIERS` selects `stable` or `stable,experimental` (the default). Startup fails on empty, unknown, or experimental-only values.
+- `SurfaceRegistrationPolicy` filters the SDK's authoritative tool, prompt, and resource collections after assembly discovery. Direct call/get/read routes for filtered members therefore fail as unavailable rather than bypassing list filtering.
+- Server instructions and catalog/resource-template documents use the same selection, so stable-only discovery does not recommend experimental endpoints. Static lists are deterministic and carry five-minute private caching hints; resource bodies are private and immediately stale.
+- `StartupDiagnostics` compares registered counts against the selected-tier expectation while separately proving reflection still matches the complete catalog.
 
 ## 4. SDK / spec currency
 
 | | Pinned | Latest | |
 |---|---|---|---|
-| ModelContextProtocol | 1.4.1 | 2.1.0 (2.0.0 → 2026-07-28; 2.1.0 → 2026-08-05) | major behind |
+| ModelContextProtocol (checkout) | 2.1.0 | 2.1.0 (2.0.0 → 2026-07-28; 2.1.0 → 2026-08-05) | current via PR #1223 |
 | Microsoft.CodeAnalysis.* | 5.6.0 | 5.6.0 | current |
 | MCP protocol | 2025-06-18 | **2026-07-28** (2025-11-25 intermediate) | two revisions stale |
 
-SDK 2.x buys: protocol 2026-07-28 negotiation + `server/discover` (automatic), tasks extension (`ModelContextProtocol.Extensions.Tasks`, SEP-2663), caching hints (`ttlMs`/`cacheScope`, SEP-2549), structured-content fidelity + JSON Schema 2020-12 (SEP-2106), MRTR elicitation, filter/request-handler expansion (MCPEXP002), OTel trace-context (SEP-414).
+SDK 2.x already provides the checkout with protocol 2026-07-28 negotiation + `server/discover` (automatic), tasks extension (`ModelContextProtocol.Extensions.Tasks`, SEP-2663), caching hints (`ttlMs`/`cacheScope`, SEP-2549), structured-content fidelity + JSON Schema 2020-12 (SEP-2106), MRTR elicitation, filter/request-handler expansion (MCPEXP002), and OTel trace-context (SEP-414). The v2.3.8 wire snapshot did not exercise that upgraded checkout.
 
-Breaking risk 1.4.1→2.x for this repo: **MCP9005** (Logging deprecated — hits `McpLoggingProvider`; build break under warnings-as-errors; prerequisite = `mcp-logging-stderr-otel-migration` row) · structured raw-emission vs bespoke `StructuredCallToolFilter` envelope (Medium) · csharp-sdk#844 binding-exception contract re-verify (Medium) · error-code renumbering -32020..22 (Low-Med). Release-note-derived, not compile-verified.
+Residual 2.x migration work is tracked separately: deprecated Logging/Roots/Sampling compatibility surfaces, structured raw-emission versus the bespoke `StructuredCallToolFilter` envelope, and public-contract migrations. The upgrade itself shipped in PR #1223 and compiles under the repository's warning policy.
 
 ## 5. Conformance scorecard (vs 2026-08 best practices)
 
-7 pass · 12 partial · 10 fail. Fail cluster: 6 SDK-blocked (protocol rev, server/discover, tasks, caching hints, 2020-12 dialect) + 4 fixable on 1.4.1 (ServerInstructions; outputSchema wire projection; output-size handling; input_examples).
+Historical installed-binary result: 7 pass · 12 partial · 10 fail. Six failures were limitations of the probed pre-upgrade binary, not blockers in the checkout after PR #1223. This remediation closes the ServerInstructions, outputSchema projection, tool-tier registration, and static-list caching gaps; remaining checkout work includes output-size handling, input examples, and further feature adoption on the 2.x APIs.
 
 Key partials/facts:
-- **outputSchema**: 8 adopter tools (server_info, server_heartbeat, workspace_* family) emit runtime `structuredContent`, but wire `toolsWithOutputSchema: 0` — schemas live only in the catalog resource; nothing projects `ToolOutputSchemaIndex` into `ProtocolTool.OutputSchema` (all tools return `Task<string>`). Projection gap, not adoption gap.
+- **outputSchema (historical probe):** the installed v2.3.8 binary advertised zero schemas although 8 tools emitted runtime `structuredContent`. The checkout now projects `ToolOutputSchemaIndex` into `ProtocolTool.OutputSchema`; `ServerDiscoveryWireTests` guards the live initialize/tools-list path.
 - **Logging**: declared capability + `notifications/message` bridge, but `McpLoggingProvider.cs:32` hardcodes an Information floor — `logging/setLevel` ignored. Do NOT patch: the whole surface is deprecated (2026-07-28); migrate per `mcp-logging-stderr-otel-migration` and let the bug die with it.
 - Annotations 173/173 honest (four boolean hints; no per-tool `title`). Elicitation spec-shaped with strict allowlist. Progress + cancellation broadly implemented. Handle-based state already 2026-07-28-shaped.
-- `ParameterObjectTools.cs:22` (+ class doc :13) routes agents to nonexistent `apply_refactoring` — shipped-surface defect.
+- **Parameter object apply route (remediated):** the tool description and class documentation now route preview tokens through `apply_with_verify`; the nonexistent `apply_refactoring` name is absent from the shipped source.
 
 ## 6. Prior art (why no dynamic toolsets)
 

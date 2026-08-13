@@ -47,7 +47,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         var dogFile = FindDocumentPath("Dog.cs");
 
         var canonicalJson = await SymbolTools.GetDocumentSymbols(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,
@@ -55,7 +55,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
             ct: CancellationToken.None);
 
         var aliasJson = await SymbolTools.GetSymbolOutline(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,
@@ -164,7 +164,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         var dogFile = FindDocumentPath("Dog.cs");
 
         var json = await SymbolTools.GetDocumentSymbols(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,
@@ -185,7 +185,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         var dogFile = FindDocumentPath("Dog.cs");
 
         var json = await SymbolTools.GetSymbolOutline(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,

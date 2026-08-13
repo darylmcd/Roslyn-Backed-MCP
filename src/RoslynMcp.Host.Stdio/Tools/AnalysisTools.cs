@@ -428,15 +428,11 @@ public static class AnalysisTools
     private const int SemanticGrepHardCap = 500;
 
     [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Token-aware regex search over the loaded C# workspace. Walks every document's syntax tokens (and comment trivia) and applies the supplied .NET regex to the text of tokens whose syntactic kind matches `scope`. " +
-        "Lets callers exclude false-positive matches that plain text grep would return inside string literals or comments. " +
-        "Scopes: `identifiers` (identifier tokens only), `strings` (string-literal tokens — verbatim, interpolated text, raw, char, utf8), `comments` (single-line, multi-line, and doc-comment trivia), or `all` (the union). " +
-        "Pattern syntax: uses .NET regex (System.Text.RegularExpressions), NOT ripgrep/PCRE syntax — backreferences, lookaheads, and .NET-specific constructs are supported; use anchors (^/$) carefully as each token is matched independently. " +
-        "Tokenization rule for `identifiers` scope: the regex is applied to one C#-lexer identifier token at a time. Dotted member-access expressions are MULTIPLE tokens (e.g. `Task.Run` is `Task` / `.` / `Run`), so a pattern like `Task\\.Run` will match 0 results under `scope=\"identifiers\"`. " +
-        "Recoverable patterns: (a) issue two separate calls — `pattern=\"^Task$\"` and `pattern=\"^Run$\"`, both `scope=\"identifiers\"` — and intersect the hits client-side by (filePath, line); (b) use `scope=\"all\"` with a prose-fragment pattern when the dotted text also appears in a comment or string literal (trade-off: `all` also matches inside comments/strings, so it may surface non-code references). " +
-        "Per-document regex evaluation is hard-capped at 2 seconds; tokens that trigger a timeout are silently skipped rather than failing the call — use simpler patterns if results seem incomplete on large files. " +
-        "Optional `projectName` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectName` if hits are truncated. " +
-        "Paginated via offset/limit — callers should iterate until hasMore=false. totalCount counts all hits up to the 500-hit hard cap (collection ceiling, decoupled from the user-facing page limit); the paged items slice contains only the [offset, offset+limit) window. " +
+        "Token-aware regex search over the loaded C# workspace. Applies a .NET regular expression to individual syntax tokens and comment trivia so callers can avoid plain-text false positives in strings or comments. " +
+        "Scopes: `identifiers` (identifier tokens), `strings` (string, interpolated-text, raw, char, and UTF-8 literal tokens), `comments` (single-line, multi-line, and documentation trivia), or `all` (their union). " +
+        "Patterns use System.Text.RegularExpressions, not ripgrep/PCRE syntax; each token is matched independently. Under `identifiers`, member access is split into separate tokens (`Task.Run` becomes `Task`, `.`, `Run`), so `Task\\.Run` cannot match—search the component identifiers separately. " +
+        "Per-document regex evaluation is capped at 2 seconds; timed-out tokens are skipped, so simplify expensive patterns if results appear incomplete. Optional `projectName` restricts the walk by Project.Name. " +
+        "Collection is hard-capped at 500 hits per call. Results are paginated with offset/limit; iterate until hasMore=false. totalCount covers collected hits only, up to that hard cap, so narrow `pattern` or `projectName` when the ceiling is reached. " +
         "Response shape: { count, totalCount, hasMore, offset, limit, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]

@@ -21,3 +21,4 @@
 ## Context
 
 Spin-off from the `extract-type-preview-refusal-missing-blocking-deps` initiative (backlog-sweep plan `20260805T222513Z_backlog-sweep`, PR #1138). Both findings are naming/dead-path hygiene, not functional bugs.
+2026-08-13 adjacent review: also delete the orphan duplicate XML summary near the composition-injection helper while consolidating stale warnings/fallback naming; keep this within the existing one-production-file cleanup.

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -8,9 +9,8 @@ namespace RoslynMcp.Tests;
 /// (<see cref="SolutionDiscoveryHelper"/>). Pins the deterministic, filesystem-driven strategies:
 /// file-anchored walk-up (solution preferred over project), the conservative unique/ambiguous/none
 /// classification, the bounded top-level + one-level scan used by query-anchored discovery, and the
-/// <c>filePath</c>-like argument extraction. The query-anchored RPC wrapper itself
-/// (<c>roots/list</c>) needs a live transport and is covered at the scan seam
-/// (<see cref="SolutionDiscoveryHelper.ScanDirectoriesForSolutions"/>) plus the server-null guard.
+/// <c>filePath</c>-like argument extraction. Query-anchored discovery is driven by explicit
+/// <see cref="SecurityOptions.SanctionedRoots"/> and never depends on client capabilities.
 /// </summary>
 [TestClass]
 public sealed class SolutionDiscoveryHelperTests
@@ -20,15 +20,14 @@ public sealed class SolutionDiscoveryHelperTests
     [TestInitialize]
     public void Init()
     {
-        _root = Path.Combine(Path.GetTempPath(), "rmcp-disc-" + Guid.NewGuid().ToString("N"));
+        _root = Path.Combine(TestTempRoot.Current, "rmcp-disc-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
-        try { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
-        catch (IOException) { /* best-effort temp cleanup */ }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
     }
 
     // ── file-anchored walk-up ───────────────────────────────────────────────
@@ -196,6 +195,36 @@ public sealed class SolutionDiscoveryHelperTests
                 new[] { Path.Combine(_root, "does-not-exist") }, CancellationToken.None).Status);
     }
 
+    [TestMethod]
+    public void ScanDirectoriesForSolutions_DoesNotFollowLinkedChildOutsideConfiguredRoot()
+    {
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "rmcp-disc-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsideRoot);
+        File.WriteAllText(Path.Combine(outsideRoot, "Outside.slnx"), "<Solution />");
+        var linkedChild = Path.Combine(_root, "linked-child");
+
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(linkedChild, outsideRoot))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            var result = SolutionDiscoveryHelper.ScanDirectoriesForSolutions(
+                [_root],
+                CancellationToken.None);
+
+            Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, result.Status,
+                "Query discovery must not follow a linked child beyond the configured physical root.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(_root);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
+    }
+
     // ── TTL cache around the root scan ──────────────────────────────────────
 
     [TestMethod]
@@ -237,6 +266,160 @@ public sealed class SolutionDiscoveryHelperTests
         var result = await SolutionDiscoveryHelper.TryDiscoverAsync(
             Args(("query", "Foo")), server: null, CancellationToken.None);
         Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, result.Status);
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_QueryOnly_UsesConfiguredRoots()
+    {
+        var solution = Path.Combine(_root, "Configured.slnx");
+        File.WriteAllText(solution, "<Solution />");
+
+        var result = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            Args(("query", "Foo")),
+            server: null,
+            cancellationToken: CancellationToken.None,
+            securityOptions: new SecurityOptions { SanctionedRoots = [_root] });
+
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Unique, result.Status);
+        Assert.AreEqual(solution, result.UniquePath);
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_QueryOnly_ConfiguredRootsPreserveAmbiguousAndEmptyResults()
+    {
+        var emptyRoot = Path.Combine(_root, "empty");
+        var ambiguousRoot = Path.Combine(_root, "ambiguous");
+        Directory.CreateDirectory(emptyRoot);
+        Directory.CreateDirectory(ambiguousRoot);
+        File.WriteAllText(Path.Combine(ambiguousRoot, "One.slnx"), "<Solution />");
+        File.WriteAllText(Path.Combine(ambiguousRoot, "Two.slnx"), "<Solution />");
+
+        var empty = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            Args(("query", "Foo")),
+            server: null,
+            cancellationToken: CancellationToken.None,
+            securityOptions: new SecurityOptions { SanctionedRoots = [emptyRoot] });
+        var ambiguous = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            Args(("query", "Foo")),
+            server: null,
+            cancellationToken: CancellationToken.None,
+            securityOptions: new SecurityOptions { SanctionedRoots = [ambiguousRoot] });
+
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, empty.Status);
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Ambiguous, ambiguous.Status);
+        Assert.HasCount(2, ambiguous.Candidates);
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_FileAnchorOutsideConfiguredRoot_ReturnsNoneWithoutCandidateLeak()
+    {
+        var configuredRoot = Path.Combine(_root, "configured");
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "rmcp-disc-anchor-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(configuredRoot);
+        Directory.CreateDirectory(outsideRoot);
+        File.WriteAllText(Path.Combine(outsideRoot, "Outside.slnx"), "<Solution />");
+        var outsideFile = Path.Combine(outsideRoot, "Class1.cs");
+        File.WriteAllText(outsideFile, "// outside source");
+
+        try
+        {
+            var result = await SolutionDiscoveryHelper.TryDiscoverAsync(
+                Args(("filePath", outsideFile)),
+                server: null,
+                cancellationToken: CancellationToken.None,
+                securityOptions: new SecurityOptions { SanctionedRoots = [configuredRoot] });
+
+            Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, result.Status);
+            Assert.IsEmpty(result.Candidates,
+                "An out-of-bound anchor must not enumerate or disclose nearby solution candidates.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_FileAnchorInsideConfiguredRoot_RemainsUnique()
+    {
+        var solution = Path.Combine(_root, "Inside.slnx");
+        var source = Path.Combine(_root, "src", "Class1.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        File.WriteAllText(solution, "<Solution />");
+        File.WriteAllText(source, "// inside source");
+
+        var result = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            Args(("filePath", source)),
+            server: null,
+            cancellationToken: CancellationToken.None,
+            securityOptions: new SecurityOptions { SanctionedRoots = [_root] });
+
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.Unique, result.Status);
+        Assert.AreEqual(solution, result.UniquePath);
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_FileAnchor_DoesNotWalkAboveConfiguredRoot()
+    {
+        var configuredRoot = Path.Combine(_root, "configured", "src");
+        var source = Path.Combine(configuredRoot, "nested", "Class1.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        File.WriteAllText(source, "// inside source");
+        File.WriteAllText(Path.Combine(_root, "OutsideBoundary.slnx"), "<Solution />");
+
+        var result = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            Args(("filePath", source)),
+            server: null,
+            cancellationToken: CancellationToken.None,
+            securityOptions: new SecurityOptions { SanctionedRoots = [configuredRoot] });
+
+        Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, result.Status);
+        Assert.IsEmpty(
+            result.Candidates,
+            "File-anchored discovery must stop at the configured boundary instead of enumerating parents above it.");
+    }
+
+    [TestMethod]
+    public async Task TryDiscoverAsync_LinkedSolutionFileOutsideBoundary_IsNotDisclosedOrSelected()
+    {
+        var source = Path.Combine(_root, "src", "Class1.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        File.WriteAllText(source, "// inside source");
+
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "rmcp-disc-linked-solution-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsideRoot);
+        var outsideSolution = Path.Combine(outsideRoot, "Outside.slnx");
+        File.WriteAllText(outsideSolution, "<Solution />");
+        var linkedSolution = Path.Combine(_root, "Linked.slnx");
+
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateFileLink(linkedSolution, outsideSolution))
+            {
+                Assert.Inconclusive("File links are unavailable in this test environment.");
+                return;
+            }
+
+            var fileAnchored = await SolutionDiscoveryHelper.TryDiscoverAsync(
+                Args(("filePath", source)),
+                server: null,
+                cancellationToken: CancellationToken.None,
+                securityOptions: new SecurityOptions { SanctionedRoots = [_root] });
+            var queryAnchored = await SolutionDiscoveryHelper.TryDiscoverAsync(
+                Args(("query", "Foo")),
+                server: null,
+                cancellationToken: CancellationToken.None,
+                securityOptions: new SecurityOptions { SanctionedRoots = [_root] });
+
+            Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, fileAnchored.Status);
+            Assert.AreEqual(SolutionDiscoveryHelper.DiscoveryStatus.None, queryAnchored.Status);
+            Assert.IsEmpty(fileAnchored.Candidates);
+            Assert.IsEmpty(queryAnchored.Candidates);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
     }
 
     private static Dictionary<string, JsonElement> Args(params (string Key, string Value)[] pairs)

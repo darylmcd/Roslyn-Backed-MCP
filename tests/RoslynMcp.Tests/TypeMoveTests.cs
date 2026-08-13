@@ -12,15 +12,10 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
-    // host-refactor-tools-root-boundary-validation: move_type_to_file_preview now calls
-    // ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, ct) before
-    // dispatching to the service, mirroring GetSyntaxTree/GetCodeActions. Passing server: null!
-    // exercises the no-MCP-server-context fail-open branch pinned by
-    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — see the parallel
-    // comment on TypeExtractionTests.PreviewExtractType_Tool_NullServer_AllowsAccess_And_ProducesPreview
-    // for why a live root-rejection round trip is out of scope for a unit test here.
+    // Direct tool calls use an explicitly configured, connected test server. The separate
+    // rejection test supplies a server whose configured boundary does not cover the source path.
     [TestMethod]
-    public async Task PreviewMoveTypeToFile_Tool_NullServer_AllowsAccess_And_ProducesPreview()
+    public async Task PreviewMoveTypeToFile_Tool_ConfiguredServer_ProducesPreview()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
@@ -34,7 +29,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
         var json = await TypeMoveTools.PreviewMoveTypeToFile(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             TypeMoveService,
             wsId,
@@ -52,7 +47,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     {
         // Root-boundary regression: mirrors
         // TypeExtractionTests.PreviewExtractType_Tool_OutOfRootPath_RejectsWithArgumentException.
-        // A real MCP client/server pair (McpRootsTestServerFactory) sanctions a root that does
+        // A real MCP client/server pair (McpRootsTestServerFactory) configures a root that does
         // NOT cover the workspace's source file, so move_type_to_file_preview must reject before
         // dispatching to the service.
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -85,7 +80,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
                     null,
                     CancellationToken.None));
 
-            StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
         }
         finally
         {

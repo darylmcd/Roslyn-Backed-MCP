@@ -1,10 +1,8 @@
-using System.IO.Pipelines;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -35,13 +33,10 @@ namespace RoslynMcp.Tests;
 ///         <see cref="StructuredCallToolFilter.HasElicitation"/> capability check returns
 ///         true for a properly handshaken client AND the candidate-discovery helper finds
 ///         the multiple-overload set; the gate logic is therefore wired correctly. The
-///         end-to-end <c>ElicitAsync</c> call requires a real
-///         <see cref="ModelContextProtocol.Server.McpServer"/> with transport — see
-///         <see cref="StructuredCallToolFilterElicitationTests"/> for the same gate
-///         pattern on the workspace-path elicitation initiative. Because the live call needs
-///         transport, the agent-first default and opt-in contract are pinned at the gate
-///         predicate (<c>allowElicitation &amp;&amp; HasElicitation(caps)</c>) plus the
-///         null-server list-envelope path, not via a synthetic transport harness.</item>
+///         end-to-end <c>ElicitAsync</c> pre-cancellation path uses a real SDK client/server pair
+///         over the shared in-memory transport harness. Genuinely in-flight cancellation remains
+///         tracked separately because the single-process duplex transport deadlocks in that
+///         scenario.</item>
 ///   <item><b>(b) fallback</b> — when the caller does not opt in, or the client lacks the
 ///         elicitation capability (or the user declines), the tool returns a structured
 ///         <c>{ ambiguous: true, count, candidates }</c> envelope with a stable
@@ -327,8 +322,7 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     [Timeout(15_000)]
     public async Task TryElicitChoiceAsync_PreCancelledToken_PropagatesCancellation_NotAdditiveListFallback()
     {
-        // A real McpServer/McpClient pair (over an in-memory duplex pipe, same pattern as
-        // ExpandedSurfaceIntegrationTests.CreateServerWithSanctionedRootAsync) is required
+        // A real McpServer/McpClient pair over the shared in-memory duplex harness is required
         // to reach the try body at all: HasElicitation must return true, which needs a
         // genuine post-handshake ClientCapabilities.Elicitation, not a null/fake server.
         // The client's ElicitationHandler never completes; the token below is cancelled
@@ -371,7 +365,7 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
 
     /// <summary>
     /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
-    /// duplex pipe (mirrors <c>ExpandedSurfaceIntegrationTests.CreateServerWithSanctionedRootAsync</c>)
+    /// duplex pipe supplied by <see cref="InMemoryMcpClientServerHarness"/>
     /// so <c>server.ClientCapabilities.Elicitation</c> is genuinely populated via the MCP
     /// initialize handshake and <c>server.ElicitAsync</c> genuinely round-trips to a client. The
     /// client's <see cref="McpClientHandlers.ElicitationHandler"/> never completes, so any
@@ -381,113 +375,21 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     /// race) is NOT safe to test against this harness: it deadlocks — see
     /// elicitation-inflight-cancellation-test-harness-deadlock.
     /// </summary>
-    private static async Task<ElicitationServerHarness> CreateServerWithHangingElicitationAsync(CancellationToken ct)
+    private static async Task<InMemoryMcpClientServerHarness> CreateServerWithHangingElicitationAsync(
+        CancellationToken ct)
     {
-        var clientToServer = new Pipe();
-        var serverToClient = new Pipe();
-        var clientToServerReadStream = clientToServer.Reader.AsStream();
-        var clientToServerWriteStream = clientToServer.Writer.AsStream();
-        var serverToClientReadStream = serverToClient.Reader.AsStream();
-        var serverToClientWriteStream = serverToClient.Writer.AsStream();
-
-        var serverTransport = new StreamServerTransport(
-            clientToServerReadStream,
-            serverToClientWriteStream,
-            "test-server-elicitation-cancellation",
-            NullLoggerFactory.Instance);
-        var server = McpServer.Create(serverTransport, new McpServerOptions(), NullLoggerFactory.Instance, null);
-        var cts = new CancellationTokenSource();
-        var serverRunTask = server.RunAsync(cts.Token);
-
-        var clientTransport = new StreamClientTransport(
-            clientToServerWriteStream,
-            serverToClientReadStream,
-            NullLoggerFactory.Instance);
-
-        var client = await McpClient.CreateAsync(
-            clientTransport,
-            new McpClientOptions
+        return await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "test-server-elicitation-cancellation",
+            clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
+            clientHandlers: new McpClientHandlers
             {
-                // This harness directly invokes the connection-scoped server after the
-                // initialize handshake. Pin that compatibility protocol explicitly; modern
-                // 2026-07-28 capabilities are request-scoped and exercised through tools/call.
-                ProtocolVersion = "2025-11-25",
-                Capabilities = new ClientCapabilities { Elicitation = new ElicitationCapability() },
-                Handlers = new McpClientHandlers
-                {
-                    // Never completes — the server must observe its own token's cancellation
-                    // rather than waiting forever for a reply that never comes.
-                    ElicitationHandler = (_, _) =>
-                        new ValueTask<ElicitResult>(new TaskCompletionSource<ElicitResult>().Task),
-                },
+                // Never completes — the server must observe its own token's cancellation
+                // rather than waiting forever for a reply that never comes.
+                ElicitationHandler = (_, _) =>
+                    new ValueTask<ElicitResult>(new TaskCompletionSource<ElicitResult>().Task),
             },
-            NullLoggerFactory.Instance,
+            disposalFailureContext: "elicitation-cancellation",
             ct).ConfigureAwait(false);
-
-        return new ElicitationServerHarness(
-            server,
-            client,
-            cts,
-            serverRunTask,
-            [
-                clientToServerReadStream,
-                clientToServerWriteStream,
-                serverToClientReadStream,
-                serverToClientWriteStream,
-            ]);
-    }
-
-    private sealed class ElicitationServerHarness(
-        McpServer server,
-        McpClient client,
-        CancellationTokenSource cts,
-        Task serverRunTask,
-        IReadOnlyList<Stream> transportStreams) : IAsyncDisposable
-    {
-        public McpServer Server { get; } = server;
-
-        public async ValueTask DisposeAsync()
-        {
-            var failures = new List<Exception>();
-            await DisposeCapturingAsync(client, failures).ConfigureAwait(false);
-            cts.Cancel();
-            try
-            {
-                await serverRunTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected — cancelling the server's receive loop surfaces as this.
-            }
-            finally
-            {
-                await DisposeCapturingAsync(Server, failures).ConfigureAwait(false);
-                foreach (var stream in transportStreams)
-                {
-                    await DisposeCapturingAsync(stream, failures).ConfigureAwait(false);
-                }
-                cts.Dispose();
-            }
-
-            if (failures.Count > 0)
-            {
-                throw new AggregateException("Failed to dispose the elicitation-cancellation MCP test harness.", failures);
-            }
-        }
-
-        private static async ValueTask DisposeCapturingAsync(
-            IAsyncDisposable disposable,
-            ICollection<Exception> failures)
-        {
-            try
-            {
-                await disposable.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
-        }
     }
 
     // ── (b) fallback when client lacks elicitation capability ───────────────

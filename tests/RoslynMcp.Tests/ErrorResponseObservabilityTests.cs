@@ -99,14 +99,15 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
         // extract-type-preview-refusal-missing-blocking-deps: mirrors the closestMatches contract
         // above — an extract_type_preview refusal keeps its InvalidOperation category and prose
         // message, and additionally carries the structured member/reason pairs that produced it.
-        // server: null! exercises the validator's documented no-MCP-context fail-open branch
-        // (same technique as TypeExtractionTests).
+        // The direct tool call uses an explicitly configured test server; null-server calls are
+        // fail-closed and cannot bypass the production path boundary.
         var animalServicePath = _scope.GetPath("SampleLib", "AnimalService.cs");
+        var server = await GetPathAuthorizedServerAsync();
 
         var json = await ToolExecutionTestHarness.RunAsync(
             "extract_type_preview",
             () => TypeExtractionTools.PreviewExtractType(
-                server: null!,
+                server: server,
                 WorkspaceExecutionGate,
                 TypeExtractionService,
                 WorkspaceId,

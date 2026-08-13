@@ -1,5 +1,8 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -8,7 +11,7 @@ namespace RoslynMcp.Tests;
 /// regression set named in <c>ai_docs/items/parameter-object-preview-design.md</c> §(f):
 /// (1) positional grouping, (2) named + mixed call sites, (3) default-value refusal,
 /// (4) ref/out refusal, (5) cross-project success, (6) cross-project missing-reference
-/// refusal, (7) end-to-end apply via <c>RefactoringService.ApplyRefactoringAsync</c>.
+/// refusal, (7) end-to-end redemption through <c>apply_with_verify</c>.
 /// </summary>
 [TestClass]
 public sealed class ParameterObjectPreviewTests : TestBase
@@ -47,11 +50,403 @@ public sealed class ParameterObjectPreviewTests : TestBase
             var fixtureDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("POPosFixture.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
             Assert.IsNotNull(fixtureDiff);
             StringAssert.Contains(fixtureDiff, "SumArgs sumArgs", "declaration should take the new record param");
+            StringAssert.Contains(
+                fixtureDiff,
+                "sumArgs.A + sumArgs.B + sumArgs.C",
+                "expression-bodied parameter references should flow through the new record param");
             StringAssert.Contains(fixtureDiff, "new SumArgs(1, 2, 3)", "callsite should wrap grouped args in new SumArgs(...)");
 
             var addedDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("SumArgs.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
             Assert.IsNotNull(addedDiff, "preview must include the new DTO file");
             StringAssert.Contains(addedDiff, "public sealed record SumArgs(int A, int B, int C)");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task BlockBody_RewritesOnlyGroupedParameterSymbols()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POBlockBodyFixture
+            {
+                private readonly int a = 10;
+
+                public int Sum(int a, int b, int c)
+                {
+                    return a + b + c + this.a;
+                }
+
+                public int Caller() => Sum(1, 2, 3);
+            }
+            """,
+            "POBlockBodyFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 7, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                CancellationToken.None);
+
+            var diff = preview.Changes.First(c =>
+                c.FilePath.EndsWith("POBlockBodyFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(diff, "sumArgs.A + sumArgs.B + sumArgs.C + this.a");
+            Assert.IsFalse(
+                diff.Contains("this.sumArgs.A", StringComparison.Ordinal),
+                "The same-named field must remain bound to the field symbol.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task WrittenOrAliasedGroupedParameters_RefusePreviewWithActionableUses()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POWrittenFixture
+            {
+                private static void Touch(ref int value) { }
+                private static void Fill(out int value) => value = 1;
+                private static void Read(in int value) { }
+
+                public unsafe int Compute(int assigned, int incremented, int byRef, int byOut, int byIn, int aliased, int addressed, int typedReference, int refReceiver)
+                {
+                    assigned = 1;
+                    incremented++;
+                    Touch(ref byRef);
+                    Fill(out byOut);
+                    Read(in byIn);
+                    ref int alias = ref aliased;
+                    int* pointer = &addressed;
+                    TypedReference reference = __makeref(typedReference);
+                    refReceiver.Increment();
+                    return assigned + incremented + byRef + byOut + byIn + alias + *pointer + __refvalue(reference, int) + refReceiver;
+                }
+            }
+
+            public static class POWrittenExtensions
+            {
+                public static void Increment(this ref int value) => value++;
+            }
+            """,
+            "POWrittenFixture.cs",
+            allowUnsafe: true);
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 9, column: 23),
+                    new ParameterObjectPreviewRequest(
+                        ["assigned", "incremented", "byRef", "byOut", "byIn", "aliased", "addressed", "typedReference", "refReceiver"],
+                        "ComputeArgs"),
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "'assigned'");
+            StringAssert.Contains(ex.Message, "(assignment)");
+            StringAssert.Contains(ex.Message, "'incremented'");
+            StringAssert.Contains(ex.Message, "(increment/decrement)");
+            StringAssert.Contains(ex.Message, "'byRef'");
+            StringAssert.Contains(ex.Message, "(ref argument)");
+            StringAssert.Contains(ex.Message, "'byOut'");
+            StringAssert.Contains(ex.Message, "(out argument)");
+            StringAssert.Contains(ex.Message, "'byIn'");
+            StringAssert.Contains(ex.Message, "(in argument)");
+            StringAssert.Contains(ex.Message, "'aliased'");
+            StringAssert.Contains(ex.Message, "(ref expression)");
+            StringAssert.Contains(ex.Message, "'addressed'");
+            StringAssert.Contains(ex.Message, "(address-of expression)");
+            StringAssert.Contains(ex.Message, "'typedReference'");
+            StringAssert.Contains(ex.Message, "(typed-reference alias)");
+            StringAssert.Contains(ex.Message, "'refReceiver'");
+            StringAssert.Contains(ex.Message, "(ref extension receiver)");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task NewParameterName_InvalidRetainedOrLocalCollision_RefusesPreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class PONameFixture
+            {
+                public int Retained(int a, int b, int sumArgs) => a + b + sumArgs;
+
+                public int Local(int a, int b)
+                {
+                    int sumArgs = 3;
+                    return a + b + sumArgs;
+                }
+            }
+            """,
+            "PONameFixture.cs");
+
+        try
+        {
+            var invalid = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "Args", ParameterName: "bad-name"),
+                    CancellationToken.None));
+            StringAssert.Contains(invalid.Message, "not a valid C# identifier");
+
+            var invalidDefault = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "Class"),
+                    CancellationToken.None));
+            StringAssert.Contains(invalidDefault.Message, "reserved C# keyword");
+
+            var retained = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(retained.Message, "collides with retained parameter 'sumArgs'");
+
+            var local = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 7, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(local.Message, "collides with a declaration inside the target method");
+            StringAssert.Contains(local.Message, "Local 'sumArgs'");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(8, "SumArgs", "Field 'sumArgs'")]
+    [DataRow(9, "SumArgsMethod", "Method 'sumArgsMethod'")]
+    public async Task NewParameterName_UnqualifiedMemberReferenceCapture_RefusesPreview(
+        int methodLine,
+        string newTypeName,
+        string expectedMember)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POMemberCaptureFixture
+            {
+                private readonly int sumArgs = 10;
+                private int sumArgsMethod() => 20;
+
+                public int Field(int a, int b) => a + b + sumArgs;
+                public int Method(int a, int b) => a + b + sumArgsMethod();
+            }
+            """,
+            "POMemberCaptureFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, methodLine, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b"], newTypeName),
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "would capture an existing unqualified member reference");
+            StringAssert.Contains(ex.Message, expectedMember);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("a", "A", "CombineArgs", "duplicate positional-record members", "'A' from ['a', 'A']")]
+    [DataRow("equals", "other", "CombineArgs", "reserved, synthesized, or inherited", "source parameter 'equals' generates reserved member 'Equals'")]
+    [DataRow("deconstruct", "other", "CombineArgs", "reserved, synthesized, or inherited", "source parameter 'deconstruct' generates reserved member 'Deconstruct'")]
+    [DataRow("clone", "other", "CombineArgs", "reserved, synthesized, or inherited", "source parameter 'clone' generates reserved member 'Clone'")]
+    [DataRow("collision", "other", "Collision", "same name as its enclosing record type", "Source parameter 'collision' generates member 'Collision'")]
+    public async Task GeneratedRecordMemberCollision_RefusesPreview(
+        string firstParameter,
+        string secondParameter,
+        string newTypeName,
+        string expectedCategory,
+        string expectedDetail)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            $$"""
+            namespace SampleLib;
+
+            public class POMemberNameFixture
+            {
+                public int Combine(int {{firstParameter}}, int {{secondParameter}}) => {{firstParameter}} + {{secondParameter}};
+            }
+            """,
+            "POMemberNameFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest([firstParameter, secondParameter], newTypeName),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, expectedCategory);
+            StringAssert.Contains(ex.Message, expectedDetail);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task FinalizeGeneratedMember_IsLegalAndAppliesCleanly()
+    {
+        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POLegalMemberFixture
+            {
+                public int Combine(int finalize, int other) => finalize + other;
+
+                public int Caller() => Combine(1, 2);
+            }
+            """,
+            "POLegalMemberFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                new ParameterObjectPreviewRequest(["finalize", "other"], "FinalizeArgs"),
+                CancellationToken.None);
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                applyJson);
+
+            var dtoText = await File.ReadAllTextAsync(Path.Combine(fixtureDir, "FinalizeArgs.cs"));
+            StringAssert.Contains(dtoText, "public sealed record FinalizeArgs(int Finalize, int Other);");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false, "=>")]
+    [DataRow(true, "return")]
+    public async Task NameofGroupedParameter_PreservesStringAndSameDocumentNestedCallerOnApply(
+        bool useBlockBody,
+        string expectedBodyPrefix)
+    {
+        var methodDeclaration = useBlockBody
+            ? """
+                public string Describe(int a, int b)
+                {
+                    return nameof(a) + ":" + (a + b);
+                }
+              """
+            : "public string Describe(int a, int b) => nameof(a) + \":\" + (a + b);";
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            $$"""
+            namespace SampleLib;
+
+            public class PONameofFixture
+            {
+                private static int Identity(int value) => value;
+
+            {{methodDeclaration}}
+
+                public string Caller() => Describe(Identity(1), Identity(2));
+            }
+            """,
+            "PONameofFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 7, column: 19),
+                new ParameterObjectPreviewRequest(["a", "b"], "DescribeArgs"),
+                CancellationToken.None);
+
+            var fixtureDiff = preview.Changes.First(change =>
+                change.FilePath.EndsWith("PONameofFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(
+                fixtureDiff,
+                $"{expectedBodyPrefix} \"a\" + \":\" + (describeArgs.A + describeArgs.B)");
+            StringAssert.Contains(
+                fixtureDiff,
+                "Describe(new DescribeArgs(Identity(1), Identity(2)))",
+                "The same-document caller after nameof and its nested invocation arguments must remain correctly targeted.");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                applyJson);
+
+            var appliedText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(
+                appliedText,
+                $"{expectedBodyPrefix} \"a\" + \":\" + (describeArgs.A + describeArgs.B)");
+            StringAssert.Contains(appliedText, "Describe(new DescribeArgs(Identity(1), Identity(2)))");
         }
         finally
         {
@@ -258,7 +653,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
     }
 
     [TestMethod]
-    public async Task ApplyRefactoring_WritesNewFileAndRewritesCallSitesOnDisk()
+    public async Task ApplyWithVerify_RedeemsPreviewAndWritesChangesToDisk()
     {
         var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
             """
@@ -281,8 +676,27 @@ public sealed class ParameterObjectPreviewTests : TestBase
                 new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
                 CancellationToken.None);
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
-            Assert.IsTrue(apply.Success, $"Apply must succeed: {apply.Error}");
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual(
+                "applied",
+                apply.RootElement.GetProperty("status").GetString(),
+                $"apply_with_verify must redeem a parameter_object_preview token. Response: {applyJson}");
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                $"Applying the parameter-object preview must introduce no diagnostics. Response: {applyJson}");
 
             var dtoPath = Path.Combine(fixtureDir, "SumArgs.cs");
             Assert.IsTrue(File.Exists(dtoPath), "DTO file must be written to disk");
@@ -291,6 +705,7 @@ public sealed class ParameterObjectPreviewTests : TestBase
 
             var fixtureText = await File.ReadAllTextAsync(fixturePath);
             StringAssert.Contains(fixtureText, "Sum(SumArgs sumArgs)");
+            StringAssert.Contains(fixtureText, "sumArgs.A + sumArgs.B + sumArgs.C");
             StringAssert.Contains(fixtureText, "new SumArgs(1, 2, 3)");
         }
         finally
@@ -300,11 +715,23 @@ public sealed class ParameterObjectPreviewTests : TestBase
     }
 
     private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
-        string content, string fileName)
+        string content,
+        string fileName,
+        bool allowUnsafe = false)
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var libDir = Path.Combine(solutionDir, "SampleLib");
+        if (allowUnsafe)
+        {
+            var projectPath = Path.Combine(libDir, "SampleLib.csproj");
+            var projectText = await File.ReadAllTextAsync(projectPath);
+            projectText = projectText.Replace(
+                "    <Nullable>enable</Nullable>",
+                "    <Nullable>enable</Nullable>\n    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>",
+                StringComparison.Ordinal);
+            await File.WriteAllTextAsync(projectPath, projectText);
+        }
         var fixturePath = Path.Combine(libDir, fileName);
         await File.WriteAllTextAsync(fixturePath, content);
         var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);

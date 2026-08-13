@@ -3,8 +3,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
@@ -21,6 +23,7 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 };
 
 var builder = Host.CreateApplicationBuilder(args);
+var toolTierSelection = ToolTierSelection.Parse(ReadEnv(ToolTierSelection.EnvironmentVariableName));
 
 // Redirect all logging to stderr so stdout remains clean for MCP protocol
 builder.Logging.ClearProviders();
@@ -50,6 +53,7 @@ builder.Services
             Title = "Roslyn MCP Server",
             Version = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly.GetName().Version?.ToString() ?? "1.0.0",
         };
+        options.ServerInstructions = ServerInstructions.For(toolTierSelection);
     })
     .WithStdioServerTransport()
     .WithToolsFromAssembly()
@@ -65,8 +69,14 @@ builder.Services
     // ArgumentException / JsonException propagation.
     .WithRequestFilters(requestFilters =>
     {
+        requestFilters.AddListToolsFilter(StaticListResultFilter.CreateTools);
+        requestFilters.AddListPromptsFilter(StaticListResultFilter.CreatePrompts);
+        requestFilters.AddListResourcesFilter(StaticListResultFilter.CreateResources);
+        requestFilters.AddListResourceTemplatesFilter(StaticListResultFilter.CreateResourceTemplates);
+        requestFilters.AddReadResourceFilter(ResourceReadResultFilter.Create);
         requestFilters.AddCallToolFilter(StructuredCallToolFilter.Create);
     });
+builder.Services.AddRoslynMcpSurfaceRegistrationPolicy(toolTierSelection);
 
 var host = builder.Build();
 
@@ -256,18 +266,7 @@ static ExecutionGateOptions BindExecutionGateOptions()
         winSecVal = winSec;
     if (int.TryParse(ReadEnv("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
         reqSecVal = reqSec;
-    var onStale = StalenessPolicy.AutoReload;
-    var onStaleRaw = ReadEnv("ROSLYNMCP_ON_STALE");
-    if (!string.IsNullOrWhiteSpace(onStaleRaw))
-    {
-        onStale = onStaleRaw.Trim().ToLowerInvariant() switch
-        {
-            "auto-reload" or "autoreload" => StalenessPolicy.AutoReload,
-            "warn" => StalenessPolicy.Warn,
-            "off" or "none" or "disabled" => StalenessPolicy.Off,
-            _ => StalenessPolicy.AutoReload,
-        };
-    }
+    var onStale = HostEnvironmentOptions.ParseStalenessPolicy(ReadEnv("ROSLYNMCP_ON_STALE"));
     return new ExecutionGateOptions
     {
         RateLimitMaxRequests = maxReqVal,
@@ -279,10 +278,10 @@ static ExecutionGateOptions BindExecutionGateOptions()
 
 static SecurityOptions BindSecurityOptions()
 {
-    var raw = ReadEnv("ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN");
-    if (bool.TryParse(raw, out var failOpen))
-        return new SecurityOptions { PathValidationFailOpen = failOpen };
-    return new SecurityOptions();
+    return SecurityOptionsEnvironmentBinder.Bind(
+        ReadEnv(SecurityOptionsEnvironmentBinder.SanctionedRootsVariable),
+        ReadEnv(SecurityOptionsEnvironmentBinder.PathValidationFailOpenVariable),
+        ReadEnv(SecurityOptionsEnvironmentBinder.AllowRootExpansionVariable));
 }
 
 static ScriptingServiceOptions BindScriptingServiceOptions()

@@ -52,8 +52,8 @@ public sealed record SurfaceTierCountsDto(int Stable, int Experimental);
 
 /// <summary>
 /// concurrent-mcp-instances-no-tools: runtime-observed registration counts, captured at
-/// <c>host.Build()</c>. <see cref="ParityOk"/> is true when the catalog and the SDK's reflected
-/// surface agree on counts.
+/// <c>host.Build()</c>. <see cref="ParityOk"/> is true when SDK registrations match the selected
+/// tier expectation and reflected declarations match the complete catalog for every surface.
 /// </summary>
 public sealed record SurfaceRegisteredCountsDto(int Tools, int Resources, int Prompts, bool ParityOk);
 
@@ -100,9 +100,13 @@ public sealed record ServerHeartbeatDto(ConnectionStateDto Connection);
 
 /// <summary>
 /// tool-output-schema-batch-1-server-info-workspace: typed shape for <c>workspace_list</c>'s
-/// default (verbose=false) response. The verbose-mode payload (full
-/// <see cref="WorkspaceStatusDto"/> per workspace) is NOT described by this schema —
-/// verbose mode is an opt-in that surfaces the same per-workspace fields as
-/// <c>workspace_status verbose=true</c> on each entry.
+/// default (verbose=false) response. The advertised tool schema is a union of this shape and
+/// <see cref="WorkspaceListVerboseDto"/> so both modes satisfy the public contract.
 /// </summary>
 public sealed record WorkspaceListDto(int Count, IReadOnlyList<WorkspaceStatusSummaryDto> Workspaces);
+
+/// <summary>
+/// Typed shape for <c>workspace_list(verbose=true)</c>. Keeping the verbose envelope explicit
+/// prevents its structured content from drifting away from the union advertised by tools/list.
+/// </summary>
+public sealed record WorkspaceListVerboseDto(int Count, IReadOnlyList<WorkspaceStatusDto> Workspaces);

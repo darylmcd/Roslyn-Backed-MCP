@@ -8,17 +8,13 @@ namespace RoslynMcp.Host.Stdio.Catalog;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Optional during the v1.17 transition: tools without <c>[McpToolMetadata]</c> still register
-/// and run fine and the name-level parity check continues to catch missing catalog rows. A
-/// future cleanup PR will annotate the remaining tools so the entire surface is enforced.
-/// </para>
-/// <para>
 /// tool-output-schema-infrastructure: the optional <see cref="OutputSchemaTypeRef"/> parameter
 /// names the DTO record whose JSON-Schema representation describes a tool's
 /// <c>structuredContent</c> channel per MCP 2025-06-18 § Tools / Structured Content. Tools that
 /// do not set this parameter remain text-only and unchanged; tools that do are emitted via
 /// both the <c>content[].text</c> and <c>structuredContent</c> channels by
-/// <c>StructuredCallToolFilter</c>. No tools opt in this PR — wiring only.
+/// <c>StructuredCallToolFilter</c>. <see cref="SurfaceRegistrationPolicy"/> also projects each
+/// opted-in schema into the SDK's advertised protocol-tool object.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]

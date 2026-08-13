@@ -10,6 +10,10 @@ project-scope config.
 | [`with-overrides.mcp.json`](with-overrides.mcp.json) | You need to tune `ROSLYNMCP_*` values for this repo (slow builds, resource limits, etc.). |
 | [`dnx.mcp.json`](dnx.mcp.json) | Zero-install path — resolves the package from NuGet on each cold start. Requires .NET 10 SDK Preview 6+ (`dnx` ships with the SDK). |
 
+All examples set `ROSLYNMCP_SANCTIONED_ROOTS=.` so the launched server is authorized only for the
+project working directory. Replace `.` with a platform-delimited root list when the client launches
+the server from a different working directory or intentionally spans repositories.
+
 ## Why there's no `${user_config.*}` example
 
 Earlier plugin releases shipped a `.mcp.json` that referenced
@@ -18,8 +22,9 @@ Code's plugin enable-time prompt. That substitution throws a hard error on any
 install flow that skips the prompt (automation, `bypassPermissions`,
 pre-existing installs) — the MCP server never starts and no error surfaces to
 the user. Fixed in v1.18.2 by dropping the `env` block from the plugin-shipped
-files; the server now starts with compiled-in defaults and accepts literal
-overrides via project-scope `.mcp.json` as shown here.
+files; the server now starts with compiled-in operational defaults and accepts literal
+overrides via project-scope `.mcp.json` as shown here. The sanctioned-root security boundary is
+intentionally explicit rather than a permissive compiled-in default.
 
 See `ai_docs/runtime.md` for the full list of `ROSLYNMCP_*` environment
 variables and their defaults.

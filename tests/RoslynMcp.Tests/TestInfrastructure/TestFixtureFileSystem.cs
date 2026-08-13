@@ -58,6 +58,75 @@ internal static class TestFixtureFileSystem
         }
     }
 
+    public static bool TryCreateDirectoryLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or PlatformNotSupportedException)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+        }
+
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(linkPath);
+        startInfo.ArgumentList.Add(targetPath);
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process is null || !process.WaitForExit(milliseconds: 5_000))
+        {
+            process?.Kill(entireProcessTree: true);
+            return false;
+        }
+
+        return process.ExitCode == 0 && Directory.Exists(linkPath);
+    }
+
+    public static bool TryCreateDirectorySymbolicLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    public static bool TryCreateFileLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            File.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private static void ClearReadOnlyAttributes(string path)
     {
         foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
@@ -93,20 +162,38 @@ internal static class TestFixtureFileSystem
 
     public static string FindRepositoryRoot()
     {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
+        var sourceDirectory = Path.GetDirectoryName(GetSourceFilePath());
+        foreach (var startDirectory in new[]
+                 {
+                     AppContext.BaseDirectory,
+                     Environment.CurrentDirectory,
+                     sourceDirectory,
+                 })
         {
-            if (File.Exists(Path.Combine(dir, "RoslynMcp.slnx")) &&
-                File.Exists(Path.Combine(dir, "Directory.Build.props")))
+            if (string.IsNullOrEmpty(startDirectory))
             {
-                return dir;
+                continue;
             }
 
-            dir = Directory.GetParent(dir)?.FullName;
+            var dir = startDirectory;
+            while (dir is not null)
+            {
+                if (File.Exists(Path.Combine(dir, "RoslynMcp.slnx")) &&
+                    File.Exists(Path.Combine(dir, "Directory.Build.props")))
+                {
+                    return dir;
+                }
+
+                dir = Directory.GetParent(dir)?.FullName;
+            }
         }
 
         throw new InvalidOperationException("Could not find the repository root.");
     }
+
+    private static string GetSourceFilePath(
+        [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "") =>
+        sourceFilePath;
 
     private static void CopyDirectory(string sourceDir, string destinationDir)
     {

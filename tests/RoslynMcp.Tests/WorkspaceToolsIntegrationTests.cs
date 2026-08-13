@@ -1,7 +1,14 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using ModelContextProtocol.Protocol;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
@@ -87,6 +94,59 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(workspaces.Count >= 1);
         Assert.IsFalse(workspaces[0].TryGetProperty("projects", out _),
             "Summary mode must NOT include the per-project tree on each workspace.");
+    }
+
+    [TestMethod]
+    public async Task ModeDependentWorkspaceResults_ConformToAdvertisedUnionSchemasOnStructuredChannel()
+    {
+        var responses = new[]
+        {
+            (Tool: "workspace_list", Json: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false)),
+            (Tool: "workspace_list", Json: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: true)),
+            (Tool: "workspace_status", Json: await WorkspaceTools.GetWorkspaceStatus(
+                WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, verbose: false, CancellationToken.None)),
+            (Tool: "workspace_status", Json: await WorkspaceTools.GetWorkspaceStatus(
+                WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, verbose: true, CancellationToken.None)),
+        };
+
+        foreach (var (tool, json) in responses)
+        {
+            using var metrics = AmbientGateMetrics.BeginRequest();
+            var projected = StructuredCallToolFilter.InjectMetaIntoContent(
+                new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = json }],
+                },
+                tool);
+
+            Assert.IsNotNull(projected.StructuredContent, $"{tool} must emit structuredContent.");
+            var structured = projected.StructuredContent.Value;
+            Assert.IsTrue(
+                JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(structured.GetRawText())),
+                $"{tool} structuredContent must equal the DTO body on the legacy text channel.");
+
+            var schema = ToolOutputSchemaIndex.GetSchema(tool);
+            Assert.IsNotNull(schema, $"{tool} must advertise its output schema.");
+            Assert.IsTrue(MatchesSchema(structured, schema),
+                $"{tool} response does not match any advertised outputSchema branch: {json}");
+        }
+    }
+
+    [TestMethod]
+    public async Task WorkspaceList_EmptyFreshHostResult_ConformsToAdvertisedAnyOfSchema()
+    {
+        var json = await WorkspaceTools.ListWorkspaces(new EmptyWorkspaceManager(), verbose: false);
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual(0, document.RootElement.GetProperty("count").GetInt32());
+        Assert.AreEqual(0, document.RootElement.GetProperty("workspaces").GetArrayLength());
+
+        var schema = ToolOutputSchemaIndex.GetSchema("workspace_list");
+        Assert.IsNotNull(schema);
+        var variants = schema.AsObject()["anyOf"]!.AsArray();
+        Assert.AreEqual(2, variants.Count(candidate => candidate is not null && MatchesSchema(document.RootElement, candidate)),
+            "The empty array intentionally overlaps both DTO branches; oneOf would reject this valid payload.");
+        Assert.IsTrue(MatchesSchema(document.RootElement, schema),
+            "An empty workspace_list payload matches both DTO branches and must remain valid via anyOf.");
     }
 
     [TestMethod]
@@ -388,6 +448,105 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         var loadLock = loadLockProperty.GetValue(session) as SemaphoreSlim;
         Assert.IsNotNull(loadLock, "WorkspaceSession.LoadLock must be a SemaphoreSlim instance.");
         return loadLock;
+    }
+
+    private sealed class EmptyWorkspaceManager : IWorkspaceManager
+    {
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
+
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+        public bool ContainsWorkspace(string workspaceId) => false;
+        public bool IsStale(string workspaceId) => false;
+        public bool Close(string workspaceId) => throw new NotSupportedException();
+        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
+        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+    }
+
+    private static bool MatchesSchema(JsonElement value, JsonNode schema)
+    {
+        if (schema is JsonValue booleanSchema && booleanSchema.TryGetValue<bool>(out var allowed))
+            return allowed;
+        if (schema is not JsonObject schemaObject)
+            return true;
+
+        if (schemaObject["oneOf"] is JsonArray oneOf
+            && oneOf.Count(candidate => candidate is not null && MatchesSchema(value, candidate)) != 1)
+        {
+            return false;
+        }
+        if (schemaObject["anyOf"] is JsonArray anyOf
+            && !anyOf.Any(candidate => candidate is not null && MatchesSchema(value, candidate)))
+        {
+            return false;
+        }
+
+        if (schemaObject["type"] is { } typeNode && !MatchesJsonType(value, typeNode))
+            return false;
+
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var properties = schemaObject["properties"] as JsonObject;
+            if (schemaObject["required"] is JsonArray required)
+            {
+                foreach (var requiredName in required.Select(static node => node?.GetValue<string>()))
+                {
+                    if (requiredName is not null && !value.TryGetProperty(requiredName, out _))
+                        return false;
+                }
+            }
+
+            if (properties is not null)
+            {
+                foreach (var property in value.EnumerateObject())
+                {
+                    if (properties[property.Name] is { } propertySchema
+                        && !MatchesSchema(property.Value, propertySchema))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Array && schemaObject["items"] is { } itemSchema)
+        {
+            foreach (var item in value.EnumerateArray())
+            {
+                if (!MatchesSchema(item, itemSchema)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool MatchesJsonType(JsonElement value, JsonNode typeNode)
+    {
+        var expectedTypes = typeNode is JsonArray typeArray
+            ? typeArray.Select(static node => node?.GetValue<string>()).Where(static type => type is not null)
+            : [typeNode.GetValue<string>()];
+
+        return expectedTypes.Any(type => type switch
+        {
+            "object" => value.ValueKind == JsonValueKind.Object,
+            "array" => value.ValueKind == JsonValueKind.Array,
+            "string" => value.ValueKind == JsonValueKind.String,
+            "integer" => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out _),
+            "number" => value.ValueKind == JsonValueKind.Number,
+            "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            "null" => value.ValueKind == JsonValueKind.Null,
+            _ => true,
+        });
     }
 
     private static string FindProgramPath()
