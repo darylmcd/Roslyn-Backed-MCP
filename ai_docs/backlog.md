@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-13T21:54:17Z
+**updated_at:** 2026-08-13T22:12:14Z
 
 ## Agent contract
 
@@ -152,6 +152,7 @@
 | `editservice-dead-validateeditrange-references` | Low | — | **Retire the dead `ValidateEditRange` references left by the EditService decomposition** — the extraction landed as `ValidateEditShape`/`ValidateEditBounds`, but three doc comments still name a symbol that does not exist. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, PR #1241 code-quality review] | S | items/editservice-dead-validateeditrange-references.md |
 | `xmldoc-crefs-not-compile-checked` | Low | — | **Make XML doc `<see cref>` compile-checked** — no csproj sets `GenerateDocumentationFile`, so the compiler never validates crefs and dangling ones ship green under `TreatWarningsAsErrors`. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, PR #1241 code-quality review] | M | items/xmldoc-crefs-not-compile-checked.md |
 | `sourcefileencoding-core-relocation` | Low | — | **Move `SourceFileEncoding` to `RoslynMcp.Core`** so `FileSnapshotDto.FromExistingBytes` stops hand-rolling a second BOM-detecting `StreamReader` — the extraction landed in `.Roslyn` and Core cannot reference upward. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, PR #1243 code-quality review] | M | items/sourcefileencoding-core-relocation.md |
+| `cancellation-invariant-regression-locks` | Low | — | **Lock the safe-cancellation invariants the OCE-classification audit relied on** — `ScriptExecutionSupervisor`'s ambient-token-only-throw and `WorkspaceForkApplyService`'s timeout path are both load-bearing and untested. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, plan Risk 2 follow-up] | M | items/cancellation-invariant-regression-locks.md |
 
 ## Defer
 

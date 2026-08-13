@@ -28,3 +28,10 @@ Surfaced while reviewing the (held) `path-boundary-link-swap-toctou` change, whi
 `canonicalWritePath` parameter to `IEditService.ApplyTextEditsAsync`. The reviewer enumerated every
 production caller to check for silent-default hazards and found these two tools validate nothing.
 Independent of whether that held initiative is revived — these tools need a boundary check either way.
+## Amendment — 2026-08-13 (cold self-review of sweep 20260813T172325Z)
+
+**Acceptance re-based onto the HEAD signature.** The Evidence and Acceptance above were written against `IEditService.ApplyTextEditsAsync`'s `canonicalWritePath` parameter — that parameter exists ONLY on the held PR #1230 branch and is **not at HEAD** (verified: a repo grep for `canonicalWritePath` over `src`/`tests` returns nothing).
+
+The row's substantive finding is unaffected and still verified: `SuppressionTools.cs` contains no `ClientRootPathValidator` reference, and both `SuppressionService` write call sites reach `EditService`'s physical write with only workspace-document membership as a bound.
+
+**Read the acceptance as:** `add_pragma_suppression` and `pragma_scope_widen` must validate their client-supplied `filePath` against the configured root boundary before reaching the write, and must pin the validated target through to it — by whatever mechanism exists when this row is worked. If `path-boundary-link-swap-toctou` is re-planned and lands a canonical-path-carrying signature first, reuse it; if not, this row supplies its own. Do NOT treat the held branch's parameter as an existing API.
