@@ -20,7 +20,6 @@
 | NuGet global tool | `src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj` (`PackAsTool`, `ToolCommandName`: `roslynmcp`) | `dotnet pack src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj -c Release -o ./nupkg` then `dotnet tool install -g Darylmcd.RoslynMcp --add-source ./nupkg` | Package id `Darylmcd.RoslynMcp` (the unprefixed `RoslynMcp` is owned by another publisher on nuget.org). CLI command name remains `roslynmcp`. |
 | Publish + reinstall local tool | MSBuild target `PackAndReinstallGlobalTool` | `dotnet publish -c Release /p:ReinstallTool=true` (Windows) | Uninstalls prior global install, packs to `nupkg/`, reinstalls. Uses `taskkill` on `roslynmcp.exe`. |
 | Docker image | `Dockerfile` | `docker build -t roslynmcp .` then `docker run ...` | Runtime stage uses full SDK (MSBuild workspace). See comments in `Dockerfile` for read-only/volume hints. |
-| Legacy Visual Studio solution | `Roslyn-Backed-MCP.sln` | `dotnet build Roslyn-Backed-MCP.sln` | Prefer `RoslynMcp.slnx` for day-to-day work. |
 | Sample solutions | `samples/*/` | `dotnet build` per sample `.slnx` | Used for integration tests and manual scenarios. |
 
 ## Configure the filesystem boundary
