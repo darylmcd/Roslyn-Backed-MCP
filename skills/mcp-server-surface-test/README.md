@@ -11,7 +11,7 @@ Consumer-facing audit of the Roslyn MCP server's live surface against your loade
 
 ## What it does
 
-1. Verifies the Roslyn MCP server is reachable (`mcp__roslyn__server_info` returns `connection.state: ready`). Halts otherwise — there is no non-MCP fallback.
+1. Verifies the Roslyn MCP server is reachable by calling the `server_info` tool under whichever prefix your client assigned — it may surface as `mcp__roslyn__server_info`, as `mcp__plugin_roslyn-mcp_roslyn__server_info`, or under another prefix entirely (those are **examples, not an allowed list**) — and requires it to return `connection.state: ready`. The skill resolves the prefix once by response shape, then pins it. Halts otherwise — there is no non-MCP fallback.
 2. Loads your C# workspace (`.sln` / `.slnx` / `.csproj`).
 3. Runs through 10–17 audit phases (depending on tier) that exercise every tool, resource, and prompt the live catalog reports. Records `_meta.elapsedMs`, schema-vs-behaviour drift, error-message quality, and parameter-path coverage.
 4. **Full tier only:** drives preview→apply→revert round-trips inside a **disposable worktree the skill creates and tears down at run end**. Your repo's `main` branch is never mutated; no commit ever lands in your repo's history; no PR is opened.
