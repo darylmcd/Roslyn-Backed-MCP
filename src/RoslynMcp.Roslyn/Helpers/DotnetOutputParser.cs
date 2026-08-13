@@ -17,6 +17,29 @@ internal static partial class DotnetOutputParser
 
     private const int FailureTailMaxChars = 2000;
 
+    // test-run-failures-pagination-truncation: unlike StdOut/StdErr (bounded to 12000 chars by
+    // DotnetCommandRunner), TRX-parsed per-test Message/StackTrace were previously unbounded,
+    // and ValidationTools.RunTests serialized every failing test with no cap on the list length.
+    // A broad/unfiltered run over a large suite therefore produced a payload that grew linearly
+    // with the failure count and per-failure text size.
+    //
+    // Measured ceiling (see RunTests_WorstCasePayload_StaysWithinTheMeasuredCeiling in
+    // TestRunFailureEnvelopeTests): neither this repo nor the pinned ModelContextProtocol 2.1.0
+    // SDK declares ANY response-size constant — verified by grep over src/ and by symbol search
+    // over the shipped SDK assemblies. There is no protocol-level ceiling to point at; the real
+    // ceiling is the consuming client's context budget. So the caps below are sized against that
+    // budget rather than a protocol constant: with both halves of the fix in place, a worst-case
+    // page (25 failures, every Message/StackTrace at the caps) measures 56,923 chars of indented
+    // JSON (~14k tokens) — comparable to test_discover's own documented "1000 cases is roughly
+    // 350KB" guidance. Lifting the count cap on the same 400-failure run measures 904,200 chars
+    // (~883KB). Without truncation a single pathological failure is unbounded outright. Both
+    // halves are load-bearing.
+    //
+    // Truncate from the HEAD (not the tail, unlike StdOut/StdErr) because the assertion message
+    // and the throw-site frame — which come first — are the diagnostically useful part.
+    private const int TestFailureMessageMaxChars = 500;
+    private const int TestFailureStackTraceMaxChars = 1500;
+
     /// <summary>
     /// Parses MSBuild-style diagnostic lines from <c>dotnet build</c> standard output.
     /// </summary>
@@ -196,6 +219,28 @@ internal static partial class DotnetOutputParser
             : value[^FailureTailMaxChars..];
     }
 
+    /// <summary>
+    /// Bounds a per-test-failure <c>Message</c>/<c>StackTrace</c> value to <paramref name="maxChars"/>,
+    /// keeping the HEAD — unlike <see cref="Tail"/>, which keeps the tail for command StdOut/StdErr
+    /// where the final lines are the relevant ones. For an assertion message or a stack trace the
+    /// start (the assertion text, the throw-site frame) is what a caller needs to diagnose the
+    /// failure. Appends a marker so truncation is visible rather than silent. Returns <c>null</c>
+    /// for a null or empty input so callers can apply their own fallback.
+    /// </summary>
+    private static string? TruncateHead(string? value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        return value.Length <= maxChars
+            ? value
+            : value[..maxChars] + TruncationMarker;
+    }
+
+    /// <summary>
+    /// Appended to a head-truncated failure <c>Message</c>/<c>StackTrace</c> so consumers can tell
+    /// a value was shortened. Public consumers may match on this exact suffix.
+    /// </summary>
+    internal const string TruncationMarker = "... [truncated]";
+
     private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures) ParseSingleTrxFile(string trxPath)
     {
         if (!File.Exists(trxPath))
@@ -242,8 +287,8 @@ internal static partial class DotnetOutputParser
                 return new TestFailureDto(
                     DisplayName: GetDisplayName(fullyQualifiedName),
                     FullyQualifiedName: fullyQualifiedName,
-                    Message: messageEl?.Value ?? "Test failed",
-                    StackTrace: stackEl?.Value);
+                    Message: TruncateHead(messageEl?.Value, TestFailureMessageMaxChars) ?? "Test failed",
+                    StackTrace: TruncateHead(stackEl?.Value, TestFailureStackTraceMaxChars));
             })
             .ToList();
 

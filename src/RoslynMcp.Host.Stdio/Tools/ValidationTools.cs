@@ -188,7 +188,7 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source.")]
+    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source. The `failures` array is paginated (failuresOffset/failuresLimit, default limit 25) and each entry's Message/StackTrace is head-truncated to 500/1500 chars with a trailing '... [truncated]' marker — a broad/unfiltered run over a large suite would otherwise produce an unbounded payload. Aggregate total/passed/failed/skipped always reflect the full run; failuresTotal/hasMoreFailures tell you when more failure detail exists.")]
     [McpToolMetadata("validation", "stable", false, false,
         "Run dotnet test for the workspace or a selected project.")]
     public static Task<string> RunTests(
@@ -197,12 +197,15 @@ public static class ValidationTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name or file path")] string? projectName = null,
         [Description("Optional: dotnet test filter expression")] string? filter = null,
+        [Description("Number of failing tests to skip before returning failure detail (default: 0)")] int failuresOffset = 0,
+        [Description("Maximum number of failing tests to return detail for (default: 25). Aggregate counts (total/passed/failed/skipped) are never truncated — only the per-failure detail array is paginated to keep the response within client context budgets.")] int failuresLimit = 25,
         IProgress<ProgressNotificationValue>? progress = null,
         IWorkspaceManager? workspaceManager = null,
         ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
         => RunTestsWithEvictionRetryAsync(
-            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter, progress, loggerFactory, ct);
+            gate, testRunnerService, workspaceManager, workspaceId, projectName, filter,
+            failuresOffset, failuresLimit, progress, loggerFactory, ct);
 
     /// <summary>
     /// <c>workspace-eviction-no-auto-retry-on-tool-call</c> — runs <c>test_run</c> once and, when
@@ -239,13 +242,17 @@ public static class ValidationTools
         string workspaceId,
         string? projectName,
         string? filter,
+        int failuresOffset,
+        int failuresLimit,
         IProgress<ProgressNotificationValue>? progress,
         ILoggerFactory? loggerFactory,
         CancellationToken ct)
     {
         try
         {
-            return await RunTestsOnceAsync(gate, testRunnerService, workspaceId, projectName, filter, progress, ct)
+            return await RunTestsOnceAsync(
+                    gate, testRunnerService, workspaceId, projectName, filter,
+                    failuresOffset, failuresLimit, progress, ct)
                 .ConfigureAwait(false);
         }
         catch (KeyNotFoundException ex)
@@ -270,7 +277,9 @@ public static class ValidationTools
                 throw;
             }
 
-            return await RunTestsOnceAsync(gate, testRunnerService, reloadedId, projectName, filter, progress, ct)
+            return await RunTestsOnceAsync(
+                    gate, testRunnerService, reloadedId, projectName, filter,
+                    failuresOffset, failuresLimit, progress, ct)
                 .ConfigureAwait(false);
         }
     }
@@ -281,6 +290,8 @@ public static class ValidationTools
         string workspaceId,
         string? projectName,
         string? filter,
+        int failuresOffset,
+        int failuresLimit,
         IProgress<ProgressNotificationValue>? progress,
         CancellationToken ct)
     {
@@ -294,11 +305,44 @@ public static class ValidationTools
         {
             try
             {
+                if (failuresLimit <= 0)
+                    throw new ArgumentException("failuresLimit must be greater than 0.", nameof(failuresLimit));
+                if (failuresOffset < 0)
+                    throw new ArgumentException("failuresOffset must be non-negative.", nameof(failuresOffset));
+
                 ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
                 ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.ReportStage(progress, 3, 3, "done");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+
+                // test-run-failures-pagination-truncation: Failures carries one entry per failing
+                // test, and pre-fix the whole list was serialized with no cap on COUNT (the
+                // per-entry Message/StackTrace cap lives in DotnetOutputParser). A broad or
+                // unfiltered run over a large suite therefore produced a payload that grew
+                // linearly with the failure count, with no protocol-level ceiling to catch it —
+                // neither this repo nor the pinned MCP SDK declares a response-size constant, so
+                // the only real ceiling is the consuming client's context budget. Page the list
+                // the same way test_discover pages test cases: aggregate counts (total/passed/
+                // failed/skipped) always reflect the FULL run; only the per-failure detail array
+                // is capped, with failuresTotal/hasMoreFailures so callers can tell.
+                var failuresTotal = result.Failures.Count;
+                var pagedFailures = result.Failures.Skip(failuresOffset).Take(failuresLimit).ToList();
+                var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
+
+                return JsonSerializer.Serialize(new
+                {
+                    result.Execution,
+                    result.Total,
+                    result.Passed,
+                    result.Failed,
+                    result.Skipped,
+                    failures = pagedFailures,
+                    failuresOffset,
+                    failuresLimit,
+                    failuresTotal,
+                    hasMoreFailures,
+                    result.FailureEnvelope,
+                }, JsonDefaults.Indented);
             }
             catch (OperationCanceledException)
             {
