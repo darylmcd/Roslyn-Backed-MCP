@@ -119,6 +119,13 @@ public sealed class GatedCommandExecutorTests
             stopwatch.Stop();
 
             StringAssert.Contains(exception.Message, "including queue wait");
+
+            // gate-timeout-exception-drops-inner-oce: the reclassification must carry the original
+            // OperationCanceledException so cancellation provenance (which token fired, original
+            // stack trace) survives into logs instead of being discarded.
+            Assert.IsInstanceOfType<OperationCanceledException>(exception.InnerException,
+                "The reclassified TimeoutException should preserve the caught OCE as InnerException.");
+
             Assert.IsTrue(
                 stopwatch.Elapsed < TimeSpan.FromSeconds(2),
                 $"Queue wait should be bounded by the 100 ms budget; elapsed {stopwatch.Elapsed}.");
