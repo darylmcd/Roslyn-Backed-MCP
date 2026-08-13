@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** The shipped-skill genericity guard (`eng/verify-skills-are-generic.ps1`) now scans every `skills/**/*.md` file instead of only `SKILL.md`, closing a hole that let two repo-only references ship to consumers — a maintainer-only `.claude/skills/reconcile-backlog-sweep-plan/SKILL.md` citation in `prompts/phases/apply-and-test.md` and this repo's own `eng/stage-review-inbox.ps1` in `prompts/phases/output-and-close.md`, both now genericized without losing the underlying instruction. The guard also strips placeholder-rooted paths (`<audited-repo-root>/…`) before matching, so deliberate cross-repo pointers no longer false-fire, and the bare `schemaVersion` pattern is retired (`state\.json` already covers the coupling it proxied, while the bare word fired on the audit skill's own shipped scorecard schema). The in-process `dotnet test` echo covers the same broadened file set from a single shared pattern list, so a contributor without `pwsh` still catches genericity drift.

@@ -19,8 +19,9 @@ namespace RoslynMcp.Tests.Skills;
 ///      `prompts/full.md` (90–180-min comprehensive sweep). The argument-hint advertises both tiers.
 ///   3. Every `mcp__roslyn__&lt;tool&gt;` reference in the SKILL.md body resolves to a name in the live
 ///      `ServerSurfaceCatalog.Tools` list.
-///   4. The SKILL.md body and frontmatter contain none of the banned repo-only markers
-///      (`ai_docs/`, `backlog.md`, `eng/`, etc.) — a redundant in-process echo of the
+///   4. No shipped markdown file under `skills/` — SKILL.md, prompt bodies, or README — contains any
+///      banned repo-only marker (`ai_docs/`, `backlog.md`, `eng/`, etc.), after URLs and
+///      placeholder-rooted (`&lt;…-root&gt;/…`) paths are stripped. A redundant in-process echo of the
 ///      `verify-skills-are-generic.ps1` gate, kept here so a build-only contributor (no `pwsh`) still
 ///      catches genericity drift.
 ///   5. The canonical promotion scorecard (`audit-reports/_latest-promotion-scorecard.json`) is
@@ -243,33 +244,42 @@ public sealed class McpServerSurfaceTestSkillTests
         return contents[start..end];
     }
 
-    [TestMethod]
-    public void Skill_Body_ContainsNoBannedRepoMarkers()
+    /// <summary>
+    /// Repo-only markers that must never reach a shipped file under <c>skills/</c>. This array is the
+    /// in-process mirror of the <c>$bannedPatterns</c> list in <c>eng/verify-skills-are-generic.ps1</c>
+    /// and MUST stay byte-parallel with it — the gate is canonical, this is the build-only echo.
+    /// </summary>
+    private static readonly string[] BannedRepoMarkers =
+    [
+        @"state\.json",
+        @"backlog-sweep",
+        @"\bai_docs/",
+        @"\bbacklog\.md\b",
+        @"\beng/",
+        @"just verify-",
+        @"Directory\.Build\.props",
+        @"BannedSymbols\.txt",
+    ];
+
+    /// <summary>
+    /// Applies the same two pre-scan strips the gate applies, in the same order.
+    /// <list type="bullet">
+    ///   <item>URLs — a GitHub link to this repo's public docs legitimately contains <c>ai_docs/</c>.</item>
+    ///   <item>Placeholder-rooted paths (<c>&lt;audited-repo-root&gt;/…</c>) — an explicitly-rooted path
+    ///         is a deliberate cross-repo pointer, the opposite of an unqualified repo-coupled path.</item>
+    /// </list>
+    /// </summary>
+    private static string StripAllowedSpans(string contents)
     {
-        // Mirror of `eng/verify-skills-are-generic.ps1`. The gate is the canonical check; this is a
-        // build-only echo so `dotnet test` catches genericity drift without invoking pwsh.
-        var skillPath = ResolveSkillPath();
-        var contents = File.ReadAllText(skillPath);
-
-        // Strip URLs before scanning — GitHub links to this repo's public docs legitimately contain
-        // `ai_docs/` and are explicitly allowed by the gate.
         var stripped = Regex.Replace(contents, @"https?://[^\s)]+", string.Empty);
+        return Regex.Replace(stripped, @"<[^>]+-root>/\S+", string.Empty);
+    }
 
-        var bannedPatterns = new[]
-        {
-            @"state\.json",
-            @"backlog-sweep",
-            @"schemaVersion",
-            @"\bai_docs/",
-            @"\bbacklog\.md\b",
-            @"\beng/",
-            @"just verify-",
-            @"Directory\.Build\.props",
-            @"BannedSymbols\.txt",
-        };
-
+    private static List<string> FindBannedMarkers(string contents)
+    {
+        var stripped = StripAllowedSpans(contents);
         var violations = new List<string>();
-        foreach (var pattern in bannedPatterns)
+        foreach (var pattern in BannedRepoMarkers)
         {
             if (Regex.IsMatch(stripped, pattern))
             {
@@ -277,10 +287,63 @@ public sealed class McpServerSurfaceTestSkillTests
             }
         }
 
+        return violations;
+    }
+
+    [TestMethod]
+    public void Skill_Body_ContainsNoBannedRepoMarkers()
+    {
+        // Mirror of `eng/verify-skills-are-generic.ps1`. The gate is the canonical check; this is a
+        // build-only echo so `dotnet test` catches genericity drift without invoking pwsh.
+        var skillPath = ResolveSkillPath();
+        var violations = FindBannedMarkers(File.ReadAllText(skillPath));
+
         Assert.AreEqual(
             0, violations.Count,
             $"mcp-server-surface-test SKILL.md contains banned repo-only marker(s): {string.Join(", ", violations)}. " +
             "Shipped skills must be generic. Move repo-coupled content to the `.claude/skills/mcp-server-stress/` overlay.");
+    }
+
+    [TestMethod]
+    public void ShippedSkills_EveryMarkdownFile_ContainsNoBannedRepoMarkers()
+    {
+        // The SKILL.md-only echo above mirrored a gate that itself only globbed `SKILL.md`, so the
+        // prompt bodies and READMEs that ship verbatim to every installer were never scanned — two
+        // repo-only references (a maintainer-only `.claude/` skill path and this repo's own `eng/`
+        // staging script) reached consumers through that hole. The gate now globs `skills/**/*.md`;
+        // this echo covers the same broadened set so a contributor without `pwsh` still catches drift.
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var skillsRoot = Path.Combine(repoRoot, "skills");
+
+        Assert.IsTrue(
+            Directory.Exists(skillsRoot),
+            $"Shipped skills directory not found at {skillsRoot}.");
+
+        var markdownFiles = Directory.EnumerateFiles(skillsRoot, "*.md", SearchOption.AllDirectories)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.IsTrue(
+            markdownFiles.Count > 0,
+            $"No markdown files found under {skillsRoot} — the scan would vacuously pass.");
+
+        var violations = new List<string>();
+        foreach (var file in markdownFiles)
+        {
+            var relative = Path.GetRelativePath(repoRoot, file).Replace('\\', '/');
+            foreach (var marker in FindBannedMarkers(File.ReadAllText(file)))
+            {
+                violations.Add($"{relative}: {marker}");
+            }
+        }
+
+        Assert.AreEqual(
+            0, violations.Count,
+            $"Shipped skill file(s) under skills/ contain banned repo-only marker(s):{Environment.NewLine}" +
+            string.Join(Environment.NewLine, violations) + Environment.NewLine +
+            "Shipped skills must be generic — installers do not have this repo's layout. Move " +
+            "repo-coupled content to a `.claude/skills/` overlay, or root the path explicitly at a " +
+            "`<...-root>/` placeholder if it is a deliberate cross-repo pointer.");
     }
 
     [TestMethod]
