@@ -11,6 +11,14 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class EditService : IEditService
 {
+    /// <summary>
+    /// <see cref="ArgumentException.ParamName"/> reported by every edit-validation failure. Held as
+    /// a constant so <see cref="ValidateEditRange"/> — which sees one edit rather than the batch —
+    /// keeps reporting the caller-visible <c>edits</c> parameter it was extracted from
+    /// (<c>edit-preview-validation-decomposition</c>).
+    /// </summary>
+    private const string EditsParamName = "edits";
+
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<EditService> _logger;
     private readonly IUndoService? _undoService;
@@ -281,20 +289,42 @@ public sealed class EditService : IEditService
         }
 
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
+        var (accumulator, changes, warnings) =
+            await SimulatePreviewAsync(initialSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
-        // Pre-validate every file's edits BEFORE issuing any preview token. A malformed edit
-        // aborts the whole preview so callers see the error without a dangling token.
+        var description = $"Preview multi-file edit across {changes.Count} file(s)";
+        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+    }
+
+    /// <summary>
+    /// Shared preview-orchestration body behind <see cref="PreviewMultiFileTextEditsAsync"/> and
+    /// <see cref="PreviewMultiFileTextEditsOnSolutionAsync"/>, which previously carried
+    /// line-for-line duplicates of it (<c>edit-preview-validation-decomposition</c>). Pre-validates
+    /// every file's edits, then simulates them against a progressively accumulated
+    /// <see cref="Solution"/> so each file's diff sees its predecessors' rewrites. Touches neither
+    /// the workspace, the disk, nor <see cref="Contracts.IPreviewStore"/> — the two callers differ
+    /// only in how they package this result.
+    /// </summary>
+    /// <remarks>
+    /// Pre-validation runs to completion BEFORE any simulation so a malformed edit aborts the whole
+    /// preview and the token-issuing caller never leaves a dangling token behind.
+    /// </remarks>
+    private static async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<string> Warnings)> SimulatePreviewAsync(
+        Solution inputSolution,
+        IReadOnlyList<FileEditsDto> fileEdits,
+        CancellationToken ct,
+        bool skipSyntaxCheck)
+    {
         var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
         foreach (var fileEdit in fileEdits)
         {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(initialSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
             ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
             perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
         }
 
-        // Simulate edits on a running Solution snapshot so the stored preview matches what
-        // apply_composite_preview will redeem.
-        var accumulator = initialSolution;
+        var accumulator = inputSolution;
         var changes = new List<FileChangeDto>();
         var warnings = new List<string>();
 
@@ -333,9 +363,7 @@ public sealed class EditService : IEditService
             throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
         }
 
-        var description = $"Preview multi-file edit across {changes.Count} file(s)";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+        return (accumulator, changes, warnings);
     }
 
     /// <summary>
@@ -361,49 +389,8 @@ public sealed class EditService : IEditService
             throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
         }
 
-        var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
-        foreach (var fileEdit in fileEdits)
-        {
-            var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
-            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
-            perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
-        }
-
-        var accumulator = inputSolution;
-        var changes = new List<FileChangeDto>();
-        var warnings = new List<string>();
-
-        foreach (var (document, sourceText, filePath, edits) in perFile)
-        {
-            var merged = BuildPatchedSourceText(sourceText, edits);
-            if (!skipSyntaxCheck
-                && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
-                if (syntaxErrors.Count > 0)
-                {
-                    throw new InvalidOperationException(
-                        $"preview_multi_file_edit: simulated edits for '{filePath}' produce {syntaxErrors.Count} syntax error(s). " +
-                        "Pass skipSyntaxCheck=true if the intermediate state is intentional.");
-                }
-            }
-
-            var docInAccum = accumulator.GetDocument(document.Id);
-            if (docInAccum is null)
-            {
-                warnings.Add($"Skipped '{filePath}': document no longer present in the working solution.");
-                continue;
-            }
-            accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
-
-            var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
-            changes.Add(new FileChangeDto(filePath, unified));
-        }
-
-        if (changes.Count == 0)
-        {
-            throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
-        }
+        var (accumulator, changes, warnings) =
+            await SimulatePreviewAsync(inputSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
         return (accumulator, changes, description, warnings.Count > 0 ? warnings : null);
@@ -449,69 +436,98 @@ public sealed class EditService : IEditService
     {
         if (edits.Count == 0)
         {
-            throw new ArgumentException($"At least one text edit is required for '{filePath}'.", nameof(edits));
+            throw new ArgumentException($"At least one text edit is required for '{filePath}'.", EditsParamName);
         }
 
         var lineCount = sourceText.Lines.Count;
 
         for (var i = 0; i < edits.Count; i++)
         {
-            var edit = edits[i];
-
-            if (edit.NewText is null)
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' has a null NewText. Use an empty string for deletions.",
-                    nameof(edits));
-            }
-
-            if (edit.StartLine < 1 || edit.StartColumn < 1 || edit.EndLine < 1 || edit.EndColumn < 1)
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' has non-positive line/column: " +
-                    $"({edit.StartLine},{edit.StartColumn})-({edit.EndLine},{edit.EndColumn}). " +
-                    "Line and column are 1-based.",
-                    nameof(edits));
-            }
-
-            if (edit.StartLine > lineCount || edit.EndLine > lineCount)
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' references line {Math.Max(edit.StartLine, edit.EndLine)} " +
-                    $"but the file only has {lineCount} line(s).",
-                    nameof(edits));
-            }
-
-            var startLineLength = sourceText.Lines[edit.StartLine - 1].SpanIncludingLineBreak.Length;
-            if (edit.StartColumn > startLineLength + 1)
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' has StartColumn {edit.StartColumn} but line {edit.StartLine} " +
-                    $"only has {startLineLength} character(s). Columns are 1-based and may be one past the end.",
-                    nameof(edits));
-            }
-
-            var endLineLength = sourceText.Lines[edit.EndLine - 1].SpanIncludingLineBreak.Length;
-            if (edit.EndColumn > endLineLength + 1)
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' has EndColumn {edit.EndColumn} but line {edit.EndLine} " +
-                    $"only has {endLineLength} character(s).",
-                    nameof(edits));
-            }
-
-            if (edit.StartLine > edit.EndLine
-                || (edit.StartLine == edit.EndLine && edit.StartColumn > edit.EndColumn))
-            {
-                throw new ArgumentException(
-                    $"Edit #{i} for '{filePath}' has a reversed range: " +
-                    $"start ({edit.StartLine},{edit.StartColumn}) is after end ({edit.EndLine},{edit.EndColumn}). " +
-                    "Zero-width ranges are allowed (inserts) but the end position must not precede the start.",
-                    nameof(edits));
-            }
+            ValidateEditShape(filePath, i, edits[i]);
+            ValidateEditBounds(filePath, i, edits[i], lineCount, sourceText);
         }
 
         ValidateNoOverlappingEdits(filePath, edits, sourceText);
+    }
+
+    /// <summary>
+    /// First half of the per-edit checks extracted from <see cref="ValidateEdits"/>'s loop body
+    /// (<c>edit-preview-validation-decomposition</c>): the two conditions that depend only on the
+    /// edit itself, not on the document it targets — null <c>NewText</c>, then non-positive
+    /// coordinates. Runs BEFORE <see cref="ValidateEditBounds"/> because a non-positive line index
+    /// would otherwise be used to index into <see cref="SourceText.Lines"/>.
+    /// </summary>
+    /// <param name="index">Zero-based position of <paramref name="edit"/> in the caller's batch; used verbatim in error text.</param>
+    private static void ValidateEditShape(string filePath, int index, TextEditDto edit)
+    {
+        if (edit.NewText is null)
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' has a null NewText. Use an empty string for deletions.",
+                EditsParamName);
+        }
+
+        if (edit.StartLine < 1 || edit.StartColumn < 1 || edit.EndLine < 1 || edit.EndColumn < 1)
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' has non-positive line/column: " +
+                $"({edit.StartLine},{edit.StartColumn})-({edit.EndLine},{edit.EndColumn}). " +
+                "Line and column are 1-based.",
+                EditsParamName);
+        }
+    }
+
+    /// <summary>
+    /// Second half of the per-edit checks extracted from <see cref="ValidateEdits"/>'s loop body
+    /// (<c>edit-preview-validation-decomposition</c>): the conditions that measure the edit against
+    /// the target document — out-of-range line, StartColumn overflow, EndColumn overflow, then
+    /// reversed range. Assumes <see cref="ValidateEditShape"/> already ran, so every coordinate is
+    /// positive and safe to use as a 1-based index. The branch ORDER is load-bearing: callers
+    /// depend on the first violation in that sequence being the one reported.
+    /// </summary>
+    /// <param name="index">Zero-based position of <paramref name="edit"/> in the caller's batch; used verbatim in error text.</param>
+    private static void ValidateEditBounds(
+        string filePath,
+        int index,
+        TextEditDto edit,
+        int lineCount,
+        SourceText sourceText)
+    {
+        if (edit.StartLine > lineCount || edit.EndLine > lineCount)
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' references line {Math.Max(edit.StartLine, edit.EndLine)} " +
+                $"but the file only has {lineCount} line(s).",
+                EditsParamName);
+        }
+
+        var startLineLength = sourceText.Lines[edit.StartLine - 1].SpanIncludingLineBreak.Length;
+        if (edit.StartColumn > startLineLength + 1)
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' has StartColumn {edit.StartColumn} but line {edit.StartLine} " +
+                $"only has {startLineLength} character(s). Columns are 1-based and may be one past the end.",
+                EditsParamName);
+        }
+
+        var endLineLength = sourceText.Lines[edit.EndLine - 1].SpanIncludingLineBreak.Length;
+        if (edit.EndColumn > endLineLength + 1)
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' has EndColumn {edit.EndColumn} but line {edit.EndLine} " +
+                $"only has {endLineLength} character(s).",
+                EditsParamName);
+        }
+
+        if (edit.StartLine > edit.EndLine
+            || (edit.StartLine == edit.EndLine && edit.StartColumn > edit.EndColumn))
+        {
+            throw new ArgumentException(
+                $"Edit #{index} for '{filePath}' has a reversed range: " +
+                $"start ({edit.StartLine},{edit.StartColumn}) is after end ({edit.EndLine},{edit.EndColumn}). " +
+                "Zero-width ranges are allowed (inserts) but the end position must not precede the start.",
+                EditsParamName);
+        }
     }
 
     /// <summary>
@@ -576,24 +592,66 @@ public sealed class EditService : IEditService
             var endPosition = sourceText.Lines.GetPosition(new LinePosition(edit.EndLine - 1, edit.EndColumn - 1));
             var span = TextSpan.FromBounds(startPosition, endPosition);
 
-            var replacementText = edit.NewText;
-            if (edit.EndColumn == 1 && span.Length > 0 && replacementText.Length > 0)
-            {
-                var lastCharInSpan = sourceText[span.End - 1];
-                var endsWithNewline = replacementText[^1] is '\n' or '\r';
-                if (lastCharInSpan is '\n' or '\r' && !endsWithNewline)
-                {
-                    var lineBreak = (span.End >= 2 && sourceText[span.End - 2] == '\r' && lastCharInSpan == '\n')
-                        ? "\r\n"
-                        : lastCharInSpan == '\n' ? "\n" : "\r";
-                    replacementText += lineBreak;
-                }
-            }
-
+            var replacementText = AdjustReplacementForTrailingLineBreak(sourceText, span, edit.EndColumn, edit.NewText);
             textChanges.Add(new TextChange(span, replacementText));
         }
 
         return sourceText.WithChanges(textChanges);
+    }
+
+    /// <summary>
+    /// Line-break preservation for a replacement whose span ends at column 1, extracted from
+    /// <see cref="BuildPatchedSourceText"/> (<c>edit-preview-validation-decomposition</c>). A span
+    /// ending at column 1 swallows the previous line's terminator, so a replacement that does not
+    /// itself end in a newline gets the swallowed terminator re-appended — preserving the file's
+    /// existing <c>\r\n</c> / <c>\n</c> / <c>\r</c> convention at that position.
+    /// </summary>
+    /// <remarks>
+    /// The <c>\r\n</c>-before-<c>\n</c>-before-<c>\r</c> detection order is load-bearing: probing
+    /// for the paired <c>\r</c> first is what keeps CRLF files from degrading to bare LF. Reordering
+    /// these branches silently corrupts line endings with no compile-time signal.
+    /// </remarks>
+    /// <returns><paramref name="replacementText"/> unchanged, or with the preserved terminator appended.</returns>
+    private static string AdjustReplacementForTrailingLineBreak(
+        SourceText sourceText,
+        TextSpan span,
+        int editEndColumn,
+        string replacementText)
+    {
+        if (editEndColumn != 1 || span.Length == 0 || replacementText.Length == 0)
+        {
+            return replacementText;
+        }
+
+        // A replacement that already carries its own terminator needs no help.
+        if (replacementText[^1] is '\n' or '\r')
+        {
+            return replacementText;
+        }
+
+        return replacementText + GetSwallowedLineBreak(sourceText, span);
+    }
+
+    /// <summary>
+    /// The line terminator (if any) consumed by the tail of <paramref name="span"/>, as it appears
+    /// in <paramref name="sourceText"/>. Returns <see cref="string.Empty"/> when the span does not
+    /// end on a terminator. Split out of
+    /// <see cref="AdjustReplacementForTrailingLineBreak"/> (<c>edit-preview-validation-decomposition</c>).
+    /// </summary>
+    /// <remarks>
+    /// The <c>\n</c> case must probe the preceding character for a paired <c>\r</c> before settling
+    /// for a bare <c>\n</c> — that probe is the only thing keeping CRLF files from degrading to
+    /// mixed line endings, and the degradation carries no compile-time or syntax-check signal.
+    /// </remarks>
+    private static string GetSwallowedLineBreak(SourceText sourceText, TextSpan span)
+    {
+        var lastCharInSpan = sourceText[span.End - 1];
+        if (lastCharInSpan == '\n')
+        {
+            return span.End >= 2 && sourceText[span.End - 2] == '\r' ? "\r\n" : "\n";
+        }
+
+        return lastCharInSpan == '\r' ? "\r" : string.Empty;
     }
 
     /// <summary>

@@ -86,6 +86,88 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ApplyTextEdit_StartColumnPastEndOfLine_ThrowsArgumentException()
+    {
+        // edit-preview-validation-decomposition: the StartColumn-overflow branch of the extracted
+        // ValidateEditRange. Line 1 of Dog.cs is `namespace SampleLib;` — column 500 is far past its
+        // one-past-the-end limit, and the failure must name StartColumn (not EndColumn).
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var edit = new TextEditDto(1, 500, 1, 500, "oops");
+
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "StartColumn 500", StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task ApplyTextEdit_EndColumnPastEndOfLine_ThrowsArgumentException()
+    {
+        // edit-preview-validation-decomposition: the EndColumn-overflow branch of the extracted
+        // ValidateEditRange. StartColumn is valid here, so this can only trip the *end* check —
+        // pinning the branch order (start-overflow before end-overflow before reversed-range).
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var edit = new TextEditDto(1, 1, 1, 500, "oops");
+
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "EndColumn 500", StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task ApplyTextEdit_WholeLineReplacement_PreservesLfTerminator()
+    {
+        // edit-preview-validation-decomposition: exercises the extracted
+        // AdjustReplacementForTrailingLineBreak. A span ending at column 1 of the NEXT line swallows
+        // line 5's terminator; the replacement carries none of its own, so the LF must be
+        // re-appended or lines 5 and 6 silently merge.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+
+        var edit = new TextEditDto(5, 1, 6, 1, "    public string Name => \"Cat\";");
+        var result = await EditService.ApplyTextEditsAsync(
+            workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(result.Success);
+
+        var after = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        Assert.AreEqual(originalText.Replace("\"Dog\"", "\"Cat\"", StringComparison.Ordinal), after,
+            "A whole-line replacement whose span ends at column 1 must preserve the swallowed line terminator.");
+    }
+
+    [TestMethod]
+    public async Task ApplyTextEdit_WholeLineReplacementInCrlfFile_PreservesCrlfTerminator()
+    {
+        // edit-preview-validation-decomposition, risk (b): the \r\n branch of the extracted
+        // AdjustReplacementForTrailingLineBreak. Detection probes for the paired \r BEFORE settling
+        // for a bare \n — without that ordering a CRLF file silently degrades to mixed endings on
+        // every whole-line replacement, with no compile-time or syntax-check signal.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var crlfPath = workspace.GetPath("SampleLib", "CrlfLineEndingFixture.cs");
+        const string crlfSource =
+            "namespace SampleLib;\r\n" +
+            "\r\n" +
+            "public class CrlfLineEndingFixture\r\n" +
+            "{\r\n" +
+            "    public string Value => \"before\";\r\n" +
+            "}\r\n";
+        await File.WriteAllTextAsync(crlfPath, crlfSource, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var edit = new TextEditDto(5, 1, 6, 1, "    public string Value => \"after\";");
+        var result = await EditService.ApplyTextEditsAsync(
+            workspace.WorkspaceId, crlfPath, new[] { edit }, "apply_text_edit", CancellationToken.None);
+        Assert.IsTrue(result.Success);
+
+        var after = await File.ReadAllTextAsync(crlfPath, CancellationToken.None);
+        Assert.AreEqual(crlfSource.Replace("\"before\"", "\"after\"", StringComparison.Ordinal), after,
+            "A whole-line replacement in a CRLF file must re-append \\r\\n, not a bare \\n.");
+    }
+
+    [TestMethod]
     public async Task ApplyTextEdit_RejectsBadEdit_WithoutTouchingDisk()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
