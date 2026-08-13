@@ -42,3 +42,19 @@ Consumer-facing risk: `skills/mcp-server-surface-test/SKILL.md:17` instructs *"V
   - Acceptance bullet 3's guard: extend `eng/verify-skills-are-generic.ps1` to scan `skills/**/*.md` (it currently scans only `SKILL.md`, and its banned-pattern list has no `mcp__` entry) AND to assert the canonical note stays byte-identical wherever it appears — otherwise the ~18-file sweep drifts 22 unpinned copies.
   - Note polish deferred from #1204: restructure the ~340-word prose note into 3 bullets, trim the `SKILL.md` frontmatter `description` (now 944 chars, ~80 from the 1024 platform cap), de-duplicate the `full.md` vs `phases/setup-and-analysis.md` copy (both on one execution path), and fix "tool list returns a Roslyn-shaped response" (a tool list does not return responses) at `quick.md:5` / `full.md:9`.
 - The canonical note is currently byte-identical in all 4 files (independently hashed). Preserve that when sweeping.
+## Amendment — 2026-08-13 (backlog-sweep 20260813T172325Z; PRs #1233, #1232, #1240 — row stays OPEN)
+
+Three split initiatives shipped against this row. **None closed it, and none should have** — acceptance bullets 3 and 4 remain unmet.
+
+**Shipped:**
+- **PR #1233** (6.01) — resolve-once-then-pin precheck added to `skills/analyze/SKILL.md`, `architecture-review`, `complexity`, `di-audit` (4 files, at the Rule 3 cap).
+- **PR #1232** (6.02) — `ai_docs/prompts/roslyn-mcp-multisession-retro.md`, `skills/refactor/SKILL.md`, `skills/refactor-loop/SKILL.md`, `skills/mcp-server-surface-test/README.md` (the README bare literal noted here as cosmetic is now fixed).
+- **PR #1240** (6.03) — genericity guard broadened from `skills/**/SKILL.md` to `skills/**/*.md`, placeholder-root stripping added, `schemaVersion` retired from the banned list (verified false positive: its sole occurrence is the skill's own emitted scorecard JSON).
+
+**Still open — the two acceptance bullets that matter:**
+- Bullet 3's **prefix-agnostic assertion** was deliberately NOT added by 6.03. Adding it before the remaining files are swept would red CI against them.
+- Bullet 4's **regression** (no bare `mcp__roslyn__` literal inside a verify-it-appears instruction) is therefore also unshipped. `mcp__` is still not in `$bannedPatterns`.
+- Roughly 10 of the ~18 shipped files remain unswept.
+- **Byte-identity guard still unbuilt.** The precheck block is now byte-identical across the 6.01 files (hash verified during review) but nothing asserts it. As the remaining files are swept this becomes ~17 unpinned copies free to drift. Both the 6.01 and 6.02 reviews independently routed this here as an amendment rather than a sibling row, because a sibling would collide as a second PR editing the same guard.
+
+**New finding folded in (PR #1232 review, traced not hypothesized):** the retro prompt's new relevance regex `mcp__\S*roslyn\S*__\S+` works as a boolean filter but is unusable for the extraction the same prompt mandates — Claude Code JSONL is minified (measured non-whitespace runs up to 58,809 chars), so `rg -o` returns multi-KB JSON spans instead of a tool name. It is also case-sensitive, so a `Roslyn` registration key is a silent false negative. Use an identifier-bounded, case-insensitive form, e.g. `(?i)mcp__[A-Za-z0-9_.-]*roslyn[A-Za-z0-9_.-]*__[a-z0-9_]+`. Confirmed NOT a relevance-filter defect: shipped vs bounded regex matched an identical 72 files across a 726 MB session corpus.

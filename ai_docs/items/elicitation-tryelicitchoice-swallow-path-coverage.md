@@ -19,3 +19,12 @@ Traced during code-quality review of `elicitation-trychoice-cancellation-swallow
 ## Context
 
 Spin-off from the `elicitation-trychoice-cancellation-swallow` row's code-quality review (top-n-remediation run 20260810T233007Z).
+## Amendment — 2026-08-13 (backlog-sweep 20260813T172325Z, PR #1242 code-quality review)
+
+Give `ElicitationChoicePrompt` its own test suite as part of this row's work.
+
+After PRs #1237/#1242 collapsed the elicitation forwarders, every direct `ElicitationChoicePrompt.TryElicitChoiceAsync` test call lives in a suite named for a DIFFERENT type — `StructuredCallElicitationCoordinatorTests` and `SymbolDisambiguationElicitationTests` — and no `ElicitationChoicePromptTests.cs` exists (verified by grep + directory listing in the PR worktree). The #1242 diff annotates the mismatch ("pinned here for historical continuity") rather than resolving it.
+
+Routed here rather than as a sibling row because this row already plans `TryElicitChoiceAsync` tests against the same anchors.
+
+**Add to this row's acceptance:** a `tests/RoslynMcp.Tests/ElicitationChoicePromptTests.cs` suite owns the picker's direct-call tests including the null-server short-circuit; no suite named for another type retains a `TryElicitChoiceAsync_*` test that calls `ElicitationChoicePrompt` directly.
