@@ -42,10 +42,21 @@ public static class SymbolResolver
     /// per-project fetch.
     /// </para>
     /// <para>
-    /// This is semantically <c>solution == IWorkspaceManager.GetCurrentSolution(workspaceId)</c> without
-    /// threading a workspace-manager reference into a static helper — <see cref="Solution.Workspace"/>
-    /// points at the same live <see cref="Workspace"/> instance that
-    /// <c>WorkspaceManager.GetCurrentSolution</c> reads.
+    /// group-c-compilation-cache-gate-hardening: the check is exactly
+    /// <c>solution == IWorkspaceManager.GetCurrentSolution(workspaceId)</c>, delegated to
+    /// <see cref="ICompilationCache.IsLiveSolution"/> (which holds the workspace-manager reference a
+    /// static helper cannot). The former self-referential form
+    /// <c>ReferenceEquals(solution, solution.Workspace.CurrentSolution)</c> proved liveness only
+    /// w.r.t. the solution's OWN <see cref="Solution.Workspace"/> back-reference; a LIVE solution
+    /// belonging to workspace B passed together with <c>workspaceId: "A"</c> satisfied it and would
+    /// have polluted A's cache slot. Keying on the caller-supplied id closes that identity gap.
+    /// </para>
+    /// <para>
+    /// This must be re-evaluated on EVERY per-project compilation fetch, never hoisted above the
+    /// project loop: <see cref="ICompilationCache"/> re-reads the workspace version on each call, so
+    /// a reload landing mid-scan would otherwise let a pre-bump <see cref="Project"/> be compiled and
+    /// STORED under the post-bump cache key, poisoning it for every later reader.
+    /// <see cref="GetProjectCompilationAsync"/> is the single fetch-dispatch site that guarantees it.
     /// </para>
     /// </remarks>
     internal static bool CanUseCompilationCache(Solution solution, ICompilationCache? cache, string? workspaceId)
@@ -55,17 +66,49 @@ public static class SymbolResolver
             return false;
         }
 
-        try
+        return cache.IsLiveSolution(workspaceId, solution);
+    }
+
+    /// <summary>
+    /// group-c-compilation-cache-gate-hardening: rejects the half-configured opt-in — a
+    /// <paramref name="compilationCache"/> supplied without a <paramref name="workspaceId"/> to key
+    /// it by. Previously this silently disabled caching, so a caller that meant to opt in got the
+    /// uncached path with no signal. Called once per public helper BEFORE its project loop, so a
+    /// solution with zero projects still fails loudly.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <paramref name="compilationCache"/> is non-<see langword="null"/> and
+    /// <paramref name="workspaceId"/> is <see langword="null"/> or empty.
+    /// </exception>
+    internal static void ValidateCacheParameters(ICompilationCache? compilationCache, string? workspaceId)
+    {
+        // The reverse combination (workspaceId without a cache) stays a silent no-cache by design:
+        // every caller that threads a workspaceId through for other reasons must keep working.
+        if (compilationCache is not null && string.IsNullOrEmpty(workspaceId))
         {
-            return ReferenceEquals(solution, solution.Workspace.CurrentSolution);
+            throw new ArgumentException(
+                "workspaceId is required when compilationCache is supplied — the compilation cache keys on it.",
+                nameof(workspaceId));
         }
-        catch (ObjectDisposedException)
-        {
-            // Mirrors WorkspaceManager.GetCurrentSolution's own reload-transition defense: a solution
-            // captured across a reload can observe the disposed prior workspace. Degrade to the raw
-            // per-project fetch rather than throwing out of a read-side helper.
-            return false;
-        }
+    }
+
+    /// <summary>
+    /// group-c-compilation-cache-gate-hardening: the single per-project compilation fetch-dispatch
+    /// site shared by <see cref="ResolveByMetadataNameAsync"/>, <see cref="FindClosestMatchesAsync"/>,
+    /// and <see cref="SymbolHandleSerializer.FindAllByMetadataNameAsync"/>. Evaluates
+    /// <see cref="CanUseCompilationCache"/> FRESH on every call — the gate must never be hoisted
+    /// above the caller's project loop.
+    /// </summary>
+    internal static async Task<Compilation?> GetProjectCompilationAsync(
+        Solution solution,
+        Project project,
+        ICompilationCache? compilationCache,
+        string? workspaceId,
+        CancellationToken ct)
+    {
+        return CanUseCompilationCache(solution, compilationCache, workspaceId)
+            ? await compilationCache!.GetCompilationAsync(workspaceId!, project, ct).ConfigureAwait(false)
+            : await project.GetCompilationAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -157,7 +200,14 @@ public static class SymbolResolver
     /// warm compilations. Omitted (the default) or a forked solution takes the raw fetch — see
     /// <see cref="CanUseCompilationCache"/>.
     /// </param>
-    /// <param name="workspaceId">The workspace session identifier, required to key the cache.</param>
+    /// <param name="workspaceId">
+    /// The workspace session identifier, required to key the cache. Mandatory whenever
+    /// <paramref name="compilationCache"/> is supplied — the half-configured combination throws
+    /// <see cref="System.ArgumentException"/> instead of silently taking the uncached path.
+    /// </param>
+    /// <exception cref="System.ArgumentException">
+    /// Thrown when <paramref name="compilationCache"/> is supplied without a <paramref name="workspaceId"/>.
+    /// </exception>
     public static async Task<IReadOnlyList<SymbolClosestMatchDto>> FindClosestMatchesAsync(
         Solution solution,
         string query,
@@ -166,21 +216,21 @@ public static class SymbolResolver
         ICompilationCache? compilationCache = null,
         string? workspaceId = null)
     {
+        ValidateCacheParameters(compilationCache, workspaceId);
+
         if (string.IsNullOrWhiteSpace(query) || maxResults <= 0)
             return Array.Empty<SymbolClosestMatchDto>();
 
         var normalizedQuery = NormalizeForDistance(query);
         var matches = new List<(int Score, string MetadataName, string Kind, string? LocationHint)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var useCache = CanUseCompilationCache(solution, compilationCache, workspaceId);
 
         foreach (var project in solution.Projects)
         {
             if (ct.IsCancellationRequested) break;
 
-            var compilation = useCache
-                ? await compilationCache!.GetCompilationAsync(workspaceId!, project, ct).ConfigureAwait(false)
-                : await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await GetProjectCompilationAsync(
+                solution, project, compilationCache, workspaceId, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var symbol in EnumerateNamedTypesAndMembers(compilation.GlobalNamespace))
@@ -341,7 +391,14 @@ public static class SymbolResolver
     /// solution, the per-project compilation fetch is routed through it. Omitted (the default) or a
     /// forked solution takes the raw fetch — see <see cref="CanUseCompilationCache"/>.
     /// </param>
-    /// <param name="workspaceId">The workspace session identifier, required to key the cache.</param>
+    /// <param name="workspaceId">
+    /// The workspace session identifier, required to key the cache. Mandatory whenever
+    /// <paramref name="compilationCache"/> is supplied — the half-configured combination throws
+    /// <see cref="System.ArgumentException"/> instead of silently taking the uncached path.
+    /// </param>
+    /// <exception cref="System.ArgumentException">
+    /// Thrown when <paramref name="compilationCache"/> is supplied without a <paramref name="workspaceId"/>.
+    /// </exception>
     /// <returns>The first matching symbol, or <see langword="null"/> if not found.</returns>
     public static async Task<ISymbol?> ResolveByMetadataNameAsync(
         Solution solution,
@@ -350,13 +407,12 @@ public static class SymbolResolver
         ICompilationCache? compilationCache = null,
         string? workspaceId = null)
     {
-        var useCache = CanUseCompilationCache(solution, compilationCache, workspaceId);
+        ValidateCacheParameters(compilationCache, workspaceId);
 
         foreach (var project in solution.Projects)
         {
-            var compilation = useCache
-                ? await compilationCache!.GetCompilationAsync(workspaceId!, project, ct).ConfigureAwait(false)
-                : await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await GetProjectCompilationAsync(
+                solution, project, compilationCache, workspaceId, ct).ConfigureAwait(false);
             if (compilation is null)
             {
                 continue;

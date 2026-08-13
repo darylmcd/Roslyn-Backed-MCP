@@ -197,7 +197,14 @@ public static class SymbolHandleSerializer
     /// forked solution takes the raw fetch — see
     /// <see cref="SymbolResolver.CanUseCompilationCache"/>.
     /// </param>
-    /// <param name="workspaceId">The workspace session identifier, required to key the cache.</param>
+    /// <param name="workspaceId">
+    /// The workspace session identifier, required to key the cache. Mandatory whenever
+    /// <paramref name="compilationCache"/> is supplied — the half-configured combination throws
+    /// <see cref="System.ArgumentException"/> instead of silently taking the uncached path.
+    /// </param>
+    /// <exception cref="System.ArgumentException">
+    /// Thrown when <paramref name="compilationCache"/> is supplied without a <paramref name="workspaceId"/>.
+    /// </exception>
     public static async Task<IReadOnlyList<ISymbol>> FindAllByMetadataNameAsync(
         Solution solution,
         string metadataName,
@@ -206,18 +213,17 @@ public static class SymbolHandleSerializer
         string? workspaceId = null)
     {
         ArgumentNullException.ThrowIfNull(solution);
+        SymbolResolver.ValidateCacheParameters(compilationCache, workspaceId);
         if (string.IsNullOrWhiteSpace(metadataName)) return Array.Empty<ISymbol>();
 
         var matches = new List<ISymbol>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var useCache = SymbolResolver.CanUseCompilationCache(solution, compilationCache, workspaceId);
 
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = useCache
-                ? await compilationCache!.GetCompilationAsync(workspaceId!, project, ct).ConfigureAwait(false)
-                : await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await SymbolResolver.GetProjectCompilationAsync(
+                solution, project, compilationCache, workspaceId, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             // Type-by-full-name fast path — collect, do not return early.

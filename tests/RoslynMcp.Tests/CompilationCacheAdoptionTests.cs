@@ -857,6 +857,128 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// group-c-compilation-cache-gate-hardening, bullet 1 — the mid-scan reload race. The liveness
+    /// gate used to be computed ONCE before the project loop, but
+    /// <see cref="CompilationCache.GetCompilationAsync"/> re-reads the workspace version on EVERY
+    /// call. A reload landing between two loop iterations therefore made the cache compute a
+    /// compilation from a PRE-bump <see cref="Project"/> and store it under the POST-bump key,
+    /// poisoning that slot for every later reader until the next bump.
+    /// <para>
+    /// The decorator here reloads the workspace as a side effect of its first fetch. With the gate
+    /// re-evaluated per iteration, iteration 2 observes that the captured solution is no longer the
+    /// workspace's current solution and falls back to <c>project.GetCompilationAsync</c> — so the
+    /// cache is entered exactly ONCE even though the sample solution has three projects. Pre-fix,
+    /// the hoisted <c>useCache</c> bool stayed <see langword="true"/> and the count would equal the
+    /// project count.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolResolver_MidScanWorkspaceReload_StopsRoutingThroughCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var inner = new CompilationCache(WorkspaceManager);
+        var cache = new ReloadOnFirstFetchCompilationCache(
+            inner, () => workspace.ReloadAsync(CancellationToken.None));
+
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var projectCount = solution.Projects.Count();
+        Assert.IsTrue(projectCount >= 2,
+            $"The mid-scan race needs at least two project iterations to be observable (saw {projectCount}).");
+
+        // FindClosestMatchesAsync has no early exit — it scans every project — so the loop is
+        // guaranteed to reach iteration 2 after the decorator's reload lands.
+        _ = await SymbolResolver.FindClosestMatchesAsync(
+            solution, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspace.WorkspaceId);
+
+        Assert.AreEqual(1, cache.GetCompilationCallCount,
+            "The liveness gate must be re-evaluated on every per-project fetch. After the mid-scan " +
+            "reload bumped the workspace version, the captured solution is stale and every remaining " +
+            $"project must take the raw fetch — expected exactly 1 cache call, saw {cache.GetCompilationCallCount} " +
+            $"across {projectCount} projects.");
+    }
+
+    /// <summary>
+    /// group-c-compilation-cache-gate-hardening, bullet 2 — a <c>compilationCache</c> supplied
+    /// without the <c>workspaceId</c> that keys it is a caller bug and must fail loudly instead of
+    /// silently degrading to the uncached path. The reverse combination (a <c>workspaceId</c> with
+    /// no cache) stays a silent no-cache by design and is asserted here too.
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolResolver_CacheWithoutWorkspaceId_ThrowsArgumentException()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        using var inner = new CompilationCache(WorkspaceManager);
+        var cache = new RecordingCompilationCache(inner);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(
+            () => SymbolResolver.ResolveByMetadataNameAsync(
+                solution, "SampleLib.Dog", CancellationToken.None, cache, workspaceId: null));
+        Assert.AreEqual("workspaceId", ex.ParamName,
+            "The ArgumentException must name the missing parameter so the caller can fix the opt-in.");
+
+        var closestEx = await Assert.ThrowsExactlyAsync<ArgumentException>(
+            () => SymbolResolver.FindClosestMatchesAsync(
+                solution, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspaceId: string.Empty));
+        Assert.AreEqual("workspaceId", closestEx.ParamName);
+
+        var allEx = await Assert.ThrowsExactlyAsync<ArgumentException>(
+            () => SymbolHandleSerializer.FindAllByMetadataNameAsync(
+                solution, "SampleLib.Dog", CancellationToken.None, cache, workspaceId: null));
+        Assert.AreEqual("workspaceId", allEx.ParamName);
+
+        Assert.AreEqual(0, cache.GetCompilationCallCount,
+            "Validation must reject the half-configured opt-in before any compilation is fetched.");
+
+        // Reverse arm: a workspaceId without a cache is NOT an error — it stays a silent no-cache.
+        var resolved = await SymbolResolver.ResolveByMetadataNameAsync(
+            solution, "SampleLib.Dog", CancellationToken.None, compilationCache: null, workspaceId: workspace.WorkspaceId);
+        Assert.IsNotNull(resolved,
+            "A workspaceId supplied without a cache must keep working on the raw per-project fetch.");
+    }
+
+    /// <summary>
+    /// group-c-compilation-cache-gate-hardening, bullet 3 — the workspace-identity gap. The old gate
+    /// asked only whether the solution equaled its OWN <c>Workspace.CurrentSolution</c>, which a LIVE
+    /// solution from a DIFFERENT workspace also satisfies; it would then have been served from — and
+    /// stored into — the cache slot keyed by the caller-supplied (wrong) workspaceId. The gate now
+    /// compares against <c>IWorkspaceManager.GetCurrentSolution(workspaceId)</c>, so a live solution
+    /// belonging to workspace B paired with workspace A's id is rejected outright.
+    /// </summary>
+    [TestMethod]
+    public async Task SymbolResolver_LiveSolutionFromOtherWorkspace_DoesNotRouteThroughCache()
+    {
+        await using var workspaceA = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspaceB = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        using var inner = new CompilationCache(WorkspaceManager);
+        var cache = new RecordingCompilationCache(inner);
+
+        var solutionB = WorkspaceManager.GetCurrentSolution(workspaceB.WorkspaceId);
+        Assert.AreNotSame(
+            solutionB,
+            WorkspaceManager.GetCurrentSolution(workspaceA.WorkspaceId),
+            "The two isolated workspaces must expose distinct solutions for this test to mean anything.");
+
+        // Deliberately mismatched: workspace B's LIVE solution, workspace A's id.
+        var resolved = await SymbolResolver.ResolveByMetadataNameAsync(
+            solutionB, "SampleLib.Dog", CancellationToken.None, cache, workspaceA.WorkspaceId);
+        Assert.IsNotNull(resolved, "The mismatched call must still resolve via the raw per-project fetch.");
+
+        var all = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+            solutionB, "SampleLib.Dog", CancellationToken.None, cache, workspaceA.WorkspaceId);
+        Assert.IsTrue(all.Count > 0, "The mismatched call must still resolve via the raw per-project fetch.");
+
+        _ = await SymbolResolver.FindClosestMatchesAsync(
+            solutionB, "SampleLib.Dogg", maxResults: 5, CancellationToken.None, cache, workspaceA.WorkspaceId);
+
+        Assert.AreEqual(0, cache.GetCompilationCallCount,
+            "A solution belonging to a DIFFERENT workspace must never be served from — or stored " +
+            "into — the cache slot keyed by the caller-supplied workspaceId, even though the " +
+            "solution is itself live and a cache plus a workspaceId were both supplied.");
+    }
+
+    /// <summary>
     /// Runs the service once (proving it touched the cache), snapshots the compilations the cache
     /// handed out, then runs it a second time at the unchanged workspace version so the caller can
     /// assert the warm compilations were reused.
@@ -993,7 +1115,9 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     /// <summary>
     /// Minimal call-counting <see cref="ICompilationCache"/> for the hoist tests — increments a
     /// counter per <c>GetCompilationAsync</c> and returns the project's real compilation. The
-    /// analyzer/invalidate members are unused by the two hoisted helpers and throw if reached.
+    /// analyzer/liveness/invalidate members are unused by the two hoisted helpers (which take an
+    /// ad-hoc solution and a synthetic workspace id, never routing through the read-side liveness
+    /// gate) and throw if reached.
     /// </summary>
     private sealed class CountingAdhocCompilationCache : ICompilationCache
     {
@@ -1009,6 +1133,8 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
 
         public Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(string workspaceId, Project project, CancellationToken ct) =>
             throw new NotSupportedException();
+
+        public bool IsLiveSolution(string workspaceId, Solution solution) => throw new NotSupportedException();
 
         public void Invalidate(string workspaceId) => throw new NotSupportedException();
     }
@@ -1046,6 +1172,50 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
 
         public Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(string workspaceId, Project project, CancellationToken ct) =>
             _inner.GetCompilationWithAnalyzersAsync(workspaceId, project, ct);
+
+        public bool IsLiveSolution(string workspaceId, Solution solution) => _inner.IsLiveSolution(workspaceId, solution);
+
+        public void Invalidate(string workspaceId) => _inner.Invalidate(workspaceId);
+    }
+
+    /// <summary>
+    /// group-c-compilation-cache-gate-hardening: <see cref="ICompilationCache"/> decorator that
+    /// reloads the workspace as a side effect of its FIRST <c>GetCompilationAsync</c> — simulating a
+    /// reload that lands mid-scan, between two iterations of a helper's project loop. Liveness
+    /// (<see cref="IsLiveSolution"/>) is delegated to a real <see cref="CompilationCache"/> so the
+    /// post-reload re-check reflects the genuine workspace state.
+    /// </summary>
+    private sealed class ReloadOnFirstFetchCompilationCache : ICompilationCache
+    {
+        private readonly ICompilationCache _inner;
+        private readonly Func<Task> _reload;
+        private int _getCompilationCallCount;
+
+        public ReloadOnFirstFetchCompilationCache(ICompilationCache inner, Func<Task> reload)
+        {
+            _inner = inner;
+            _reload = reload;
+        }
+
+        public int GetCompilationCallCount => Volatile.Read(ref _getCompilationCallCount);
+
+        public async Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref _getCompilationCallCount) == 1)
+            {
+                await _reload().ConfigureAwait(false);
+            }
+
+            // Deliberately NOT delegated to the inner cache: the point of the test is the call
+            // count, and storing a pre-bump compilation under the post-bump key is the very
+            // poisoning this initiative prevents.
+            return await project.GetCompilationAsync(ct).ConfigureAwait(false);
+        }
+
+        public Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(string workspaceId, Project project, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public bool IsLiveSolution(string workspaceId, Solution solution) => _inner.IsLiveSolution(workspaceId, solution);
 
         public void Invalidate(string workspaceId) => _inner.Invalidate(workspaceId);
     }
