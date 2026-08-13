@@ -345,28 +345,29 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 public sealed class FileWatcherClearStaleAwaiterTests
 {
     /// <summary>
-    /// Upper bound on how long the re-armed awaiter may take to unblock. The release is in-process
-    /// and synchronous-on-<c>ClearStale</c>, so a correct implementation completes in microseconds;
-    /// this generous ceiling only guards against a hang. Deliberately far below the (absent) caller
-    /// cancellation deadline so a stranded awaiter fails the test by timing out here, not by the
-    /// caller's token firing. 2000ms proved too tight under self-hosted CI runner thread-pool load
-    /// (registered flake, see ai_docs/known-flakes.md); widened to 10000ms — still far below the
-    /// 30s caller deadline, and a genuinely stranded awaiter still fails well inside this bound.
-    /// </summary>
-    private const int UnblockBoundMs = 10_000;
-
-    /// <summary>
     /// Regression for <c>filewatcher-waitforstale-clearstale-stranded-awaiter</c>: an awaiter parked
-    /// on <see cref="FileWatcherService.WaitForStaleAsync"/> for a non-stale entry must unblock
-    /// promptly when <see cref="FileWatcherService.ClearStale"/> re-arms the signal, instead of
-    /// hanging on the replaced <see cref="System.Threading.Tasks.TaskCompletionSource"/> until its
-    /// own cancellation deadline.
+    /// on <see cref="FileWatcherService.WaitForStaleAsync"/> for a non-stale entry must be released
+    /// when <see cref="FileWatcherService.ClearStale"/> re-arms the signal, instead of hanging on
+    /// the replaced <see cref="System.Threading.Tasks.TaskCompletionSource"/> until its own
+    /// cancellation deadline.
     ///
     /// Pre-fix this fails: <c>ClearStale</c> swapped in a fresh TCS without completing the outgoing
-    /// one, so the parked task never finished and the <see cref="UnblockBoundMs"/> bound elapsed.
-    /// Post-fix the re-arm cancels the outgoing TCS, so the await throws
-    /// <see cref="OperationCanceledException"/> well inside the bound — the contractually-documented
-    /// outcome for an abandoned stale-wait.
+    /// one, so the parked task stayed pending forever. Post-fix the re-arm cancels the outgoing TCS
+    /// — the contractually-documented outcome for an abandoned stale-wait.
+    ///
+    /// The assertion is deliberately timer-free. <c>ClearStale</c> calls
+    /// <c>TaskCompletionSource.TrySetCanceled()</c> on the calling thread under the entry's reason
+    /// lock, and a TCS's task state transitions synchronously with that call — the
+    /// <c>RunContinuationsAsynchronously</c> flag defers only the scheduling of registered
+    /// continuations, never the <c>IsCompleted</c>/<c>IsCanceled</c> property reads. So this test
+    /// reads that state directly the instant <c>ClearStale</c> returns instead of awaiting a
+    /// wall-clock bound; the old bounded await was a thread-pool-scheduling dependency and the
+    /// cause of the registered flake (see <c>ai_docs/known-flakes.md</c> history), not a defect in
+    /// <see cref="FileWatcherService"/>.
+    ///
+    /// <see cref="CancellationToken.None"/> at the park site is load-bearing for that: with a
+    /// cancelable token <c>WaitForStaleAsync</c> hands back a <c>Task.WaitAsync</c> wrapper that
+    /// resolves via a thread-pool continuation, whose state genuinely lags the underlying signal.
     /// </summary>
     [TestMethod]
     public async Task ClearStale_ReleasesAwaiterParkedOnPriorSignal_RatherThanStrandingIt()
@@ -388,39 +389,44 @@ public sealed class FileWatcherClearStaleAwaiterTests
                 watcher.IsStale(workspaceId),
                 "Precondition: a freshly-watched entry is not stale, so WaitForStaleAsync parks.");
 
-            // Park on the current signal. A long token deadline ensures that if the awaiter is
-            // stranded it is the UnblockBoundMs assertion below — not the token — that catches it.
-            using var awaiterCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var parked = watcher.WaitForStaleAsync(workspaceId, awaiterCts.Token);
+            // Park on the current signal. CancellationToken.None is deliberate: it makes
+            // WaitForStaleAsync return the raw signal task rather than a Task.WaitAsync wrapper, so
+            // the task's state flips synchronously inside ClearStale and is assertable without any
+            // timer. Passing a cancelable token here would reintroduce the scheduling race.
+            var parked = watcher.WaitForStaleAsync(workspaceId, CancellationToken.None);
             Assert.IsFalse(
                 parked.IsCompleted,
                 "Precondition: the awaiter is genuinely parked (entry is not stale yet).");
 
-            // Concurrent ClearStale re-arms the signal. The outgoing TCS the awaiter holds must be
-            // completed/canceled by this call so the parked task resolves promptly.
+            // ClearStale re-arms the signal. The outgoing TCS the awaiter holds must be
+            // completed/canceled by this call, synchronously, before it returns.
             watcher.ClearStale(workspaceId);
 
-            // The parked task must resolve within the bound. WaitAsync throws TimeoutException if
-            // it does not — that is the stranded-awaiter failure this regression guards against.
-            try
-            {
-                await parked.WaitAsync(TimeSpan.FromMilliseconds(UnblockBoundMs));
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected post-fix path: the re-arm canceled the abandoned stale-wait.
-            }
-
+            // Pass/fail is decided here, by a synchronous state read with no scheduling dependency.
             Assert.IsTrue(
                 parked.IsCompleted,
-                $"ClearStale must release the awaiter parked on the prior signal within " +
-                $"{UnblockBoundMs} ms; it remained pending, so the outgoing TaskCompletionSource " +
-                "was replaced without being completed/canceled (the stranded-awaiter regression).");
+                "ClearStale must resolve the awaiter parked on the prior signal synchronously, " +
+                "before it returns; the task was still pending, so the outgoing " +
+                "TaskCompletionSource was replaced without being completed/canceled (the " +
+                "stranded-awaiter regression).");
             Assert.IsTrue(
                 parked.IsCanceled,
                 "A re-arm (ClearStale) abandons the pending stale-wait, so the awaiter should be " +
                 "canceled — not completed-as-stale, which would be a spurious wakeup since the " +
                 "entry is now clean (IsStale=false, StaleReason=null).");
+
+            // Non-gating hang-guard. The assertions above already decided the outcome, so on a
+            // passing run this completes instantly; it stays to observe the task (an unexpected
+            // fault surfaces here instead of going unobserved) and, being bounded, can only ever
+            // fail the run rather than hang it.
+            try
+            {
+                await parked.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected path: the re-arm canceled the abandoned stale-wait.
+            }
         }
         finally
         {
