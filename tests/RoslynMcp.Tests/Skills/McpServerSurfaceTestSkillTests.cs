@@ -189,14 +189,24 @@ public sealed class McpServerSurfaceTestSkillTests
 
         // Both artifact-write sites (prose report + scorecard) must pin `<audited-repo-root>` to the
         // primary checkout, or a run that treats the disposable Phase-6 worktree as the audited root
-        // loses both artifacts at teardown.
-        var primaryCheckoutMentions = Regex.Matches(contents, "PRIMARY checkout").Count;
-        Assert.IsTrue(
-            primaryCheckoutMentions >= 2,
-            $"output-and-close.md names the PRIMARY checkout {primaryCheckoutMentions} time(s); both " +
-            "artifact-write sites (prose report and _latest-promotion-scorecard.json) must state that " +
-            "`<audited-repo-root>` is the audited repo's primary checkout, never the disposable " +
-            $"Phase-6 worktree. Path: {phasePath}");
+        // loses both artifacts at teardown. Assert PER SECTION, not as a whole-file occurrence count:
+        // a global count still passes if the phrase is deleted from one site and duplicated in the
+        // other, silently unpinning that site.
+        var reportSection = ExtractSection(
+            contents, "### Where to save the report", "### Promotion scorecard JSON", phasePath);
+        StringAssert.Contains(
+            reportSection,
+            "PRIMARY checkout",
+            "The `### Where to save the report` section must state that `<audited-repo-root>` is the " +
+            $"audited repo's PRIMARY checkout, never the disposable Phase-6 worktree. Path: {phasePath}");
+
+        var scorecardSection = ExtractSection(
+            contents, "### Promotion scorecard JSON", "### Naming scheme", phasePath);
+        StringAssert.Contains(
+            scorecardSection,
+            "PRIMARY checkout",
+            "The `### Promotion scorecard JSON` section must state that `<audited-repo-root>` is the " +
+            $"audited repo's PRIMARY checkout, never the disposable Phase-6 worktree. Path: {phasePath}");
 
         // Copy-back before teardown — teardown is irreversible.
         StringAssert.Contains(contents, "BEFORE `git worktree remove`");
@@ -205,6 +215,32 @@ public sealed class McpServerSurfaceTestSkillTests
         // against a repo that TRACKS the scorecard files a false `audit-prompt-leak` P1 against itself.
         StringAssert.Contains(contents, "Exemption — the two canonical run artifacts");
         StringAssert.Contains(contents, "Do not file `audit-prompt-leak` for those two paths");
+
+        // ...and it must ALSO exempt the resume checkpoint, which the portability contract requires
+        // the run to persist into the primary checkout after every phase boundary. Without this the
+        // gate files a P1 `audit-prompt-leak` against the prompt's own required write. The exemption
+        // is paired with a closure-gated deletion so a COMPLETED run still leaves a clean tree.
+        StringAssert.Contains(contents, "Exemption — the resume checkpoint");
+        StringAssert.Contains(contents, "<audited-repo-root>/.audit-state.json");
+        StringAssert.Contains(contents, "DELETE `<audited-repo-root>/.audit-state.json`");
+    }
+
+    /// <summary>
+    /// Returns the slice of <paramref name="contents"/> between <paramref name="startHeader"/> and
+    /// the next <paramref name="endHeader"/>, failing the test if either header is missing or out of
+    /// order — a moved/renamed header must break loudly rather than silently widen the slice.
+    /// </summary>
+    private static string ExtractSection(string contents, string startHeader, string endHeader, string path)
+    {
+        var start = contents.IndexOf(startHeader, StringComparison.Ordinal);
+        Assert.IsTrue(start >= 0, $"Header '{startHeader}' was not found in {path}.");
+
+        var end = contents.IndexOf(endHeader, start, StringComparison.Ordinal);
+        Assert.IsTrue(
+            end > start,
+            $"Header '{endHeader}' was not found after '{startHeader}' in {path}.");
+
+        return contents[start..end];
     }
 
     [TestMethod]

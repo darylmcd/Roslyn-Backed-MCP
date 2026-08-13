@@ -346,6 +346,64 @@ public sealed class AggregatePromotionScorecardsScriptTests
             $"siblingReposScanned=[{string.Join(", ", scanned)}]. JSON: {result.StdOut}");
     }
 
+    [TestMethod]
+    public void Aggregator_StaleServerVersionAndGeneratedAt_ReportsScorecardStaleness()
+    {
+        // The scorecard is the release-gating input, but the aggregator historically read
+        // `serverVersion`/`generatedAt` without ever comparing them — a sibling frozen at an old
+        // build kept voting in the quorum with no signal that its evidence was stale.
+        // One sibling seeded with BOTH staleness axes: an old serverVersion and an ancient
+        // generatedAt (relative to now, so the assertion never rots as the calendar moves).
+        var staleGeneratedAt = DateTime.UtcNow.AddDays(-120).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        SeedCanonicalScorecardWithMetadata(
+            "repo-stale",
+            new[] { ("tool", "semantic_grep", "analysis", "experimental", "promote") },
+            serverVersion: "1.38.1",
+            generatedAt: staleGeneratedAt);
+
+        var result = RunAggregatorWithStalenessBaseline("2.3.8", maxScorecardAgeDays: 45);
+
+        // Warn-only by contract: staleness must NOT change the exit code, or every consumer that
+        // pipes the aggregator's stdout breaks the moment one sibling drifts.
+        Assert.AreEqual(0, result.ExitCode,
+            $"Staleness detection must stay warn-only (exit 0): stdout={result.StdOut} stderr={result.StdErr}");
+
+        // Stdout is JSON and NOTHING else. The warning must go to stderr via [Console]::Error —
+        // `Write-Warning` would have the host render it onto stdout with ANSI escapes under
+        // `pwsh -File`, breaking every consumer that pipes this script's output through a parser.
+        StringAssert.StartsWith(result.StdOut.TrimStart(), "{",
+            $"Aggregator stdout must be pure JSON, but it began with non-JSON output: {result.StdOut}");
+        StringAssert.Contains(result.StdErr, "Stale promotion scorecard for 'repo-stale'",
+            $"The staleness warning must be emitted on stderr. stderr={result.StdErr}");
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+
+        var staleness = doc.RootElement.GetProperty("scorecardStaleness").EnumerateArray().ToArray();
+        Assert.AreEqual(1, staleness.Length,
+            $"Expected exactly 1 scorecardStaleness row (one sibling with metadata). JSON: {result.StdOut}");
+
+        var row = staleness[0];
+        Assert.AreEqual("repo-stale", row.GetProperty("repo").GetString());
+        Assert.AreEqual("1.38.1", row.GetProperty("serverVersion").GetString());
+        Assert.AreEqual("2.3.8", row.GetProperty("currentServerVersion").GetString());
+        Assert.IsTrue(row.GetProperty("versionStale").GetBoolean(),
+            $"serverVersion 1.38.1 vs current 2.3.8 must report versionStale. JSON: {result.StdOut}");
+        Assert.AreEqual(staleGeneratedAt, row.GetProperty("generatedAt").GetString());
+        Assert.IsTrue(row.GetProperty("ageStale").GetBoolean(),
+            $"A generatedAt 120 days old must report ageStale against -MaxScorecardAgeDays 45. JSON: {result.StdOut}");
+        Assert.IsTrue(row.GetProperty("ageDays").GetDouble() > 45,
+            $"ageDays must exceed the 45-day threshold. JSON: {result.StdOut}");
+
+        var summary = doc.RootElement.GetProperty("summary");
+        Assert.IsTrue(summary.GetProperty("staleScorecardCount").GetInt32() >= 1,
+            $"summary.staleScorecardCount must count the stale sibling. JSON: {result.StdOut}");
+
+        // The stale sibling still contributes its vote — staleness is a signal, not a filter.
+        var entries = doc.RootElement.GetProperty("entries").EnumerateArray().ToArray();
+        Assert.AreEqual(1, entries.Length, $"Stale scorecards must still be aggregated. JSON: {result.StdOut}");
+        Assert.AreEqual("semantic_grep", entries[0].GetProperty("name").GetString());
+    }
+
     private static string ResolveScriptPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -374,7 +432,25 @@ public sealed class AggregatePromotionScorecardsScriptTests
     private void SeedCanonicalScorecard(string repoName, IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries)
         => WriteScorecard(repoName, "audit-reports", entries);
 
-    private void WriteScorecard(string repoName, string relativeAuditDir, IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries)
+    /// <summary>
+    /// Seeds a synthetic sibling repo with a CANONICAL repo-root scorecard carrying explicit
+    /// staleness metadata (<c>serverVersion</c> / <c>generatedAt</c>). The default
+    /// <see cref="WriteScorecard"/> emits a fresh <c>generatedAt</c> and no <c>serverVersion</c>
+    /// at all, which is exactly the non-stale shape the other tests rely on.
+    /// </summary>
+    private void SeedCanonicalScorecardWithMetadata(
+        string repoName,
+        IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries,
+        string serverVersion,
+        string generatedAt)
+        => WriteScorecard(repoName, "audit-reports", entries, serverVersion, generatedAt);
+
+    private void WriteScorecard(
+        string repoName,
+        string relativeAuditDir,
+        IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries,
+        string? serverVersion = null,
+        string? generatedAt = null)
     {
         var repoDir = Path.Combine(_siblingParent, repoName);
         var auditDir = Path.Combine(repoDir, relativeAuditDir);
@@ -392,14 +468,21 @@ public sealed class AggregatePromotionScorecardsScriptTests
             blockers = e.recommendation == "promote" ? Array.Empty<string>() : new[] { "synthetic blocker" }
         }).ToArray();
 
-        var scorecard = new
+        // Dictionary rather than an anonymous type so `serverVersion` can be omitted entirely —
+        // the aggregator's staleness probe distinguishes "field absent" from "field present".
+        var scorecard = new Dictionary<string, object>
         {
-            schemaVersion = 1,
-            generatedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-            auditedRepo = repoName,
-            scorecard = scorecardEntries,
-            summary = new { promote = 0, deprecate = 0 }
+            ["schemaVersion"] = 1,
+            ["generatedAt"] = generatedAt ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            ["auditedRepo"] = repoName,
+            ["scorecard"] = scorecardEntries,
+            ["summary"] = new { promote = 0, deprecate = 0 }
         };
+
+        if (serverVersion is not null)
+        {
+            scorecard["serverVersion"] = serverVersion;
+        }
 
         var json = JsonSerializer.Serialize(scorecard, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(Path.Combine(auditDir, "_latest-promotion-scorecard.json"), json);
@@ -421,6 +504,18 @@ public sealed class AggregatePromotionScorecardsScriptTests
             ResolveScriptPath(),
             "aggregate-promotion-scorecards.ps1 -IncludeSelf",
             "-SiblingRepoParent", _siblingParent, "-IncludeSelf");
+
+    /// <summary>
+    /// Variant of <see cref="RunAggregator"/> that pins the staleness baseline explicitly, so the
+    /// assertion does not couple to this checkout's live <c>Directory.Build.props</c> version.
+    /// </summary>
+    private PwshResult RunAggregatorWithStalenessBaseline(string currentServerVersion, int maxScorecardAgeDays)
+        => RunPwshScript(
+            ResolveScriptPath(),
+            "aggregate-promotion-scorecards.ps1 -CurrentServerVersion -MaxScorecardAgeDays",
+            "-SiblingRepoParent", _siblingParent,
+            "-CurrentServerVersion", currentServerVersion,
+            "-MaxScorecardAgeDays", maxScorecardAgeDays.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private static PwshResult RunBacklogProposalScript(string aggregatedPath)
     {

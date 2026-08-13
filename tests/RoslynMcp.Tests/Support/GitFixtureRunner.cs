@@ -3,11 +3,26 @@ using System.Diagnostics;
 namespace RoslynMcp.Tests.Support;
 
 /// <summary>
-/// Shared helpers for tests that build a small on-disk git repo around the
-/// SampleSolution fixture (stage baseline files, commit, run plain git
-/// commands). Extracted from <c>ValidateRecentGitChangesTests</c> and
-/// <c>ValidateWorkspaceChangeTrackerReconcileTests</c> where the same
-/// implementation was duplicated verbatim.
+/// Shared git helpers for tests. Two distinct usages, both supported:
+/// <list type="number">
+///   <item>
+///     Building a small on-disk git repo around the SampleSolution fixture —
+///     <see cref="StageFixtureBaseline"/> / <see cref="StageAndCommitAll"/> plus
+///     <see cref="RunGit"/>. Extracted from <c>ValidateRecentGitChangesTests</c>
+///     and <c>ValidateWorkspaceChangeTrackerReconcileTests</c> where the same
+///     implementation was duplicated verbatim.
+///   </item>
+///   <item>
+///     Read-only git queries against the REAL repository root — e.g.
+///     <c>McpServerSurfaceTestSkillTests.CanonicalPromotionScorecard_IsGitTracked</c>
+///     calls <see cref="RunGitCapture"/> with <c>git ls-files</c> to assert a
+///     path's tracked state. Only non-mutating porcelain/plumbing queries are
+///     acceptable against the real root; the staging and commit helpers above
+///     are strictly for throwaway fixture directories.
+///   </item>
+/// </list>
+/// <see cref="IsAvailable"/> gates both usages so a machine without git on PATH
+/// yields an <c>Assert.Inconclusive</c> instead of a hard failure.
 /// </summary>
 internal static class GitFixtureRunner
 {
