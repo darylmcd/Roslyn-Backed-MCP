@@ -15,7 +15,7 @@ Run the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill f
 
 The skill does end-to-end intake:
 
-1. **Stages** deep-review artifacts by invoking `eng/stage-review-inbox.ps1`, which discovers `*_mcp-server-audit.md`, `*_experimental-promotion.md`, and `*_roslyn-mcp-retro.md` files across sibling repos + this repo's own `ai_docs/audit-reports/` + `ai_docs/reports/`, and copies them into `review-inbox/` (default — preserves the canonical source location; pass `-Move` to clear the source instead).
+1. **Stages** deep-review artifacts by invoking `eng/stage-review-inbox.ps1`, which discovers the recognized deep-review artifact shapes (canonical list: see `eng/stage-review-inbox.ps1` `.DESCRIPTION` -> "Recognized shapes"; do not re-list the globs here) across sibling repos + this repo's own `ai_docs/audit-reports/` + `ai_docs/reports/`, and copies them into `review-inbox/` (default — preserves the canonical source location; pass `-Move` to clear the source instead).
 2. **Extracts** actionable items via a subagent (context-protecting).
 3. **Deduplicates** semantically across files (not literal-text matching).
 4. **Verifies** each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan, dropping items that have already shipped.
