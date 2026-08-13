@@ -281,7 +281,10 @@ public class ClientRootPathValidatorTests
                 return;
             }
 
-            Assert.IsFalse(File.Exists(entryLink), "The regression requires a dangling link entry.");
+            Assert.IsFalse(File.Exists(danglingTarget),
+                "The regression requires the stored file-link target to remain absent.");
+            Assert.IsNotNull(new FileInfo(entryLink).LinkTarget,
+                "The source path must remain a link entry even when its target is absent.");
             Assert.AreEqual(
                 Path.GetFullPath(danglingTarget),
                 ClientRootPathValidator.ResolvePath(entryLink),
@@ -317,7 +320,10 @@ public class ClientRootPathValidatorTests
                 return;
             }
 
-            Assert.IsFalse(Directory.Exists(entryLink), "The regression requires a dangling link entry.");
+            Assert.IsFalse(Directory.Exists(outsideRoot),
+                "The regression requires the stored directory-link target to remain absent.");
+            Assert.IsNotNull(new FileInfo(entryLink).LinkTarget,
+                "The source path must remain a link entry even when its target is absent.");
             Assert.AreEqual(
                 Path.GetFullPath(Path.Combine(outsideRoot, "future.cs")),
                 ClientRootPathValidator.ResolvePath(candidate),
