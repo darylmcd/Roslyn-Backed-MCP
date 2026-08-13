@@ -1,3 +1,4 @@
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
@@ -10,6 +11,7 @@ public abstract class TestBase
     private static bool _msbuildInitialized;
     private static bool _servicesInitialized;
     private static readonly WorkspaceIdCache _workspaceIdCache = new();
+    private static Task<McpRootsTestServerFactory.Session>? _pathAuthorizedServerTask;
 
     /// <summary>
     /// Validation timeouts for integration tests. Defaults match production
@@ -111,6 +113,25 @@ public abstract class TestBase
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
     protected static string GeneratedDocumentSolutionPath { get; private set; } = null!;
+
+    /// <summary>
+    /// Returns a real, connected MCP server whose server-owned security options explicitly
+    /// sanction repository fixtures and the process temp directory. Direct tool tests use this
+    /// instead of relying on a null-server path-validation bypass.
+    /// </summary>
+    protected static async Task<McpServer> GetPathAuthorizedServerAsync()
+    {
+        Task<McpRootsTestServerFactory.Session> sessionTask;
+        lock (_initLock)
+        {
+            sessionTask = _pathAuthorizedServerTask ??=
+                McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
+                    [RepositoryRootPath, TestTempRoot.Current],
+                    CancellationToken.None);
+        }
+
+        return (await sessionTask.ConfigureAwait(false)).Server;
+    }
 
     protected static void InitializeServices()
     {
@@ -230,26 +251,41 @@ public abstract class TestBase
     /// Called from <see cref="AssemblyLifecycle.Cleanup"/> after the entire test assembly
     /// finishes. Test code should not call this directly.
     /// </summary>
-    internal static void DisposeAssemblyResources()
+    internal static async Task DisposeAssemblyResourcesAsync()
     {
+        Task<McpRootsTestServerFactory.Session>? pathAuthorizedServerTask;
         lock (_initLock)
         {
-            if (!_servicesInitialized)
+            if (_servicesInitialized)
             {
-                return;
+                try
+                {
+                    WorkspaceManager?.Dispose();
+                }
+                catch
+                {
+                    // Best-effort: avoid masking real test failures with cleanup errors.
+                }
+
+                _workspaceIdCache.Clear();
+                _servicesInitialized = false;
             }
 
+            pathAuthorizedServerTask = _pathAuthorizedServerTask;
+            _pathAuthorizedServerTask = null;
+        }
+
+        if (pathAuthorizedServerTask is not null)
+        {
             try
             {
-                WorkspaceManager?.Dispose();
+                var session = await pathAuthorizedServerTask.ConfigureAwait(false);
+                await session.DisposeAsync().ConfigureAwait(false);
             }
             catch
             {
                 // Best-effort: avoid masking real test failures with cleanup errors.
             }
-
-            _workspaceIdCache.Clear();
-            _servicesInitialized = false;
         }
     }
 

@@ -8,7 +8,10 @@
         "--source",
         "https://api.nuget.org/v3/index.json",
         "--yes"
-      ]
+      ],
+      "env": {
+        "ROSLYNMCP_SANCTIONED_ROOTS": "."
+      }
     }
   }
 }

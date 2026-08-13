@@ -16,7 +16,9 @@ namespace RoslynMcp.Tests;
 ///     pointing at a real CLR type (so the schema lookup is non-null at static init);</description></item>
 ///   <item><description>have its <c>SurfaceEntry.OutputSchema</c> populated by
 ///     <see cref="ServerSurfaceCatalog"/> via the shared <see cref="ToolOutputSchemaIndex"/>;</description></item>
-///   <item><description>publish a JSON-Schema object (<c>type: "object"</c>) at the root.</description></item>
+///   <item><description>publish a JSON-Schema object (<c>type: "object"</c>) at the root;
+///     mode-dependent tools must advertise every response variant via <c>anyOf</c> or
+///     an exact <c>oneOf</c>.</description></item>
 /// </list>
 /// Pinning the wiring at the test level means a regression in the index, the catalog factory,
 /// or the per-tool annotation surfaces here BEFORE shipping.
@@ -24,7 +26,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class Batch1OutputSchemaTests
 {
-    private static readonly (string ToolName, Type ExpectedDtoType)[] s_batch1 =
+    private static readonly (string ToolName, Type ExpectedDtoType)[] _adopters =
     [
         ("server_info", typeof(ServerInfoDto)),
         ("server_heartbeat", typeof(ServerHeartbeatDto)),
@@ -32,10 +34,12 @@ public sealed class Batch1OutputSchemaTests
         ("workspace_list", typeof(WorkspaceListDto)),
         ("workspace_health", typeof(WorkspaceStatusSummaryDto)),
         ("workspace_drift_check", typeof(WorkspaceDriftResult)),
+        ("workspace_readiness_report", typeof(WorkspaceReadinessReportDto)),
+        ("workspace_support_bundle", typeof(WorkspaceSupportBundleDto)),
     ];
 
     [TestMethod]
-    public void Batch1_AllSixToolsDeclareOutputSchemaTypeRef()
+    public void AllEightAdoptersDeclareOutputSchemaTypeRef()
     {
         // Reflection-side check: each tool's [McpToolMetadata] carries a non-null
         // OutputSchemaTypeRef whose value matches the expected DTO type. If a tool body is
@@ -56,7 +60,7 @@ public sealed class Batch1OutputSchemaTests
             }
         }
 
-        foreach (var (toolName, expectedDtoType) in s_batch1)
+        foreach (var (toolName, expectedDtoType) in _adopters)
         {
             Assert.IsTrue(byToolName.ContainsKey(toolName),
                 $"Tool '{toolName}' is not registered (no [McpServerTool] match in the host assembly).");
@@ -67,14 +71,14 @@ public sealed class Batch1OutputSchemaTests
     }
 
     [TestMethod]
-    public void Batch1_AllSixToolsPublishSchemaThroughCatalog()
+    public void AllEightAdoptersPublishSchemaThroughCatalog()
     {
         // End-to-end check: the catalog's SurfaceEntry.OutputSchema is populated for each
         // batch-1 tool via the static ToolOutputSchemaIndex factory wiring. This proves the
         // attribute → reflection → schema-export → catalog chain stays connected.
         var toolsByName = ServerSurfaceCatalog.Tools.ToDictionary(t => t.Name, StringComparer.Ordinal);
 
-        foreach (var (toolName, _) in s_batch1)
+        foreach (var (toolName, _) in _adopters)
         {
             Assert.IsTrue(toolsByName.TryGetValue(toolName, out var entry),
                 $"Tool '{toolName}' is missing from ServerSurfaceCatalog.Tools.");
@@ -88,23 +92,53 @@ public sealed class Batch1OutputSchemaTests
                 $"Tool '{toolName}' schema must declare a top-level 'type' field.");
             Assert.AreEqual("object", schemaObj["type"]!.GetValue<string>(),
                 $"Tool '{toolName}' schema must be an object (structuredContent shape per MCP spec).");
-            Assert.IsTrue(schemaObj.ContainsKey("properties"),
-                $"Tool '{toolName}' schema must declare a 'properties' field describing the " +
-                "structuredContent shape.");
+            Assert.IsTrue(
+                schemaObj.ContainsKey("properties")
+                || schemaObj.ContainsKey("anyOf")
+                || schemaObj.ContainsKey("oneOf"),
+                $"Tool '{toolName}' schema must describe structuredContent through either " +
+                "a fixed 'properties' object or a mode-dependent variant union.");
         }
     }
 
     [TestMethod]
-    public void Batch1_RegisteredToolNamesContainAllSixTools()
+    public void ModeDependentWorkspaceToolsAdvertiseEverySerializedDtoVariant()
+    {
+        AssertUnionVariants(
+            "workspace_list",
+            "anyOf",
+            typeof(WorkspaceListDto),
+            typeof(WorkspaceListVerboseDto));
+        AssertUnionVariants(
+            "workspace_status",
+            "oneOf",
+            typeof(WorkspaceStatusSummaryDto),
+            typeof(WorkspaceStatusDto));
+
+        static void AssertUnionVariants(string toolName, string keyword, params Type[] expectedTypes)
+        {
+            var schema = ToolOutputSchemaIndex.GetSchema(toolName)!.AsObject();
+            var variants = schema[keyword]!.AsArray();
+            Assert.HasCount(expectedTypes.Length, variants);
+
+            for (var index = 0; index < expectedTypes.Length; index++)
+            {
+                var expected = ToolOutputSchemaIndex.GenerateSchema(expectedTypes[index]);
+                Assert.IsTrue(JsonNode.DeepEquals(expected, variants[index]),
+                    $"Tool '{toolName}' union branch {index} must describe " +
+                    $"{expectedTypes[index].Name}, the DTO serialized by that mode.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void RegisteredToolNamesMatchExactlyTheEightAdopters()
     {
         // Reverse direction: ToolOutputSchemaIndex.RegisteredToolNames is the source of truth
         // for "which tools opted in". A future batch-2 PR that drops one of these names would
         // be caught here.
-        var registered = ToolOutputSchemaIndex.RegisteredToolNames;
-        foreach (var (toolName, _) in s_batch1)
-        {
-            CollectionAssert.Contains(registered.ToArray(), toolName,
-                $"Tool '{toolName}' must appear in ToolOutputSchemaIndex.RegisteredToolNames.");
-        }
+        CollectionAssert.AreEquivalent(
+            _adopters.Select(static adopter => adopter.ToolName).ToArray(),
+            ToolOutputSchemaIndex.RegisteredToolNames.ToArray());
     }
 }

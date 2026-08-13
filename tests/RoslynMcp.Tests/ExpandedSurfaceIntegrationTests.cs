@@ -1,11 +1,12 @@
-using System.IO.Pipelines;
 using System.Text.Json;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -33,7 +34,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var programFile = FindDocumentPath("Program.cs");
         var json = await SymbolTools.GetCompletions(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             CompletionService,
             WorkspaceId,
@@ -56,7 +57,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var json = await SyntaxTools.GetSyntaxTree(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             SyntaxService,
             WorkspaceId,
@@ -190,7 +191,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
         var refsJson = await SymbolTools.FindReferences(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             WorkspaceManager,
             WorkspaceExecutionGate,
             ReferenceService,
@@ -485,7 +486,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var actionsJson = await CodeActionTools.GetCodeActions(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             CodeActionService,
             WorkspaceId,
@@ -504,25 +505,15 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     // host-analysis-tools-missing-clientroot-path-validation: AnalyzeDataFlow, AnalyzeControlFlow,
     // and GetOperations gained a leading McpServer parameter so they can call
     // ClientRootPathValidator.ValidatePathAgainstRootsAsync before dispatching to their service,
-    // mirroring the pattern already covered for GetSyntaxTree/GetCodeActions above. Passing null!
-    // for server exercises the same no-capability fail-open branch pinned by
-    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — the validator's actual
-    // root-matching logic (accept/reject/traversal/case-insensitivity) is exhaustively unit-tested
-    // there via IsPathUnderAnyRoot. A live root-rejection round trip through these tools additionally
-    // needs a real McpServer whose ClientCapabilities.Roots is populated — see
-    // CreateServerWithSanctionedRootAsync below, which wires a real McpServer/McpClient pair over an
-    // in-memory duplex pipe (ModelContextProtocol.Server.StreamServerTransport +
-    // ModelContextProtocol.Client.StreamClientTransport) and answers "roots/list" from the client
-    // side, exactly like a real MCP client would. This closes the round-trip gap the
-    // StructuredCallToolFilterElicitationTests remarks call out as impractical for ElicitAsync (which
-    // needs full duplex request/response mid-call); RequestRootsAsync only needs one round trip at
-    // handshake time, which this harness provides cheaply.
+    // mirroring the pattern already covered for GetSyntaxTree/GetCodeActions above. Positive direct
+    // calls use the assembly-owned server with explicit sanctioned roots; null server state is
+    // fail-closed. The rejection calls below use non-covering configured roots.
     [TestMethod]
     public async Task AnalyzeDataFlow_Returns_Structured_Results()
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var json = await FlowAnalysisTools.AnalyzeDataFlow(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             FlowAnalysisService,
             WorkspaceId,
@@ -540,7 +531,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var json = await FlowAnalysisTools.AnalyzeControlFlow(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             FlowAnalysisService,
             WorkspaceId,
@@ -558,7 +549,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var json = await OperationTools.GetOperations(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             OperationService,
             WorkspaceId,
@@ -573,10 +564,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     // ── Root-rejection regression coverage ───────────────────────────────────
-    // The tests above only exercise the null-server (fail-open, no-capability) branch.
-    // These pin the other half of the contract: when the client DOES advertise roots and
-    // the requested filePath falls outside every sanctioned root, ValidatePathAgainstRootsAsync
-    // must reject it — for all 5 endpoints this initiative touched.
+    // Positive calls above use covering server-owned roots. These pin the complementary contract:
+    // a requested filePath outside the configured boundary is rejected for all five endpoints.
 
     [TestMethod]
     public async Task GetCodeActions_Rejects_FilePath_Outside_SanctionedRoot()
@@ -596,7 +585,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             endLine: null,
             endColumn: null,
             CancellationToken.None));
-        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
     }
 
     [TestMethod]
@@ -618,7 +607,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             endLine: null,
             endColumn: null,
             CancellationToken.None));
-        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
     }
 
     [TestMethod]
@@ -637,7 +626,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             startLine: 32,
             endLine: 37,
             CancellationToken.None));
-        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
     }
 
     [TestMethod]
@@ -656,7 +645,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             startLine: 32,
             endLine: 37,
             CancellationToken.None));
-        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
     }
 
     [TestMethod]
@@ -676,7 +665,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             column: 16,
             maxDepth: 3,
             CancellationToken.None));
-        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
     }
 
     /// <summary>
@@ -686,131 +675,30 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     /// </summary>
     private static string CreateUnrelatedSanctionedRootDirectory()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "rmcp-sanctioned-root-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(TestTempRoot.Current, "sanctioned-root-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
 
     /// <summary>
     /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
-    /// duplex pipe so <c>server.ClientCapabilities.Roots</c> is genuinely populated (via the MCP
-    /// negotiated stdio connection) and <c>server.RequestRootsAsync</c> genuinely round-trips to a client
-    /// that advertises <paramref name="sanctionedRoot"/> as its only root — a live analogue of what
-    /// <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/> talks to in production,
-    /// rather than a hand-rolled fake. Dispose the returned harness to tear down the client and stop
-    /// the server's receive loop.
+    /// duplex pipe and registers <paramref name="sanctionedRoot"/> as the server-owned configured
+    /// boundary consumed by <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>.
+    /// The client intentionally advertises no Roots capability: the boundary remains server-owned.
+    /// Dispose the returned harness to tear down the client and stop the server's receive loop.
     /// </summary>
-#pragma warning disable MCP9005 // Exercises the production Roots compatibility boundary tracked for migration.
-    private static async Task<ServerWithSanctionedRootHarness> CreateServerWithSanctionedRootAsync(
+    private static async Task<InMemoryMcpClientServerHarness> CreateServerWithSanctionedRootAsync(
         string sanctionedRoot, CancellationToken ct)
     {
-        var clientToServer = new Pipe();
-        var serverToClient = new Pipe();
-        var clientToServerReadStream = clientToServer.Reader.AsStream();
-        var clientToServerWriteStream = clientToServer.Writer.AsStream();
-        var serverToClientReadStream = serverToClient.Reader.AsStream();
-        var serverToClientWriteStream = serverToClient.Writer.AsStream();
-
-        var serverTransport = new StreamServerTransport(
-            clientToServerReadStream,
-            serverToClientWriteStream,
-            "test-server",
-            NullLoggerFactory.Instance);
-        var server = McpServer.Create(serverTransport, new McpServerOptions(), NullLoggerFactory.Instance, null);
-        var cts = new CancellationTokenSource();
-        var serverRunTask = server.RunAsync(cts.Token);
-
-        var clientTransport = new StreamClientTransport(
-            clientToServerWriteStream,
-            serverToClientReadStream,
-            NullLoggerFactory.Instance);
-        var rootUri = new Uri(sanctionedRoot).AbsoluteUri;
-
-        var client = await McpClient.CreateAsync(
-            clientTransport,
-            new McpClientOptions
-            {
-                // These tests invoke tool methods directly with the connection-scoped server.
-                // Protocol revisions through 2025-11-25 expose Roots there; the modern
-                // request-scoped binding is covered by TypeExtractionTests through tools/call.
-                ProtocolVersion = "2025-11-25",
-                Capabilities = new ClientCapabilities { Roots = new RootsCapability() },
-                Handlers = new McpClientHandlers
-                {
-                    RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult
-                    {
-                        Roots = [new Root { Uri = rootUri }],
-                    }),
-                },
-            },
-            NullLoggerFactory.Instance,
-            ct).ConfigureAwait(false);
-
-        return new ServerWithSanctionedRootHarness(
-            server,
-            client,
-            cts,
-            serverRunTask,
-            [
-                clientToServerReadStream,
-                clientToServerWriteStream,
-                serverToClientReadStream,
-                serverToClientWriteStream,
-            ]);
-    }
-#pragma warning restore MCP9005
-
-    private sealed class ServerWithSanctionedRootHarness(
-        McpServer server,
-        McpClient client,
-        CancellationTokenSource cts,
-        Task serverRunTask,
-        IReadOnlyList<Stream> transportStreams) : IAsyncDisposable
-    {
-        public McpServer Server { get; } = server;
-
-        public async ValueTask DisposeAsync()
-        {
-            var failures = new List<Exception>();
-            await DisposeCapturingAsync(client, failures).ConfigureAwait(false);
-            cts.Cancel();
-            try
-            {
-                await serverRunTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected — cancelling the server's receive loop surfaces as this.
-            }
-            finally
-            {
-                await DisposeCapturingAsync(Server, failures).ConfigureAwait(false);
-                foreach (var stream in transportStreams)
-                {
-                    await DisposeCapturingAsync(stream, failures).ConfigureAwait(false);
-                }
-                cts.Dispose();
-            }
-
-            if (failures.Count > 0)
-            {
-                throw new AggregateException("Failed to dispose the sanctioned-root MCP test harness.", failures);
-            }
-        }
-
-        private static async ValueTask DisposeCapturingAsync(
-            IAsyncDisposable disposable,
-            ICollection<Exception> failures)
-        {
-            try
-            {
-                await disposable.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
-        }
+        return await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "test-server",
+            clientCapabilities: new ClientCapabilities(),
+            clientHandlers: new McpClientHandlers(),
+            disposalFailureContext: "sanctioned-root",
+            cancellationToken: ct,
+            serverServicesFactory: () => new ServiceCollection()
+                .AddSingleton(new SecurityOptions { SanctionedRoots = [sanctionedRoot] })
+                .BuildServiceProvider()).ConfigureAwait(false);
     }
 
     [TestMethod]
@@ -824,7 +712,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         {
             var programFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
             var singleEditJson = await EditTools.ApplyTextEdit(
-                null!,
+                await GetPathAuthorizedServerAsync(),
                 WorkspaceExecutionGate,
                 EditService,
                 tempWorkspaceId,
@@ -838,7 +726,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
             var animalFile = FindDocumentPath(tempWorkspaceId, "AnimalService.cs");
             var multiEditJson = await MultiFileEditTools.ApplyMultiFileEdit(
-                null!,
+                await GetPathAuthorizedServerAsync(),
                 WorkspaceExecutionGate,
                 EditService,
                 tempWorkspaceId,

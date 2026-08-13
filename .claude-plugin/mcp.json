@@ -1,6 +1,9 @@
 {
   "roslyn": {
     "type": "stdio",
-    "command": "roslynmcp"
+    "command": "roslynmcp",
+    "env": {
+      "ROSLYNMCP_SANCTIONED_ROOTS": "."
+    }
   }
 }

@@ -14,7 +14,9 @@
     "mcp_config": {
       "command": "roslynmcp",
       "args": [],
-      "env": {}
+      "env": {
+        "ROSLYNMCP_SANCTIONED_ROOTS": "."
+      }
     }
   },
   "compatibility": {

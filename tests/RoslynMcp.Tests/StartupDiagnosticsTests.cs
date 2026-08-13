@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -57,8 +58,11 @@ public sealed class StartupDiagnosticsTests
             "failure shape that concurrent-mcp-instances-no-tools is designed to surface.");
 
         Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, report.ToolsRegistered);
+        Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, report.ToolsExpected);
         Assert.AreEqual(ServerSurfaceCatalog.Resources.Count, report.ResourcesRegistered);
+        Assert.AreEqual(ServerSurfaceCatalog.Resources.Count, report.ResourcesExpected);
         Assert.AreEqual(ServerSurfaceCatalog.Prompts.Count, report.PromptsRegistered);
+        Assert.AreEqual(ServerSurfaceCatalog.Prompts.Count, report.PromptsExpected);
     }
 
     [TestMethod]
@@ -132,7 +136,141 @@ public sealed class StartupDiagnosticsTests
         Assert.AreEqual(LogLevel.Error, listLogger.Entries[0].Level,
             "Zero registered tools is the exact failure shape the diagnostic must flag loudly.");
         StringAssert.Contains(listLogger.Entries[0].Message, "PARITY MISMATCH");
-        StringAssert.Contains(listLogger.Entries[0].Message, "concurrent-mcp-instances-no-tools");
+        StringAssert.Contains(listLogger.Entries[0].Message, "client presentation");
+    }
+
+    [TestMethod]
+    public void StableOnlySelection_RegistersExactlySelectedSurface_AndKeepsFullCatalogParity()
+    {
+        var selection = ToolTierSelection.Parse("stable");
+        using var host = BuildTestHost(selection);
+
+        var report = StartupDiagnostics.Capture(
+            host.Services,
+            typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
+        var options = host.Services.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var registeredToolNames = options.ToolCollection!.ToArray()
+            .Select(static tool => tool.ProtocolTool.Name)
+            .ToArray();
+        var registeredResourceNames = options.ResourceCollection!.ToArray()
+            .Select(static resource => resource.ProtocolResourceTemplate.Name)
+            .ToArray();
+        var registeredPromptNames = options.PromptCollection!.ToArray()
+            .Select(static prompt => prompt.ProtocolPrompt.Name)
+            .ToArray();
+        var expectedToolNames = ServerSurfaceCatalog.Tools
+            .Where(static tool => tool.SupportTier == "stable")
+            .Select(static tool => tool.Name)
+            .ToArray();
+        var expectedResourceNames = ServerSurfaceCatalog.Resources
+            .Where(static resource => resource.SupportTier == "stable")
+            .Select(static resource => resource.Name)
+            .ToArray();
+        var expectedPromptNames = ServerSurfaceCatalog.Prompts
+            .Where(static prompt => prompt.SupportTier == "stable")
+            .Select(static prompt => prompt.Name)
+            .ToArray();
+
+        CollectionAssert.AreEquivalent(expectedToolNames, registeredToolNames);
+        CollectionAssert.AreEquivalent(expectedResourceNames, registeredResourceNames);
+        CollectionAssert.AreEquivalent(expectedPromptNames, registeredPromptNames);
+        Assert.AreEqual(expectedToolNames.Length, report.ToolsExpected);
+        Assert.AreEqual(expectedResourceNames.Length, report.ResourcesExpected);
+        Assert.AreEqual(expectedPromptNames.Length, report.PromptsExpected);
+        Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, report.ToolsReflected);
+        Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, report.ToolsInCatalog);
+        Assert.AreEqual(ServerSurfaceCatalog.Resources.Count, report.ResourcesReflected);
+        Assert.AreEqual(ServerSurfaceCatalog.Resources.Count, report.ResourcesInCatalog);
+        Assert.AreEqual(ServerSurfaceCatalog.Prompts.Count, report.PromptsReflected);
+        Assert.AreEqual(ServerSurfaceCatalog.Prompts.Count, report.PromptsInCatalog);
+        Assert.IsTrue(report.AllParityOk);
+    }
+
+    [TestMethod]
+    public void DefaultSelection_ProjectsExactlyTheDeclaredOutputSchemas()
+    {
+        using var host = BuildTestHost();
+        var tools = host.Services.GetRequiredService<IOptions<McpServerOptions>>()
+            .Value.ToolCollection!.ToArray();
+        var advertised = tools
+            .Where(static tool => tool.ProtocolTool.OutputSchema is not null)
+            .Select(static tool => tool.ProtocolTool.Name)
+            .ToArray();
+
+        CollectionAssert.AreEquivalent(
+            ToolOutputSchemaIndex.RegisteredToolNames.ToArray(),
+            advertised);
+    }
+
+    [TestMethod]
+    public void ToolTierSelection_RejectsUnknownOrEmptyValues()
+    {
+        var unknown = Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("stable,beta"));
+        StringAssert.Contains(unknown.Message, ToolTierSelection.EnvironmentVariableName);
+        StringAssert.Contains(unknown.Message, "stable,experimental");
+        Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse(" "));
+        Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("experimental"));
+    }
+
+    [TestMethod]
+    public void ExplicitAllSelection_RegistersStableAndExperimentalToolsCaseInsensitively()
+    {
+        var selection = ToolTierSelection.Parse("EXPERIMENTAL,STABLE");
+        using var host = BuildTestHost(selection);
+        var registeredNames = host.Services.GetRequiredService<IOptions<McpServerOptions>>()
+            .Value.ToolCollection!.ToArray()
+            .Select(static tool => tool.ProtocolTool.Name)
+            .ToArray();
+        var expectedNames = ServerSurfaceCatalog.Tools.Select(static tool => tool.Name).ToArray();
+
+        CollectionAssert.AreEquivalent(expectedNames, registeredNames);
+        Assert.AreEqual("stable,experimental", selection.ToString());
+    }
+
+    [TestMethod]
+    public void ServerInstructions_AreDiscoveryShapedAndWithinClientLimit()
+    {
+        using var host = BuildTestHost();
+        var instructions = host.Services.GetRequiredService<IOptions<McpServerOptions>>()
+            .Value.ServerInstructions;
+
+        Assert.IsFalse(string.IsNullOrWhiteSpace(instructions));
+        Assert.IsTrue(instructions.Length <= ServerInstructions.ClientCharacterLimit);
+        StringAssert.Contains(instructions, "workspace_load");
+        StringAssert.Contains(instructions, "recommend_workflow");
+        StringAssert.Contains(instructions, "preview");
+        StringAssert.Contains(instructions, "validation");
+        StringAssert.Contains(instructions, "tool search");
+    }
+
+    [TestMethod]
+    public void StableOnlySelection_DoesNotRecommendFilteredExperimentalTools()
+    {
+        var selection = ToolTierSelection.Parse("stable");
+        using var host = BuildTestHost(selection);
+        var instructions = host.Services.GetRequiredService<IOptions<McpServerOptions>>()
+            .Value.ServerInstructions;
+
+        Assert.IsNotNull(instructions);
+        Assert.IsTrue(instructions.Length <= ServerInstructions.ClientCharacterLimit);
+        StringAssert.Contains(instructions, "stable-only tool profile");
+        StringAssert.Contains(instructions, "deferred stable tool");
+        foreach (var experimentalTool in ServerSurfaceCatalog.Tools.Where(static tool => tool.SupportTier == "experimental"))
+        {
+            Assert.IsFalse(
+                instructions.Contains(experimentalTool.Name, StringComparison.Ordinal),
+                $"Stable-only instructions must not direct clients to filtered tool '{experimentalTool.Name}'.");
+        }
+    }
+
+    [TestMethod]
+    public void InvalidOnStalePolicy_FailsFastInsteadOfSilentlyEnablingReload()
+    {
+        var exception = Assert.ThrowsExactly<ArgumentException>(
+            () => HostEnvironmentOptions.ParseStalenessPolicy("typo"));
+
+        StringAssert.Contains(exception.Message, "ROSLYNMCP_ON_STALE");
+        Assert.AreEqual(StalenessPolicy.Warn, HostEnvironmentOptions.ParseStalenessPolicy("warn"));
     }
 
     [TestMethod]
@@ -192,7 +330,7 @@ public sealed class StartupDiagnosticsTests
         }
     }
 
-    private static IHost BuildTestHost()
+    private static IHost BuildTestHost(ToolTierSelection? selection = null)
     {
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
@@ -208,9 +346,8 @@ public sealed class StartupDiagnosticsTests
             new SecurityOptions(),
             new ScriptingServiceOptions());
 
-        // WithTools/Resources/PromptsFromAssembly register each attributed method as
-        // a singleton McpServerTool/Resource/Prompt in DI. No transport needed for
-        // StartupDiagnostics.Capture — it counts DI registrations directly. Must
+        // WithTools/Resources/PromptsFromAssembly populate McpServerOptions. No transport is
+        // needed for StartupDiagnostics.Capture — it reads the finalized options. Must
         // pass the Host.Stdio assembly explicitly, otherwise the parameterless
         // overload uses Assembly.GetCallingAssembly() = RoslynMcp.Tests, which
         // carries zero attributed methods and masks the registration count.
@@ -220,6 +357,12 @@ public sealed class StartupDiagnosticsTests
             .WithToolsFromAssembly(hostAssembly)
             .WithResourcesFromAssembly(hostAssembly)
             .WithPromptsFromAssembly(hostAssembly);
+        var effectiveSelection = selection ?? ToolTierSelection.All;
+        builder.Services.AddRoslynMcpSurfaceRegistrationPolicy(effectiveSelection);
+        builder.Services.Configure<McpServerOptions>(options =>
+        {
+            options.ServerInstructions = ServerInstructions.For(effectiveSelection);
+        });
 
         return builder.Build();
     }

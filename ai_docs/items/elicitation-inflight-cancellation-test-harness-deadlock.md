@@ -22,3 +22,4 @@ Traced live during the `elicitation-trychoice-cancellation-swallow` row's spec-c
 ## Context
 
 Spin-off from the `elicitation-trychoice-cancellation-swallow` row (top-n-remediation run 20260810T233007Z). That row shipped with acceptance bullet 2 satisfied via a pre-cancelled-token test that calls `ElicitationChoicePrompt.TryElicitChoiceAsync` directly (not through `SymbolTools`) — the spec-compliance reviewer's stricter "through SymbolTools, non-vacuously" bar was not met; this row exists to close that gap properly, with a dedicated investigation budget instead of a fix-cycle's.
+2026-08-13 adjacent review: SymbolDisambiguationElicitationTests' pre-cancel regression still uses non-cooperative [Timeout(15_000)] (MSTEST0045). Fold replacement with a bounded cooperative timeout/cancellation shape into this row; do not file separate timeout debt.

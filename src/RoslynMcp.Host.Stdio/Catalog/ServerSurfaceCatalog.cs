@@ -61,14 +61,22 @@ public static partial class ServerSurfaceCatalog
 
     public static SurfaceSummary GetSummary()
     {
+        return CreateSummary(Tools, Resources, Prompts);
+    }
+
+    private static SurfaceSummary CreateSummary(
+        IReadOnlyList<SurfaceEntry> tools,
+        IReadOnlyList<SurfaceEntry> resources,
+        IReadOnlyList<SurfaceEntry> prompts)
+    {
         return new SurfaceSummary(
             CatalogVersion,
-            CountByTier(Tools, "stable"),
-            CountByTier(Tools, "experimental"),
-            CountByTier(Resources, "stable"),
-            CountByTier(Resources, "experimental"),
-            CountByTier(Prompts, "stable"),
-            CountByTier(Prompts, "experimental"));
+            CountByTier(tools, "stable"),
+            CountByTier(tools, "experimental"),
+            CountByTier(resources, "stable"),
+            CountByTier(resources, "experimental"),
+            CountByTier(prompts, "stable"),
+            CountByTier(prompts, "experimental"));
     }
 
     public static IReadOnlyList<WorkflowHint> WorkflowHints { get; } =
@@ -128,7 +136,30 @@ public static partial class ServerSurfaceCatalog
     /// need tool/prompt rows fetch the paginated siblings.
     /// </summary>
     public static ServerCatalogSummaryDto CreateSummaryDocument()
+        => CreateSummaryDocument(ToolTierSelection.All);
+
+    internal static ServerCatalogSummaryDto CreateSummaryDocument(ToolTierSelection selection)
     {
+        ArgumentNullException.ThrowIfNull(selection);
+
+        var selectedTools = SelectEntries(Tools, selection);
+        var selectedResources = SelectEntries(Resources, selection);
+        var selectedPrompts = SelectEntries(Prompts, selection);
+        var selectedToolNames = selectedTools
+            .Select(static entry => entry.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedWorkflowHints = WorkflowHints
+            .Where(hint => hint.ToolSequence.All(selectedToolNames.Contains))
+            .ToArray();
+        var toolsResourceTemplate = selectedResources.Any(
+            static entry => entry.Name == "server_catalog_tools_page")
+            ? "roslyn://server/catalog/tools/{offset}/{limit}"
+            : null;
+        var promptsResourceTemplate = selectedResources.Any(
+            static entry => entry.Name == "server_catalog_prompts_page")
+            ? "roslyn://server/catalog/prompts/{offset}/{limit}"
+            : null;
+
         return new ServerCatalogSummaryDto(
             CatalogVersion,
             ProductShape: "local-first",
@@ -140,13 +171,22 @@ public static partial class ServerSurfaceCatalog
                 "Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.",
                 "Write-capable tools require an already loaded workspace and are intentionally bounded by preview/apply or explicit edit requests."
             ],
-            ToolCount: Tools.Count,
-            ToolsResourceTemplate: "roslyn://server/catalog/tools/{offset}/{limit}",
-            Resources,
-            PromptCount: Prompts.Count,
-            PromptsResourceTemplate: "roslyn://server/catalog/prompts/{offset}/{limit}",
-            WorkflowHints,
-            Summary: GetSummary());
+            ToolCount: selectedTools.Count,
+            ToolsResourceTemplate: toolsResourceTemplate,
+            Resources: selectedResources,
+            PromptCount: selectedPrompts.Count,
+            PromptsResourceTemplate: promptsResourceTemplate,
+            WorkflowHints: selectedWorkflowHints,
+            Summary: CreateSummary(selectedTools, selectedResources, selectedPrompts));
+    }
+
+    internal static IReadOnlyList<SurfaceEntry> SelectEntries(
+        IReadOnlyList<SurfaceEntry> entries,
+        ToolTierSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(selection);
+        return entries.Where(entry => selection.Includes(entry.SupportTier)).ToArray();
     }
 
     /// <summary>
@@ -432,10 +472,10 @@ public sealed record ServerCatalogSummaryDto(
     string SupportPolicy,
     IReadOnlyList<string> ProductBoundaries,
     int ToolCount,
-    string ToolsResourceTemplate,
+    string? ToolsResourceTemplate,
     IReadOnlyList<SurfaceEntry> Resources,
     int PromptCount,
-    string PromptsResourceTemplate,
+    string? PromptsResourceTemplate,
     IReadOnlyList<WorkflowHint> WorkflowHints,
     SurfaceSummary Summary);
 

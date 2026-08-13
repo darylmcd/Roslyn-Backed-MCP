@@ -146,15 +146,22 @@ You can also install directly without a registry-aware client via the [Global To
 
 ## Configuration
 
-The server starts with built-in defaults. To override `ROSLYNMCP_*` values for a repo, add a project-scope `.mcp.json` with literal `env` values.
+The server starts with built-in operational defaults. File-path access is the exception: configure
+`ROSLYNMCP_SANCTIONED_ROOTS` explicitly (usually `.` in a project-scope `.mcp.json`). Multiple roots
+use the platform path separator (`;` on Windows, `:` on macOS/Linux). An empty root list fails
+closed; see [Setup](docs/setup.md#configure-the-filesystem-boundary). Other `ROSLYNMCP_*` values
+remain optional literal `env` overrides.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `ROSLYNMCP_SANCTIONED_ROOTS` | empty (deny path access) | Server-owned path-validation and solution-discovery boundary |
+| `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `false` | Allows a request with `expandSanctionedRoots=true` to reach sibling worktrees under each sanctioned root's immediate parent; both opt-ins are required |
 | `ROSLYNMCP_MAX_WORKSPACES` | `8` | Concurrent workspace cap |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build timeout |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test timeout |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview-token TTL |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
+| `ROSLYNMCP_TOOL_TIERS` | `stable,experimental` | Registered MCP surface tiers; set `stable` to expose only stable tools, prompts, and resources (currently 113 tools) to clients that eagerly load discovery definitions; experimental requires the stable baseline |
 
 Copy-ready examples live in [docs/mcp-json-examples/README.md](docs/mcp-json-examples/README.md). The full runtime/config surface is documented in [ai_docs/runtime.md](ai_docs/runtime.md).
 

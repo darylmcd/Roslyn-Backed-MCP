@@ -30,7 +30,7 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         try
         {
             var json = await WorkspaceTools.LoadWorkspace(
-                server: null!,
+                server: await GetPathAuthorizedServerAsync(),
                 gate: WorkspaceExecutionGate,
                 workspace: WorkspaceManager,
                 warmService: WorkspaceWarmService,
@@ -78,7 +78,7 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         try
         {
             var json = await WorkspaceTools.LoadWorkspace(
-                server: null!,
+                server: await GetPathAuthorizedServerAsync(),
                 gate: WorkspaceExecutionGate,
                 workspace: WorkspaceManager,
                 warmService: WorkspaceWarmService,
@@ -119,12 +119,12 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         var warmService = new RecordingWorkspaceWarmService();
 
         var json = await WorkspaceTools.LoadWorkspace(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: gate,
             workspace: workspace,
             warmService: warmService,
             commandRunner: new ThrowingDotnetCommandRunner(),
-            path: @"C:\repo\Large.slnx",
+            path: Path.Combine(TestTempRoot.Current, "repo", "Large.slnx"),
             verbose: false,
             autoRestore: false,
             prewarm: null,
@@ -149,12 +149,12 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         var warmService = new RecordingWorkspaceWarmService();
 
         var json = await WorkspaceTools.LoadWorkspace(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: gate,
             workspace: workspace,
             warmService: warmService,
             commandRunner: new ThrowingDotnetCommandRunner(),
-            path: @"C:\repo\Threshold.slnx",
+            path: Path.Combine(TestTempRoot.Current, "repo", "Threshold.slnx"),
             verbose: false,
             autoRestore: false,
             prewarm: null,
@@ -177,12 +177,12 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         var warmService = new RecordingWorkspaceWarmService();
 
         var json = await WorkspaceTools.LoadWorkspace(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: gate,
             workspace: workspace,
             warmService: warmService,
             commandRunner: new ThrowingDotnetCommandRunner(),
-            path: @"C:\repo\Large.slnx",
+            path: Path.Combine(TestTempRoot.Current, "repo", "Large.slnx"),
             verbose: false,
             autoRestore: false,
             prewarm: false,

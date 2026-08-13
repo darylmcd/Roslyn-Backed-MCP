@@ -1,9 +1,9 @@
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Prompts;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
-using ModelContextProtocol.Protocol;
 
 namespace RoslynMcp.Tests;
 
@@ -79,11 +79,11 @@ public sealed class ExpandedSurfaceIntegrationTests_ToolContract : SharedWorkspa
     public async Task PreviewCodeAction_Serializes_Service_Response()
     {
         var previewJson = await CodeActionTools.PreviewCodeAction(
-            null!,
+            await GetPathAuthorizedServerAsync(),
             WorkspaceExecutionGate,
             new FakeCodeActionService(),
             WorkspaceId,
-            filePath: "C:\\temp\\Example.cs",
+            filePath: Path.Combine(TestTempRoot.Current, "Example.cs"),
             startLine: 1,
             startColumn: 1,
             actionIndex: 0,

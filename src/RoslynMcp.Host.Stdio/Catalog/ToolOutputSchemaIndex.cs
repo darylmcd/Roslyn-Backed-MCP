@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Schema;
 using System.Text.Json.Serialization.Metadata;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Host.Stdio.Catalog;
 
@@ -22,8 +23,8 @@ namespace RoslynMcp.Host.Stdio.Catalog;
 /// </para>
 /// <para>
 /// Tools without an <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/> are absent from
-/// the dictionary and <see cref="GetSchema"/> returns <see langword="null"/>. No tools opt in
-/// during the initial infrastructure PR — per-tool batches follow.
+/// the dictionary and <see cref="GetSchema"/> returns <see langword="null"/>. Registered schemas
+/// are projected into the SDK's protocol-tool objects by <see cref="SurfaceRegistrationPolicy"/>.
 /// </para>
 /// </summary>
 internal static class ToolOutputSchemaIndex
@@ -34,17 +35,17 @@ internal static class ToolOutputSchemaIndex
     /// convention; if a tool ever needs deeper shape, the contract opt-in is to add the
     /// <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/> on a properly-shaped record.
     /// </summary>
-    private static readonly JsonSchemaExporterOptions s_exportOptions = new()
+    private static readonly JsonSchemaExporterOptions _exportOptions = new()
     {
         TreatNullObliviousAsNonNullable = true,
     };
 
-    private static readonly JsonSerializerOptions s_schemaSerializerOptions = new(JsonDefaults.Indented)
+    private static readonly JsonSerializerOptions _schemaSerializerOptions = new(JsonDefaults.Indented)
     {
         TypeInfoResolver = JsonDefaults.Indented.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver(),
     };
 
-    private static readonly Lazy<IReadOnlyDictionary<string, JsonNode>> s_index =
+    private static readonly Lazy<IReadOnlyDictionary<string, JsonNode>> _index =
         new(BuildIndex, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>
@@ -55,7 +56,7 @@ internal static class ToolOutputSchemaIndex
     public static JsonNode? GetSchema(string toolName)
     {
         if (string.IsNullOrEmpty(toolName)) return null;
-        return s_index.Value.TryGetValue(toolName, out var schema)
+        return _index.Value.TryGetValue(toolName, out var schema)
             // Return a deep clone so callers cannot mutate the cached node.
             ? schema.DeepClone()
             : null;
@@ -65,7 +66,7 @@ internal static class ToolOutputSchemaIndex
     /// Returns the cached set of tool names that have an opted-in output schema. Used by tests
     /// to spot the surface count without re-running the schema generation pipeline.
     /// </summary>
-    public static IReadOnlyCollection<string> RegisteredToolNames => s_index.Value.Keys.ToArray();
+    public static IReadOnlyCollection<string> RegisteredToolNames => _index.Value.Keys.ToArray();
 
     /// <summary>
     /// Generates a JSON-Schema node for the given CLR type using the server's runtime
@@ -75,7 +76,7 @@ internal static class ToolOutputSchemaIndex
     /// type.
     /// </summary>
     internal static JsonNode GenerateSchema(Type type) =>
-        JsonSchemaExporter.GetJsonSchemaAsNode(s_schemaSerializerOptions, type, s_exportOptions);
+        JsonSchemaExporter.GetJsonSchemaAsNode(_schemaSerializerOptions, type, _exportOptions);
 
     private static IReadOnlyDictionary<string, JsonNode> BuildIndex()
     {
@@ -95,21 +96,38 @@ internal static class ToolOutputSchemaIndex
                 var schemaType = metadataAttr?.OutputSchemaTypeRef;
                 if (schemaType is null) continue;
 
-                try
-                {
-                    dict[toolAttr.Name] = GenerateSchema(schemaType);
-                }
-                catch (Exception ex)
-                {
-                    // Schema generation failure is recorded but does not crash the server.
-                    // The tool falls back to text-only output (legacy contract).
-                    System.Diagnostics.Trace.TraceWarning(
-                        "Output-schema generation failed for tool '{0}' (type {1}): {2}",
-                        toolAttr.Name, schemaType.FullName, ex.Message);
-                }
+                // An opted-in schema is part of the advertised public contract. Let export
+                // failures abort startup instead of silently degrading that tool to text-only
+                // output while its metadata still claims structured-content support.
+                dict[toolAttr.Name] = GenerateAdvertisedSchema(toolAttr.Name, schemaType);
             }
         }
 
         return dict;
     }
+
+    private static JsonNode GenerateAdvertisedSchema(string toolName, Type schemaType) =>
+        toolName switch
+        {
+            // Both workspace-list variants have the same outer object shape. In particular,
+            // { count: 0, workspaces: [] } satisfies both item schemas because an empty array
+            // has no element with which to distinguish summary from verbose. `oneOf` would
+            // therefore reject a valid fresh-host response; `anyOf` expresses the real contract.
+            "workspace_list" => GenerateObjectVariantSchema(
+                "anyOf",
+                schemaType,
+                typeof(WorkspaceListVerboseDto)),
+            "workspace_status" => GenerateObjectVariantSchema(
+                "oneOf",
+                schemaType,
+                typeof(WorkspaceStatusDto)),
+            _ => GenerateSchema(schemaType),
+        };
+
+    private static JsonNode GenerateObjectVariantSchema(string keyword, params Type[] variants) =>
+        new JsonObject
+        {
+            ["type"] = "object",
+            [keyword] = new JsonArray(variants.Select(GenerateSchema).ToArray()),
+        };
 }

@@ -50,7 +50,7 @@ public sealed class DocumentSymbolsSymbolHandleTests : SharedWorkspaceTestBase
 
         // Call document_symbols with the symbolHandle (no filePath).
         var handleJson = await SymbolTools.GetDocumentSymbols(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,
@@ -67,7 +67,7 @@ public sealed class DocumentSymbolsSymbolHandleTests : SharedWorkspaceTestBase
         // Call document_symbols with the filePath for the same type and assert same count.
         var animalServicePath = FindDocumentPath("AnimalService.cs");
         var filePathJson = await SymbolTools.GetDocumentSymbols(
-            server: null!,
+            server: await GetPathAuthorizedServerAsync(),
             gate: WorkspaceExecutionGate,
             symbolSearchService: SymbolSearchService,
             workspaceId: WorkspaceId,

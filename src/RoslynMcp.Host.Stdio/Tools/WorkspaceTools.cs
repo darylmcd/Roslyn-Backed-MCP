@@ -36,7 +36,7 @@ public static class WorkspaceTools
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
         [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
-        [Description("Operator-opt-in security flag (default false). When true, the client-sanctioned-root path validator additionally accepts paths under the immediate PARENT directory of each sanctioned root — enough to permit a sibling worktree at `../<name>` (e.g. mcp-server-surface-test's disposable audit worktree). Higher ancestors (grandparent etc.) are NOT widened. Pass true only from operator-controlled call sites; do not auto-enable on every request.")] bool expandSanctionedRoots = false,
+        [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
         ILoggerFactory? loggerFactory = null,
@@ -329,11 +329,8 @@ public static class WorkspaceTools
         var workspaces = workspace.ListWorkspaces();
         if (verbose)
         {
-            // verbose mode emits the full WorkspaceStatusDto per workspace; the published
-            // outputSchema describes the default (verbose=false) shape only. Verbose callers
-            // still get valid JSON on the text channel — the structuredContent shape just
-            // won't match the advertised schema in that mode (documented opt-out).
-            return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
+            var verbosePayload = new WorkspaceListVerboseDto(workspaces.Count, workspaces);
+            return Task.FromResult(JsonSerializer.Serialize(verbosePayload, JsonDefaults.Indented));
         }
 
         var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
@@ -723,7 +720,7 @@ public static class WorkspaceTools
     /// <summary>
     /// Fire-and-forget notification to clients that the resource list has changed.
     /// </summary>
-    private static async Task NotifyResourcesChangedAsync(McpServer server, string sourceTool, ILogger? logger)
+    internal static async Task NotifyResourcesChangedAsync(McpServer server, string sourceTool, ILogger? logger)
     {
         try
         {

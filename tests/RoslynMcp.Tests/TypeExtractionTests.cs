@@ -1,112 +1,8 @@
-using System.IO.Pipelines;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
-
-/// <summary>
-/// Stands up a real in-process MCP client/server pair over an in-memory duplex pipe so tests
-/// can exercise <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>'s
-/// root-rejection branch through the actual <see cref="McpServer.RequestRootsAsync"/> round
-/// trip. <see cref="McpServer"/> cannot be constructed as a bare test double — its
-/// <c>ClientCapabilities</c> getter and <c>RequestRootsAsync</c> are populated by the real
-/// handshake/session machinery, not settable fields — and the SDK's concrete server
-/// implementation type is internal, so the only public construction path is the same
-/// <c>AddMcpServer().With...Transport()</c> DI composition <c>Program.cs</c> uses, pointed at
-/// an in-memory duplex pipe (<see cref="Pipe"/>) instead of stdio.
-/// </summary>
-#pragma warning disable MCP9005 // Exercises the production Roots compatibility boundary tracked for migration.
-internal static class McpRootsTestServerFactory
-{
-    public sealed record Session(McpServer Server, McpClient Client, IHost Host) : IAsyncDisposable
-    {
-        public async ValueTask DisposeAsync()
-        {
-            await Client.DisposeAsync().ConfigureAwait(false);
-            await Host.StopAsync().ConfigureAwait(false);
-            Host.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Creates a connected client/server pair where the client advertises exactly one
-    /// sanctioned root at <paramref name="sanctionedRootPath"/>.
-    /// </summary>
-    public static async Task<Session> CreateWithSanctionedRootAsync(
-        string sanctionedRootPath,
-        CancellationToken ct,
-        bool useLatestProtocol = false,
-        bool advertiseRoots = true)
-    {
-        var clientToServer = new Pipe();
-        var serverToClient = new Pipe();
-
-        var hostBuilder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
-        hostBuilder.Logging.ClearProviders();
-        hostBuilder.Services
-            .AddMcpServer()
-            .WithTools<McpRootsProbeTools>()
-            .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
-        var host = hostBuilder.Build();
-        await host.StartAsync(ct).ConfigureAwait(false);
-        var server = host.Services.GetRequiredService<McpServer>();
-
-        var clientTransport = new StreamClientTransport(
-            clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream(), NullLoggerFactory.Instance);
-        var rootUri = new Uri(sanctionedRootPath).AbsoluteUri;
-        var clientOptions = new McpClientOptions
-        {
-            // Direct tool-method tests need the connection-scoped capabilities exposed by
-            // protocol revisions through 2025-11-25. The modern regression below opts into
-            // the latest protocol and invokes a registered tool so the SDK supplies the
-            // request-scoped McpServer used by production tool dispatch.
-            ProtocolVersion = useLatestProtocol ? null : "2025-11-25",
-            Capabilities = advertiseRoots
-                ? new ClientCapabilities { Roots = new RootsCapability() }
-                : new ClientCapabilities(),
-            Handlers = advertiseRoots
-                ? new McpClientHandlers
-                {
-                    RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult
-                    {
-                        Roots = [new Root { Uri = rootUri }],
-                    }),
-                }
-                : new McpClientHandlers(),
-        };
-
-        var client = await McpClient.CreateAsync(clientTransport, clientOptions, NullLoggerFactory.Instance, ct)
-            .ConfigureAwait(false);
-
-        return new Session(server, client, host);
-    }
-}
-#pragma warning restore MCP9005
-
-[McpServerToolType]
-internal sealed class McpRootsProbeTools
-{
-    [McpServerTool(Name = "roots_boundary_probe")]
-    public static async Task<string> ProbeAsync(McpServer server, string path, CancellationToken ct)
-    {
-        try
-        {
-            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, ct).ConfigureAwait(false);
-            return "allowed";
-        }
-        catch (ArgumentException ex)
-        {
-            return "rejected: " + ex.Message;
-        }
-    }
-}
 
 [DoNotParallelize]
 [TestClass]
@@ -119,7 +15,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
-    public async Task LegacyProtocol_ToolDispatch_InjectsRequestScopedServerWithRoots()
+    public async Task LegacyProtocol_ToolDispatch_UsesConfiguredSanctionedRoot()
     {
         var sanctionedRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-sanctioned-" + Guid.NewGuid().ToString("N"));
         var outsideRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-outside-" + Guid.NewGuid().ToString("N"));
@@ -141,7 +37,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             Assert.HasCount(1, result.Content);
             var content = Assert.IsInstanceOfType<TextContentBlock>(result.Content[0]);
             StringAssert.StartsWith(content.Text, "rejected: ");
-            StringAssert.Contains(content.Text, "not under any client-sanctioned root");
+            StringAssert.Contains(content.Text, "outside the configured sanctioned-root boundary");
         }
         finally
         {
@@ -151,7 +47,54 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task ModernProtocol_ToolDispatch_WithoutDeprecatedRoots_AllowsPath()
+    public async Task LegacyProtocol_ClientRoots_NarrowButNeverWidenConfiguredBoundary()
+    {
+        var configuredRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-configured-" + Guid.NewGuid().ToString("N"));
+        var clientRoot = Path.Combine(configuredRoot, "client-root");
+        var configuredOnlyPath = Path.Combine(configuredRoot, "configured-only.cs");
+        var allowedPath = Path.Combine(clientRoot, "allowed.cs");
+        var clientOnlyRoot = Path.Combine(Path.GetTempPath(), "roots-legacy-client-only-" + Guid.NewGuid().ToString("N"));
+        var clientOnlyPath = Path.Combine(clientOnlyRoot, "outside.cs");
+        Directory.CreateDirectory(clientRoot);
+        Directory.CreateDirectory(clientOnlyRoot);
+
+        await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+            configuredRoot,
+            CancellationToken.None,
+            clientRootPaths: [clientRoot, clientOnlyRoot]);
+
+        try
+        {
+            var allowed = await session.Client.CallToolAsync(
+                "roots_boundary_probe",
+                new Dictionary<string, object?> { ["path"] = allowedPath },
+                cancellationToken: CancellationToken.None);
+            var configuredOnly = await session.Client.CallToolAsync(
+                "roots_boundary_probe",
+                new Dictionary<string, object?> { ["path"] = configuredOnlyPath },
+                cancellationToken: CancellationToken.None);
+            var clientOnly = await session.Client.CallToolAsync(
+                "roots_boundary_probe",
+                new Dictionary<string, object?> { ["path"] = clientOnlyPath },
+                cancellationToken: CancellationToken.None);
+
+            Assert.AreEqual("allowed", Assert.IsInstanceOfType<TextContentBlock>(allowed.Content[0]).Text);
+            StringAssert.StartsWith(
+                Assert.IsInstanceOfType<TextContentBlock>(configuredOnly.Content[0]).Text,
+                "rejected: ");
+            StringAssert.StartsWith(
+                Assert.IsInstanceOfType<TextContentBlock>(clientOnly.Content[0]).Text,
+                "rejected: ");
+        }
+        finally
+        {
+            TryDeleteDirectory(configuredRoot);
+            TryDeleteDirectory(clientOnlyRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task ModernProtocol_ToolDispatch_UsesConfiguredSanctionedRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), "roots-modern-no-capability-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -159,8 +102,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
             root,
             CancellationToken.None,
-            useLatestProtocol: true,
-            advertiseRoots: false);
+            useLatestProtocol: true);
 
         try
         {
@@ -180,18 +122,11 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
-    // host-refactor-tools-root-boundary-validation: extract_type_preview now calls
-    // ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, ct) before
-    // dispatching to the service, mirroring GetSyntaxTree/GetCodeActions. Passing server: null!
-    // exercises the no-MCP-server-context fail-open branch pinned by
-    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — the validator's actual
-    // root-matching logic (accept/reject/traversal/case-insensitivity) is exhaustively unit-tested
-    // there via IsPathUnderAnyRoot. A live root-rejection round trip through the tool would require
-    // standing up the SDK's full transport pipeline to populate McpServer.ClientCapabilities.Roots,
-    // which the existing precedent (ExpandedSurfaceIntegrationTests' AnalyzeDataFlow/
-    // AnalyzeControlFlow/GetOperations coverage) treats as impractical for a unit test.
+    // Direct tool calls use an explicitly configured, connected test server. A missing server no
+    // longer bypasses the production boundary; the separate rejection test below verifies the
+    // negative DI path with a non-covering configured root.
     [TestMethod]
-    public async Task PreviewExtractType_Tool_NullServer_AllowsAccess_And_ProducesPreview()
+    public async Task PreviewExtractType_Tool_ConfiguredServer_ProducesPreview()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
@@ -215,8 +150,9 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
         try
         {
+            var server = await GetPathAuthorizedServerAsync();
             var json = await TypeExtractionTools.PreviewExtractType(
-                null!,
+                server,
                 WorkspaceExecutionGate,
                 TypeExtractionService,
                 wsId,
@@ -240,11 +176,10 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task PreviewExtractType_Tool_OutOfRootPath_RejectsWithArgumentException()
     {
-        // Root-boundary regression: when a real MCP client session sanctions a root that
+        // Root-boundary regression: when a real MCP server configures a root that
         // does NOT cover the requested file, extract_type_preview must reject before
-        // dispatching to the service. Uses a real client/server pair (McpRootsTestServerFactory)
-        // rather than server: null! so the actual ValidatePathAgainstRootsAsync root-matching
-        // path (not just the fail-open no-server branch) is exercised end-to-end.
+        // dispatching to the service. Uses a real client/server pair so the actual
+        // ValidatePathAgainstRootsAsync root-matching path is exercised end-to-end.
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
         var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
@@ -287,7 +222,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                     null,
                     CancellationToken.None));
 
-            StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
         }
         finally
         {

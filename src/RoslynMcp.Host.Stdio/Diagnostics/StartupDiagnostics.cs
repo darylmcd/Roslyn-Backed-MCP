@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
@@ -11,7 +12,8 @@ namespace RoslynMcp.Host.Stdio.Diagnostics;
 /// derived surface counts — SDK-registered (<see cref="McpServerOptions.ToolCollection"/>
 /// etc.), source-reflected (<c>[McpServerTool]</c>-decorated methods in the host
 /// assembly), and catalog-declared (<see cref="ServerSurfaceCatalog"/>). A healthy
-/// process shows all three equal per category.
+/// process has registered counts equal to the selected-tier expectation, while reflection
+/// continues to match the complete catalog in every category.
 /// <para>
 /// When multiple <c>roslynmcp</c> processes start concurrently and the client reports
 /// "no tools available" on the N-th instance, each process's stderr carries a
@@ -39,22 +41,26 @@ public static class StartupDiagnostics
         int PromptsReflected,
         int PromptsInCatalog)
     {
-        public bool ToolParityOk => ToolsRegistered == ToolsInCatalog && ToolsReflected == ToolsInCatalog;
-        public bool ResourceParityOk => ResourcesRegistered == ResourcesInCatalog && ResourcesReflected == ResourcesInCatalog;
-        public bool PromptParityOk => PromptsRegistered == PromptsInCatalog && PromptsReflected == PromptsInCatalog;
+        internal int? SelectedToolsExpected { get; init; }
+        internal int? SelectedResourcesExpected { get; init; }
+        internal int? SelectedPromptsExpected { get; init; }
+
+        public int ToolsExpected => SelectedToolsExpected ?? ToolsInCatalog;
+        public int ResourcesExpected => SelectedResourcesExpected ?? ResourcesInCatalog;
+        public int PromptsExpected => SelectedPromptsExpected ?? PromptsInCatalog;
+
+        public IReadOnlyList<string> ToolTiers { get; init; } = ["stable", "experimental"];
+
+        public bool ToolParityOk => ToolsRegistered == ToolsExpected && ToolsReflected == ToolsInCatalog;
+        public bool ResourceParityOk => ResourcesRegistered == ResourcesExpected && ResourcesReflected == ResourcesInCatalog;
+        public bool PromptParityOk => PromptsRegistered == PromptsExpected && PromptsReflected == PromptsInCatalog;
         public bool AllParityOk => ToolParityOk && ResourceParityOk && PromptParityOk;
     }
 
     /// <summary>
-    /// Builds the report from the DI-registered <see cref="McpServerTool"/> /
-    /// <see cref="McpServerResource"/> / <see cref="McpServerPrompt"/> instances and
-    /// the host tool assembly. <c>WithToolsFromAssembly()</c> and its siblings add
-    /// each attributed method to the service collection as a singleton instance of
-    /// the corresponding type, so counting <c>IEnumerable&lt;McpServerTool&gt;</c>
-    /// (etc.) from the provider is the authoritative post-registration count — and
-    /// it is stable from <c>host.Build()</c> onward, unlike
-    /// <c>McpServerOptions.ToolCollection</c> which is only materialized when the
-    /// <see cref="McpServer"/> instance is constructed at hosted-service start.
+    /// Builds the report from the finalized <see cref="McpServerOptions"/> primitive collections
+    /// and the host tool assembly. Reading the options collections observes post-configuration
+    /// policies such as support-tier filtering, unlike counting the unfiltered DI registrations.
     /// <paramref name="toolAssembly"/> is the assembly passed to
     /// <c>WithToolsFromAssembly()</c> (the Host.Stdio assembly by default).
     /// </summary>
@@ -63,9 +69,14 @@ public static class StartupDiagnostics
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(toolAssembly);
 
-        var toolsRegistered = services.GetServices<McpServerTool>().Count();
-        var resourcesRegistered = services.GetServices<McpServerResource>().Count();
-        var promptsRegistered = services.GetServices<McpServerPrompt>().Count();
+        var serverOptions = services.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var toolsRegistered = serverOptions.ToolCollection?.Count ?? 0;
+        var resourcesRegistered = serverOptions.ResourceCollection?.Count ?? 0;
+        var promptsRegistered = serverOptions.PromptCollection?.Count ?? 0;
+        var selection = services.GetService<ToolTierSelection>() ?? ToolTierSelection.All;
+        var toolsExpected = ServerSurfaceCatalog.Tools.Count(entry => selection.Includes(entry.SupportTier));
+        var resourcesExpected = ServerSurfaceCatalog.Resources.Count(entry => selection.Includes(entry.SupportTier));
+        var promptsExpected = ServerSurfaceCatalog.Prompts.Count(entry => selection.Includes(entry.SupportTier));
 
         var (toolsReflected, resourcesReflected, promptsReflected) = CountDecoratedMethods(toolAssembly);
 
@@ -78,7 +89,13 @@ public static class StartupDiagnostics
             ResourcesInCatalog: ServerSurfaceCatalog.Resources.Count,
             PromptsRegistered: promptsRegistered,
             PromptsReflected: promptsReflected,
-            PromptsInCatalog: ServerSurfaceCatalog.Prompts.Count);
+            PromptsInCatalog: ServerSurfaceCatalog.Prompts.Count)
+        {
+            SelectedToolsExpected = toolsExpected,
+            SelectedResourcesExpected = resourcesExpected,
+            SelectedPromptsExpected = promptsExpected,
+            ToolTiers = selection.Tiers.OrderBy(static tier => tier, StringComparer.Ordinal).ToArray(),
+        };
     }
 
     /// <summary>
@@ -98,36 +115,44 @@ public static class StartupDiagnostics
         if (report.AllParityOk)
         {
             logger.LogInformation(
-                "Startup surface: pid={Pid} version={Version} tools={ToolsRegistered}/{ToolsInCatalog} resources={ResourcesRegistered}/{ResourcesInCatalog} prompts={PromptsRegistered}/{PromptsInCatalog} parity=ok",
+                "Startup surface: pid={Pid} version={Version} toolTiers={ToolTiers} tools={ToolsRegistered}/{ToolsExpected}/{ToolsInCatalog} resources={ResourcesRegistered}/{ResourcesExpected}/{ResourcesInCatalog} prompts={PromptsRegistered}/{PromptsExpected}/{PromptsInCatalog} parity=ok",
                 pid,
                 version,
+                string.Join(',', report.ToolTiers),
                 report.ToolsRegistered,
+                report.ToolsExpected,
                 report.ToolsInCatalog,
                 report.ResourcesRegistered,
+                report.ResourcesExpected,
                 report.ResourcesInCatalog,
                 report.PromptsRegistered,
+                report.PromptsExpected,
                 report.PromptsInCatalog);
             return;
         }
 
         logger.LogError(
-            "Startup surface PARITY MISMATCH: pid={Pid} version={Version} " +
-            "tools registered={ToolsRegistered} reflected={ToolsReflected} catalog={ToolsInCatalog} parityOk={ToolParityOk}; " +
-            "resources registered={ResourcesRegistered} reflected={ResourcesReflected} catalog={ResourcesInCatalog} parityOk={ResourceParityOk}; " +
-            "prompts registered={PromptsRegistered} reflected={PromptsReflected} catalog={PromptsInCatalog} parityOk={PromptParityOk}. " +
-            "A zero 'registered' count means WithToolsFromAssembly() failed to discover attributed methods in this process — " +
-            "see ai_docs/backlog.md row concurrent-mcp-instances-no-tools for the investigation framework.",
+            "Startup surface PARITY MISMATCH: pid={Pid} version={Version} toolTiers={ToolTiers} " +
+            "tools registered={ToolsRegistered} expected={ToolsExpected} reflected={ToolsReflected} catalog={ToolsInCatalog} parityOk={ToolParityOk}; " +
+            "resources registered={ResourcesRegistered} expected={ResourcesExpected} reflected={ResourcesReflected} catalog={ResourcesInCatalog} parityOk={ResourceParityOk}; " +
+            "prompts registered={PromptsRegistered} expected={PromptsExpected} reflected={PromptsReflected} catalog={PromptsInCatalog} parityOk={PromptParityOk}. " +
+            "A zero 'registered' count means WithToolsFromAssembly() failed to discover attributed methods in this process; " +
+            "compare this process's stderr with the other MCP instances to isolate server-side registration from client presentation.",
             pid,
             version,
+            string.Join(',', report.ToolTiers),
             report.ToolsRegistered,
+            report.ToolsExpected,
             report.ToolsReflected,
             report.ToolsInCatalog,
             report.ToolParityOk,
             report.ResourcesRegistered,
+            report.ResourcesExpected,
             report.ResourcesReflected,
             report.ResourcesInCatalog,
             report.ResourceParityOk,
             report.PromptsRegistered,
+            report.PromptsExpected,
             report.PromptsReflected,
             report.PromptsInCatalog,
             report.PromptParityOk);

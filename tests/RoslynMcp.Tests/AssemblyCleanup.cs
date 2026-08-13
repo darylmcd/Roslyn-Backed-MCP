@@ -4,12 +4,12 @@ namespace RoslynMcp.Tests;
 public static class AssemblyLifecycle
 {
     [AssemblyCleanup]
-    public static void Cleanup()
+    public static async Task Cleanup()
     {
         // Dispose shared services owned by TestBase (workspace manager, file watchers,
         // build host subprocesses). Must run before tempRoot cleanup so we do not race
         // with file watcher disposal.
-        TestBase.DisposeAssemblyResources();
+        await TestBase.DisposeAssemblyResourcesAsync().ConfigureAwait(false);
 
         // Delete THIS run's subtree only — never the shared parent. Deleting
         // `%TEMP%/RoslynMcpTests` wholesale meant the first assembly to finish destroyed every

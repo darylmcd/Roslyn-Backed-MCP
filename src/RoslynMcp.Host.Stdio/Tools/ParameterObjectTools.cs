@@ -9,8 +9,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// <c>parameter-object-preview-tool</c> v1 (experimental): groups N parameters of a
 /// method into a positional <c>sealed record</c> and rewrites every call site to flow
-/// the grouped argument values through the new record's primary constructor. Apply via
-/// the standard <c>apply_refactoring</c> path. See
+/// the grouped argument values through the new record's primary constructor. Redeem the
+/// returned preview token through <c>apply_with_verify</c>. See
 /// <c>ai_docs/items/parameter-object-preview-design.md</c> for the contract.
 /// </summary>
 [McpServerToolType]
@@ -19,7 +19,7 @@ public static class ParameterObjectTools
     [McpServerTool(Name = "parameter_object_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview grouping N parameters of a method into a positional sealed record DTO with all callsites updated atomically."),
-     Description("Preview replacing N parameters of a method with a single record DTO. Synthesizes a `public sealed record NewType(...)` (or `internal` when same-project + non-public containing type) and rewrites every call site so grouped arguments flow through `new NewType(...)`. Refuses (does not partially proceed) for: default-value omissions at any call site, ref/out/in/params parameters, the extension-method `this` receiver, local-function targets, and cross-project call sites where the caller project does not already reference the DTO project. Apply via apply_refactoring. v1 always emits a positional record; class/struct generation is out of scope.")]
+     Description("Preview replacing N parameters of a method with a single record DTO. Synthesizes a `public sealed record NewType(...)` (or `internal` when same-project + non-public containing type) and rewrites every call site so grouped arguments flow through `new NewType(...)`. Refuses (does not partially proceed) for: default-value omissions at any call site, ref/out/in/params parameters, the extension-method `this` receiver, local-function targets, and cross-project call sites where the caller project does not already reference the DTO project. Redeem the returned preview token via apply_with_verify. v1 always emits a positional record; class/struct generation is out of scope.")]
     public static Task<string> PreviewParameterObject(
         IWorkspaceExecutionGate gate,
         IParameterObjectService parameterObjectService,

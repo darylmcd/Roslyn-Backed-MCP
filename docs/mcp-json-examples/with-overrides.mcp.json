@@ -4,6 +4,7 @@
       "type": "stdio",
       "command": "roslynmcp",
       "env": {
+        "ROSLYNMCP_SANCTIONED_ROOTS": ".",
         "ROSLYNMCP_MAX_WORKSPACES": "4",
         "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "900",
         "ROSLYNMCP_TEST_TIMEOUT_SECONDS": "1800",

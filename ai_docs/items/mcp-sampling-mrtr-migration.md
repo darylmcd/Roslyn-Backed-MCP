@@ -19,3 +19,4 @@
 ## Evidence
 
 - ModelContextProtocol 2.1 deprecates legacy Sampling; MRTR is the SDK-supported request-scoped path for protocol 2026-07-28.
+2026-08-13 adjacent security review: the deprecated provider currently returns ex.GetType().Name and ex.Message to the MCP client. The migration must replace that with a stable sanitized fallback message while retaining exception detail only in server-side diagnostics, and add a regression using a sensitive sentinel message.
