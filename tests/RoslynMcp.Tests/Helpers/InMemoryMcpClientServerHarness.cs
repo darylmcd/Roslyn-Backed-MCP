@@ -11,6 +11,45 @@ namespace RoslynMcp.Tests.Helpers;
 /// Hosts a real MCP client/server pair over in-memory duplex pipes for integration tests that
 /// need connection-scoped client capabilities and request handlers.
 /// </summary>
+/// <remarks>
+/// <para><b>Disposal invariant — every client request handler this harness is given MUST be
+/// completable, and MUST be completed before <see cref="DisposeAsync"/> runs.</b>
+/// <see cref="DisposeOwnedResourcesAsync"/> disposes <see cref="Client"/> first (line ~155), and
+/// <c>McpClient.DisposeAsync</c> waits for outstanding inbound request handlers to finish. A
+/// handler that returns a never-completing task (e.g.
+/// <c>new TaskCompletionSource&lt;ElicitResult&gt;().Task</c>) therefore wedges teardown
+/// <i>forever</i> once the request actually reaches it — and because that hang is in
+/// <c>await using</c> teardown rather than in the test body, MSTest's non-cooperative
+/// <c>[Timeout]</c> backstop cannot recover it either; the whole test process has to be killed.</para>
+///
+/// <para><b>This was the root cause of the long-standing
+/// <c>elicitation-inflight-cancellation-test-harness-deadlock</c> dead end</b>, isolated
+/// 2026-08-13 with a standalone out-of-process repro of this exact harness. Findings, so a future
+/// attempt does not re-walk it:
+/// <list type="bullet">
+///   <item><c>server.ElicitAsync(request, token)</c> is <b>not</b> the culprit and never was. With
+///         the client permanently unresponsive, it observed cancellation and threw
+///         <c>TaskCanceledException</c> <b>~2 ms</b> after <c>Cancel()</c> in all three in-flight
+///         cancel shapes previously tried (inline from the client handler, decoupled via
+///         <c>Task.Run</c>, and from a dedicated OS thread). No <c>.AsTask().WaitAsync(token)</c>
+///         wrapper is needed — which is why adding one never helped.</item>
+///   <item>ThreadPool starvation: <b>ruled out</b>. At the hang point 32767 of 32767 worker threads
+///         and 1000 of 1000 IO threads were available (<c>ThreadPool.ThreadCount</c> 4), so
+///         <c>[DoNotParallelize]</c> and single-process hosting are irrelevant here.</item>
+///   <item><c>Pipe</c> backpressure / missing reader: <b>ruled out</b>. Both directions kept
+///         flowing (bytes written == bytes read, one pending read outstanding per reader, which is
+///         the healthy idle shape).</item>
+///   <item>The discriminator is solely <i>whether the client handler completes</i>: a handler that
+///         returns a result disposes cleanly in ~6 ms; an entered handler that never completes
+///         hangs indefinitely. A request that never reaches the handler (the pre-cancelled-token
+///         case) also disposes cleanly, because nothing is outstanding.</item>
+/// </list></para>
+///
+/// <para>Consequence: pass a <see cref="TaskCompletionSource{TResult}"/>-backed handler the test
+/// owns and complete it before disposal (see
+/// <c>SymbolDisambiguationElicitationTests.ControllableElicitationHarness</c>, which enforces the
+/// ordering in its own <c>DisposeAsync</c>) rather than a handler that can never complete.</para>
+/// </remarks>
 internal sealed class InMemoryMcpClientServerHarness(
     McpServer server,
     McpClient client,

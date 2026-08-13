@@ -33,10 +33,10 @@ namespace RoslynMcp.Tests;
 ///         <see cref="StructuredCallToolFilter.HasElicitation"/> capability check returns
 ///         true for a properly handshaken client AND the candidate-discovery helper finds
 ///         the multiple-overload set; the gate logic is therefore wired correctly. The
-///         end-to-end <c>ElicitAsync</c> pre-cancellation path uses a real SDK client/server pair
-///         over the shared in-memory transport harness. Genuinely in-flight cancellation remains
-///         tracked separately because the single-process duplex transport deadlocks in that
-///         scenario.</item>
+///         end-to-end <c>ElicitAsync</c> cancellation paths use a real SDK client/server pair
+///         over the shared in-memory transport harness — both pre-cancelled and genuinely
+///         in-flight (the latter previously believed untestable; see
+///         <see cref="ControllableElicitationHarness"/> for why it now is).</item>
 ///   <item><b>(b) fallback</b> — when the caller does not opt in, or the client lacks the
 ///         elicitation capability (or the user declines), the tool returns a structured
 ///         <c>{ ambiguous: true, count, candidates }</c> envelope with a stable
@@ -312,23 +312,28 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     // (InvalidOperationException, McpException). Callers (SymbolTools.GoToDefinition /
     // FindReferences / SearchSymbols) treat a null return as "user declined" and answer
     // with the additive candidate-list response — so a cancelled request looked
-    // indistinguishable from a deliberate decline. This test pins that a pre-cancelled
-    // token now propagates out of TryElicitChoiceAsync instead. It does NOT cover
-    // cancellation that arrives while a request is genuinely in flight against an
-    // unresponsive client — two independent attempts at that variant deadlocked the test
-    // process; see the tracked follow-up elicitation-inflight-cancellation-test-harness-deadlock.
+    // indistinguishable from a deliberate decline. Two tests pin it: a pre-cancelled token
+    // (below) and cancellation arriving while the request is genuinely in flight against an
+    // unresponsive client (further below).
+    //
+    // elicitation-inflight-cancellation-test-harness-deadlock: the in-flight variant was
+    // believed untestable — three prior attempts hung the test process and needed taskkill.
+    // The blocking point was never TryElicitChoiceAsync or server.ElicitAsync; it was the old
+    // never-completing ElicitationHandler wedging McpClient.DisposeAsync during `await using`
+    // teardown, AFTER the assertions had already passed. ControllableElicitationHarness fixes
+    // that by owning a completable handler; see its remarks and those on
+    // InMemoryMcpClientServerHarness for the full ruled-in/ruled-out evidence.
 
     [TestMethod]
-    [Timeout(15_000)]
+    [Timeout(15_000, CooperativeCancellation = true)]
     public async Task TryElicitChoiceAsync_PreCancelledToken_PropagatesCancellation_NotAdditiveListFallback()
     {
         // A real McpServer/McpClient pair over the shared in-memory duplex harness is required
         // to reach the try body at all: HasElicitation must return true, which needs a
         // genuine post-handshake ClientCapabilities.Elicitation, not a null/fake server.
-        // The client's ElicitationHandler never completes; the token below is cancelled
-        // BEFORE the call, not while the request is in flight (see the section comment
-        // above for why the in-flight variant isn't covered here).
-        await using var harness = await CreateServerWithHangingElicitationAsync(CancellationToken.None);
+        // The token below is cancelled BEFORE the call, so the request never reaches the
+        // client's handler at all; the in-flight variant is the next test.
+        await using var harness = await CreateServerWithControllableElicitationAsync(CancellationToken.None);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -363,33 +368,133 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "McpException catch and converted to the additive-list null fallback.");
     }
 
+    [TestMethod]
+    [Timeout(15_000, CooperativeCancellation = true)]
+    public async Task TryElicitChoiceAsync_CancelledWhileRequestInFlight_PropagatesCancellation()
+    {
+        // The non-vacuous variant of the test above: the elicitation/create request genuinely
+        // reaches the client (RequestReceived below only completes from inside the client's own
+        // handler), the client then never answers, and only THEN is the caller's token cancelled.
+        // This pins that a real MCP client going unresponsive mid-elicitation cannot wedge the
+        // server: the await unblocks and the caller's WorkspaceExecutionGate slot is released.
+        await using var harness = await CreateServerWithControllableElicitationAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource();
+
+        var call = ElicitationChoicePrompt.TryElicitChoiceAsync(
+            harness.Server,
+            paramName: "choice",
+            title: "Pick a symbol",
+            description: "symbol_search returned candidates. Pick one to focus on.",
+            options: [("0", "Candidate A"), ("1", "Candidate B")],
+            cancellationToken: cts.Token);
+
+        // Cancelling only after this completes is what makes the test non-vacuous — before it,
+        // the request may still be sitting in the transport rather than truly in flight. Bounded
+        // well inside the [Timeout] above so a regression here fails fast instead of hanging.
+        await harness.RequestReceived.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.IsFalse(call.IsCompleted,
+            "The client's elicitation handler is deliberately unanswered, so TryElicitChoiceAsync " +
+            "must still be pending at the moment cancellation is requested — otherwise this test " +
+            "would be vacuously asserting the pre-cancelled path again.");
+
+        await cts.CancelAsync();
+
+        OperationCanceledException? caught = null;
+        try
+        {
+            var result = await call;
+            Assert.Fail(
+                "Expected TryElicitChoiceAsync to throw when its token was cancelled with the " +
+                $"request in flight, but it returned {(result is null ? "null" : $"\"{result}\"")} " +
+                "instead — an unresponsive client plus a cancelled caller must never be reported " +
+                "as a user decline.");
+        }
+        catch (OperationCanceledException ex)
+        {
+            // The SDK surfaces TaskCanceledException here, so catch the base class manually
+            // (ThrowsExactlyAsync<OperationCanceledException> would reject the subclass).
+            caught = ex;
+        }
+
+        Assert.IsNotNull(caught,
+            "Cancelling while an elicitation/create request is genuinely in flight must surface " +
+            "as OperationCanceledException out of TryElicitChoiceAsync, so the caller unwinds and " +
+            "releases its WorkspaceExecutionGate slot instead of hanging until process restart.");
+    }
+
     /// <summary>
     /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
-    /// duplex pipe supplied by <see cref="InMemoryMcpClientServerHarness"/>
-    /// so <c>server.ClientCapabilities.Elicitation</c> is genuinely populated via the MCP
-    /// initialize handshake and <c>server.ElicitAsync</c> genuinely round-trips to a client. The
-    /// client's <see cref="McpClientHandlers.ElicitationHandler"/> never completes, so any
-    /// <c>elicitation/create</c> request stays pending indefinitely — letting a test pre-cancel
-    /// the caller's own token before the call in isolation from whether the client ever
-    /// actually answers. Cancelling AFTER the request is dispatched (a genuinely in-flight
-    /// race) is NOT safe to test against this harness: it deadlocks — see
-    /// elicitation-inflight-cancellation-test-harness-deadlock.
+    /// duplex pipe supplied by <see cref="InMemoryMcpClientServerHarness"/> so
+    /// <c>server.ClientCapabilities.Elicitation</c> is genuinely populated via the MCP initialize
+    /// handshake and <c>server.ElicitAsync</c> genuinely round-trips to a client that never
+    /// volunteers an answer.
     /// </summary>
-    private static async Task<InMemoryMcpClientServerHarness> CreateServerWithHangingElicitationAsync(
+    private static async Task<ControllableElicitationHarness> CreateServerWithControllableElicitationAsync(
         CancellationToken ct)
     {
-        return await InMemoryMcpClientServerHarness.CreateAsync(
+        var requestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingElicitation =
+            new TaskCompletionSource<ElicitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var harness = await InMemoryMcpClientServerHarness.CreateAsync(
             transportName: "test-server-elicitation-cancellation",
             clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
             clientHandlers: new McpClientHandlers
             {
-                // Never completes — the server must observe its own token's cancellation
-                // rather than waiting forever for a reply that never comes.
+                // Answers only when the test says so, so the server must observe its own token's
+                // cancellation rather than waiting for a reply. Deliberately NOT a task that can
+                // never complete — see ControllableElicitationHarness.DisposeAsync.
                 ElicitationHandler = (_, _) =>
-                    new ValueTask<ElicitResult>(new TaskCompletionSource<ElicitResult>().Task),
+                {
+                    requestReceived.TrySetResult();
+                    return new ValueTask<ElicitResult>(pendingElicitation.Task);
+                },
             },
             disposalFailureContext: "elicitation-cancellation",
             ct).ConfigureAwait(false);
+
+        return new ControllableElicitationHarness(harness, requestReceived.Task, pendingElicitation);
+    }
+
+    /// <summary>
+    /// Owns an <see cref="InMemoryMcpClientServerHarness"/> whose client answers
+    /// <c>elicitation/create</c> only when the test releases it, and — critically — releases any
+    /// still-pending answer <b>before</b> disposing the harness.
+    /// </summary>
+    /// <remarks>
+    /// That ordering is the whole point of this type
+    /// (elicitation-inflight-cancellation-test-harness-deadlock). <c>McpClient.DisposeAsync</c>
+    /// waits for outstanding inbound request handlers, so leaving the handler unanswered wedges
+    /// teardown forever — in <c>await using</c>, i.e. after the test body has already passed,
+    /// where a non-cooperative <c>[Timeout]</c> cannot rescue it and the process must be killed.
+    /// Three earlier attempts at an in-flight-cancellation test hit exactly this and were
+    /// misattributed to the awaited <c>server.ElicitAsync</c> call, to ThreadPool starvation, or
+    /// to duplex-<c>Pipe</c> backpressure; a standalone out-of-process repro ruled all three out
+    /// (details in the <see cref="InMemoryMcpClientServerHarness"/> remarks). Encoding the release
+    /// in disposal — rather than relying on each test to remember a <c>finally</c> — is what keeps
+    /// the dead end from being re-discovered.
+    /// </remarks>
+    private sealed class ControllableElicitationHarness(
+        InMemoryMcpClientServerHarness harness,
+        Task requestReceived,
+        TaskCompletionSource<ElicitResult> pendingElicitation) : IAsyncDisposable
+    {
+        /// <summary>The live server, for tests that call server-side elicitation directly.</summary>
+        public McpServer Server => harness.Server;
+
+        /// <summary>
+        /// Completes from inside the client's elicitation handler, proving the
+        /// <c>elicitation/create</c> request genuinely arrived rather than still being in transit.
+        /// </summary>
+        public Task RequestReceived => requestReceived;
+
+        public async ValueTask DisposeAsync()
+        {
+            // Must precede harness disposal — see the remarks above.
+            pendingElicitation.TrySetResult(new ElicitResult { Action = "decline" });
+            await harness.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     // ── (b) fallback when client lacks elicitation capability ───────────────
