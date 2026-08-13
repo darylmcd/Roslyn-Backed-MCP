@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-12T23:47:34Z
+**updated_at:** 2026-08-13T03:05:51Z
 
 ## Agent contract
 
@@ -47,6 +47,8 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `server-instructions-discovery-hint` | High | — | **Ship ServerInstructions discovery hint** — set a ≤2KB ServerInstructions on McpServerOptions (category map + when-to-search guidance); initialize ships 0 chars, so 173 deferred tools have zero discovery text under Claude Code tool search. [type: feature] [source: 20260813 mcp-audit] | S | items/server-instructions-discovery-hint.md |
+| `sdk-2x-upgrade` | High | mcp-logging-stderr-otel-migration | **ModelContextProtocol 1.4.1 → 2.x major** — protocol 2026-07-28 + server/discover; verify csharp-sdk#844 filter contract, structured raw emission, error codes; bundle contract-care breaks in one major. Blocked on logging migration (MCP9005). [type: feature] [source: 20260813 mcp-audit] | L | items/sdk-2x-upgrade.md |
 
 ## Medium
 
@@ -68,6 +70,12 @@
 | `mcp-roots-query-discovery-migration` | Medium | mcp-roots-configured-validation-migration | Replace deprecated roots/list query-anchored solution discovery with explicit configured roots or request-scoped MRTR input. | M | items/mcp-roots-query-discovery-migration.md |
 | `mcp-sampling-mrtr-migration` | Medium | — | Replace deprecated client Sampling with request-scoped MRTR input or retire the experimental option through public deprecation policy. | M | items/mcp-sampling-mrtr-migration.md |
 | `mcp-logging-stderr-otel-migration` | Medium | — | Replace deprecated protocol Logging with stderr plus configured structured observability, then retire the compatibility bridge. | M | items/mcp-logging-stderr-otel-migration.md |
+| `semantic-grep-description-2kb-overflow` | Medium | — | **Trim semantic_grep description under the 2KB client cap** — the 2,244-char Description exceeds Claude Code truncation (tail invisible today); rewrite ≤2,000 chars + add a surface test capping all method Descriptions. [type: bug] [source: 20260813 mcp-audit] | S | items/semantic-grep-description-2kb-overflow.md |
+| `parameter-object-stale-apply-route` | Medium | — | **Fix nonexistent apply_refactoring route in parameter_object_preview** — shipped Description + class doc direct agents to a tool that does not exist; point at preview_multi_file_edit_apply / apply_composite_preview. [type: bug] [source: 20260813 mcp-audit] | S | items/parameter-object-stale-apply-route.md |
+| `tool-output-schema-wire-projection` | Medium | — | **Project registered output schemas into tools/list** — 8 adopters emit structuredContent but the wire shows zero outputSchema; add a startup pass copying ToolOutputSchemaIndex into ProtocolTool.OutputSchema + re-baseline snapshots. [type: feature] [source: 20260813 mcp-audit] | M | items/tool-output-schema-wire-projection.md |
+| `tool-tier-gated-registration` | Medium | — | **Add ROSLYNMCP_TOOL_TIERS registration gate** — filter registration by ServerSurfaceCatalog supportTier; default stable,experimental (surface unchanged); stable = documented lean profile for non-deferring clients (~19k of ~55k tokens). [type: feature] [source: 20260813 mcp-audit] | M | items/tool-tier-gated-registration.md |
+| `method-description-diet` | Medium | server-instructions-discovery-hint | **Method-level description diet** — cap 393-char-avg Descriptions at ~200-char capability statements; relocate guidance to ServerInstructions/prompts/catalog (~8.5k tokens). Sweep across ~54 Tools/*.cs — split per category before planning. [type: refactor] [source: 20260813 mcp-audit] | L | items/method-description-diet.md |
+| `risk-aligned-tool-consolidation` | Medium | sdk-2x-upgrade | **Risk-aligned tool consolidation (173 → ~117)** — merge the 18 audit groups but keep apply merges within risk buckets so per-tool permissioning + destructive hints stay honest; alias old names through a deprecation cycle. [type: refactor] [source: 20260813 mcp-audit] | L | items/risk-aligned-tool-consolidation.md |
 
 ## Low
 
@@ -124,6 +132,10 @@
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 | `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
 | `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | M | items/gate-timeout-exception-drops-inner-oce.md |
+| `param-description-dedupe` | Low | — | **Param-description dedupe** — standardize the workspaceId/filePath boilerplate repeated across ~173 tools (723 param Descriptions, ~5.9k tokens); keep load-bearing discriminator/format guidance. Split per file-cluster before planning. [type: refactor] [source: 20260813 mcp-audit] | L | items/param-description-dedupe.md |
+| `tasks-extension-slow-ops` | Low | sdk-2x-upgrade | **Adopt MCP tasks extension for slow ops** — wire ModelContextProtocol.Extensions.Tasks (WithTasks) so workspace_load/build/test_run gain deferred results + tasks/get polling alongside progress notifications. [type: feature] [source: 20260813 mcp-audit] | M | items/tasks-extension-slow-ops.md |
+| `caching-hints-tools-list` | Low | sdk-2x-upgrade | **Caching hints + deterministic tools/list ordering** — populate ttlMs/cacheScope (SEP-2549) on list results and guarantee stable ordering so caching clients get prompt-cache hits on the ~55k-token surface. [type: feature] [source: 20260813 mcp-audit] | S | items/caching-hints-tools-list.md |
+| `input-examples-feasibility` | Low | — | **input_examples feasibility probe** — determine whether Anthropic input_examples are expressible for MCP-served tools (tool _meta / SDK 2.x); pilot on 3 complex preview tools if yes, else close wont-do with evidence. [type: chore] [source: 20260813 mcp-audit] | S | items/input-examples-feasibility.md |
 
 ## Defer
 
