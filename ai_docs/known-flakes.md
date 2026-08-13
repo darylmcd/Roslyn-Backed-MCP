@@ -16,17 +16,11 @@ Pre-existing flaky tests that subagents and the orchestrator should ignore when 
 |---|---|---|---|
 | `RoslynMcp.Tests.WorkspaceExecutionGateTests.AutoReload_ResetsTimeoutBudget_ToolActionGetsFullBudget` | 2026-05-17 | `TaskCanceledException` at [`WorkspaceExecutionGate.WithGlobalThrottle`](../src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs#L124) line 124 | Timing-sensitive: test asserts a 250ms tool budget resets after a 200ms simulated reload, leaving ~50ms for the action's `Task.Delay(50)`. Under self-hosted CI runner load the reload slips past 200ms, exhausting the budget. Evidence: failed first runs on PR #803 + PR #804 during sweep `20260517T025647Z` (2026-05-17); both passed on retry without code changes; PR #805 in the same wave passed first try (load varied). Fix-or-track: real fix is widening the 250ms tool budget or replacing the timing-dependent assertion with a counter-based one; track separately if recurrence becomes blocking. |
 
-> **This registry lists ONLY live flakes.** A resolved flake is DELETED outright, never moved to a
-> "retired"/"historical" section and never left behind in prose. The orchestrator contract matches a
-> failure against this file by test FQN + symptom, and that match does not care which heading the text
-> sits under — so a retained entry keeps waving through genuine failures of a test that is no longer
-> flaky. Git history is the archive for resolved entries; the resolving PR is the record.
-
 ## Re-triage against the shared-temp-root race (2026-08-10)
 
 The registered `WorkspaceExecutionGateTests` entry above was re-checked against the fixture-destroying race fixed by row `test-temp-root-shared-cleanup-race` (`[AssemblyCleanup]` used to delete the shared `%TEMP%/RoslynMcpTests` parent, so a concurrent test assembly's in-flight fixtures vanished mid-run).
 
-(A second entry was re-checked in the same pass; it has since been resolved and deleted per the rule above.)
+(A second entry was re-checked in the same pass; it has since been resolved and removed from this registry.)
 
 **It is not explained by that race.** It is a different symptom class:
 
