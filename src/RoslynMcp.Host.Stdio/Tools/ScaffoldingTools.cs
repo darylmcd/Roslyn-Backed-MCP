@@ -117,6 +117,7 @@ public static class ScaffoldingTools
             ct);
     }
 
+#pragma warning disable MCP9005 // Optional stdio compatibility until mcp-sampling-mrtr-migration adopts request-scoped MRTR.
     private sealed class McpSamplingTestNameSuggestionProvider(McpServer server) : ITestNameSuggestionProvider
     {
         public async Task<TestNameSuggestionResult> SuggestTestNameAsync(ScaffoldTestNameSuggestionContext context, CancellationToken ct)
@@ -184,6 +185,7 @@ public static class ScaffoldingTools
                 ? "(none)"
                 : string.Join(", ", siblingTestMethodNames.Take(6));
     }
+#pragma warning restore MCP9005
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", false, true,

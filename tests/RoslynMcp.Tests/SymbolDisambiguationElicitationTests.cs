@@ -408,6 +408,10 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             clientTransport,
             new McpClientOptions
             {
+                // This harness directly invokes the connection-scoped server after the
+                // initialize handshake. Pin that compatibility protocol explicitly; modern
+                // 2026-07-28 capabilities are request-scoped and exercised through tools/call.
+                ProtocolVersion = "2025-11-25",
                 Capabilities = new ClientCapabilities { Elicitation = new ElicitationCapability() },
                 Handlers = new McpClientHandlers
                 {

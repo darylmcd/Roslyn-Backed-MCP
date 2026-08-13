@@ -694,12 +694,13 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     /// <summary>
     /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
     /// duplex pipe so <c>server.ClientCapabilities.Roots</c> is genuinely populated (via the MCP
-    /// initialize handshake) and <c>server.RequestRootsAsync</c> genuinely round-trips to a client
+    /// negotiated stdio connection) and <c>server.RequestRootsAsync</c> genuinely round-trips to a client
     /// that advertises <paramref name="sanctionedRoot"/> as its only root — a live analogue of what
     /// <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/> talks to in production,
     /// rather than a hand-rolled fake. Dispose the returned harness to tear down the client and stop
     /// the server's receive loop.
     /// </summary>
+#pragma warning disable MCP9005 // Exercises the production Roots compatibility boundary tracked for migration.
     private static async Task<ServerWithSanctionedRootHarness> CreateServerWithSanctionedRootAsync(
         string sanctionedRoot, CancellationToken ct)
     {
@@ -729,6 +730,10 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             clientTransport,
             new McpClientOptions
             {
+                // These tests invoke tool methods directly with the connection-scoped server.
+                // Protocol revisions through 2025-11-25 expose Roots there; the modern
+                // request-scoped binding is covered by TypeExtractionTests through tools/call.
+                ProtocolVersion = "2025-11-25",
                 Capabilities = new ClientCapabilities { Roots = new RootsCapability() },
                 Handlers = new McpClientHandlers
                 {
@@ -753,6 +758,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 serverToClientWriteStream,
             ]);
     }
+#pragma warning restore MCP9005
 
     private sealed class ServerWithSanctionedRootHarness(
         McpServer server,

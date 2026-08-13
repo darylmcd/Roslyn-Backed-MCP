@@ -163,6 +163,7 @@ internal static class SolutionDiscoveryHelper
     /// <see cref="DiscoveryStatus.None"/> when the client declares no roots capability, returns
     /// no roots, or the roots request fails (advertised-but-unsupported clients).
     /// </summary>
+#pragma warning disable MCP9005 // Stdio compatibility until mcp-roots-query-discovery-migration replaces roots/list discovery.
     private static async Task<DiscoveryResult> TryDiscoverFromRootsAsync(
         McpServer? server, CancellationToken cancellationToken)
     {
@@ -191,6 +192,7 @@ internal static class SolutionDiscoveryHelper
 
         return ScanDirectoriesForSolutionsCached(rootDirectories, cancellationToken);
     }
+#pragma warning restore MCP9005
 
     /// <summary>
     /// solutiondiscoveryhelper-hotpath-perf: short-TTL memoized wrapper around
@@ -301,6 +303,7 @@ internal static class SolutionDiscoveryHelper
         return null;
     }
 
+#pragma warning disable MCP9005 // Root is confined to the tracked legacy roots/list compatibility path above.
     private static string? TryDecodeLocalPath(Root root)
     {
         try
@@ -312,4 +315,5 @@ internal static class SolutionDiscoveryHelper
             return null;
         }
     }
+#pragma warning restore MCP9005
 }

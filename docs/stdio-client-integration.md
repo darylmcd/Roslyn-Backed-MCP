@@ -9,8 +9,19 @@ If you're using Claude Code (via the `/plugin install roslyn-mcp@roslyn-mcp-mark
 - **Transport:** NDJSON (newline-delimited JSON) on stdin/stdout. Each message is a single JSON object followed by `\n`. **Do not** use LSP-style `Content-Length:` framing — the server ignores headers and treats the first non-JSON byte as a parse error.
 - **Stderr** is for operational logging. Do not parse it as protocol traffic.
 - **Spec:** [Model Context Protocol](https://modelcontextprotocol.io). The server implements the stdio transport; the public MCP SDKs speak it natively.
+- **Protocol eras:** MCP SDK 2.1 serves modern `2026-07-28` requests and initialize-capable `2025-11-25` and earlier clients. Prefer an official SDK so discovery and fallback remain correct.
 
-## Init handshake — required order
+## Connection bootstrap
+
+### Modern `2026-07-28`
+
+1. **Spawn** `roslynmcp`.
+2. Optionally send `server/discover` with `_meta.io.modelcontextprotocol/protocolVersion`, client identity, and client capabilities. On stdio, dual-era clients should use this as the compatibility probe.
+3. Include the negotiated protocol version, client identity, and capabilities in `_meta` on every request. There is no `initialize` / `notifications/initialized` handshake.
+
+The official C# SDK performs this discovery-first negotiation automatically and falls back to a legacy handshake when the server does not support the modern era.
+
+### Initialize-capable compatibility era
 
 1. **Spawn** `roslynmcp` (installed globally via `dotnet tool install -g Darylmcd.RoslynMcp`, CLI command is `roslynmcp`).
 2. Send **`initialize`** request — capability negotiation. Response arrives on stdout with a matching `id`.
@@ -19,7 +30,7 @@ If you're using Claude Code (via the `/plugin install roslyn-mcp@roslyn-mcp-mark
 
 ### Stdout ordering caveat
 
-Startup-time notifications (`notifications/message` log lines, `notifications/resources/list_changed`) may interleave with the `initialize` response on stdout. Filter responses by the `id` you sent; don't assume the first line after `initialize` is your response.
+During the compatibility window, startup-time notifications (`notifications/message` log lines, `notifications/resources/list_changed`) may interleave with legacy responses on stdout. Filter responses by the `id` you sent; don't assume the first line after a request is its response. Protocol Logging is deprecated in `2026-07-28`; operational logs remain on stderr.
 
 ## Parameter naming
 
@@ -29,7 +40,9 @@ Every tool-call parameter uses the exact names shown in `tools/list`. A few that
 - Every workspace-scoped tool takes `workspaceId` — the value returned by the `workspace_load` response. Reuse it for the entire session.
 - JSON keys are camelCase. Response keys match (e.g. `workspaceId`, `previewToken`, not `WorkspaceId`).
 
-## Minimal Python client
+## Minimal legacy Python client
+
+This dependency-free sample intentionally demonstrates the initialize-capable compatibility era. New clients should use an official MCP SDK for `server/discover`, per-request metadata, and automatic fallback.
 
 ```python
 import json
@@ -62,7 +75,7 @@ def read_response(expected_id: int) -> dict:
 send({
     "jsonrpc": "2.0", "id": 1, "method": "initialize",
     "params": {
-        "protocolVersion": "2024-11-05",
+        "protocolVersion": "2025-11-25",
         "capabilities": {},
         "clientInfo": {"name": "my-client", "version": "0.1"},
     },
