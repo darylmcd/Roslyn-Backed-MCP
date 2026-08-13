@@ -44,9 +44,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol
             ?? throw new InvalidOperationException($"Could not resolve type '{sourceTypeName}'.");
 
-        var (membersToExtract, membersToKeep) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
+        var (membersToExtract, membersToKeep, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
-        var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, membersToExtract, ct);
+        var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, analysisNodes, ct);
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
@@ -75,7 +75,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // caller knows to either pull the affected callers into the extraction redesign, or to
         // first refactor those callers to interact with the new type directly via DI / factory.
         var externalConsumerWarnings = await CollectExternalConsumerWarningsAsync(
-            solution, sourceDocument, semanticModel, membersToExtract, ct).ConfigureAwait(false);
+            solution, sourceDocument, semanticModel, analysisNodes, ct).ConfigureAwait(false);
         if (externalConsumerWarnings.Count > 0)
         {
             var summary = string.Join("; ", externalConsumerWarnings);
@@ -126,20 +126,50 @@ public sealed class TypeExtractionService : ITypeExtractionService
             warnings.Count > 0 ? warnings.Select(w => w.Reason).ToList() : null);
     }
 
-    private static (List<MemberDeclarationSyntax> ToExtract, List<MemberDeclarationSyntax> ToKeep) PartitionMembers(
+    /// <summary>
+    /// Splits the source type's members into the set that moves to the new type and the set that
+    /// stays behind, plus the ORIGINAL, in-tree syntax nodes that downstream semantic analysis must
+    /// run against (<c>AnalysisNodes</c>).
+    /// <para>
+    /// type-extraction-member-shape-validation: the extraction pipeline moves members by name, and
+    /// three name shapes cannot be moved safely — a constructor (whose identifier is the source
+    /// type's name), an ambiguous method-overload name, and one declarator of a multi-declarator
+    /// field. The first two are refused up front by <see cref="ValidateRequestedMemberShapes"/>; the
+    /// third is handled per declarator by <see cref="PartitionFieldDeclarators"/>.
+    /// </para>
+    /// <para>
+    /// <c>AnalysisNodes</c> is a separate list because the extracted half of a split field is a
+    /// synthesized node that belongs to no syntax tree, and <see cref="SemanticModel"/> rejects
+    /// foreign nodes. Semantic passes therefore consume the original declarators, never the
+    /// synthesized declaration.
+    /// </para>
+    /// </summary>
+    private static (List<MemberDeclarationSyntax> ToExtract, List<MemberDeclarationSyntax> ToKeep, List<SyntaxNode> AnalysisNodes) PartitionMembers(
         TypeDeclarationSyntax typeDecl, IReadOnlyList<string> memberNames, string sourceTypeName)
     {
-        var memberNameSet = new HashSet<string>(memberNames, StringComparer.Ordinal);
+        var requestedNames = new HashSet<string>(memberNames, StringComparer.Ordinal);
+
+        ValidateRequestedMemberShapes(typeDecl, requestedNames, sourceTypeName);
+
+        var matchedNames = new HashSet<string>(StringComparer.Ordinal);
         var toExtract = new List<MemberDeclarationSyntax>();
         var toKeep = new List<MemberDeclarationSyntax>();
+        var analysisNodes = new List<SyntaxNode>();
 
         foreach (var member in typeDecl.Members)
         {
+            if (member is FieldDeclarationSyntax field)
+            {
+                PartitionFieldDeclarators(field, requestedNames, matchedNames, toExtract, toKeep, analysisNodes);
+                continue;
+            }
+
             var name = GetMemberName(member);
-            if (name is not null && memberNameSet.Contains(name))
+            if (name is not null && requestedNames.Contains(name))
             {
                 toExtract.Add(member);
-                memberNameSet.Remove(name);
+                analysisNodes.Add(member);
+                matchedNames.Add(name);
             }
             else
             {
@@ -147,25 +177,167 @@ public sealed class TypeExtractionService : ITypeExtractionService
             }
         }
 
-        if (memberNameSet.Count > 0)
+        // Every declaration carrying a requested name is now moved. The pre-pass above already
+        // refused the only shapes where several declarations can legally share a name (overloads,
+        // constructors), so this no longer silently drops later same-named declarations the way the
+        // previous "remove on first match" loop did.
+        var unmatchedNames = requestedNames.Where(name => !matchedNames.Contains(name)).ToList();
+        if (unmatchedNames.Count > 0)
         {
             // extract-type-preview-refusal-missing-blocking-deps: prose message unchanged; the
             // unmatched names are also projected into structured blocking dependencies so the
             // caller can correct `memberNames` without parsing the sentence.
-            var unmatched = memberNameSet
+            var unmatched = unmatchedNames
                 .Select(name => new BlockingDependencyDto(
                     name,
                     $"Member '{name}' not found in type '{sourceTypeName}'."))
                 .ToList();
             throw new ExtractTypeBlockingDependencyException(
-                $"Members not found in type '{sourceTypeName}': {string.Join(", ", memberNameSet)}",
+                $"Members not found in type '{sourceTypeName}': {string.Join(", ", unmatchedNames)}",
                 unmatched);
         }
 
         if (toExtract.Count == 0)
             throw new InvalidOperationException("No members matched for extraction.");
 
-        return (toExtract, toKeep);
+        return (toExtract, toKeep, analysisNodes);
+    }
+
+    /// <summary>
+    /// type-extraction-member-shape-validation: refuses the requested member names that this
+    /// extraction cannot honour unambiguously, before any partitioning happens. Reuses the same
+    /// <see cref="ExtractTypeBlockingDependencyException"/> / <see cref="BlockingDependencyDto"/>
+    /// contract as the existing unmatched-name and dangling-reference refusals so callers face one
+    /// structured refusal shape rather than three ad hoc ones.
+    /// </summary>
+    private static void ValidateRequestedMemberShapes(
+        TypeDeclarationSyntax typeDecl, HashSet<string> requestedNames, string sourceTypeName)
+    {
+        var blocking = new List<BlockingDependencyDto>();
+
+        // (1) Constructors. A constructor's identifier is ALWAYS the source type's name, so a
+        // requested name matching it used to select the constructor and emit it verbatim inside
+        // `public sealed class {newTypeName}` — where it is no longer a constructor at all but an
+        // ill-formed method named after the old type (CS1520). Static constructors hit the same arm.
+        foreach (var ctorName in typeDecl.Members
+            .OfType<ConstructorDeclarationSyntax>()
+            .Select(c => c.Identifier.Text)
+            .Where(requestedNames.Contains)
+            .Distinct(StringComparer.Ordinal))
+        {
+            blocking.Add(new BlockingDependencyDto(
+                ctorName,
+                $"'{ctorName}' names a constructor of '{sourceTypeName}'. Constructors are never eligible for " +
+                $"extraction: the new type is declared under a different name, so the moved declaration would " +
+                $"stop being a constructor and would not compile. Drop it from memberNames and extract the " +
+                $"members it initializes instead."));
+        }
+
+        // (2) Method overloads. `memberNames` carries bare names, so an overloaded name cannot
+        // identify a single declaration. The previous loop extracted whichever overload came first
+        // in source order and silently left the rest behind.
+        foreach (var group in typeDecl.Members
+            .OfType<MethodDeclarationSyntax>()
+            .Where(m => requestedNames.Contains(m.Identifier.Text))
+            .GroupBy(m => m.Identifier.Text, StringComparer.Ordinal))
+        {
+            var candidates = group.ToList();
+            if (candidates.Count < 2)
+                continue;
+
+            // The defining and implementing halves of a `partial` method are ONE logical member,
+            // not an overload set — both halves move together, so there is nothing ambiguous.
+            if (candidates.All(m => m.Modifiers.Any(SyntaxKind.PartialKeyword)))
+                continue;
+
+            foreach (var candidate in candidates)
+            {
+                blocking.Add(new BlockingDependencyDto(
+                    group.Key,
+                    $"'{group.Key}' is ambiguous in '{sourceTypeName}': {candidates.Count} overloads declare that " +
+                    $"name, including '{DescribeMethodSignature(candidate)}'. Extraction selects members by bare " +
+                    $"name, so it cannot tell which overload was meant. Extract a name that resolves to exactly " +
+                    $"one declaration, or move the specific overload by hand."));
+            }
+        }
+
+        if (blocking.Count > 0)
+        {
+            throw new ExtractTypeBlockingDependencyException(
+                $"Refusing to extract from '{sourceTypeName}': {string.Join("; ", blocking.Select(b => b.Reason))}",
+                blocking);
+        }
+    }
+
+    /// <summary>
+    /// Renders a method's disambiguating signature. The type-parameter list is included so
+    /// <c>Foo&lt;T&gt;(int)</c> and <c>Foo(int)</c> are reported as the distinct overloads they are.
+    /// </summary>
+    private static string DescribeMethodSignature(MethodDeclarationSyntax method)
+    {
+        return method.Identifier.Text
+            + (method.TypeParameterList?.ToString() ?? string.Empty)
+            + method.ParameterList.ToString();
+    }
+
+    /// <summary>
+    /// type-extraction-member-shape-validation: a field declaration may declare several variables
+    /// (<c>private int a, b, c;</c>) while <see cref="GetMemberName"/> only ever named the first, so
+    /// requesting <c>a</c> silently dragged <c>b</c>/<c>c</c> along and requesting <c>b</c> matched
+    /// nothing. Matching now happens per declarator: the node moves whole only when EVERY declarator
+    /// was requested, otherwise it is split into an extracted half and a retained half that both
+    /// preserve the original attributes, modifiers, type and initializers.
+    /// <para>
+    /// <c>EventFieldDeclarationSyntax</c> (<c>event EventHandler A, B;</c>) is deliberately NOT
+    /// handled here — it derives from <c>BaseFieldDeclarationSyntax</c>, not
+    /// <c>FieldDeclarationSyntax</c>, and <see cref="GetMemberName"/> never named it, so event fields
+    /// remain unextractable exactly as before.
+    /// </para>
+    /// </summary>
+    private static void PartitionFieldDeclarators(
+        FieldDeclarationSyntax field,
+        HashSet<string> requestedNames,
+        HashSet<string> matchedNames,
+        List<MemberDeclarationSyntax> toExtract,
+        List<MemberDeclarationSyntax> toKeep,
+        List<SyntaxNode> analysisNodes)
+    {
+        var declarators = field.Declaration.Variables;
+        var requested = declarators.Where(v => requestedNames.Contains(v.Identifier.Text)).ToList();
+        if (requested.Count == 0)
+        {
+            toKeep.Add(field);
+            return;
+        }
+
+        foreach (var declarator in requested)
+            matchedNames.Add(declarator.Identifier.Text);
+
+        // Semantic analysis runs against the ORIGINAL in-tree nodes only: the declared type and
+        // attributes of the field, plus the specific declarators that move. A synthesized split half
+        // has no syntax tree, so passing it to the SemanticModel would throw; feeding only the
+        // requested declarators also stops a retained sibling's initializer from producing a
+        // dangling-reference refusal for state that never leaves the source type.
+        analysisNodes.AddRange(field.AttributeLists);
+        analysisNodes.Add(field.Declaration.Type);
+        analysisNodes.AddRange(requested);
+
+        if (requested.Count == declarators.Count)
+        {
+            toExtract.Add(field);
+            return;
+        }
+
+        var retained = declarators.Where(v => !requestedNames.Contains(v.Identifier.Text)).ToList();
+        toExtract.Add(WithDeclarators(field, requested));
+        toKeep.Add(WithDeclarators(field, retained));
+    }
+
+    private static FieldDeclarationSyntax WithDeclarators(
+        FieldDeclarationSyntax field, IEnumerable<VariableDeclaratorSyntax> declarators)
+    {
+        return field.WithDeclaration(
+            field.Declaration.WithVariables(SyntaxFactory.SeparatedList(declarators)));
     }
 
     private static CompilationUnitSyntax BuildNewFileRoot(
@@ -329,17 +501,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
         Solution solution,
         Document sourceDocument,
         SemanticModel semanticModel,
-        IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
+        IReadOnlyList<SyntaxNode> analysisNodes,
         CancellationToken ct)
     {
         var warnings = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var sourceFilePath = sourceDocument.FilePath;
 
-        foreach (var member in membersToExtract)
+        foreach (var node in analysisNodes)
         {
             ct.ThrowIfCancellationRequested();
-            var memberSymbol = semanticModel.GetDeclaredSymbol(member, ct);
+            if (!IsDeclarationNode(node)) continue;
+
+            var memberSymbol = semanticModel.GetDeclaredSymbol(node, ct);
             if (memberSymbol is null) continue;
 
             // Only public / internal members can be referenced from outside the source type
@@ -382,12 +556,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
     private static List<BlockingDependencyDto> CollectExtractTypeDanglingReferenceWarnings(
         SemanticModel semanticModel,
         INamedTypeSymbol typeSymbol,
-        IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
+        IReadOnlyList<SyntaxNode> analysisNodes,
         CancellationToken ct)
     {
         var extractedDeclared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var m in membersToExtract)
+        foreach (var m in analysisNodes)
         {
+            if (!IsDeclarationNode(m)) continue;
+
             var sym = semanticModel.GetDeclaredSymbol(m, ct);
             if (sym is not null)
                 extractedDeclared.Add(sym);
@@ -396,12 +572,12 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var warnings = new List<BlockingDependencyDto>();
 
-        foreach (var member in membersToExtract)
+        foreach (var member in analysisNodes)
         {
-            // GetMemberName returns null for shapes it does not name (operators, indexers,
+            // GetAnalysisNodeName returns null for shapes it does not name (operators, indexers,
             // destructors); fall back to the syntax kind so the structured entry always
             // carries a non-null attribution.
-            var memberName = GetMemberName(member) ?? member.Kind().ToString();
+            var memberName = GetAnalysisNodeName(member) ?? member.Kind().ToString();
 
             foreach (var node in member.DescendantNodesAndSelf())
             {
@@ -446,15 +622,51 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return false;
     }
 
+    /// <summary>
+    /// True for the node kinds the semantic passes may hand to
+    /// <c>SemanticModel.GetDeclaredSymbol</c>. The analysis list also carries non-declaration
+    /// context nodes (a field's declared type and attribute lists) purely so their descendants get
+    /// walked for dangling references.
+    /// </summary>
+    private static bool IsDeclarationNode(SyntaxNode node)
+    {
+        return node is MemberDeclarationSyntax or VariableDeclaratorSyntax;
+    }
+
+    /// <summary>
+    /// Attribution label for an analysis node. A single declarator of a multi-declarator field is
+    /// named by its own identifier so the structured refusal points at the exact variable the caller
+    /// requested, not at the first declarator of the declaration that happens to contain it.
+    /// </summary>
+    private static string? GetAnalysisNodeName(SyntaxNode node)
+    {
+        return node switch
+        {
+            VariableDeclaratorSyntax v => v.Identifier.Text,
+            MemberDeclarationSyntax m => GetMemberName(m),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Maps a member declaration to the single name that selects it for extraction, or
+    /// <see langword="null"/> when no such name exists.
+    /// <para>
+    /// type-extraction-member-shape-validation: fields and constructors are deliberately absent.
+    /// A field can declare several names, so it is matched per declarator by
+    /// <see cref="PartitionFieldDeclarators"/> instead of by its first declarator. A constructor's
+    /// identifier is the SOURCE type's name, so naming one here made a request for the source type's
+    /// own name select the constructor and emit it verbatim into the differently-named new type;
+    /// <see cref="ValidateRequestedMemberShapes"/> refuses that request explicitly instead.
+    /// </para>
+    /// </summary>
     private static string? GetMemberName(MemberDeclarationSyntax member)
     {
         return member switch
         {
             MethodDeclarationSyntax m => m.Identifier.Text,
             PropertyDeclarationSyntax p => p.Identifier.Text,
-            FieldDeclarationSyntax f => f.Declaration.Variables.FirstOrDefault()?.Identifier.Text,
             EventDeclarationSyntax e => e.Identifier.Text,
-            ConstructorDeclarationSyntax c => c.Identifier.Text,
             _ => null
         };
     }
