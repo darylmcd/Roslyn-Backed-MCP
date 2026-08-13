@@ -21,3 +21,18 @@
 ## Evidence
 
 - Validation currently canonicalizes only for comparison and returns no canonical target; downstream tools retain the original mutable link path.
+## Amendment — 2026-08-13 (backlog-sweep 20260813T172325Z; PR #1230 HELD, NOT merged — row stays OPEN)
+
+An attempted fix reached PR #1230 and was **held at the Step 8b fix-cycle cap**. Do not merge that PR as-is; it needs re-planning as a fresh initiative.
+
+**What the attempt established (worth keeping):** `ClientRootPathValidator.ValidatePathAgainstRootsAsync` can return the boundary-canonical target it already computes, and `EditTools.ApplyTextEdit` can forward it to `IEditService.ApplyTextEditsAsync` as an optional `canonicalWritePath`. That wiring was proven correct by an empirically-verified inverting test (deleting the argument makes the test fail with `actual: null`; restoring it passes).
+
+**Why it did not close this row — two independent blockers:**
+
+1. **Acceptance items 3-4 are unreachable from this seam.** `EditService.ApplyTextEditsCoreAsync` calls `_workspace.TryApplyChanges` BEFORE `PersistDocumentTextToDiskAsync`, and MSBuildWorkspace flushes changed documents to disk itself through the un-canonicalized `Document.FilePath` (in-repo comment in `WorkspaceManager.cs` confirms it). So the swapped target still receives an earlier Roslyn-level write and the boundary-escape property is not achieved. Tracked as `workspace-load-path-canonicalization`.
+
+2. **The attempted fix introduced a NEW data-loss defect** (high-severity, confirmed against source). The write target is resolved physically by `ConfiguredRootBoundary.ResolvePathCore`, which deliberately does NOT lexically collapse `..`; the document lookup is resolved lexically by `SymbolResolver.FindDocument` via `Path.GetFullPath`. For a request path shaped `<root>/real/sub/link/../Program.cs` the two resolve to DIFFERENT physical files, so document A's edited text is written into file B — while the undo snapshot and change-tracker entry both record A, leaving B unrecoverable through the tool's own undo.
+
+**Shape for the re-plan:** honor `canonicalWritePath` only when `ClientRootPathValidator.ResolvePath(Path.GetFullPath(filePath))` equals it, else fail closed (consistent with the repo's existing fail-closed stance on ambiguous paths), plus a regression for the link + `..` divergence. Note that `EditService.cs` was decomposed by PR #1241 after PR #1230 was cut, so that branch will not rebase cleanly.
+
+**Sibling exposures split out of this row:** `suppression-tools-missing-root-boundary-validation` (High — those tools validate nothing at all), `preview-apply-token-write-path-toctou`, `undo-revert-uncanonicalized-restore-path`.
