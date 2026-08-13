@@ -10,7 +10,7 @@ Set-Location C:\Code-Repo\Roslyn-Backed-MCP
 
 ## Produce audits (per repo)
 
-Run the audit prompt inside the repo being audited. The prompt emits a raw `*_mcp-server-audit.md` (and, when applicable, `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md`) into that repo's `ai_docs/audit-reports/` or `ai_docs/reports/`.
+Run the audit prompt inside the repo being audited. The prompt emits raw deep-review artifacts — a producer-side subset of the recognized shapes, whose canonical list lives in `eng/stage-review-inbox.ps1` `.DESCRIPTION` -> "Recognized shapes"; do not re-list the globs here — into that repo's `ai_docs/audit-reports/` or `ai_docs/reports/`.
 
 ```
 /mcp-server-stress
@@ -28,7 +28,7 @@ From Roslyn-Backed-MCP repo root:
 
 This runs the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill, which:
 
-1. Stages `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` from sibling repos + this repo into `review-inbox/`.
+1. Stages the recognized deep-review artifact shapes from sibling repos + this repo into `review-inbox/`. The canonical list of recognized shapes lives in `eng/stage-review-inbox.ps1` `.DESCRIPTION` -> "Recognized shapes" — read it there; do not re-list the globs here. (`backlog.d/` fragments are the exception: they are consumed in place, not staged.)
 2. Extracts actionable items via a subagent (context-protecting).
 3. Deduplicates semantically across files.
 4. Verifies each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan.
