@@ -19,15 +19,10 @@ namespace RoslynMcp.Host.Stdio.Elicitation;
 /// <b>Layering invariant:</b> this type must never import <c>RoslynMcp.Host.Stdio.Middleware</c>,
 /// <c>RoslynMcp.Host.Stdio.Tools</c>, or any other <c>RoslynMcp.*</c> namespace — only the MCP SDK
 /// and BCL. Any such <c>using</c> re-creates the namespace cycle this type exists to break, and is
-/// caught by
-/// <c>ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis.No_Circular_Namespace_Dependency_Between_Middleware_And_Tools</c>.
-/// </para>
-///
-/// <para>
-/// <c>StructuredCallElicitationCoordinator.TryElicitChoiceAsync</c> is retained as a thin delegate
-/// forwarding here, so the historical Middleware-internal static call surface (consumed by
-/// <c>StructuredCallToolFilter</c> and the existing elicitation test suites) is preserved
-/// byte-for-byte.
+/// caught by the namespace-cycle guard test in
+/// <c>tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.RepoSolutionAnalysis.cs</c> (the guard
+/// is named by file rather than by method so a test rename cannot silently rot this reference —
+/// elicitation-forwarder-collapse-trychoice-docs).
 /// </para>
 /// </summary>
 internal static class ElicitationChoicePrompt
@@ -55,10 +50,10 @@ internal static class ElicitationChoicePrompt
     /// elicit-disambiguation-on-multi-symbol-resolve: shared select-from-N elicitation
     /// helper. Builds an enum-shaped <c>elicitation/create</c> request whose options carry
     /// short candidate labels and stable string keys, calls the SDK, and returns the chosen
-    /// key (or <see langword="null"/> when the user declined / the client lacks elicitation /
-    /// the request itself failed). The caller uses the returned key to map back to the
-    /// original candidate (e.g. an <c>ISymbol</c>) and re-runs the tool call against that
-    /// chosen candidate.
+    /// key (see <c>returns</c> for the exact null arms). The caller uses the returned key to
+    /// map back to the original candidate (e.g. an <c>ISymbol</c>) and re-runs the tool call
+    /// against that chosen candidate. Sole definition of the picker — <c>Middleware</c> and
+    /// <c>Tools</c> both call it here; no forwarding delegates exist.
     /// </summary>
     /// <param name="server">The connected <see cref="McpServer"/>; <see langword="null"/> short-circuits to null.</param>
     /// <param name="paramName">
@@ -72,7 +67,22 @@ internal static class ElicitationChoicePrompt
     /// <c>Label</c> is the human-readable text shown in the picker.
     /// </param>
     /// <param name="cancellationToken">Cancellation token (request-scoped).</param>
-    /// <returns>The chosen <c>Key</c> on accept; <see langword="null"/> on decline / cancel / unsupported / error.</returns>
+    /// <returns>
+    /// The chosen <c>Key</c> when the user accepts. <see langword="null"/> when:
+    /// <paramref name="server"/> is <see langword="null"/>; the client did not declare the
+    /// <c>elicitation</c> capability; the request is malformed (<paramref name="paramName"/> empty,
+    /// <paramref name="options"/> null or empty, or every option's <c>Key</c> empty); the user
+    /// declined or the SDK returned no <see cref="ElicitResult.Content"/>; the accepted content
+    /// omits <paramref name="paramName"/> or carries a non-string / empty value; or the SDK threw
+    /// <see cref="InvalidOperationException"/> or <see cref="McpException"/> (logged at Debug, then
+    /// degraded to the additive-list fallback).
+    ///
+    /// <para>
+    /// <b>Not</b> null on cancellation: <see cref="OperationCanceledException"/> propagates to the
+    /// caller rather than degrading to <see langword="null"/>, so a cancelled request unwinds
+    /// instead of being reported as a decline (elicitation-trychoice-cancellation-swallow).
+    /// </para>
+    /// </returns>
     public static async Task<string?> TryElicitChoiceAsync(
         McpServer? server,
         string paramName,

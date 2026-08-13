@@ -10,18 +10,23 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// The elicitation/retry orchestration layer extracted from <see cref="StructuredCallToolFilter"/>.
 /// Owns the <em>how</em> of asking the user for a missing value via MCP <c>elicitation/create</c>
 /// and re-dispatching the original call — the exception-path recovery
-/// (<see cref="TryElicitAndRetryAsync"/>), the workspaceId-specific recover-load-retry loop
-/// (<see cref="TryRecoverMissingWorkspaceIdAsync"/>), and the shared select-from-N picker
-/// (<see cref="TryElicitChoiceAsync"/>). Whether a parameter <em>may</em> be elicited stays in
-/// <see cref="ElicitationAllowlistPolicy"/>; metrics stay in <see cref="CallMetricsRecorder"/>;
-/// the pre-dispatch auto-resolve/auto-load flow and error-envelope construction stay in the filter.
+/// (<see cref="TryElicitAndRetryAsync"/>) and the workspaceId-specific recover-load-retry loop
+/// (<see cref="TryRecoverMissingWorkspaceIdAsync"/>). Whether a parameter <em>may</em> be elicited
+/// stays in <see cref="ElicitationAllowlistPolicy"/>; metrics stay in
+/// <see cref="CallMetricsRecorder"/>; the pre-dispatch auto-resolve/auto-load flow and
+/// error-envelope construction stay in the filter. The shared select-from-N picker is NOT owned
+/// here — its canonical (and only) home is
+/// <see cref="ElicitationChoicePrompt.TryElicitChoiceAsync"/>, in the cycle-free
+/// <c>RoslynMcp.Host.Stdio.Elicitation</c> namespace so <c>Tools</c> can call it without importing
+/// <c>Middleware</c>.
 ///
 /// <para>
-/// <see cref="StructuredCallToolFilter"/> keeps thin delegates that forward to these members, so
-/// its historical static call surface (consumed by <c>SymbolTools</c> and the existing filter test
-/// suites) is preserved byte-for-byte. <see cref="DispatchWithTemporaryArgumentsAsync"/> and
-/// <see cref="TryExtractWorkspaceId"/> are <c>internal</c> (not <c>private</c>) so the filter's
-/// retained <c>TryAutoLoadWorkspaceAsync</c> can keep calling them directly.
+/// <see cref="StructuredCallToolFilter"/> keeps thin delegates forwarding to
+/// <see cref="TryElicitAndRetryAsync"/> and <see cref="TryRecoverMissingWorkspaceIdAsync"/>, so its
+/// historical static call surface (consumed by the existing filter test suites) is preserved.
+/// <see cref="DispatchWithTemporaryArgumentsAsync"/> and <see cref="TryExtractWorkspaceId"/> are
+/// <c>internal</c> (not <c>private</c>) so the filter's retained <c>TryAutoLoadWorkspaceAsync</c>
+/// can keep calling them directly.
 /// </para>
 /// </summary>
 internal static class StructuredCallElicitationCoordinator
@@ -249,45 +254,6 @@ internal static class StructuredCallElicitationCoordinator
             return null;
         }
     }
-
-    /// <summary>
-    /// elicit-disambiguation-on-multi-symbol-resolve: shared select-from-N elicitation
-    /// helper. Builds an enum-shaped <c>elicitation/create</c> request whose options carry
-    /// short candidate labels and stable string keys, calls the SDK, and returns the chosen
-    /// key (or <see langword="null"/> when the user declined / the client lacks elicitation /
-    /// the request itself failed). The caller uses the returned key to map back to the
-    /// original candidate (e.g. an <c>ISymbol</c>) and re-runs the tool call against that
-    /// chosen candidate.
-    /// </summary>
-    /// <param name="server">The connected <see cref="McpServer"/>; <see langword="null"/> short-circuits to null.</param>
-    /// <param name="paramName">
-    /// Name of the schema field carrying the picked option — also the dictionary key the
-    /// SDK populates in <see cref="ElicitResult.Content"/>. Conventionally <c>"choice"</c>.
-    /// </param>
-    /// <param name="title">Short title shown above the option list.</param>
-    /// <param name="description">Longer description (one or two sentences) explaining why the user is being asked.</param>
-    /// <param name="options">
-    /// The select-from-N options. <c>Key</c> is the stable identifier returned to the caller,
-    /// <c>Label</c> is the human-readable text shown in the picker.
-    /// </param>
-    /// <param name="cancellationToken">Cancellation token (request-scoped).</param>
-    /// <returns>The chosen <c>Key</c> on accept; <see langword="null"/> on decline / cancel / unsupported / error.</returns>
-    /// <remarks>
-    /// Thin delegate onto <see cref="ElicitationChoicePrompt.TryElicitChoiceAsync"/>, which is the
-    /// canonical home — the picker lives in the cycle-free
-    /// <c>RoslynMcp.Host.Stdio.Elicitation</c> namespace so <c>Tools</c> can call it without
-    /// importing <c>Middleware</c>. Retained here so this class's historical static call surface
-    /// (and its test suite) keeps compiling unchanged.
-    /// </remarks>
-    public static Task<string?> TryElicitChoiceAsync(
-        McpServer? server,
-        string paramName,
-        string title,
-        string description,
-        IReadOnlyList<(string Key, string Label)> options,
-        CancellationToken cancellationToken) =>
-        ElicitationChoicePrompt.TryElicitChoiceAsync(
-            server, paramName, title, description, options, cancellationToken);
 
     /// <summary>
     /// Inspects <paramref name="ex"/> for the InvalidArgument-shaped binding-failure
