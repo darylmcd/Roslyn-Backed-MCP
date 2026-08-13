@@ -14,9 +14,11 @@ Claude Code persists session transcripts as JSONL files under `~/.claude/project
 1. **Window** — default to **the last 14 days** measured by file mtime. If the user named a different window in their invocation (e.g. "last 7 days", "last month"), honor that. State the chosen window explicitly in your first user-facing line.
 2. **Enumerate session files** — for each subdirectory of `~/.claude/projects/`, list `*.jsonl` files whose mtime falls inside the window. Record for each: `(repo_slug, session_file_path, session_start_ts, session_end_ts, approx_line_count)`. The repo slug is recoverable from the directory name (Claude Code encodes the repo path with `-` separators — decode it back to a repo root when possible; fall back to the encoded form if ambiguous).
 3. **Filter to relevant sessions** — a session is relevant if **any** of:
-   - It contains at least one `mcp__roslyn__*` tool call, OR
+   - It contains at least one tool call whose name matches the regex `mcp__\S*roslyn\S*__\S+`, OR
    - It contains a `/roslyn-mcp:*` skill invocation, OR
    - It contains a verbatim reference to `roslyn-mcp`, `Roslyn MCP`, or a Roslyn MCP tool name in text content.
+
+   **The tool-call pattern is deliberately prefix-agnostic — do not narrow it to a literal prefix.** The MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool appears as `mcp__roslyn__symbol_search` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — matching only the bare form silently drops whole repos from the sample, which is exactly how earlier retros undercounted cross-repo usage. Accepted trade-off: the regex also matches an unrelated server whose registration key happens to contain the substring `roslyn`; a false-positive session is visible and recoverable at read time, a false-negative repo is neither.
 
    Sessions with zero Roslyn-MCP surface area are dropped silently — they will not appear in §2 but will be counted in the meta-note so the reader knows the sample size.
 4. **Budget reads** — if the total JSONL payload in window exceeds ~200k lines, cap at the 40 largest-by-Roslyn-MCP-mention sessions and note the truncation in §5. Do not load all files into context blindly; use `Grep` / `jq` / `rg` over the JSONL to extract only tool-call and error records before deep-reading.
@@ -67,7 +69,7 @@ If a task type repeats across sessions (e.g. "rename symbol across projects" hap
 
 For **every** Roslyn MCP tool invocation across the included sessions that errored, returned wrong or partial results, timed out, was flaky, had confusing output, or required a retry — record one row:
 
-- **Tool** — exact Roslyn MCP tool name (e.g. `mcp__roslyn__symbol_search`)
+- **Tool** — exact Roslyn MCP tool name **including whichever client-assigned prefix the session used** (e.g. `mcp__roslyn__symbol_search` on a dev-build entry, `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on a plugin install — examples, not an allowed list)
 - **Sessions** — list of session ids where this failure mode appeared (drives `Repro confidence`)
 - **Inputs** — redacted/summarized inputs that triggered it
 - **Symptom** — what went wrong (error text, wrong result, perf, UX)
