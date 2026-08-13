@@ -33,7 +33,7 @@ Concretely: if a caller omits a required parameter or supplies an unknown parame
 
 ## 2. .NET SDK native pattern: request filters
 
-This repo pins `ModelContextProtocol` 1.1.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
+This repo pins `ModelContextProtocol` 2.1.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
 
 - Entrypoint: `IMcpServerBuilder.WithRequestFilters(Action<IMcpRequestFilterBuilder>)`
 - Tool-call slot: `IMcpRequestFilterBuilder.AddCallToolFilter(McpRequestFilter<CallToolRequestParams, CallToolResult>)`
@@ -64,7 +64,7 @@ Canonical example from the [Microsoft SDK filters docs](https://csharp.sdk.model
 
 ### 2.1 Filters see pre-binding exceptions (as of SDK 0.4.0-preview.3+)
 
-The SDK originally swallowed reflection-binding exceptions inside the invocation wrapper, returning a bare `"An error occurred invoking '<tool>'."` string. That defect is tracked in [csharp-sdk#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820) and [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830), and fixed in [PR #844 "Propagate tool call exceptions through filters"](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (shipped 0.4.0-preview.3, carried into 1.x). On 1.1.0+, filters observe:
+The SDK originally swallowed reflection-binding exceptions inside the invocation wrapper, returning a bare `"An error occurred invoking '<tool>'."` string. That defect is tracked in [csharp-sdk#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820) and [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830), and fixed in [PR #844 "Propagate tool call exceptions through filters"](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (shipped 0.4.0-preview.3 and retained in 2.1.0). Filters observe:
 
 - `ArgumentException` / `ArgumentNullException` from parameter binding (missing or unknown required argument)
 - `JsonException` from `arguments` deserialization
@@ -125,7 +125,7 @@ Authorization, rate-limiting, metrics, request-body transformation → **filter 
 
 ### 4.4 Logging to stdout on stdio transport
 
-Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC messages. Any other byte corrupts the client's parser. All logging, traces, and diagnostic output go to stderr. Enforced in this repo by the `McpLoggingProvider` bridge + [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) wiring; see the [Stainless guide](https://www.stainless.com/mcp/error-handling-and-debugging-mcp-servers) for background.
+Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC messages. Any other byte corrupts the client's parser. [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) clears default providers and configures the console provider to write every level to stderr. The separate `McpLoggingProvider` is a deprecated-protocol compatibility bridge; it does not own stderr safety. See the [Stainless guide](https://www.stainless.com/mcp/error-handling-and-debugging-mcp-servers) for background.
 
 ---
 
@@ -133,7 +133,7 @@ Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC 
 
 - **Log full detail server-side, return sanitized text to the client.** [mcpcat guide](https://mcpcat.io/guides/error-handling-custom-mcp-servers/): "Log Internally... Sanitize Responses: Return user-safe messages that don't leak system information." This repo's `ClassifyError` already embeds actionable hints (e.g. "Call `workspace_reload` if state is stale") without leaking paths or stack internals in non-`InternalError` categories.
 - **Include a `_meta` block** on every response carrying gate-metrics snapshot (queue time, hold time, elapsed, stale-reload timing). Enables concurrency audits from inside the agent loop. The filter opens the scope and calls `ToolErrorHandler.InjectMetaIfPossible` on both success and error paths.
-- **Emit MCP `notifications/message` for startup and workspace-lifecycle events** (see `McpLoggingProvider`). Clients that surface structured logs (Claude Code) see the events proactively; clients that don't still get them on the next tool call via `_meta`.
+- **Keep deprecated MCP `notifications/message` only as a bounded compatibility path** (see `McpLoggingProvider`). Operational logs always go to stderr; `mcp-logging-stderr-otel-migration` owns the structured-observability replacement and removal of the protocol bridge.
 
 ---
 
@@ -156,7 +156,7 @@ This section is the live log of decisions derived from the above principles. Upd
 | Per-handler `ToolErrorHandler.ExecuteAsync` wrapper is retired after the filter lands | § 3 anti-pattern | Swept from all 50 tool files in `src/RoslynMcp.Host.Stdio/Tools/` (174 call sites removed); `ToolErrorHandler.ExecuteAsync` method deleted. Unit tests that exercised the classifier through the legacy wrapper now call [`ToolExecutionTestHarness.RunAsync`](../../tests/RoslynMcp.Tests/Helpers/ToolExecutionTestHarness.cs) — an in-process mirror of the filter's control flow that lives only in the test project. |
 | `ClassifyError` handles pre-binding failures in BOTH shapes: wrapped in `TargetInvocationException` / `InvalidOperationException` AND raw-unwrapped as the SDK filter pipeline delivers them | § 4.1 | [`ToolErrorHandler.TryClassifyBindingLike`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) — single helper invoked against both the inner exception (wrapped) and the exception itself (unwrapped). Resolves [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830) for this repo's filter path. Regression coverage: [`ToolErrorHandlerParameterValidationTests`](../../tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs), [`StructuredCallToolFilterTests.BuildErrorResult_MissingRequiredParameter_*`](../../tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs). |
 | `_meta` block on every response with gate-metrics snapshot | § 5 | The filter opens the [`AmbientGateMetrics`](../../src/RoslynMcp.Core/Services/AmbientGateMetrics.cs) scope on entry and injects the snapshot via [`ToolErrorHandler.InjectMetaIfPossible`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) on both success (into the first `TextContentBlock` of the returned `CallToolResult`) and error (into the envelope text). Array-rooted responses pass through unchanged — see `StructuredCallToolFilter.InjectMetaIntoContent`. |
-| Stdio transport writes framed JSON-RPC only; logging via `McpLoggingProvider` to stderr | § 4.4 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), `McpLoggingProvider` |
+| Stdio transport writes framed JSON-RPC only; console logging goes to stderr; deprecated protocol logging is compatibility-only | § 4.4 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), `McpLoggingProvider`, `mcp-logging-stderr-otel-migration` |
 | Services registered against interface + concrete type for SDK binder compatibility | § 6 | [Program.cs:47-49](../../src/RoslynMcp.Host.Stdio/Program.cs) with `di-register-latest-version-provider` comment |
 
 ---

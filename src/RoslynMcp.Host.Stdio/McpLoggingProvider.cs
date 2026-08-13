@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio;
 
+#pragma warning disable MCP9005 // Stdio compatibility during SEP-2577 deprecation; tracked by mcp-logging-stderr-otel-migration.
 /// <summary>
 /// An ILoggerProvider that forwards .NET log messages to the MCP client via notifications/message.
 /// Only active when an McpServer session is established.
@@ -88,6 +89,7 @@ public sealed class McpLoggingProvider : ILoggerProvider
         }
     }
 }
+#pragma warning restore MCP9005
 
 /// <summary>
 /// Ambient correlation ID context for structured logging. Each tool invocation gets a unique ID

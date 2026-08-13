@@ -1,6 +1,6 @@
 # Upgrade matrix
 
-This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-04-14**; when you bump a row, refresh the “Current” cells in the same PR.
+This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-08-12**; when you bump a row, refresh the “Current” cells in the same PR.
 
 Related: [Release policy](release-policy.md) (product version and gates), [CI policy](../CI_POLICY.md) (merge validation).
 
@@ -22,16 +22,16 @@ These packages **must stay on the same `Microsoft.CodeAnalysis.*` version** for 
 
 | Package id | Current | Where pinned |
 |------------|---------|----------------|
-| `Microsoft.CodeAnalysis.CSharp` | `5.3.0` | `Directory.Packages.props` |
-| `Microsoft.CodeAnalysis.CSharp.Workspaces` | `5.3.0` | `Directory.Packages.props` |
-| `Microsoft.CodeAnalysis.CSharp.Features` | `5.3.0` | `Directory.Packages.props` |
-| `Microsoft.CodeAnalysis.Features` | `5.3.0` | `Directory.Packages.props` |
-| `Microsoft.CodeAnalysis.Workspaces.MSBuild` | `5.3.0` | `Directory.Packages.props` |
-| `Microsoft.CodeAnalysis.CSharp.Scripting` | `5.3.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.CSharp` | `5.6.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.CSharp.Workspaces` | `5.6.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.CSharp.Features` | `5.6.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.Features` | `5.6.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.Workspaces.MSBuild` | `5.6.0` | `Directory.Packages.props` |
+| `Microsoft.CodeAnalysis.CSharp.Scripting` | `5.6.0` | `Directory.Packages.props` |
 
 | Coupled axis | Current | Notes |
 |--------------|---------|--------|
-| MSBuild (API packages) | `17.11.48` (`Microsoft.Build`, `Framework`, `Tasks.Core`, `Utilities.Core`) | Used with workspace loading; mismatch with the SDK’s MSBuild can cause subtle load errors—bump only with a reason and full test pass. |
+| MSBuild (API packages) | `17.14.28` (`Microsoft.Build`, `Framework`, `Tasks.Core`, `Utilities.Core`) | Used with workspace loading; mismatch with the SDK’s MSBuild can cause subtle load errors—bump only with a reason and full test pass. |
 | `Microsoft.Build.Locator` | `1.11.2` | Often updated when MSBuild/workspace loading behavior changes. |
 
 **Samples:** `samples/GeneratedDocumentSolution/ConsumerLib.Generators` uses `VersionOverride="5.0.0"` for `Microsoft.CodeAnalysis.CSharp` intentionally; that row is **not** central-managed parity—update only when the sample scenario requires it.
@@ -42,9 +42,8 @@ These packages **must stay on the same `Microsoft.CodeAnalysis.*` version** for 
 
 | Package id | Current | Where pinned | Move with | After bump |
 |------------|---------|--------------|-----------|------------|
-| `Microsoft.CodeAnalysis.NetAnalyzers` | `10.0.100` | `Directory.Packages.props` | Same **SDK feature band** as `global.json` when practical (e.g. `10.0.100` SDK ↔ `10.0.100` analyzers) | `dotnet build` / fix new CA warnings (`TreatWarningsAsErrors` is on) |
-| `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `4.14.0` | `Directory.Packages.props` | Independent of Roslyn API `5.x` line; follow package release notes | Build + review `BannedSymbols.txt` |
-| `SecurityCodeScan.VS2019` | `5.6.7` | `Directory.Packages.props` | Independent | Build + spot-check security diagnostics tools |
+| `Microsoft.CodeAnalysis.NetAnalyzers` | `10.0.302` | `Directory.Packages.props` | Same **SDK feature band** as `global.json` when practical (e.g. `10.0.100` SDK ↔ `10.0.100` analyzers) | `dotnet build` / fix new CA warnings (`TreatWarningsAsErrors` is on) |
+| `Microsoft.CodeAnalysis.BannedApiAnalyzers` | `5.6.0` | `Directory.Packages.props` | Independent of Roslyn API `5.x` line; follow package release notes | Build + review `BannedSymbols.txt` |
 
 ---
 
@@ -52,13 +51,15 @@ These packages **must stay on the same `Microsoft.CodeAnalysis.*` version** for 
 
 | Package id | Current | Where pinned | Move with |
 |------------|---------|--------------|-----------|
-| `ModelContextProtocol` | `1.1.0` | `Directory.Packages.props` | MCP protocol expectations; read upstream breaking changes |
-| `Microsoft.Extensions.Hosting` | `10.0.3` | `Directory.Packages.props` | Other `Microsoft.Extensions.*` in same line |
-| `Microsoft.Extensions.Logging` | `10.0.3` | `Directory.Packages.props` | Same |
-| `Microsoft.Extensions.Logging.Console` | `10.0.3` | `Directory.Packages.props` | Same |
+| `ModelContextProtocol` | `2.1.0` | `Directory.Packages.props` | MCP protocol expectations; read upstream breaking changes |
+| `Microsoft.Extensions.Hosting` | `10.0.10` | `Directory.Packages.props` | Other `Microsoft.Extensions.*` in same line |
+| `Microsoft.Extensions.Logging` | `10.0.10` | `Directory.Packages.props` | Same |
+| `Microsoft.Extensions.Logging.Console` | `10.0.10` | `Directory.Packages.props` | Same |
 | `Nito.AsyncEx` | `5.1.2` | `Directory.Packages.props` | Independent |
-| `DiffPlex` | `1.7.2` | `Directory.Packages.props` | Independent |
-| `Microsoft.SourceLink.GitHub` | `10.0.102` | `Directory.Packages.props` | Often aligned with .NET / SDK wave; not runtime-critical |
+| `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
+| `Microsoft.SourceLink.GitHub` | `10.0.301` | `Directory.Packages.props` | Often aligned with .NET / SDK wave; not runtime-critical |
+
+MCP SDK 2.1 serves both protocol eras by default: modern `2026-07-28` requests use `server/discover` plus per-request metadata, while initialize-capable clients negotiate a down-level revision. This stdio host temporarily retains deprecated Roots, Sampling, and Logging compatibility. Their bounded replacements are tracked by `mcp-roots-configured-validation-migration`, `mcp-roots-query-discovery-migration`, `mcp-sampling-mrtr-migration`, and `mcp-logging-stderr-otel-migration`.
 
 ---
 
@@ -66,9 +67,9 @@ These packages **must stay on the same `Microsoft.CodeAnalysis.*` version** for 
 
 | Component | Current | Where pinned | Notes |
 |-----------|---------|--------------|--------|
-| `Microsoft.NET.Test.Sdk` | `17.14.0` | `Directory.Packages.props` | Bump with test adapter/framework when needed |
-| `MSTest.TestAdapter` / `MSTest.TestFramework` | `3.8.3` | `Directory.Packages.props` | Keep adapter and framework in sync |
-| `coverlet.collector` | `6.0.4` | `Directory.Packages.props` | Coverage collection |
+| `Microsoft.NET.Test.Sdk` | `18.8.1` | `Directory.Packages.props` | Bump with test adapter/framework when needed |
+| `MSTest.TestAdapter` / `MSTest.TestFramework` | `4.3.3` | `Directory.Packages.props` | Keep adapter and framework in sync |
+| `coverlet.collector` | `10.0.1` | `Directory.Packages.props` | Coverage collection |
 | ReportGenerator (global tool) | `5.4.7` | `.github/workflows/ci.yml` | HTML coverage summary only; independent of NuGet central versions |
 
 ---

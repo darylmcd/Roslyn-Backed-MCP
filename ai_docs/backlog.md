@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-12T21:45:21Z
+**updated_at:** 2026-08-12T23:47:34Z
 
 ## Agent contract
 
@@ -64,6 +64,10 @@
 | `elicitation-inmemory-harness-consolidation` | Medium | — | **Extract a shared in-memory MCP client/server test harness** — two byte-identical ~110-line harnesses exist in the same test assembly, differing only in transport name + client handlers. [type: refactor] [source: elicitation-trychoice-cancellation-swallow cq review] | S | items/elicitation-inmemory-harness-consolidation.md |
 | `elicitation-tryelicitchoice-swallow-path-coverage` | Medium | — | **Cover the retained InvalidOperationException/McpException swallow paths in TryElicitChoiceAsync** — the narrowed catch has zero test coverage; the 2-type enumeration's provenance is an already-proven-incomplete comment. [type: chore] [source: elicitation-trychoice-cancellation-swallow cq review] | S | items/elicitation-tryelicitchoice-swallow-path-coverage.md |
 | `test-run-failures-pagination-truncation` | Medium | — | **Re-implement test_run failures pagination/truncation as its own unit** — reverted from test-run-unfiltered-bare-error-rootcause (wrong hypothesis); measure real MCP output cap first. [type: hardening] | M | items/test-run-failures-pagination-truncation.md |
+| `mcp-roots-configured-validation-migration` | Medium | — | Replace deprecated client Roots as the file-path security source with an explicit configured sanctioned-root boundary. | M | items/mcp-roots-configured-validation-migration.md |
+| `mcp-roots-query-discovery-migration` | Medium | mcp-roots-configured-validation-migration | Replace deprecated roots/list query-anchored solution discovery with explicit configured roots or request-scoped MRTR input. | M | items/mcp-roots-query-discovery-migration.md |
+| `mcp-sampling-mrtr-migration` | Medium | — | Replace deprecated client Sampling with request-scoped MRTR input or retire the experimental option through public deprecation policy. | M | items/mcp-sampling-mrtr-migration.md |
+| `mcp-logging-stderr-otel-migration` | Medium | — | Replace deprecated protocol Logging with stderr plus configured structured observability, then retire the compatibility bridge. | M | items/mcp-logging-stderr-otel-migration.md |
 
 ## Low
 
@@ -120,7 +124,6 @@
 | `fixall-scope-required-validation-hoist` | Low | — | **Hoist fix_all scope-required parameter validation ahead of provider discovery** — the projectName guard sits after the no-FixAll-provider early return, so a diagnostic with no provider masks the corrective error. [type: bug] [source: fixall-blank-projectname-silent-wrong-target cq review] | S | items/fixall-scope-required-validation-hoist.md |
 | `gate-owned-timeout-cts-oce-classification-audit` | Low | — | **Audit other internal-timeout CTS sites for the same unclassified-OperationCanceledException escape** found+fixed in WorkspaceExecutionGate by test-run-unfiltered-bare-error-rootcause. [source: 2026-08-11 post-review investigation] | L | items/gate-owned-timeout-cts-oce-classification-audit.md |
 | `gate-timeout-exception-drops-inner-oce` | Low | — | **TimeoutException reclassification sites drop the original OperationCanceledException** — WorkspaceExecutionGate + GatedCommandExecutor construct message-only TimeoutExceptions, discarding cancellation provenance. [type: bug] | M | items/gate-timeout-exception-drops-inner-oce.md |
-| `upgrade-matrix-version-drift-guard` | Low | — | **Guard upgrade-matrix package pins against drift** — sync the two stale versions and compare documented exact pins with Directory.Packages.props in the AI-doc gate. [type: docs] [source: 2026-08-12 open-PR audit] | M | items/upgrade-matrix-version-drift-guard.md |
 
 ## Defer
 

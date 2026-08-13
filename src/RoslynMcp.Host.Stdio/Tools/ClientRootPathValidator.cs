@@ -6,6 +6,7 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+#pragma warning disable MCP9005 // Preserve the fail-closed Roots boundary until mcp-roots-configured-validation-migration replaces it.
 /// <summary>
 /// Validates that a requested workspace path falls under one of the root directories
 /// sanctioned by the MCP client.
@@ -252,14 +253,26 @@ internal static class ClientRootPathValidator
     {
         if (File.Exists(fullPath))
         {
-            var resolved = new FileInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
-            return resolved is null ? null : Path.GetFullPath(resolved.FullName);
+            var file = new FileInfo(fullPath);
+            if ((file.Attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                return fullPath;
+            }
+
+            var resolved = file.ResolveLinkTarget(returnFinalTarget: true);
+            return resolved is null ? fullPath : Path.GetFullPath(resolved.FullName);
         }
 
         if (Directory.Exists(fullPath))
         {
-            var resolved = new DirectoryInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
-            return resolved is null ? null : Path.GetFullPath(resolved.FullName);
+            var directory = new DirectoryInfo(fullPath);
+            if ((directory.Attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                return fullPath;
+            }
+
+            var resolved = directory.ResolveLinkTarget(returnFinalTarget: true);
+            return resolved is null ? fullPath : Path.GetFullPath(resolved.FullName);
         }
 
         return null;
@@ -277,7 +290,14 @@ internal static class ClientRootPathValidator
 
             if (Directory.Exists(current))
             {
-                var resolved = new DirectoryInfo(current).ResolveLinkTarget(returnFinalTarget: true);
+                var directory = new DirectoryInfo(current);
+                if ((directory.Attributes & FileAttributes.ReparsePoint) == 0)
+                {
+                    current = Path.GetDirectoryName(current);
+                    continue;
+                }
+
+                var resolved = directory.ResolveLinkTarget(returnFinalTarget: true);
                 if (resolved is not null)
                 {
                     var relativeTail = Path.GetRelativePath(current, fullPath);
@@ -291,3 +311,4 @@ internal static class ClientRootPathValidator
         return null;
     }
 }
+#pragma warning restore MCP9005

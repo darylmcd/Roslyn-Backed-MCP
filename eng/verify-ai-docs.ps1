@@ -94,6 +94,53 @@ foreach ($file in $markdownFiles) {
     }
 }
 
+# Keep the two dependency pins called out as exact "Current" values in the upgrade matrix
+# synchronized with central package management. This is intentionally narrow: the matrix is
+# guidance, not a second package manifest. Add a check only when a row is meant to be enforced.
+$centralPackagesPath = Join-Path $RepoRoot 'Directory.Packages.props'
+$upgradeMatrixPath = Join-Path $RepoRoot 'docs/upgrade-matrix.md'
+try {
+    [xml]$centralPackages = Get-Content -LiteralPath $centralPackagesPath -Raw
+    $upgradeMatrix = Get-Content -LiteralPath $upgradeMatrixPath -Raw
+
+    $upgradeMatrixChecks = @(
+        @{
+            PackageId = 'ModelContextProtocol'
+            RowPattern = '\|\s*`ModelContextProtocol`\s*\|\s*`(?<version>[^`]+)`\s*\|'
+        },
+        @{
+            PackageId = 'Microsoft.NET.Test.Sdk'
+            RowPattern = '\|\s*`Microsoft\.NET\.Test\.Sdk`\s*\|\s*`(?<version>[^`]+)`\s*\|'
+        }
+    )
+
+    foreach ($check in $upgradeMatrixChecks) {
+        $packageNode = $centralPackages.Project.ItemGroup.PackageVersion |
+            Where-Object { $_.Include -eq $check.PackageId } |
+            Select-Object -First 1
+        if ($null -eq $packageNode) {
+            $issues.Add("Upgrade matrix parity: package '$($check.PackageId)' is not pinned in Directory.Packages.props.")
+            continue
+        }
+
+        $matrixMatch = [regex]::Match($upgradeMatrix, $check.RowPattern)
+        if (-not $matrixMatch.Success) {
+            $issues.Add("Upgrade matrix parity: docs/upgrade-matrix.md has no exact Current row for '$($check.PackageId)'.")
+            continue
+        }
+
+        $centralVersion = [string]$packageNode.Version
+        $documentedVersion = $matrixMatch.Groups['version'].Value
+        if ($documentedVersion -ne $centralVersion) {
+            $issues.Add(
+                "Upgrade matrix parity: '$($check.PackageId)' documents '$documentedVersion' but Directory.Packages.props pins '$centralVersion'. Update docs/upgrade-matrix.md in the same change.")
+        }
+    }
+}
+catch {
+    $issues.Add("Upgrade matrix parity check failed to read package or matrix data: $($_.Exception.Message)")
+}
+
 if ($issues.Count -gt 0) {
     $issues | Sort-Object -Unique | ForEach-Object { Write-Error $_ }
     exit 1
