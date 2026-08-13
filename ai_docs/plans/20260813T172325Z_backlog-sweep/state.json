@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-13T17:23:25.942Z",
-  "backlogSnapshot": "2026-08-13T05:18:24Z",
+  "backlogSnapshot": "2026-08-13T21:54:17Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 1,
@@ -43,8 +43,8 @@
       "mergedAt": null,
       "notes": "DEFERRED at Step 8b fix-cycle cap (2/2). Spec: pass (cycle 2, incl. an empirically-verified inverting test for the tool-layer wiring). Code-quality: FAIL (high). PR #1230 left OPEN for reference with a DO-NOT-MERGE comment; branch retained. Two independent blockers: (1) acceptance items 3-4 unreachable from this seam because MSBuildWorkspace.TryApplyChanges writes through the un-canonicalized Document.FilePath before the pinned write -> row workspace-load-path-canonicalization; (2) the attempt introduced a NEW high-severity defect - physical (ResolvePathCore, no lexical '..' collapse) vs lexical (SymbolResolver.FindDocument/Path.GetFullPath) resolution diverge for '<root>/real/sub/link/../x.cs', writing document A's text into file B while undo records A. Needs re-planning as a fresh initiative; note EditService.cs was decomposed by PR #1241 after this branch was cut, so it will not rebase cleanly. Backlog row path-boundary-link-swap-toctou stays OPEN and is amended with all of this.",
       "fileSetHash": "eacefff2041608210cf27aeede311995d4d97ee15948f7cbc0ba236baedd448d",
-      "stanzaHash": "ccdac9e8cf936e652631393318b760e265c9a21b3642f6332e55b6196851662f",
-      "reviewedStanzaHash": "ccdac9e8cf936e652631393318b760e265c9a21b3642f6332e55b6196851662f"
+      "stanzaHash": "c8b2d614bbfab5f4192b5170213a6aeab8e6858d3cb4d8725d551bde0a434427",
+      "reviewedStanzaHash": "c8b2d614bbfab5f4192b5170213a6aeab8e6858d3cb4d8725d551bde0a434427"
     },
     {
       "id": "type-extraction-member-shape-validation",
@@ -261,7 +261,7 @@
     {
       "id": "gate-owned-timeout-cts-oce-classification-audit",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "gate-owned-timeout-cts-oce-classification-audit"
       ],
@@ -283,9 +283,9 @@
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1244",
+      "mergedAt": "2026-08-13T21:59:04Z",
+      "notes": "Zero-diff audit: 0 production, 0 test files. Concluded no gap at all 5 anchors; all 5 re-verified against source by the orchestrator before closure. Its only deliverable was the backlog row closure, which shipped in the reconcile PR #1244 — hence that PR as prUrl/mergedAt. Spin-off filed: workspace-fork-oce-guard-single-condition (the audit's 5th anchor carries the weaker one-condition guard, which its scope did not ask about).",
       "bundleCandidatePeers": [
         "gate-timeout-exception-drops-inner-oce"
       ],
@@ -714,8 +714,8 @@
     ]
   },
   "conflictGraphInputHash": "db443bab87df7be811f0f4228be643c23ed10527e9d6ee442a44a44eaf1e236f",
-  "planHash": "9f49fdd6b805c038ef3056533ee449de887123cdf1b537890114d609309309ef",
-  "backlogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152",
+  "planHash": "b0b884b8f0dbf9d03a7d451bff72dd0d99c2b19ef86d2f6c995cbeba9714c962",
+  "backlogSnapshotHash": "83a20ad23eebc347d431f4a75fe7bb0c102769651eafa7b59f944f93b0dcc051",
   "reviewFindings": {
     "block": 0,
     "warn": 2,
@@ -801,6 +801,8 @@
       "evidence": "RESOLVED by orchestrator: scheduleHint heroic-last cleared to null on 6.01/6.02/6.03 (inherited from the split parent; each child is a 4-file batch with fanoutOversize false and fanout == files)."
     }
   ],
-  "reviewedPlanHash": "9f49fdd6b805c038ef3056533ee449de887123cdf1b537890114d609309309ef",
-  "reviewedBacklogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152"
+  "reviewedPlanHash": "b0b884b8f0dbf9d03a7d451bff72dd0d99c2b19ef86d2f6c995cbeba9714c962",
+  "reviewedBacklogSnapshotHash": "83a20ad23eebc347d431f4a75fe7bb0c102769651eafa7b59f944f93b0dcc051",
+  "completed": true,
+  "completedAt": "2026-08-13T21:59:35.189Z"
 }
