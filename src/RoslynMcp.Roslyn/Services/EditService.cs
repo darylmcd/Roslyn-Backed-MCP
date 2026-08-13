@@ -50,7 +50,8 @@ public sealed class EditService : IEditService
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,
-        bool autoRevertOnError = false)
+        bool autoRevertOnError = false,
+        string? canonicalWritePath = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (document, sourceText) = await ResolveDocumentAndTextAsync(solution, filePath, ct).ConfigureAwait(false);
@@ -100,7 +101,7 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots);
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct, canonicalWritePath: canonicalWritePath).ConfigureAwait(false);
 
         // Only wire up verify when the core apply actually wrote the edit. When the
         // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
@@ -667,6 +668,11 @@ public sealed class EditService : IEditService
     /// (<c>workspace-changes-atomic-batch-split-without-batchid</c>, gh #740).
     /// Mirrors <see cref="CompositeApplyOrchestrator"/>'s post-loop single-entry pattern.
     /// </param>
+    /// <param name="canonicalWritePath">
+    /// Optional boundary-canonicalized target the physical write must land on, pinned by the caller's
+    /// path validation (<c>path-boundary-link-swap-toctou</c>). <c>null</c> writes to the resolved
+    /// document's own path.
+    /// </param>
     private async Task<TextEditResultDto> ApplyTextEditsCoreAsync(
         string workspaceId,
         string filePath,
@@ -677,7 +683,8 @@ public sealed class EditService : IEditService
         SourceText newSourceText,
         string toolName,
         CancellationToken ct,
-        bool suppressChangeTrackerRecord = false)
+        bool suppressChangeTrackerRecord = false,
+        string? canonicalWritePath = null)
     {
         var normalizedPath = Path.GetFullPath(filePath);
         var originalText = sourceText.ToString();
@@ -692,7 +699,7 @@ public sealed class EditService : IEditService
         }
 
         // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
-        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct).ConfigureAwait(false);
+        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct, canonicalWritePath).ConfigureAwait(false);
         if (!persisted)
         {
             return new TextEditResultDto(false, filePath, 0, [], null);
@@ -755,7 +762,22 @@ public sealed class EditService : IEditService
         return list;
     }
 
-    private async Task<bool> PersistDocumentTextToDiskAsync(string workspaceId, string normalizedPath, CancellationToken ct)
+    /// <summary>
+    /// Flushes the workspace document's current text to disk.
+    /// </summary>
+    /// <param name="canonicalWritePath">
+    /// When non-null, the boundary-canonicalized target the caller's path validation already pinned;
+    /// the write lands there instead of on <c>document.FilePath</c>. Document LOOKUP deliberately still
+    /// keys off <paramref name="normalizedPath"/> and encoding still comes from the document's own
+    /// SourceText: MSBuildWorkspace does not canonicalize <c>Document.FilePath</c> through links, so
+    /// matching on the canonical form would miss documents in workspaces loaded via a symlinked project
+    /// directory. Only the physical write target is pinned (<c>path-boundary-link-swap-toctou</c>).
+    /// </param>
+    private async Task<bool> PersistDocumentTextToDiskAsync(
+        string workspaceId,
+        string normalizedPath,
+        CancellationToken ct,
+        string? canonicalWritePath = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = solution.Projects
@@ -775,7 +797,7 @@ public sealed class EditService : IEditService
             // UTF-16 source file byte-faithful instead of silently re-encoding it as UTF-8-no-BOM.
             var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
             await AtomicFileWriter.WriteAllTextAsync(
-                document.FilePath,
+                canonicalWritePath ?? document.FilePath,
                 sourceText.ToString(),
                 ct,
                 encoding: SourceFileEncoding.FromSourceText(sourceText.Encoding)).ConfigureAwait(false);

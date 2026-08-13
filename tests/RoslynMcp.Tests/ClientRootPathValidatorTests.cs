@@ -449,6 +449,82 @@ public class ClientRootPathValidatorTests
         StringAssert.Contains(error.Message, "no sanctioned roots are configured");
     }
 
+    // ───────── canonical-target return (path-boundary-link-swap-toctou) ─────────
+
+    [TestMethod]
+    public async Task ValidatePathAgainstRoots_Returns_CanonicalLinkResolvedTarget()
+    {
+        // Validation already canonicalizes link-by-link to make its boundary comparison; handing
+        // that canonical target back is what lets a write pin the location the boundary actually
+        // approved instead of re-walking the client-supplied path at write time.
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-canonical-return-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var physicalDir = Path.Combine(sanctionedRoot, "physical");
+        var linkedDir = Path.Combine(sanctionedRoot, "linked");
+        Directory.CreateDirectory(physicalDir);
+        var physicalFile = Path.Combine(physicalDir, "file.cs");
+        File.WriteAllText(physicalFile, "// canonical-return regression");
+
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(linkedDir, physicalDir))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            var canonical = await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null,
+                Path.Combine(linkedDir, "file.cs"),
+                CancellationToken.None,
+                securityOptions: new SecurityOptions { SanctionedRoots = [sanctionedRoot] });
+
+            Assert.AreEqual(Path.GetFullPath(physicalFile), canonical,
+                "Validation must return the link-resolved target it approved, not the raw request path.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task ValidatePathAgainstRoots_OutOfBoundaryPath_Throws_Instead_Of_Returning()
+    {
+        // Guards the throw against being softened into a canonical-path return when the method
+        // grew its return value.
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-canonical-reject-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var outsideFile = Path.Combine(testRoot, "outside", "file.cs");
+
+        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null,
+                outsideFile,
+                CancellationToken.None,
+                securityOptions: new SecurityOptions { SanctionedRoots = [sanctionedRoot] }));
+
+        StringAssert.Contains(error.Message, "outside the configured sanctioned-root boundary");
+    }
+
+    [TestMethod]
+    public async Task ValidatePathAgainstRoots_FailOpenWithNoConfiguredRoots_Still_Returns_CanonicalTarget()
+    {
+        // The fail-open branch short-circuits before the boundary comparison. It still owes the
+        // caller a usable canonical write target — returning an empty string here would send the
+        // pinned write to a bogus location.
+        var path = Path.Combine(TestTempRoot.Current, "rmcp-failopen-canonical", "sub", "..", "file.cs");
+
+        var canonical = await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+            server: null,
+            path,
+            CancellationToken.None,
+            securityOptions: new SecurityOptions { PathValidationFailOpen = true });
+
+        Assert.AreEqual(ClientRootPathValidator.ResolvePath(path), canonical);
+        Assert.IsTrue(Path.IsPathFullyQualified(canonical));
+    }
+
     // ───────── SecurityOptions fail-open/fail-closed default tests ─────────
 
     [TestMethod]

@@ -40,6 +40,16 @@ public interface IEditService
     /// into a generic <c>apply_text_edit</c> bucket
     /// (<c>workspace-changes-log-missing-editorconfig-writers</c>).
     /// </remarks>
+    /// <param name="canonicalWritePath">
+    /// Optional boundary-canonicalized (fully link-resolved) target to persist the edited text to.
+    /// When a caller has already validated <paramref name="filePath"/> against the sanctioned-root
+    /// boundary, it should pass the canonical path the validator returned: the physical write then
+    /// lands on that pinned target instead of re-walking <paramref name="filePath"/> at write time,
+    /// which would re-resolve any symlink/junction component and let an attacker who swaps a link
+    /// between validation and write redirect the bytes outside the boundary
+    /// (<c>path-boundary-link-swap-toctou</c>). <c>null</c> (the default) keeps the historical
+    /// behavior of writing to the workspace document's own path.
+    /// </param>
     Task<TextEditResultDto> ApplyTextEditsAsync(
         string workspaceId,
         string filePath,
@@ -48,7 +58,8 @@ public interface IEditService
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,
-        bool autoRevertOnError = false);
+        bool autoRevertOnError = false,
+        string? canonicalWritePath = null);
 
     /// <summary>
     /// Applies text edits to multiple files atomically from an undo perspective: a single

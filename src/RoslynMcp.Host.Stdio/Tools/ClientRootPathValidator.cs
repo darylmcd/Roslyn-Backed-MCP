@@ -33,11 +33,19 @@ internal static class ClientRootPathValidator
     /// Optional request-scoped roots supplied by a compatibility adapter. When present, a path must
     /// be inside both the configured boundary and this list. The narrowing list is never widened.
     /// </param>
+    /// <returns>
+    /// The boundary-canonicalized (fully link-resolved) form of <paramref name="path"/>. Callers that
+    /// go on to write to the validated location MUST persist to this returned value rather than to the
+    /// client-supplied string: re-walking the original path at write time re-resolves every symlink and
+    /// junction component, so an attacker who swaps a link between validation and write can redirect
+    /// the bytes outside the boundary (<c>path-boundary-link-swap-toctou</c>). Pinning the canonical
+    /// target closes that validation-to-use window.
+    /// </returns>
     /// <exception cref="ArgumentException">
     /// Thrown when no configured boundary exists in fail-closed mode, configuration is invalid, or
     /// the requested path falls outside the effective boundary.
     /// </exception>
-    public static async Task ValidatePathAgainstRootsAsync(
+    public static async Task<string> ValidatePathAgainstRootsAsync(
         McpServer? server,
         string path,
         CancellationToken ct,
@@ -52,7 +60,7 @@ internal static class ClientRootPathValidator
             server,
             ct,
             logger).ConfigureAwait(false);
-        await Task.Run(
+        return await Task.Run(
             () => ValidatePath(
                 path,
                 options,
@@ -63,7 +71,10 @@ internal static class ClientRootPathValidator
             ct).ConfigureAwait(false);
     }
 
-    private static void ValidatePath(
+    /// <summary>
+    /// Validates <paramref name="path"/> and returns its canonical link-resolved form.
+    /// </summary>
+    private static string ValidatePath(
         string path,
         SecurityOptions options,
         bool expandSanctionedRoots,
@@ -74,8 +85,10 @@ internal static class ClientRootPathValidator
         var configuredRoots = ConfiguredRootBoundary.GetCanonicalRoots(options);
         if (configuredRoots.Count == 0)
         {
+            // Fail-closed throws inside the helper; the fail-open branch still owes the caller a
+            // usable canonical target, so resolve it here rather than returning an empty string.
             HandleMissingConfiguration(path, options.PathValidationFailOpen, logger);
-            return;
+            return ResolvePath(path);
         }
 
         var canonicalPath = ResolvePath(path);
@@ -94,6 +107,8 @@ internal static class ClientRootPathValidator
                 $"Path '{path}' is outside the configured sanctioned-root boundary.",
                 nameof(path));
         }
+
+        return canonicalPath;
     }
 
     private static bool IsPathAllowed(

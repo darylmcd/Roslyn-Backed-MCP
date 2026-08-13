@@ -423,7 +423,8 @@ public sealed class SuppressionServiceTests
             CancellationToken ct,
             bool skipSyntaxCheck = false,
             bool verify = false,
-            bool autoRevertOnError = false)
+            bool autoRevertOnError = false,
+            string? canonicalWritePath = null)
         {
             var original = File.ReadAllText(filePath);
             var sourceText = Microsoft.CodeAnalysis.Text.SourceText.From(original);
@@ -467,7 +468,8 @@ public sealed class SuppressionServiceTests
             CancellationToken ct,
             bool skipSyntaxCheck = false,
             bool verify = false,
-            bool autoRevertOnError = false) =>
+            bool autoRevertOnError = false,
+            string? canonicalWritePath = null) =>
             OnApply?.Invoke(workspaceId, filePath, edits, toolName, ct, skipSyntaxCheck)
             ?? Task.FromResult(new TextEditResultDto(false, filePath, 0, []));
 

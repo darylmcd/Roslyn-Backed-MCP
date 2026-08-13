@@ -29,8 +29,12 @@ public static class EditTools
     {
         return gate.RunWriteAsync(workspaceId, async c =>
         {
-            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-            var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, "apply_text_edit", c, skipSyntaxCheck, verify, autoRevertOnError);
+            // path-boundary-link-swap-toctou: pin the canonical (link-resolved) target the boundary
+            // check actually approved and write to THAT, so a symlink/junction swap between this
+            // validation and the physical write cannot redirect the bytes outside the boundary.
+            var canonicalWritePath = await ClientRootPathValidator
+                .ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, "apply_text_edit", c, skipSyntaxCheck, verify, autoRevertOnError, canonicalWritePath);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }

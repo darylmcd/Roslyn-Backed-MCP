@@ -747,6 +747,127 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// path-boundary-link-swap-toctou: the physical write must land on the canonical target that
+    /// path validation approved, not on a re-walk of the client-supplied path.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deterministic stand-in for the race: the workspace is loaded THROUGH a directory link that
+    /// lives inside the sanctioned root, validation pins the link-resolved target, and only then is
+    /// the link re-pointed outside the boundary. Before the fix, <c>PersistDocumentTextToDiskAsync</c>
+    /// re-derived its target from the (un-canonicalized) document path, so the post-swap write missed
+    /// the validated file entirely and landed out of boundary — the final assertion inverts.
+    /// </para>
+    /// <para>
+    /// KNOWN RESIDUAL GAP — deliberately NOT asserted here: <c>MSBuildWorkspace.TryApplyChanges</c>
+    /// (see <c>WorkspaceManager.TryApplyChanges</c>) flushes changed documents to disk itself, using
+    /// the same un-canonicalized <c>Document.FilePath</c>, so the swapped target still receives that
+    /// earlier Roslyn-level write. Closing it needs canonicalization at workspace-load time (so
+    /// document paths never carry a swappable link component) — a different seam from this row's
+    /// validation-to-write pinning, and out of its scope. Asserting "swapped target untouched" here
+    /// would be a false claim.
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public async Task ApplyTextEdit_PinnedCanonicalTarget_Survives_LinkSwap_After_Validation()
+    {
+        var workspacePath = CreateSampleSolutionCopy();
+        var copyRoot = Path.GetDirectoryName(workspacePath)!;
+        var hostRoot = Path.Combine(TestTempRoot.Current, "rmcp-linkswap-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(hostRoot, "sanctioned");
+        var outsideRoot = Path.Combine(hostRoot, "outside");
+        var realRoot = Path.Combine(sanctionedRoot, "real");
+        var linkRoot = Path.Combine(sanctionedRoot, "link");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outsideRoot);
+        Directory.Move(copyRoot, realRoot);
+
+        string? tempWorkspaceId = null;
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(linkRoot, realRoot))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            tempWorkspaceId = await LoadWorkspaceCopyAsync(
+                Path.Combine(linkRoot, Path.GetFileName(workspacePath)));
+            var linkedProgramFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
+            StringAssert.StartsWith(linkedProgramFile, linkRoot,
+                "Test premise: the workspace must be loaded through the link so the document path " +
+                "carries the swappable link component.");
+
+            var relativeProgramPath = Path.GetRelativePath(linkRoot, linkedProgramFile);
+            var realProgramFile = Path.GetFullPath(Path.Combine(realRoot, relativeProgramPath));
+            var swappedProgramFile = Path.Combine(outsideRoot, relativeProgramPath);
+
+            await using var harness = await CreateServerWithSanctionedRootAsync(
+                sanctionedRoot, CancellationToken.None);
+
+            var canonical = await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                harness.Server, linkedProgramFile, CancellationToken.None);
+            Assert.AreEqual(realProgramFile, canonical,
+                "Validation must hand back the in-boundary target it resolved through the link.");
+
+            // Pre-swap: the tool wiring carries the canonical target into the write end-to-end.
+            var preSwapJson = await EditTools.ApplyTextEdit(
+                harness.Server,
+                WorkspaceExecutionGate,
+                EditService,
+                tempWorkspaceId,
+                linkedProgramFile,
+                [new TextEditDto(1, 1, 1, 1, "// pre-swap edit\n")],
+                CancellationToken.None);
+            using (var preSwapDoc = JsonDocument.Parse(preSwapJson))
+            {
+                Assert.AreEqual(1, preSwapDoc.RootElement.GetProperty("editsApplied").GetInt32());
+            }
+
+            StringAssert.Contains(await File.ReadAllTextAsync(realProgramFile), "// pre-swap edit");
+
+            // Swap the link out from under the already-validated path.
+            Directory.CreateDirectory(Path.GetDirectoryName(swappedProgramFile)!);
+            await File.WriteAllTextAsync(swappedProgramFile, "// swapped-in decoy\n");
+            Directory.Delete(linkRoot);
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(linkRoot, outsideRoot))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            // The swap really did move the request path out of the boundary: a fresh validation
+            // of the same string now fails. This is what an attacker races against.
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                    harness.Server, linkedProgramFile, CancellationToken.None));
+
+            // The write pinned to the pre-swap canonical target still lands in-boundary.
+            var pinnedResult = await EditService.ApplyTextEditsAsync(
+                tempWorkspaceId,
+                linkedProgramFile,
+                [new TextEditDto(1, 1, 1, 1, "// pinned edit\n")],
+                "apply_text_edit",
+                CancellationToken.None,
+                canonicalWritePath: canonical);
+
+            Assert.IsTrue(pinnedResult.Success);
+            StringAssert.Contains(await File.ReadAllTextAsync(realProgramFile), "// pinned edit",
+                "The write must follow the canonical target validation approved. Re-walking the " +
+                "request path at write time would have sent these bytes to the swapped location.");
+        }
+        finally
+        {
+            if (tempWorkspaceId is not null)
+            {
+                WorkspaceManager.Close(tempWorkspaceId);
+            }
+
+            DeleteDirectoryIfExists(hostRoot);
+        }
+    }
+
     private static string FindDocumentPath(string name) => FindDocumentPath(WorkspaceId, name);
 
     private static string FindDocumentPath(string workspaceId, string name)
