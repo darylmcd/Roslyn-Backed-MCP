@@ -261,18 +261,25 @@ internal static class CsprojSemanticEquality
         return snapshots;
     }
 
+    /// <remarks>
+    /// BOM detection is delegated to <see cref="SourceFileEncoding.Sniff"/> so this helper — scoped
+    /// by its doc header to csproj-XML semantic comparison — is no longer the app's de-facto shared
+    /// BOM detector (<c>extract-atomicfilewriter-encoding-helper</c>). The second
+    /// <see cref="StreamReader"/> below is constructed with the already-detected encoding, so it
+    /// still strips a matching preamble (<see cref="StreamReader"/> checks the preamble of the
+    /// encoding it was given regardless of <c>detectEncodingFromByteOrderMarks</c>) and the decoded
+    /// <c>Content</c> is byte-for-byte what the single-reader version produced.
+    /// </remarks>
     internal static ProjectFileSnapshot CreateSnapshot(byte[] bytes)
     {
+        var (encoding, hasPreamble) = SourceFileEncoding.Sniff(bytes);
         using var stream = new MemoryStream(bytes, writable: false);
         using var reader = new StreamReader(
             stream,
-            Encoding.UTF8,
-            detectEncodingFromByteOrderMarks: true,
+            encoding,
+            detectEncodingFromByteOrderMarks: false,
             leaveOpen: false);
         var content = reader.ReadToEnd();
-        var encoding = reader.CurrentEncoding;
-        var preamble = encoding.GetPreamble();
-        var hasPreamble = preamble.Length > 0 && bytes.AsSpan().StartsWith(preamble);
         return new ProjectFileSnapshot(content, bytes, encoding, hasPreamble);
     }
 

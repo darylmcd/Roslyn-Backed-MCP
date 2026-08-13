@@ -571,7 +571,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 projectFilePath,
                 updatedContent,
                 ct,
-                encoding: AtomicFileWriter.ResolveWriteEncoding(preApplyBytes)).ConfigureAwait(false);
+                encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
             _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");
