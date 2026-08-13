@@ -3,11 +3,11 @@
   "generatedAt": "2026-08-13T17:23:25.942Z",
   "backlogSnapshot": "2026-08-13T05:18:24Z",
   "addendaLoaded": true,
-  "phase": "review-cycle-2-done",
+  "phase": "complete",
   "cycleCount": 1,
   "maxCycles": 2,
   "reviewStatus": "passed-with-warnings",
-  "readyForExecute": false,
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "path-boundary-link-swap-toctou",
@@ -43,7 +43,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "eacefff2041608210cf27aeede311995d4d97ee15948f7cbc0ba236baedd448d",
-      "stanzaHash": "7548c84ab36133e08d56ac99627cff4663576d81cb7618dc1cfc0a0cbbbd891e"
+      "stanzaHash": "ccdac9e8cf936e652631393318b760e265c9a21b3642f6332e55b6196851662f",
+      "reviewedStanzaHash": "ccdac9e8cf936e652631393318b760e265c9a21b3642f6332e55b6196851662f"
     },
     {
       "id": "type-extraction-member-shape-validation",
@@ -76,7 +77,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "13ad8db997a85ea737294f422c0cfc007019771df053b7260c80d3f5e81e8137",
-      "stanzaHash": "98895e73d557e2c730736de22a15443f97e560d4e39c850e569bac541eebd437"
+      "stanzaHash": "cad34bcd6f928f064f0e8c7df59afc0f78ce5019abfe2e4a1e304c075ed8c3e2",
+      "reviewedStanzaHash": "cad34bcd6f928f064f0e8c7df59afc0f78ce5019abfe2e4a1e304c075ed8c3e2"
     },
     {
       "id": "elicitation-inflight-cancellation-test-harness-deadlock",
@@ -107,7 +109,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "386c7eed49c46f009c865cbb580134f280cd197a26884aba557dfe609e09c792"
+      "stanzaHash": "5bd1f397219d004d5c4c0c3e53a48c771e6290addd32f56a9d4ed28463c491b9",
+      "reviewedStanzaHash": "5bd1f397219d004d5c4c0c3e53a48c771e6290addd32f56a9d4ed28463c491b9"
     },
     {
       "id": "test-run-failures-pagination-truncation",
@@ -141,7 +144,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "c48fc60586dbc2e913db20ef0941a577dbbb08a44bdbd9d7e33c4c7b79c07bc5",
-      "stanzaHash": "cd84c23f379ec22362a8063cd27e4ee7cfe0cb842f478d651cfce3b7b52f5a70"
+      "stanzaHash": "6ea5b7c8721af8fae56041b5f4c393aa0de7c0035378722d6a564012cccb773d",
+      "reviewedStanzaHash": "6ea5b7c8721af8fae56041b5f4c393aa0de7c0035378722d6a564012cccb773d"
     },
     {
       "id": "surface-test-audit-artifact-gate-and-scorecard-staleness",
@@ -176,7 +180,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "f4c5f92536fbdd1bfd67130a696740a09138e97a59d378bd0a19905e41908b1b",
-      "stanzaHash": "0a1ca6fe8e5844b11aa6b83eb53caa9714d34a24825453dbefd3e8a5aaee476f"
+      "stanzaHash": "e65dec5ed388922959de4a8dbb9e806e446774086ea36b1f06c821fa352025d9",
+      "reviewedStanzaHash": "e65dec5ed388922959de4a8dbb9e806e446774086ea36b1f06c821fa352025d9"
     },
     {
       "id": "group-c-compilation-cache-gate-hardening",
@@ -212,7 +217,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "af65485fdc2e2a27987a265ae7488d149a6df4ba8a130677a60c1e7e329d27d7",
-      "stanzaHash": "4677a2cd55a970cf3cbb8e02760e689a5984c455e6e976b1a8370772018c8bb5"
+      "stanzaHash": "b4158b2fad8d242648b95eea7207927f43cd7c4f58524b6e34b525f619c79dbb",
+      "reviewedStanzaHash": "b4158b2fad8d242648b95eea7207927f43cd7c4f58524b6e34b525f619c79dbb"
     },
     {
       "id": "gate-timeout-exception-drops-inner-oce",
@@ -249,7 +255,8 @@
         "gate-owned-timeout-cts-oce-classification-audit"
       ],
       "fileSetHash": "6a4d68711501bce603bc5f71e4477161bcca694427d907d31b3cbdee1e5039ab",
-      "stanzaHash": "02b8b67c1a4a9b11ade25ef7a437ecac5259276e16145556c459beba920eab81"
+      "stanzaHash": "02b8b67c1a4a9b11ade25ef7a437ecac5259276e16145556c459beba920eab81",
+      "reviewedStanzaHash": "02b8b67c1a4a9b11ade25ef7a437ecac5259276e16145556c459beba920eab81"
     },
     {
       "id": "gate-owned-timeout-cts-oce-classification-audit",
@@ -283,7 +290,8 @@
         "gate-timeout-exception-drops-inner-oce"
       ],
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "630de17064a62588e467465829d59feec74ce0a2802a0b52211854e4675d6f42"
+      "stanzaHash": "2967ddcf6a0fffb6938f0133d29e4d002dac7ac4f885241cacfbef097c3db7f9",
+      "reviewedStanzaHash": "2967ddcf6a0fffb6938f0133d29e4d002dac7ac4f885241cacfbef097c3db7f9"
     },
     {
       "id": "filewatcher-clearstale-timeout-flake-triage",
@@ -314,7 +322,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "6893c2aaf5d2a3db533241b512bf6a58ecb8d48cf99754834007095eff9fedd6"
+      "stanzaHash": "7541d0e5029fe56787e30f16865f8ab61a801710a8e12a0cef84ccb262572455",
+      "reviewedStanzaHash": "7541d0e5029fe56787e30f16865f8ab61a801710a8e12a0cef84ccb262572455"
     },
     {
       "id": "edit-preview-validation-decomposition",
@@ -347,7 +356,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "e88699f72080702c674daaf22b667bbba447db1c85a4efae9d2259e9e9275bcd",
-      "stanzaHash": "5266e57620bf187f85ec61d000905ad508ffe3ab060fe1a69be15c44578cc1a7"
+      "stanzaHash": "b9d1e5f13c02ba69238645580d92469ed4c233a4b5271e59034bf2c8d9dea125",
+      "reviewedStanzaHash": "b9d1e5f13c02ba69238645580d92469ed4c233a4b5271e59034bf2c8d9dea125"
     },
     {
       "id": "extract-atomicfilewriter-encoding-helper",
@@ -386,7 +396,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "6119d62394c8c901e13c0a63b5f949e888c9278d2aec0ce2d84e09ff2fbc2c16",
-      "stanzaHash": "48423b2b8d5f3db5054be1c5b5f9a38c6dd596ebadef098c409494ac2c8e0ab5"
+      "stanzaHash": "67aed1d0bb48a5ec4b689619ef973c5e4c4f4bf635ee3e58ad717554eb293735",
+      "reviewedStanzaHash": "67aed1d0bb48a5ec4b689619ef973c5e4c4f4bf635ee3e58ad717554eb293735"
     },
     {
       "id": "deep-review-shape-list-single-source",
@@ -420,7 +431,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "cd132397dab21b02bfc7afcd8f32e1c9eda32c3d5f2f57d0d7e6950050fe81b5",
-      "stanzaHash": "e2eb0a9dbc98793ccc467a33274d419ebf3e7d7f85b27e0f3bffeddc939fd321"
+      "stanzaHash": "a487a44af6d4b9b7d45ea0c4c64bf0a028a29d55d85124698ab099ca4e51f115",
+      "reviewedStanzaHash": "a487a44af6d4b9b7d45ea0c4c64bf0a028a29d55d85124698ab099ca4e51f115"
     },
     {
       "id": "legacy-sln-slnx-parity-drift",
@@ -454,7 +466,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "3bc9c4d1c6ae7f7dd7e48211ad7370587bd3a561c6c3c8d56e21957dec947e81",
-      "stanzaHash": "5d5203f26e28e09b788bd09fe76e255030f34960a2e02b02331e3d1f879395db"
+      "stanzaHash": "5d5203f26e28e09b788bd09fe76e255030f34960a2e02b02331e3d1f879395db",
+      "reviewedStanzaHash": "5d5203f26e28e09b788bd09fe76e255030f34960a2e02b02331e3d1f879395db"
     },
     {
       "id": "shipped-skills-prefix-gate-batch-2",
@@ -483,7 +496,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "c3c9d16aac10afd7e106d26c100fc3b4915971118d003db11247dd9f5ef48f21",
-      "stanzaHash": "ae847db9b693b8ea7ef796ddb45570f22daa315ff920d728dbed294378113b19"
+      "stanzaHash": "e46c6d896bc7f232b8f43c2a4cbb06962f455314030af0b0bc8294042ad8c7ff",
+      "reviewedStanzaHash": "e46c6d896bc7f232b8f43c2a4cbb06962f455314030af0b0bc8294042ad8c7ff"
     },
     {
       "id": "shipped-skills-prefix-usage-audit-tail",
@@ -512,7 +526,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "96137b8f3b1d791ab4c9df9502a4209685ef5ca24de33d88b3dc5dbf3177c48a",
-      "stanzaHash": "03a9fa8d3d1c39db753d916f60ede373450dbb67cee1ac3b0174ccbedb9bcaf8"
+      "stanzaHash": "7de8b5040b54f183d6261ee5e727e1271efdbee4136c411a4d720886b47b89db",
+      "reviewedStanzaHash": "7de8b5040b54f183d6261ee5e727e1271efdbee4136c411a4d720886b47b89db"
     },
     {
       "id": "shipped-skills-prefix-genericity-guard-glob",
@@ -541,7 +556,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "b87f4353da6cd53fe83883cf166264b04d32e3ad275903a78bb8c08335c362c2",
-      "stanzaHash": "3020ada37b9e07351f5d8f3c64fc650f2e4f7bc3b640e7200014180013533fb4"
+      "stanzaHash": "66ad0bda4bbd92a59288e97e7313a3c30b01917c72cef796f2712130b353f5c3",
+      "reviewedStanzaHash": "66ad0bda4bbd92a59288e97e7313a3c30b01917c72cef796f2712130b353f5c3"
     },
     {
       "id": "elicitation-forwarder-collapse-haselicitation",
@@ -570,7 +586,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "f406029095b1909e480c9a2f686f67e50cb350230d9937ef8f413a2c8fcd3cf7",
-      "stanzaHash": "e885a969a45dcb6950a331ab73426a44664eed5fed7cfcb913d7e1e0fa9460c7"
+      "stanzaHash": "0f6be04f70f4640898ec8c5c20706ab68d73dfb88b35d9ab98c45eb565115a9a",
+      "reviewedStanzaHash": "0f6be04f70f4640898ec8c5c20706ab68d73dfb88b35d9ab98c45eb565115a9a"
     },
     {
       "id": "elicitation-forwarder-collapse-trychoice-docs",
@@ -602,7 +619,8 @@
       ],
       "rowsClosedCount": 1,
       "fileSetHash": "73d39e453d6cb03dcd9f61606bf601b3540173c904a56aa066ca88f7650a644d",
-      "stanzaHash": "3a39eb3c243b24107bcbbf3649dd2872dbc31d52b957ff06a0fbe2212b4963a2"
+      "stanzaHash": "e8e3848502bd78d8770f4d59df9ac6cb3d3ad90911da09d6f10d1a2501a991fd",
+      "reviewedStanzaHash": "e8e3848502bd78d8770f4d59df9ac6cb3d3ad90911da09d6f10d1a2501a991fd"
     }
   ],
   "anchorVerification": "pending",
@@ -681,7 +699,7 @@
     ]
   },
   "conflictGraphInputHash": "db443bab87df7be811f0f4228be643c23ed10527e9d6ee442a44a44eaf1e236f",
-  "planHash": "b0f961c90a38dc971ae71aee60ddaf95b5ba056309914ceadbd262381068c942",
+  "planHash": "9f49fdd6b805c038ef3056533ee449de887123cdf1b537890114d609309309ef",
   "backlogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152",
   "reviewFindings": {
     "block": 0,
@@ -767,5 +785,7 @@
       "rule": "schedule-hint",
       "evidence": "RESOLVED by orchestrator: scheduleHint heroic-last cleared to null on 6.01/6.02/6.03 (inherited from the split parent; each child is a 4-file batch with fanoutOversize false and fanout == files)."
     }
-  ]
+  ],
+  "reviewedPlanHash": "9f49fdd6b805c038ef3056533ee449de887123cdf1b537890114d609309309ef",
+  "reviewedBacklogSnapshotHash": "c74aaa2afcf3f75477ace877e587f5c9f85a570469e80d55ce8832a817f7d152"
 }
