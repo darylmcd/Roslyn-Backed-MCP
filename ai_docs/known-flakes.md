@@ -22,7 +22,7 @@ The registered `WorkspaceExecutionGateTests` entry above was re-checked against 
 
 (A second entry was re-checked in the same pass; it has since been resolved and removed from this registry.)
 
-**It is not explained by that race.** It is a different symptom class:
+**The `WorkspaceExecutionGateTests` entry is not explained by that race.** It is a different symptom class:
 
 | | This race | The registered flake |
 |---|---|---|
