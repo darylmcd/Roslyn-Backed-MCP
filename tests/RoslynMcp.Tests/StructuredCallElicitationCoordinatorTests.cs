@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
 
 namespace RoslynMcp.Tests;
@@ -17,8 +18,11 @@ namespace RoslynMcp.Tests;
 /// The recover-load-retry loop takes its elicit + dispatch collaborators as delegates, so it is
 /// fully unit-testable without standing up a live MCP transport. <see cref="McpServer"/>-bound
 /// entry points (<c>TryElicitAndRetryAsync</c>, the transport-driven arms of
-/// <c>TryElicitChoiceAsync</c>) still require a real server; their gate logic is covered via the
-/// null-short-circuit and the allowlist tests in <see cref="StructuredCallToolFilterElicitationTests"/>.
+/// <see cref="ElicitationChoicePrompt.TryElicitChoiceAsync"/>) still require a real server; their
+/// gate logic is covered via the null-short-circuit and the allowlist tests in
+/// <see cref="StructuredCallToolFilterElicitationTests"/>. The picker itself is not a coordinator
+/// member — its canonical home is <see cref="ElicitationChoicePrompt"/>; the null-server
+/// short-circuit is pinned here for historical continuity with this suite.
 /// </para>
 /// </summary>
 [TestClass]
@@ -186,7 +190,7 @@ public sealed class StructuredCallElicitationCoordinatorTests
     {
         // The disambiguation picker short-circuits to null when there is no connected server,
         // so a caller with no elicitation-capable client falls through to its additive list.
-        var result = await StructuredCallElicitationCoordinator.TryElicitChoiceAsync(
+        var result = await ElicitationChoicePrompt.TryElicitChoiceAsync(
             server: null,
             paramName: "choice",
             title: "Pick a symbol",
