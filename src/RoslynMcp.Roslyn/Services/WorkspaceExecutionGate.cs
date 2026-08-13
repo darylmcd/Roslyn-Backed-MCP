@@ -135,16 +135,19 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 }
             }, linked).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        catch (OperationCanceledException oce) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
             // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
             // see the identical catch in RunPerWorkspaceAsync below for the full mechanism. This
             // load-gate leg (workspace_load/workspace_reload/workspace_close) shares the same
             // timeoutCts/linkedCts construction and was therefore exposed to the same gap.
+            // The caught OCE is carried as InnerException so cancellation provenance (which token
+            // fired, original stack trace) survives the reclassification for logs/diagnostics.
             throw new TimeoutException(
                 $"The gated load operation did not complete within the request timeout of " +
                 $"{_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS if this " +
-                "operation is expected to run longer.");
+                "operation is expected to run longer.",
+                oce);
         }
     }
 
@@ -273,7 +276,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 }
             }, linked).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        catch (OperationCanceledException oce) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
             // gate-timeout-escapes-as-bare-sdk-error (test-run-unfiltered-bare-error-rootcause):
             // without this reclassification, a gate-internal RequestTimeout (armed above, default
@@ -297,11 +300,14 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             // to TimeoutException here — the same pattern GatedCommandExecutor.ExecuteAsync and
             // WorkspaceValidationService already apply to THEIR OWN internal timeout CTS's — routes
             // it through ToolErrorHandler.ClassifyAndFormat's existing "Timeout" category instead
-            // of letting it slip past every structured-envelope layer in the server.
+            // of letting it slip past every structured-envelope layer in the server. The caught OCE
+            // is carried as InnerException so cancellation provenance (which token fired, original
+            // stack trace) survives the reclassification for logs/diagnostics.
             throw new TimeoutException(
                 $"The gated operation on workspace '{workspaceId}' did not complete within the request " +
                 $"timeout of {_requestTimeout.TotalSeconds:F0}s. Increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS " +
-                "if this operation is expected to run longer.");
+                "if this operation is expected to run longer.",
+                oce);
         }
     }
 

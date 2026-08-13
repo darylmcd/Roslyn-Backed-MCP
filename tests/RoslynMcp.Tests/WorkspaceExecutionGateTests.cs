@@ -346,6 +346,12 @@ public class WorkspaceExecutionGateTests
             "The timeout message should identify which workspace's gated operation timed out.");
         StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS",
             "The message should point the caller at the env var that controls this timeout.");
+
+        // gate-timeout-exception-drops-inner-oce: the reclassification must carry the original
+        // OperationCanceledException so cancellation provenance (which token fired, original stack
+        // trace) survives into logs — StructuredCallToolFilter logs the exception object whole.
+        Assert.IsInstanceOfType<OperationCanceledException>(ex.InnerException,
+            "The reclassified TimeoutException should preserve the caught OCE as InnerException.");
     }
 
     // Counterpart to the reclassification above: TRUE caller-initiated cancellation (the client's
@@ -396,6 +402,10 @@ public class WorkspaceExecutionGateTests
             }, CancellationToken.None));
 
         StringAssert.Contains(ex.Message, "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS");
+
+        // gate-timeout-exception-drops-inner-oce: same provenance guarantee on the load-gate leg.
+        Assert.IsInstanceOfType<OperationCanceledException>(ex.InnerException,
+            "The reclassified TimeoutException should preserve the caught OCE as InnerException.");
     }
 
     [TestMethod]

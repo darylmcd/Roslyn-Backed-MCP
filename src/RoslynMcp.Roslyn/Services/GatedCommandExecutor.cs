@@ -92,10 +92,13 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
 
             return execution;
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        catch (OperationCanceledException oce) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
+            // The caught OCE is carried as InnerException so cancellation provenance (which token
+            // fired, original stack trace) survives the reclassification for logs/diagnostics.
             throw new TimeoutException(
-                $"The command 'dotnet {string.Join(" ", arguments)}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.");
+                $"The command 'dotnet {string.Join(" ", arguments)}' did not complete within the total timeout budget of {timeout.TotalMinutes:F1} minute(s), including queue wait.",
+                oce);
         }
         finally
         {
