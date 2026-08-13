@@ -778,7 +778,7 @@ public sealed class EditService : IEditService
                 document.FilePath,
                 sourceText.ToString(),
                 ct,
-                encoding: AtomicFileWriter.ResolveWriteEncoding(sourceText.Encoding)).ConfigureAwait(false);
+                encoding: SourceFileEncoding.FromSourceText(sourceText.Encoding)).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

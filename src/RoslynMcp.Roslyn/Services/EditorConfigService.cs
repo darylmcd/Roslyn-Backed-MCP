@@ -375,7 +375,7 @@ public sealed class EditorConfigService : IEditorConfigService
         // .editorconfig. existingBytes is already in scope for the undo snapshot — reuse it to
         // detect the original encoding (null when we are creating the file, which correctly
         // resolves to UTF-8-no-BOM).
-        File.WriteAllLines(editorconfigPath, lines, AtomicFileWriter.ResolveWriteEncoding(existingBytes));
+        File.WriteAllLines(editorconfigPath, lines, SourceFileEncoding.FromBytes(existingBytes));
 
         // workspace-changes-log-missing-editorconfig-writers: route the editorconfig write
         // through ChangeTracker so `workspace_changes` surfaces the originating tool name

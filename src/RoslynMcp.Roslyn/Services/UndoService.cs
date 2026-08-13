@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -429,7 +430,8 @@ public sealed class UndoService : IUndoService, IDisposable
         // composite-apply-undo-encoding-still-lossy: the queued restores carry the pre-apply
         // `SourceText.Encoding` alongside the text so `PersistRevertChangesAsync` can rewrite each
         // file with its original BOM/encoding instead of collapsing everything to UTF-8-no-BOM.
-        // `Encoding` is null for in-memory-synthesized text; `ResolveWriteEncoding` handles that.
+        // `Encoding` is null for in-memory-synthesized text; `SourceFileEncoding.FromSourceText`
+        // handles that.
         var diskRestores = new List<(string FilePath, string Text, Encoding? Encoding)>();
 
         // Phase 1 (primary): trust the Solution diff to tell us what changed.
@@ -580,7 +582,7 @@ public sealed class UndoService : IUndoService, IDisposable
                     filePath,
                     text,
                     cancellationToken,
-                    encoding: AtomicFileWriter.ResolveWriteEncoding(encoding)).ConfigureAwait(false);
+                    encoding: SourceFileEncoding.FromSourceText(encoding)).ConfigureAwait(false);
                 anyDiskWrite = true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
