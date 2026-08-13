@@ -24,8 +24,7 @@ namespace RoslynMcp.Host.Stdio.Elicitation;
 /// </para>
 ///
 /// <para>
-/// <c>ElicitationAllowlistPolicy.HasElicitation</c> and
-/// <c>StructuredCallElicitationCoordinator.TryElicitChoiceAsync</c> are retained as thin delegates
+/// <c>StructuredCallElicitationCoordinator.TryElicitChoiceAsync</c> is retained as a thin delegate
 /// forwarding here, so the historical Middleware-internal static call surface (consumed by
 /// <c>StructuredCallToolFilter</c> and the existing elicitation test suites) is preserved
 /// byte-for-byte.
@@ -36,8 +35,8 @@ internal static class ElicitationChoicePrompt
     /// <summary>
     /// Capability-check helper: returns <see langword="true"/> when the connected client
     /// declares the <c>elicitation</c> capability per MCP 2025-06-18 § Client Capabilities.
-    /// Canonical home for the predicate — both the Middleware allowlist policy and the
-    /// <c>Tools</c> symbol-disambiguation path call it (directly or via a delegate) rather than
+    /// Sole definition of the predicate — the Middleware elicitation/retry gate and the
+    /// <c>Tools</c> symbol-disambiguation path both call it directly rather than
     /// copy-pasting the null-coalescing dance.
     /// </summary>
     /// <param name="capabilities">

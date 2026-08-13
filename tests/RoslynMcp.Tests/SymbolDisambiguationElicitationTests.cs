@@ -30,7 +30,7 @@ namespace RoslynMcp.Tests;
 /// Pins:
 /// <list type="bullet">
 ///   <item><b>(a) elicit-supported preconditions</b> — the
-///         <see cref="StructuredCallToolFilter.HasElicitation"/> capability check returns
+///         <see cref="ElicitationChoicePrompt.HasElicitation"/> capability check returns
 ///         true for a properly handshaken client AND the candidate-discovery helper finds
 ///         the multiple-overload set; the gate logic is therefore wired correctly. The
 ///         end-to-end <c>ElicitAsync</c> cancellation paths use a real SDK client/server pair
@@ -70,18 +70,18 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     public void HasElicitation_PinsTheCapabilityCheckUsedByDisambiguation()
     {
         // The disambiguation gate inside SymbolTools.TryDisambiguateMetadataNameAsync
-        // delegates to the same StructuredCallToolFilter.HasElicitation predicate the
+        // calls the same ElicitationChoicePrompt.HasElicitation predicate the
         // workspace-path initiative pinned. This regression test pins that we still rely
         // on the same predicate (so a future refactor of either site can't drift).
         var capabilities = new ClientCapabilities
         {
             Elicitation = new ElicitationCapability(),
         };
-        Assert.IsTrue(StructuredCallToolFilter.HasElicitation(capabilities),
+        Assert.IsTrue(ElicitationChoicePrompt.HasElicitation(capabilities),
             "An ElicitationCapability instance present on ClientCapabilities means the " +
             "client supports elicitation/create — the disambiguation gate is permitted.");
 
-        Assert.IsFalse(StructuredCallToolFilter.HasElicitation(null),
+        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(null),
             "Null capabilities (pre-handshake) MUST NOT permit elicitation.");
     }
 
@@ -117,10 +117,10 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         const bool optIn = true;
 
         Assert.IsTrue(
-            optIn && StructuredCallToolFilter.HasElicitation(capable),
+            optIn && ElicitationChoicePrompt.HasElicitation(capable),
             "Opt-in + capable client is the only combination that reaches the elicit branch.");
         Assert.IsFalse(
-            optIn && StructuredCallToolFilter.HasElicitation(null),
+            optIn && ElicitationChoicePrompt.HasElicitation(null),
             "Opt-in against a non-capable (null-capabilities) client must still fall back " +
             "to the candidate list.");
     }

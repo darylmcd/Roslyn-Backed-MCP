@@ -1,6 +1,4 @@
-using ModelContextProtocol.Protocol;
 using RoslynMcp.Host.Stdio.Catalog;
-using RoslynMcp.Host.Stdio.Elicitation;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 
@@ -46,27 +44,6 @@ internal static class ElicitationAllowlistPolicy
         {
             (WorkspaceLoadToolName, PathParameterName),
         };
-
-    /// <summary>
-    /// Capability-check helper: returns <see langword="true"/> when the connected client
-    /// declares the <c>elicitation</c> capability per MCP 2025-06-18 § Client Capabilities.
-    /// Thin delegate onto <see cref="ElicitationChoicePrompt.HasElicitation"/>, which is the
-    /// canonical home — the predicate lives in the cycle-free
-    /// <c>RoslynMcp.Host.Stdio.Elicitation</c> namespace so <c>Tools</c> can call it without
-    /// importing <c>Middleware</c>. Retained here so this class's historical static call
-    /// surface (and its test suite) keeps compiling unchanged.
-    /// </summary>
-    /// <param name="capabilities">
-    /// The <see cref="McpServer.ClientCapabilities"/> snapshot, typically obtained as
-    /// <c>context.Server.ClientCapabilities</c> inside a request filter or tool method.
-    /// May be <see langword="null"/> on the server's pre-initialize path.
-    /// </param>
-    /// <returns>
-    /// <see langword="true"/> when both <paramref name="capabilities"/> and
-    /// <c>capabilities.Elicitation</c> are non-null. Zero-allocation and side-effect-free.
-    /// </returns>
-    public static bool HasElicitation(ClientCapabilities? capabilities) =>
-        ElicitationChoicePrompt.HasElicitation(capabilities);
 
     /// <summary>
     /// Defense-in-depth predicate: returns <see langword="true"/> when the parameter name
