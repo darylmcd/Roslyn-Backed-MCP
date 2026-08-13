@@ -298,7 +298,7 @@ This prompt writes **raw per-run evidence only**. The audit report belongs in th
 
 - **`<audited-repo-root>` always means the audited repo's PRIMARY checkout — never the disposable Phase-6 worktree.** Resolve it once at Phase 0 (the same path the *Isolation baseline* was captured against) and reuse that literal path for every artifact write. If any phase writes an artifact under the disposable worktree, **copy it into the primary checkout's `audit-reports/` BEFORE `git worktree remove`** — teardown is irreversible and a scorecard lost at teardown leaves no evidence that the run ever computed one.
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print, `gh issue create`, or `backlog.d/` fragments depending on `--output-mode`), and (b) the operator's host-side staging pipeline (e.g. `eng/stage-review-inbox.ps1` in maintainer setups), which consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
+- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print, `gh issue create`, or `backlog.d/` fragments depending on `--output-mode`), and (b) the operator's host-side staging pipeline, which consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
 
