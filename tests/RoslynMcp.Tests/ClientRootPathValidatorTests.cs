@@ -808,4 +808,100 @@ public class ClientRootPathValidatorTests
                 Path.Combine(TestTempRoot.Current, "future.cs"),
                 cancellation.Token));
     }
+
+    /// <summary>
+    /// path-boundary-link-swap-toctou: the pin must be REFUSED when lexical and physical path
+    /// resolution disagree.
+    /// </summary>
+    /// <remarks>
+    /// <c>EditService</c> locates the document lexically (<c>Path.GetFullPath</c>, which collapses
+    /// <c>..</c> without touching the filesystem); the boundary produces the write target by
+    /// walking the path physically WITHOUT collapsing <c>..</c> first. For
+    /// <c>&lt;root&gt;/real/sub/link/../Program.cs</c> those name different physical files, so
+    /// honoring the pin would write the edited document's text over an unrelated file — while the
+    /// undo snapshot records the document, leaving the clobbered file unrecoverable.
+    /// </remarks>
+    [TestMethod]
+    public void EnsurePinnedTarget_LexicalAndPhysicalDisagree_Throws()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-pin-divergence-" + Guid.NewGuid().ToString("N"));
+        var real = Path.Combine(testRoot, "real");
+        var sub = Path.Combine(real, "sub");
+        var other = Path.Combine(testRoot, "other");
+        Directory.CreateDirectory(sub);
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(sub, "Program.cs"), "// lexical target");
+        File.WriteAllText(Path.Combine(other, "Program.cs"), "// physical target");
+
+        var link = Path.Combine(sub, "link");
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(link, other))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            // "<root>/real/sub/link/../Program.cs":
+            //   lexical  -> <root>/real/sub/Program.cs   (the document EditService resolves)
+            //   physical -> <root>/other/Program.cs      (link followed, THEN ..)
+            var requestPath = Path.Combine(link, "..", "Program.cs");
+            var canonical = ClientRootPathValidator.ResolvePath(requestPath);
+            var lexical = ClientRootPathValidator.ResolvePath(Path.GetFullPath(requestPath));
+
+            Assert.AreNotEqual(
+                lexical,
+                canonical,
+                "Test premise: this fixture must actually produce divergent resolution, otherwise " +
+                "the guard below is not being exercised.");
+
+            var ex = Assert.ThrowsExactly<ArgumentException>(
+                () => EditTools.EnsurePinnedTargetMatchesResolvedDocument(requestPath, canonical),
+                "A divergent pin must fail closed rather than write one file's contents into another.");
+            StringAssert.Contains(ex.Message, "resolves ambiguously");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The guard must not fire on ordinary paths — including a path that traverses a link with no
+    /// <c>..</c> segment, where lexical and physical resolution agree.
+    /// </summary>
+    [TestMethod]
+    public void EnsurePinnedTarget_LexicalAndPhysicalAgree_DoesNotThrow()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-pin-agree-" + Guid.NewGuid().ToString("N"));
+        var real = Path.Combine(testRoot, "real");
+        Directory.CreateDirectory(real);
+        var file = Path.Combine(real, "Program.cs");
+        File.WriteAllText(file, "// target");
+
+        var link = Path.Combine(testRoot, "link");
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(link, real))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            // Through the link, but no ".." — both algorithms land on the same physical file.
+            var requestPath = Path.Combine(link, "Program.cs");
+            var canonical = ClientRootPathValidator.ResolvePath(requestPath);
+
+            EditTools.EnsurePinnedTargetMatchesResolvedDocument(requestPath, canonical);
+
+            // And the plain, link-free case.
+            EditTools.EnsurePinnedTargetMatchesResolvedDocument(
+                file,
+                ClientRootPathValidator.ResolvePath(file));
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
 }
