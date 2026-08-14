@@ -1,5 +1,0 @@
----
-category: Changed
----
-
-- **Changed:** README now carries the filesystem-boundary migration a consumer actually needs. "Option A — Install As A Global Tool" states up front that the global tool ships a binary and not a config, that an unset boundary is fail-closed, and gives a copy-ready `env` snippet; `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` is documented in the configuration table (it was previously reachable only from the thrown error string and `docs/setup.md`); a new "Upgrading From 2.x" section covers both halves of the break — set the roots, and stop relying on `roots/list` for discovery — and warns that a binary-only plugin update leaves a stale config with no boundary. The Security section now states that the boundary is server-owned, that client Roots can only narrow it, and why the control targets the agent rather than the operator. Also fixes two long-broken in-README anchors (`#install-as-a-global-tool`, `#claude-code-plugin`) whose headings carry an em-dash and therefore slug with a double hyphen.
