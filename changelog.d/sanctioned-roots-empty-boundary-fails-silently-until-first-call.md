@@ -1,0 +1,5 @@
+---
+category: Added
+---
+
+- **Added:** the server now says so when no filesystem boundary is configured, instead of looking healthy until the first path call. `server_info` carries a `pathBoundary` object (`configuredRootCount`, `failOpen`, `enforcing`, `hint`) and the host logs a startup warning naming `ROSLYNMCP_SANCTIONED_ROOTS` and the `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` escape hatch when the boundary is empty and fail-closed. Both derive their remediation text from one projection, so the log and the tool response cannot drift. `pathBoundary` reports the root **count** and never the configured paths — the boundary is a server-owned control, not client-visible configuration — and is `null` (meaning "unknown", not "unconfigured") when the host was not booted. This matters most on the NuGet channel, where `dotnet tool install` ships no default configuration and an unconfigured host previously rejected every path-taking tool with no prior signal; the same empty boundary also silently bounds query-anchored discovery to zero results, which the hint now calls out.

@@ -32,7 +32,32 @@ public sealed record ServerInfoDto(
     ResourceServerNameHintsDto ResourceServerNames,
     IReadOnlyList<string> ProductBoundaries,
     ServerCapabilitiesDto Capabilities,
-    ServerUpdateInfoDto? Update);
+    ServerUpdateInfoDto? Update,
+    PathBoundaryDto? PathBoundary);
+
+/// <summary>
+/// sanctioned-roots-empty-boundary-fails-silently-until-first-call: filesystem-boundary state, so
+/// an unconfigured host is diagnosable from <c>server_info</c> instead of only from the first
+/// path call's rejection. Deliberately reports the root COUNT and never the root paths — the
+/// boundary is a security control and its contents are not client business.
+/// <para>
+/// The field is null on unit-test paths that construct <c>ServerTools</c> without booting the
+/// host (the runtime <c>SecurityOptionsSnapshot</c> is unset), matching
+/// <see cref="SurfaceRegisteredCountsDto"/>'s convention. Null means "unknown", never
+/// "unconfigured".
+/// </para>
+/// </summary>
+/// <param name="ConfiguredRootCount">Number of entries parsed from <c>ROSLYNMCP_SANCTIONED_ROOTS</c>.</param>
+/// <param name="FailOpen">Whether <c>ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN</c> is set. Only rescues the
+/// zero-root case; it never bypasses a non-empty boundary.</param>
+/// <param name="Enforcing">True when a non-empty boundary is actively constraining paths.</param>
+/// <param name="Hint">Null when the configuration is coherent; otherwise an actionable one-liner
+/// naming the variable to set. Non-null means path-taking tools are rejecting (or unbounded).</param>
+public sealed record PathBoundaryDto(
+    int ConfiguredRootCount,
+    bool FailOpen,
+    bool Enforcing,
+    string? Hint);
 
 /// <summary>
 /// Surface-count subtree on <see cref="ServerInfoDto"/>. <see cref="Registered"/> is null on

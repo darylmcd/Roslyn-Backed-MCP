@@ -6,7 +6,9 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Services;
+using RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -139,9 +141,54 @@ public static class ServerTools
                 "Remote HTTP/SSE hosting is not part of the current stable release contract."
             ],
             Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: true, Progress: true),
-            Update: BuildUpdateInfo(currentSemver, versionChecker));
+            Update: BuildUpdateInfo(currentSemver, versionChecker),
+            PathBoundary: BuildPathBoundary(SecurityOptionsSnapshot.Value));
 
         return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
+    }
+
+    /// <summary>
+    /// sanctioned-roots-empty-boundary-fails-silently-until-first-call: projects the filesystem
+    /// boundary into <c>server_info</c> so an unconfigured host is diagnosable before the first
+    /// path call rejects. Reports the root COUNT only — never the paths, which are a server-owned
+    /// security control rather than client-visible configuration.
+    /// </summary>
+    /// <remarks>
+    /// Three coherent states. Roots configured: enforcing, no hint. Zero roots + fail-open: not
+    /// enforcing, hinted because the host is deliberately unbounded and an operator should know.
+    /// Zero roots + fail-closed: not enforcing and every path tool rejects — the shape that
+    /// previously looked healthy right up until first use.
+    /// </remarks>
+    internal static PathBoundaryDto? BuildPathBoundary(SecurityOptions? options)
+    {
+        if (options is null)
+        {
+            return null;
+        }
+
+        var rootCount = options.SanctionedRoots.Count;
+        var failOpen = options.PathValidationFailOpen;
+
+        string? hint = (rootCount, failOpen) switch
+        {
+            (0, true) =>
+                $"No sanctioned roots are configured and {SecurityOptionsEnvironmentBinder.PathValidationFailOpenVariable} " +
+                "is set, so path access is unbounded. This is a temporary compatibility measure — set " +
+                $"{SecurityOptionsEnvironmentBinder.SanctionedRootsVariable} and remove it.",
+            (0, false) =>
+                $"No sanctioned roots are configured, so path validation is fail-closed and every " +
+                $"path-taking tool will reject its input. Set {SecurityOptionsEnvironmentBinder.SanctionedRootsVariable} " +
+                $"to a '{Path.PathSeparator}'-delimited root list ('.' for a project-scoped host), or set " +
+                $"{SecurityOptionsEnvironmentBinder.PathValidationFailOpenVariable}=true as a temporary " +
+                "compatibility measure. Query-anchored solution discovery is bounded by the same list.",
+            _ => null,
+        };
+
+        return new PathBoundaryDto(
+            ConfiguredRootCount: rootCount,
+            FailOpen: failOpen,
+            Enforcing: rootCount > 0,
+            Hint: hint);
     }
 
     /// <summary>

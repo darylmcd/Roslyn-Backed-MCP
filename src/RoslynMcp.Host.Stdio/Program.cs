@@ -7,6 +7,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Security;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
@@ -144,6 +145,21 @@ if (startupWorkspaceManager.ListWorkspaces().Count == 0)
     startupLogger.LogInformation(
         "Roslyn MCP host started with zero loaded workspaces. " +
         "If this is a transparent subprocess restart, call workspace_load to rehydrate the prior session.");
+}
+
+// sanctioned-roots-empty-boundary-fails-silently-until-first-call: an unconfigured boundary is
+// fail-closed, so EVERY path-taking tool rejects — but nothing said so until the first call threw.
+// Warn at startup for the same reason as the zero-workspaces notice above: clients that surface
+// MCP `notifications/message` learn proactively instead of discovering it tool-by-tool. Only the
+// genuinely broken shape warns; fail-open is an explicit operator choice and stays quiet.
+var startupSecurityOptions = host.Services.GetRequiredService<SecurityOptions>();
+SecurityOptionsSnapshot.Value = startupSecurityOptions;
+// The remediation text is derived from the SAME projection server_info reports, so the startup
+// warning and the tool response can never drift apart — and the message is unit-tested there.
+if (ServerTools.BuildPathBoundary(startupSecurityOptions)
+    is { Enforcing: false, FailOpen: false, Hint: { } boundaryHint })
+{
+    startupLogger.LogWarning("Filesystem boundary is not configured. {BoundaryHint}", boundaryHint);
 }
 
 // Register graceful shutdown to dispose all workspaces
