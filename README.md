@@ -39,6 +39,28 @@ dotnet tool install -g Darylmcd.RoslynMcp
 - CLI command: `roslynmcp`
 - Updates: `dotnet tool update -g Darylmcd.RoslynMcp`
 
+> **Configure a filesystem boundary before first use.** The global tool ships a binary, not a
+> config — you write your own `.mcp.json`, and an unset boundary is **fail-closed**: every
+> path-taking tool (`workspace_load`, edits, symbol lookups) rejects its input, and solution
+> discovery returns nothing. Set `ROSLYNMCP_SANCTIONED_ROOTS` in your client config:
+>
+> ```json
+> {
+>   "mcpServers": {
+>     "roslyn": {
+>       "type": "stdio",
+>       "command": "roslynmcp",
+>       "env": { "ROSLYNMCP_SANCTIONED_ROOTS": "." }
+>     }
+>   }
+> }
+> ```
+>
+> `.` resolves against the server process's working directory, which your MCP client chooses —
+> use an absolute path if you want the boundary pinned regardless of how the server is launched.
+> See [Configuration](#configuration). The Claude Code plugin and Desktop extension ship this
+> default already; only hand-written configs need it.
+
 ### Option B — Zero-Install Via `dnx` (.NET 10)
 
 `dnx` is the .NET SDK's `npx`-equivalent: it resolves a tool package from NuGet on demand, without installing a global shim. Requires **.NET 10 SDK Preview 6 or later** (`dnx` ships with the SDK).
@@ -142,7 +164,7 @@ The server is published to the official [MCP Registry](https://registry.modelcon
 
 Manifest: [`.claude-plugin/server.json`](.claude-plugin/server.json) — name `io.github.darylmcd/roslyn-mcp`, NuGet package `Darylmcd.RoslynMcp`, runtime `dnx`. Every release tag republishes it automatically via the `publish-nuget` workflow using GitHub OIDC.
 
-You can also install directly without a registry-aware client via the [Global Tool](#install-as-a-global-tool) or [Claude Code Plugin](#claude-code-plugin) paths above.
+You can also install directly without a registry-aware client via the [Global Tool](#option-a--install-as-a-global-tool) or [Claude Code Plugin](#option-c--claude-code-plugin) paths above.
 
 ## Configuration
 
@@ -155,6 +177,7 @@ remain optional literal `env` overrides.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ROSLYNMCP_SANCTIONED_ROOTS` | empty (deny path access) | Server-owned path-validation and solution-discovery boundary |
+| `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `false` | Temporary compatibility escape hatch for the **empty**-boundary case only: allows path access when no roots are configured. It never bypasses a non-empty boundary. Prefer configuring roots |
 | `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `false` | Allows a request with `expandSanctionedRoots=true` to reach sibling worktrees under each sanctioned root's immediate parent; both opt-ins are required |
 | `ROSLYNMCP_MAX_WORKSPACES` | `8` | Concurrent workspace cap |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build timeout |
@@ -173,7 +196,40 @@ Loading a solution or project executes MSBuild evaluation. Treat workspaces as t
 - Use isolation for untrusted workspaces.
 - Path validation is defense in depth, not a substitute for trusting the loaded project graph.
 
+**The filesystem boundary is server-owned.** `ROSLYNMCP_SANCTIONED_ROOTS` is configured by you, the
+operator — not by the connecting client. A client's MCP Roots can only *narrow* that boundary; they
+can never widen it or act as the sole authority. This is deliberate: the control exists to constrain
+the **agent**, so a model that is confused or prompt-injected into reading outside your project
+cannot do so, even if it asks. Sibling-worktree widening needs two independent opt-ins — the server
+operator setting `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true` *and* the request setting
+`expandSanctionedRoots=true` — so request input alone never widens access.
+
+Paths are canonicalized component-by-component, resolving every symlink and junction in the ancestor
+chain before comparison, so a file under a linked ancestor cannot present an in-boundary logical path
+while pointing outside it.
+
 See [SECURITY.md](SECURITY.md) for disclosure policy.
+
+## Upgrading From 2.x
+
+Path validation is now bounded by a server-owned root list instead of the client's (deprecated)
+`roots/list` capability. Two things to do before upgrading:
+
+1. **Set `ROSLYNMCP_SANCTIONED_ROOTS`.** An unset boundary is fail-closed — every path-taking tool
+   rejects its input. `.` is the normal project-scoped value; see [Configuration](#configuration) for
+   the delimiter and [Option A](#option-a--install-as-a-global-tool) for a copy-ready snippet. If you
+   need to defer, `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true` restores the old unbounded behavior as a
+   temporary measure. From this release the server warns at startup and reports
+   `server_info.pathBoundary` when the boundary is missing, so the state is visible before your first
+   call rather than after it.
+2. **Stop relying on `roots/list` for discovery.** Query-anchored solution discovery no longer calls
+   it and scans only configured roots. Pass a file-path argument, configure a root containing exactly
+   one solution, call `workspace_load` explicitly, or pass a `workspaceId`.
+
+If you install via the Claude Code plugin or the Desktop extension, both ship the default — but
+update **both** layers together. A binary-only update leaves a stale config with no boundary set,
+which is the fail-closed case above. Rationale and full detail:
+[ADR 0002](docs/decisions/0002-configured-sanctioned-root-boundary.md).
 
 ## Live Surface
 
