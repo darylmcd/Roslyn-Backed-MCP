@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-14T13:30:23Z
+**updated_at:** 2026-08-14T13:56:42Z
 
 ## Agent contract
 
@@ -56,7 +56,6 @@
 | `parameter-object-dto-reference-qualification` | High | — | Bind generated DTO type references correctly when target declarations and callers use different namespaces. | S | items/parameter-object-dto-reference-qualification.md |
 | `parameter-object-dto-output-boundary-validation` | High | — | Confine generated DTO output to the project boundary and refuse destination collisions before preview storage. | M | items/parameter-object-dto-output-boundary-validation.md |
 | `suppression-tools-missing-root-boundary-validation` | High | — | **Enforce the sanctioned-root boundary on the pragma-suppression write tools** — `add_pragma_suppression` / `pragma_scope_widen` reach `EditService`'s physical write with NO `ClientRootPathValidator` call at all. [type: bug] [source: 2026-08-13 sweep 20260813T172325Z, PR #1230 code-quality review] | M | items/suppression-tools-missing-root-boundary-validation.md |
-| `nuget-facing-docs-sanctioned-roots-migration` | High | — | **NuGet-facing docs miss the boundary migration** — README Option A shows a bare install with no env guidance, `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` is absent from the config table, and the `roots/list` deprecation is documented only in the ADR. [type: chore] [source: 2026-08-14 release-cut preflight] | M | items/nuget-facing-docs-sanctioned-roots-migration.md |
 
 ## Medium
 
