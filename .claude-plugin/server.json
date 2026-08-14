@@ -17,7 +17,14 @@
       "runtimeHint": "dnx",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "environmentVariables": [
+        {
+          "name": "ROSLYNMCP_SANCTIONED_ROOTS",
+          "value": ".",
+          "description": "Server-owned filesystem boundary for path validation and solution discovery. Path-separator-delimited (';' on Windows, ':' on macOS/Linux). '.' scopes the server to its working directory. An empty value fails closed: every path-taking tool rejects its input."
+        }
+      ]
     }
   ],
   "_meta": {
