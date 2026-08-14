@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Security;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -74,6 +75,16 @@ public static class EditTools
     /// validation-to-use race this pin exists to close, and honoring the pin anyway would write one
     /// file's contents over another with the undo snapshot pointing at the wrong file.
     /// </para>
+    /// <para>
+    /// LOAD-BEARING ASSUMPTION: this compares the physical resolution of the lexically-normalized
+    /// REQUEST path, which stands in for "the physical file the document denotes". Those are the
+    /// same thing only because Roslyn's MSBuild loader normalizes item paths through
+    /// <see cref="Path.GetFullPath(string)"/> before they become <c>Document.FilePath</c>, so a
+    /// document path never itself carries a <c>..</c> segment following a link. If that ever stops
+    /// holding, this proxy silently weakens and the check belongs in
+    /// <c>EditService.PersistDocumentTextToDiskAsync</c>, which holds the actual document and can
+    /// compare against <c>ResolvePath(document.FilePath)</c> directly.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">
     /// The lexically-resolved and physically-resolved targets denote different files.
@@ -81,7 +92,11 @@ public static class EditTools
     internal static void EnsurePinnedTargetMatchesResolvedDocument(string filePath, string canonicalWritePath)
     {
         var documentTarget = ClientRootPathValidator.ResolvePath(Path.GetFullPath(filePath));
-        if (string.Equals(documentTarget, canonicalWritePath, StringComparison.OrdinalIgnoreCase))
+
+        // Use the boundary's own platform-aware comparison rather than a hardcoded one: a
+        // security predicate that is more permissive than the boundary it defends is a latent hole
+        // (OrdinalIgnoreCase would equate two genuinely distinct files on a case-sensitive volume).
+        if (ConfiguredRootBoundary.PathsEqual(documentTarget, canonicalWritePath))
         {
             return;
         }

@@ -16,6 +16,16 @@ internal static class ConfiguredRootBoundary
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
+    /// <summary>
+    /// Compares two already-canonical filesystem paths using this boundary's own platform-aware
+    /// comparison. Exposed so security checks outside this type cannot drift into a hardcoded
+    /// comparison that is more permissive than the boundary it defends — on a case-sensitive
+    /// filesystem a hardcoded <see cref="StringComparison.OrdinalIgnoreCase"/> would treat two
+    /// genuinely distinct files as identical.
+    /// </summary>
+    internal static bool PathsEqual(string left, string right) =>
+        string.Equals(left, right, FileSystemPathComparison);
+
     private static readonly StringComparer FileSystemPathComparer =
         OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
