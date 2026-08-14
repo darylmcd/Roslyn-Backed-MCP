@@ -36,3 +36,20 @@ An attempted fix reached PR #1230 and was **held at the Step 8b fix-cycle cap**.
 **Shape for the re-plan:** honor `canonicalWritePath` only when `ClientRootPathValidator.ResolvePath(Path.GetFullPath(filePath))` equals it, else fail closed (consistent with the repo's existing fail-closed stance on ambiguous paths), plus a regression for the link + `..` divergence. Note that `EditService.cs` was decomposed by PR #1241 after PR #1230 was cut, so that branch will not rebase cleanly.
 
 **Sibling exposures split out of this row:** `suppression-tools-missing-root-boundary-validation` (High — those tools validate nothing at all), `preview-apply-token-write-path-toctou`, `undo-revert-uncanonicalized-restore-path`.
+## Amendment — 2026-08-14 (PR #1230 remediated; row STILL OPEN)
+
+The held PR was rebased onto v3.0.0 and its blocking defect fixed. It is no longer a hazard — but it does **not** close this row.
+
+**Fixed in #1230:** the physical-vs-lexical divergence. `EditTools.EnsurePinnedTargetMatchesResolvedDocument` refuses a request whose lexical and physical resolution disagree (a `..` following a link), rather than writing the edited document's text into a different file with the undo snapshot pointing at the original. Fail-closed, using `ConfiguredRootBoundary.PathsEqual` so the check cannot be more permissive than the boundary it defends. Inversion verified empirically: neutering the guard fails the regression.
+
+**Why acceptance items 3-4 are still unmet:** unchanged from the previous amendment — `MSBuildWorkspace.TryApplyChanges` flushes changed documents to disk through the un-canonicalized `Document.FilePath` *before* the pinned write runs. Tracked by `workspace-load-path-canonicalization`.
+
+**Carried forward from the cold review of the fix (no HIGH findings; verdict was merge):**
+
+1. **The invariant is enforced in the wrong layer (medium).** The guard lives in `EditTools`, but the dangerous capability — write to an arbitrary path, bypassing `document.FilePath` — is a defaulted parameter on the **public** `IEditService.ApplyTextEditsAsync`, whose doc never states the precondition "the pin MUST denote the same physical file the document resolves to". The two tracked follow-ups (`preview-apply-token-write-path-toctou`, `suppression-tools-missing-root-boundary-validation`) will add pin-passing callers; one that forgets the host-layer guard reintroduces the wrong-file write. **Correct home is `EditService.PersistDocumentTextToDiskAsync`**, which holds the actual document and can compare `ResolvePath(document.FilePath)` directly instead of via a proxy. Blocked on the layering constraint: `RoslynMcp.Roslyn` references only `RoslynMcp.Core`, so `ConfiguredRootBoundary` is unreachable there — solving this and `preview-apply-token-write-path-toctou` likely means promoting the boundary primitive to a shared layer, once.
+
+2. **The guard rests on an undocumented Roslyn behavior (low, now commented).** It compares the physical resolution of the lexically-normalized REQUEST path as a stand-in for the document's physical path. Those coincide only because Roslyn's MSBuild loader normalizes item paths through `Path.GetFullPath` before they become `Document.FilePath`. Nothing tests that assumption; if it stops holding the proxy silently weakens.
+
+3. **Fail-open branch is now stricter than it was (low, untested).** `ValidatePath`'s zero-roots branch now calls `ResolvePath(path)`, which throws `ArgumentException` on drive-relative input and `IOException` on link cycles / ambiguous partially-qualified link targets. The explicit compatibility escape hatch therefore rejects some inputs it previously accepted. Only the happy path is covered.
+
+4. **Test placement (low).** `EnsurePinnedTarget_*` exercise `EditTools` but live in `ClientRootPathValidatorTests.cs`.
