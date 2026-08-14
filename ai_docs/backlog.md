@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-13T22:12:14Z
+**updated_at:** 2026-08-14T13:30:23Z
 
 ## Agent contract
 
@@ -56,6 +56,7 @@
 | `parameter-object-dto-reference-qualification` | High | — | Bind generated DTO type references correctly when target declarations and callers use different namespaces. | S | items/parameter-object-dto-reference-qualification.md |
 | `parameter-object-dto-output-boundary-validation` | High | — | Confine generated DTO output to the project boundary and refuse destination collisions before preview storage. | M | items/parameter-object-dto-output-boundary-validation.md |
 | `suppression-tools-missing-root-boundary-validation` | High | — | **Enforce the sanctioned-root boundary on the pragma-suppression write tools** — `add_pragma_suppression` / `pragma_scope_widen` reach `EditService`'s physical write with NO `ClientRootPathValidator` call at all. [type: bug] [source: 2026-08-13 sweep 20260813T172325Z, PR #1230 code-quality review] | M | items/suppression-tools-missing-root-boundary-validation.md |
+| `nuget-facing-docs-sanctioned-roots-migration` | High | — | **NuGet-facing docs miss the boundary migration** — README Option A shows a bare install with no env guidance, `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` is absent from the config table, and the `roots/list` deprecation is documented only in the ADR. [type: chore] [source: 2026-08-14 release-cut preflight] | M | items/nuget-facing-docs-sanctioned-roots-migration.md |
 
 ## Medium
 
@@ -153,6 +154,7 @@
 | `xmldoc-crefs-not-compile-checked` | Low | — | **Make XML doc `<see cref>` compile-checked** — no csproj sets `GenerateDocumentationFile`, so the compiler never validates crefs and dangling ones ship green under `TreatWarningsAsErrors`. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, PR #1241 code-quality review] | M | items/xmldoc-crefs-not-compile-checked.md |
 | `sourcefileencoding-core-relocation` | Low | — | **Move `SourceFileEncoding` to `RoslynMcp.Core`** so `FileSnapshotDto.FromExistingBytes` stops hand-rolling a second BOM-detecting `StreamReader` — the extraction landed in `.Roslyn` and Core cannot reference upward. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, PR #1243 code-quality review] | M | items/sourcefileencoding-core-relocation.md |
 | `cancellation-invariant-regression-locks` | Low | — | **Lock the safe-cancellation invariants the OCE-classification audit relied on** — `ScriptExecutionSupervisor`'s ambient-token-only-throw and `WorkspaceForkApplyService`'s timeout path are both load-bearing and untested. [type: chore] [source: 2026-08-13 sweep 20260813T172325Z, plan Risk 2 follow-up] | M | items/cancellation-invariant-regression-locks.md |
+| `workflow-md-release-managed-guard-list-drift` | Low | — | **`ai_docs/workflow.md`'s release-managed guard table omits `.claude-plugin/server.json`** and miscounts the version-source files as five when `/bump` edits six. Agents trust the table and get blocked by an undocumented guard. [type: bug] [source: 2026-08-14 sanctioned-roots fix] | S | items/workflow-md-release-managed-guard-list-drift.md |
 
 ## Defer
 
