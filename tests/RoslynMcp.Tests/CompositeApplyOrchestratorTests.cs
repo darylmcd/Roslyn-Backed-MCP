@@ -1,9 +1,12 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -113,7 +116,8 @@ public sealed class CompositeApplyOrchestratorTests
         // FILE — so Directory.CreateDirectory throws IOException mid-loop, after the first write
         // already hit disk. This exercises the "partial composite apply" branch deterministically
         // and cross-platform.
-        var blocker = Path.Combine(_tempDir, "blocker");
+        const string sentinel = "SECRET-SENTINEL-composite";
+        var blocker = Path.Combine(_tempDir, sentinel);
         await File.WriteAllTextAsync(blocker, "i am a file, not a directory");
 
         var goodPath = Path.Combine(_tempDir, "good.cs");
@@ -130,7 +134,14 @@ public sealed class CompositeApplyOrchestratorTests
 
         var workspace = new RecordingWorkspaceManager();
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
-        var orchestrator = new CompositeApplyOrchestrator(workspace, store, changeTracker: null, logger: logger);
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var orchestrator = new CompositeApplyOrchestrator(
+            workspace,
+            store,
+            changeTracker: null,
+            logger: logger,
+            exceptionReporter: reporter);
 
         // Act
         var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
@@ -140,6 +151,10 @@ public sealed class CompositeApplyOrchestratorTests
         CollectionAssert.AreEqual(new[] { goodPath }, result.AppliedFiles.ToArray(), "Only the pre-failure write should be reported as applied.");
         Assert.IsNotNull(result.Error);
         StringAssert.StartsWith(result.Error, "Partial composite apply: ", "The message must carry the partial-apply marker.");
+        StringAssert.Contains(result.Error, "mutation[1]");
+        StringAssert.Contains(result.Error, "correlationId=");
+        Assert.IsFalse(result.Error.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(result.Error.Contains(_tempDir, StringComparison.OrdinalIgnoreCase));
         Assert.AreEqual("// good content", await File.ReadAllTextAsync(goodPath), "The successful write must remain on disk.");
         Assert.IsFalse(File.Exists(goodPath + ".tmp"), "No .tmp artifact should remain from the successful write.");
         Assert.IsFalse(File.Exists(doomedPath), "The failing mutation must not have produced a file.");
@@ -154,20 +169,29 @@ public sealed class CompositeApplyOrchestratorTests
 
         // Regression guard: the preview token is intentionally left valid (not invalidated) on failure.
         Assert.IsNotNull(store.Retrieve(token), "The preview token must remain valid after a partial failure.");
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("CompositeApply", sink.Events.Single().Category);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single()).Contains(sentinel, StringComparison.Ordinal));
     }
 
     [TestMethod]
     public async Task ApplyComposite_FirstMutation_Failure_Is_Not_Marked_Partial()
     {
         // When nothing was written before the failure it is a clean failure, not a partial apply.
-        var blocker = Path.Combine(_tempDir, "blocker");
+        const string sentinel = "SECRET-SENTINEL-composite-first";
+        var blocker = Path.Combine(_tempDir, sentinel);
         await File.WriteAllTextAsync(blocker, "i am a file");
         var doomedPath = Path.Combine(blocker, "nested.cs");
 
         var mutations = new List<CompositeFileMutation> { new(doomedPath, "// never written", DeleteFile: false) };
         var store = new CompositePreviewStore();
         var token = store.Store("ws-1", 1, "test composite", mutations);
-        var orchestrator = new CompositeApplyOrchestrator(new RecordingWorkspaceManager(), store);
+        var sink = new CapturingServerObservabilitySink();
+        var orchestrator = new CompositeApplyOrchestrator(
+            new RecordingWorkspaceManager(),
+            store,
+            exceptionReporter: new ServerObservabilityReporter(sink));
 
         var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
 
@@ -176,6 +200,9 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsNotNull(result.Error);
         Assert.IsFalse(result.Error!.StartsWith("Partial composite apply: ", StringComparison.Ordinal),
             "A failure with zero prior writes is a clean failure, not a partial apply.");
+        StringAssert.Contains(result.Error, "correlationId=");
+        Assert.IsFalse(result.Error.Contains(sentinel, StringComparison.Ordinal));
+        Assert.HasCount(1, sink.Events);
     }
 
     /// <summary>

@@ -376,7 +376,8 @@ public static class WorkspaceTools
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("Optional workspace session identifier returned by workspace_load. Omit only when zero or one workspace is loaded; pass explicitly when multiple workspaces are active.")] string? workspaceId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         var loadedSummaries = workspace.ListWorkspaces()
             .Select(WorkspaceStatusSummaryDto.From)
@@ -416,8 +417,14 @@ public static class WorkspaceTools
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                var detail = UnexpectedExceptionReporting.Report(
+                    exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.WorkspaceReadiness).Public;
                 sourceGeneratedProbeLimitation =
-                    $"source_generated_documents probe was skipped after {ex.GetType().Name}; run source_generated_documents directly after resolving readiness blockers.";
+                    $"source_generated_documents probe was skipped after {detail.Category}. " +
+                    "Run source_generated_documents directly after resolving readiness blockers. " +
+                    $"correlationId={detail.CorrelationId}";
             }
 
             var report = WorkspaceReadinessReportBuilder.Create(

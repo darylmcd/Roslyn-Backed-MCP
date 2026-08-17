@@ -22,7 +22,10 @@ public sealed partial class ScaffoldingService
         ValidateIsTestProject(project);
         var framework = ResolveTestFramework(request.TestFramework, project.FilePath);
 
-        var scaffolder = new SingleTestScaffolder(_workspace, _fileOperationService);
+        var scaffolder = new SingleTestScaffolder(
+            _workspace,
+            _fileOperationService,
+            _exceptionReporter);
         return await scaffolder
             .PreviewAsync(project, framework, workspaceId, request, ct, testNameSuggestionProvider)
             .ConfigureAwait(false);

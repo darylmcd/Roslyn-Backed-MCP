@@ -2,7 +2,9 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -11,7 +13,7 @@ namespace RoslynMcp.Tests;
 /// <c>test-coverage-timeout-failure-envelope</c> (P2). When the <c>dotnet test</c>
 /// runner is cancelled (MCP timeout, caller cancellation) or throws an unexpected
 /// exception, the tool must emit a typed <see cref="TestCoverageFailureEnvelopeDto"/>
-/// (<c>errorKind=Timeout</c> or <c>errorKind=Unknown</c>) instead of letting the
+/// (<c>errorKind=Timeout</c> or <c>errorKind=InternalError</c>) instead of letting the
 /// bare exception escape <see cref="TestCoverageTools.RunTestCoverageCore"/> and
 /// surface to the MCP host as a raw invocation error.
 /// </summary>
@@ -57,26 +59,34 @@ public sealed class TestCoverageFailureEnvelopeTests
     }
 
     /// <summary>
-    /// (2) An arbitrary <see cref="Exception"/> from <c>RunAsync</c> must be classified as
-    /// <c>Unknown</c> with the underlying message embedded in the summary so the caller
-    /// has a debuggable handle on what failed.
+    /// (2) An arbitrary <see cref="Exception"/> from <c>RunAsync</c> must use the shared
+    /// secret-safe projection while retaining a correlation handle for the operator.
     /// </summary>
     [TestMethod]
-    public async Task RunTestCoverageCore_RunnerThrowsUnknown_EmitsUnknownEnvelopeWithMessage()
+    public async Task RunTestCoverageCore_RunnerThrowsUnexpected_EmitsSecretSafeCorrelatedEnvelope()
     {
+        const string sentinel = "SECRET-SENTINEL-C:/private/coverage.runsettings";
         var gate = new PassthroughGate();
         var workspace = new FakeWorkspaceManager();
-        var runner = new ThrowingDotnetCommandRunner(new InvalidOperationException("disk full"));
+        var runner = new ThrowingDotnetCommandRunner(
+            new InvalidOperationException(sentinel, new IOException(sentinel)));
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
 
-        var json = await TestCoverageTools.RunTestCoverageCore(
-            gate,
-            workspace,
-            runner,
-            workspaceId: "ws-coverage-unknown",
-            projectName: null,
-            deprecation: null,
-            progress: null,
-            ct: CancellationToken.None);
+        string json;
+        using (RequestCorrelationContext.Begin())
+        {
+            json = await TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                runner,
+                workspaceId: "ws-coverage-unknown",
+                projectName: null,
+                deprecation: null,
+                progress: null,
+                ct: CancellationToken.None,
+                exceptionReporter: reporter);
+        }
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -85,12 +95,18 @@ public sealed class TestCoverageFailureEnvelopeTests
 
         var envelope = root.GetProperty("failureEnvelope");
         Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind);
-        Assert.AreEqual("Unknown", envelope.GetProperty("errorKind").GetString());
+        Assert.AreEqual("InternalError", envelope.GetProperty("errorKind").GetString());
         Assert.IsFalse(envelope.GetProperty("isRetryable").GetBoolean(),
-            "Unknown failures default to non-retryable until a caller can classify them.");
-        StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty,
-            "disk full",
-            "Underlying exception message must surface in the summary for debuggability.");
+            "Unexpected failures default to non-retryable until the underlying cause is resolved.");
+        Assert.IsFalse(json.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+        StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty, "correlationId=");
+
+        Assert.HasCount(1, sink.Events);
+        var diagnosticJson = JsonSerializer.Serialize(sink.Events.Single());
+        Assert.IsFalse(diagnosticJson.Contains(sentinel, StringComparison.Ordinal));
+        Assert.AreEqual("TestCoverage", sink.Events.Single().Category);
+        Assert.HasCount(2, sink.Events.Single().Exception.ExceptionTypes);
     }
 
     /// <summary>
@@ -171,7 +187,7 @@ public sealed class TestCoverageFailureEnvelopeTests
     }
 
     [TestMethod]
-    public async Task RunTestCoverageCore_StatusThrows_EmitsUnknownEnvelope()
+    public async Task RunTestCoverageCore_StatusThrows_EmitsSecretSafeEnvelope()
     {
         var gate = new PassthroughGate();
         var workspace = new ThrowingStatusWorkspaceManager(new InvalidOperationException("workspace status unavailable"));
@@ -200,11 +216,13 @@ public sealed class TestCoverageFailureEnvelopeTests
         var root = doc.RootElement;
 
         Assert.IsFalse(root.GetProperty("success").GetBoolean());
-        StringAssert.Contains(root.GetProperty("error").GetString() ?? string.Empty, "workspace status unavailable");
+        Assert.IsFalse((root.GetProperty("error").GetString() ?? string.Empty)
+            .Contains("workspace status unavailable", StringComparison.Ordinal));
 
         var envelope = root.GetProperty("failureEnvelope");
-        Assert.AreEqual("Unknown", envelope.GetProperty("errorKind").GetString());
-        StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty, "workspace status unavailable");
+        Assert.AreEqual("InternalError", envelope.GetProperty("errorKind").GetString());
+        Assert.IsFalse((envelope.GetProperty("summary").GetString() ?? string.Empty)
+            .Contains("workspace status unavailable", StringComparison.Ordinal));
     }
 
     /// <summary>

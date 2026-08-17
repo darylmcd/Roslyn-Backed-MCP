@@ -12,15 +12,18 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<AnalyzerInfoService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     public AnalyzerInfoService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
-        ILogger<AnalyzerInfoService> logger)
+        ILogger<AnalyzerInfoService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<IReadOnlyList<AnalyzerInfoDto>> ListAnalyzersAsync(
@@ -42,7 +45,7 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
             // Get analyzer references from the project
             foreach (var analyzerRef in project.AnalyzerReferences)
             {
-                var assemblyName = analyzerRef.Display ?? analyzerRef.FullPath ?? "Unknown";
+                var assemblyName = GetAnalyzerIdentity(analyzerRef.Display, analyzerRef.FullPath);
 
                 // Merge rules from all projects into the same list rather than skipping on
                 // the first occurrence. GetAnalyzers is language-specific, so a project that
@@ -55,33 +58,9 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
                     analyzersByAssembly[assemblyName] = rules;
                 }
 
-                try
+                foreach (var rule in GetAnalyzerRules(analyzerRef, compilation.Language, assemblyName))
                 {
-                    var analyzers = analyzerRef.GetAnalyzers(compilation.Language);
-                    foreach (var analyzer in analyzers)
-                    {
-                        foreach (var descriptor in analyzer.SupportedDiagnostics)
-                        {
-                            rules.Add(new AnalyzerRuleDto(
-                                Id: descriptor.Id,
-                                Title: descriptor.Title.ToString(),
-                                Category: descriptor.Category,
-                                DefaultSeverity: descriptor.DefaultSeverity.ToString(),
-                                IsEnabledByDefault: descriptor.IsEnabledByDefault,
-                                HelpLinkUri: descriptor.HelpLinkUri));
-                        }
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogWarning(ex, "Failed to load analyzers from {Assembly}", assemblyName);
-                    rules.Add(new AnalyzerRuleDto(
-                        Id: "LOAD_ERROR",
-                        Title: $"Failed to load: {ex.Message}",
-                        Category: "Error",
-                        DefaultSeverity: "Error",
-                        IsEnabledByDefault: false,
-                        HelpLinkUri: null));
+                    rules.Add(rule);
                 }
             }
         }
@@ -95,5 +74,54 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
                     .ToList()))
             .OrderBy(a => a.AssemblyName)
             .ToList();
+    }
+
+    internal IReadOnlyList<AnalyzerRuleDto> GetAnalyzerRules(
+        AnalyzerReference analyzerReference,
+        string language,
+        string assemblyName)
+    {
+        try
+        {
+            return analyzerReference.GetAnalyzers(language)
+                .SelectMany(static analyzer => analyzer.SupportedDiagnostics)
+                .Select(static descriptor => new AnalyzerRuleDto(
+                    Id: descriptor.Id,
+                    Title: descriptor.Title.ToString(),
+                    Category: descriptor.Category,
+                    DefaultSeverity: descriptor.DefaultSeverity.ToString(),
+                    IsEnabledByDefault: descriptor.IsEnabledByDefault,
+                    HelpLinkUri: descriptor.HelpLinkUri))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var detail = UnexpectedExceptionReporting.Report(
+                _exceptionReporter,
+                ex,
+                UnexpectedExceptionCategory.AnalyzerLoad).Public;
+            _logger.LogWarning(
+                "Failed to load analyzers from {Assembly}; correlationId={CorrelationId}",
+                assemblyName,
+                detail.CorrelationId);
+            return
+            [
+                new AnalyzerRuleDto(
+                    Id: "LOAD_ERROR",
+                    Title: $"Analyzer load failed. Retry after resolving analyzer dependencies. correlationId={detail.CorrelationId}",
+                    Category: "Error",
+                    DefaultSeverity: "Error",
+                    IsEnabledByDefault: false,
+                    HelpLinkUri: null),
+            ];
+        }
+    }
+
+    private static string GetAnalyzerIdentity(string? display, string? fullPath)
+    {
+        var candidate = !string.IsNullOrWhiteSpace(display) ? display : fullPath;
+        return string.IsNullOrWhiteSpace(candidate)
+            ? "Unknown"
+            : Path.GetFileName(candidate);
     }
 }

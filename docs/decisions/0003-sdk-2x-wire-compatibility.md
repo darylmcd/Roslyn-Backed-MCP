@@ -94,16 +94,17 @@ the planning handle as delivery evidence.
 | Legacy Sampling replaced by request-scoped MRTR input | Breaking interaction correction | **Tracked:** `mcp-sampling-mrtr-migration` | Supply sampling input responses when offered, or accept the documented deterministic fallback. Do not require a nested `sampling/createMessage` request on modern sessions. |
 | Tasks for slow operations | Additive, opt-in extension | **Tracked:** `tasks-extension-slow-ops` | No migration until enabled. Adoption requires the separate Tasks package and a client that negotiates the extension; existing synchronous calls remain valid. |
 | Cohesion, reflection, DI, exception-flow, NuGet, and code-fix completeness fields | Additive stable-response evolution | **Tracked:** `cohesion-scan-completeness-contract`, `reflection-usage-scan-completeness`, `di-registration-scan-completeness`, `exception-flow-scan-completeness`, `nuget-dependency-scan-completeness`, `diagnostic-codefix-enumeration-completeness` | Ignore unknown fields on older clients. New clients must inspect completeness/failure counts before treating totals as exhaustive. |
-| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Tracked:** `public-exception-detail-policy` and the surface-specific rows listed below | Stop parsing exception text, stack traces, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. |
+| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Partially delivered:** the shared tool boundary plus coverage, scaffolding IO, analyzer load, bulk reference, workspace validation/readiness, composite apply, and FixAll provider failures use `IUnexpectedExceptionReporter` with focused sentinel regressions. Prompt, resource, sampling, cleanup, and newly discovered adjacent surfaces remain tracked. | Stop parsing exception text, exception types, stack traces, supplied values, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. Expected validation/not-found messages are stable guidance, not exception-text mirrors. |
 | Workspace lifecycle emits false resource-list changes | Non-breaking behavior correction | **Delivered:** static workspace lifecycle notification calls removed and `WorkspaceResourceListNotificationWireTests` proves byte-equivalent legacy/modern lists with no list-changed frames | Refresh `resources/list` only for an advertised list-change notification; do not rely on workspace load/reload/close to produce one. |
 
-The disclosure group is explicitly owned by `tool-error-envelope-sensitive-detail-disclosure`,
-`prompt-call-error-filter-boundary`, `test-coverage-unexpected-error-detail-redaction`,
-`scaffolding-io-warning-detail-redaction`, `analyzer-load-error-detail-redaction`,
-`bulk-reference-error-detail-redaction`, `workspace-validation-error-detail-redaction`,
-`workspace-readiness-probe-error-redaction`,
-`composite-apply-error-detail-redaction`, `fixall-provider-error-detail-redaction`, and
-`atomic-file-cleanup-error-detail-redaction`. This ADR does not mark any of them implemented.
+The delivered disclosure slice is owned by `tool-error-envelope-sensitive-detail-disclosure`,
+`test-coverage-unexpected-error-detail-redaction`, `scaffolding-io-warning-detail-redaction`,
+`analyzer-load-error-detail-redaction`, `bulk-reference-error-detail-redaction`,
+`workspace-validation-error-detail-redaction`, `workspace-readiness-probe-error-redaction`,
+`composite-apply-error-detail-redaction`, and `fixall-provider-error-detail-redaction`.
+`prompt-call-error-filter-boundary`, `resource-read-protocol-error-semantics`,
+`mcp-sampling-mrtr-migration`, `atomic-file-cleanup-error-detail-redaction`, and the bounded
+adjacent-review rows remain tracked; this ADR does not claim those surfaces are implemented.
 
 ## Migration examples for breaking corrections
 
@@ -166,6 +167,12 @@ Before, clients could observe implementation exception messages, paths, or stack
 security corrections, clients receive a stable category/summary and, where available, a correlation
 identifier. Treat free-form message text as non-contractual and use the identifier for server-side
 diagnosis.
+
+The delivered tool-boundary correction also stops echoing expected exception messages. Clients that
+previously extracted workspace paths, missing keys, invalid values, preview tokens, or transport text
+from `message` must retain that state locally and use `category`, `paramName`, stable remediation, and
+`correlationId` instead. Composite-apply recovery continues to use the exact `appliedFiles` list; its
+failing target is now a stable mutation ordinal rather than an unrestricted path.
 
 ## Consequences
 

@@ -225,12 +225,11 @@ internal static class StructuredCallToolFilter
                 var isInternalError = IsInternalError(ex);
                 var level = isInternalError ? LogLevel.Error : LogLevel.Warning;
                 if (isInternalError &&
-                    context.Services?.GetService<ServerObservabilityReporter>() is { } reporter)
+                    context.Services?.GetService<IUnexpectedExceptionReporter>() is { } reporter)
                 {
-                    await reporter.ReportUnexpectedAsync(
+                    reporter.ReportUnexpected(
                         ex,
-                        ServerObservabilityCategory.ToolCall,
-                        CancellationToken.None).ConfigureAwait(false);
+                        UnexpectedExceptionCategory.ToolCall);
                 }
 
                 logger?.Log(

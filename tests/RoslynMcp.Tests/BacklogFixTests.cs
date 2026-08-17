@@ -67,6 +67,35 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         Assert.IsFalse(json.RootElement.TryGetProperty("stackTrace", out _));
     }
 
+    [TestMethod]
+    public void ToolErrorHandler_ExpectedFailures_NeverEchoRawExceptionDetail()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/tool-input.cs";
+        Exception[] exceptions =
+        [
+            new FileNotFoundException(sentinel, sentinel),
+            new DirectoryNotFoundException(sentinel),
+            new KeyNotFoundException(sentinel),
+            new ArgumentException(sentinel, "workspaceId"),
+            new TimeoutException(sentinel),
+            new InvalidOperationException($"workspace stale {sentinel}"),
+            new JsonException(sentinel),
+            new FormatException(sentinel),
+        ];
+
+        foreach (var exception in exceptions)
+        {
+            var envelope = ToolErrorHandler.ClassifyAndFormat(exception, "secret_safe_tool");
+
+            Assert.IsFalse(
+                envelope.Contains(sentinel, StringComparison.Ordinal),
+                $"{exception.GetType().Name} exposed its raw message in the public envelope: {envelope}");
+            Assert.IsFalse(
+                envelope.Contains("C:/private", StringComparison.Ordinal),
+                $"{exception.GetType().Name} exposed a full path in the public envelope: {envelope}");
+        }
+    }
+
     // ── CODE-04: InvalidOperationException is handled via dictionary ──
 
     [TestMethod]

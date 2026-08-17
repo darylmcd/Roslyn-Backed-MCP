@@ -10,11 +10,6 @@ internal enum ServerObservabilitySinkKind
     Stderr,
 }
 
-internal enum ServerObservabilityCategory
-{
-    ToolCall,
-}
-
 internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Sink)
 {
     public const string EnvironmentVariableName = "ROSLYNMCP_OBSERVABILITY_SINK";
@@ -42,16 +37,16 @@ internal interface IServerObservabilitySink
 {
     bool IsEnabled { get; }
 
-    ValueTask WriteAsync(ServerObservabilityEvent diagnosticEvent, CancellationToken cancellationToken);
+    void Write(ServerObservabilityEvent diagnosticEvent);
 }
 
 internal sealed class DisabledServerObservabilitySink : IServerObservabilitySink
 {
     public bool IsEnabled => false;
 
-    public ValueTask WriteAsync(
-        ServerObservabilityEvent diagnosticEvent,
-        CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    public void Write(ServerObservabilityEvent diagnosticEvent)
+    {
+    }
 }
 
 internal sealed class StderrServerObservabilitySink : IServerObservabilitySink
@@ -60,38 +55,29 @@ internal sealed class StderrServerObservabilitySink : IServerObservabilitySink
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
-    private readonly Func<string, CancellationToken, ValueTask> _write;
+    private readonly Action<string> _write;
 
-    public StderrServerObservabilitySink(
-        Func<string, CancellationToken, ValueTask>? write = null)
+    public StderrServerObservabilitySink(Action<string>? write = null)
     {
-        _write = write ?? WriteToStderrAsync;
+        _write = write ?? WriteToStderr;
     }
 
     public bool IsEnabled => true;
 
-    public ValueTask WriteAsync(
-        ServerObservabilityEvent diagnosticEvent,
-        CancellationToken cancellationToken)
+    public void Write(ServerObservabilityEvent diagnosticEvent)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var json = JsonSerializer.Serialize(diagnosticEvent, s_jsonOptions);
-        return _write(json, cancellationToken);
+        _write(json);
     }
 
-    private static ValueTask WriteToStderrAsync(string json, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Console.Error.WriteLine(json);
-        return ValueTask.CompletedTask;
-    }
+    private static void WriteToStderr(string json) => Console.Error.WriteLine(json);
 }
 
 /// <summary>
 /// Projects unexpected exceptions through the shared secret-safe policy and publishes the
 /// server-only shape to the configured sink. Sink failures are isolated from MCP responses.
 /// </summary>
-internal sealed class ServerObservabilityReporter
+internal sealed class ServerObservabilityReporter : IUnexpectedExceptionReporter
 {
     private const int UnexpectedFailureEventId = 1001;
     private const string UnexpectedFailureEventName = "UnexpectedFailure";
@@ -113,10 +99,9 @@ internal sealed class ServerObservabilityReporter
         _writeFallback = writeFallback;
     }
 
-    public async ValueTask<UnexpectedExceptionDetails> ReportUnexpectedAsync(
+    public UnexpectedExceptionDetails ReportUnexpected(
         Exception exception,
-        ServerObservabilityCategory category,
-        CancellationToken cancellationToken)
+        UnexpectedExceptionCategory category)
     {
         ArgumentNullException.ThrowIfNull(exception);
         var categoryName = category.ToString();
@@ -131,19 +116,14 @@ internal sealed class ServerObservabilityReporter
 
         try
         {
-            await _sink.WriteAsync(
+            _sink.Write(
                 new ServerObservabilityEvent(
                     DateTimeOffset.UtcNow,
                     LogLevel.Error,
                     categoryName,
                     UnexpectedFailureEventId,
                     UnexpectedFailureEventName,
-                    details.Server),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
+                    details.Server));
         }
         catch
         {

@@ -17,12 +17,18 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<ReferenceService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
-    public ReferenceService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<ReferenceService> logger)
+    public ReferenceService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<ReferenceService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false, IReadOnlyCollection<string>? projectFilter = null)
@@ -608,14 +614,12 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
 
         async Task<BulkReferenceResultDto> ProcessOneAsync(BulkSymbolLocator bulk, int index)
         {
-            var key = bulk.SymbolHandle ?? bulk.MetadataName
-                ?? (bulk.FilePath is not null && bulk.Line.HasValue && bulk.Column.HasValue
-                    ? $"{bulk.FilePath}:{bulk.Line}:{bulk.Column}"
-                    : $"symbol[{index}]");
+            var key = $"symbol[{index}]";
 
             await semaphore.WaitAsync(ct).ConfigureAwait(false);
             try
             {
+                key = BuildBulkResultKey(solution, bulk, index);
                 var locator = ToSymbolLocator(bulk);
                 var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
                 if (symbol is null)
@@ -640,9 +644,19 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
 
                 return new BulkReferenceResultDto(key, symbol.ToDisplayString(), locations.Count, locations, null);
             }
+            catch (ArgumentException)
+            {
+                return new BulkReferenceResultDto(
+                    key,
+                    null,
+                    0,
+                    [],
+                    "Invalid symbol locator. Supply symbolHandle, metadataName, or filePath with line and column. " +
+                    "Example payload: { \"symbolHandle\": \"<opaque handle>\" }.");
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return new BulkReferenceResultDto(key, null, 0, [], ex.Message);
+                return BuildBulkFailureResult(key, index, ex);
             }
             finally
             {
@@ -653,6 +667,57 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         var tasks = symbols.Select((s, i) => ProcessOneAsync(s, i)).ToList();
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
         return results;
+    }
+
+    internal BulkReferenceResultDto BuildBulkFailureResult(string key, int index, Exception exception)
+    {
+        var detail = UnexpectedExceptionReporting.Report(
+            _exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.BulkReference).Public;
+        _logger.LogWarning(
+            "Bulk reference item {ItemIndex} failed unexpectedly; correlationId={CorrelationId}",
+            index,
+            detail.CorrelationId);
+        return new BulkReferenceResultDto(
+            key,
+            null,
+            0,
+            [],
+            $"Reference lookup failed unexpectedly. {detail.Remediation} correlationId={detail.CorrelationId}");
+    }
+
+    internal static string BuildBulkResultKey(Solution solution, BulkSymbolLocator bulk, int index)
+    {
+        if (!string.IsNullOrWhiteSpace(bulk.SymbolHandle))
+        {
+            return bulk.SymbolHandle;
+        }
+
+        if (!string.IsNullOrWhiteSpace(bulk.MetadataName))
+        {
+            return bulk.MetadataName;
+        }
+
+        if (bulk.FilePath is null || !bulk.Line.HasValue || !bulk.Column.HasValue)
+        {
+            return $"symbol[{index}]";
+        }
+
+        var workspaceRoot = Path.GetDirectoryName(solution.FilePath);
+        if (!string.IsNullOrWhiteSpace(workspaceRoot) && Path.IsPathFullyQualified(bulk.FilePath))
+        {
+            var relative = Path.GetRelativePath(workspaceRoot, Path.GetFullPath(bulk.FilePath));
+            if (!Path.IsPathRooted(relative) &&
+                !relative.Equals("..", StringComparison.Ordinal) &&
+                !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                !relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                return $"{relative.Replace('\\', '/')}:{bulk.Line}:{bulk.Column}";
+            }
+        }
+
+        return $"symbol[{index}]@{bulk.Line}:{bulk.Column}";
     }
 
     private static SymbolLocator ToSymbolLocator(BulkSymbolLocator bulk)

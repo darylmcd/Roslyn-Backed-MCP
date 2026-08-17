@@ -1,5 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -89,5 +94,59 @@ public sealed class FindReferencesSummaryTests : SharedWorkspaceTestBase
         var summaryJson = System.Text.Json.JsonSerializer.Serialize(summaryRefs);
         Assert.IsTrue(summaryJson.Length <= fullJson.Length,
             $"summary JSON must not exceed full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
+    }
+
+    [TestMethod]
+    public void BulkReferenceFailure_PreservesSafeKeysAndRedactsUnexpectedDetail()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/references.cs";
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        using var cache = new CompilationCache(WorkspaceManager);
+        var service = new ReferenceService(
+            WorkspaceManager,
+            cache,
+            NullLogger<ReferenceService>.Instance,
+            reporter);
+
+        BulkReferenceResultDto failure;
+        using (RequestCorrelationContext.Begin())
+        {
+            failure = service.BuildBulkFailureResult(
+                "opaque-handle",
+                0,
+                new InvalidOperationException(sentinel, new IOException(sentinel)));
+        }
+
+        Assert.AreEqual("opaque-handle", failure.Key);
+        Assert.AreEqual(0, failure.ReferenceCount);
+        Assert.HasCount(0, failure.References);
+        StringAssert.Contains(failure.Error, "correlationId=");
+        Assert.IsFalse(JsonSerializer.Serialize(failure).Contains(sentinel, StringComparison.Ordinal));
+
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var sourcePath = solution.Projects.SelectMany(p => p.Documents)
+            .Select(d => d.FilePath)
+            .First(path => path is not null)!;
+        var relativeKey = ReferenceService.BuildBulkResultKey(
+            solution,
+            new BulkSymbolLocator(null, null, sourcePath, 5, 10),
+            1);
+        Assert.IsFalse(Path.IsPathRooted(relativeKey));
+        Assert.IsFalse(relativeKey.Contains(Path.GetDirectoryName(solution.FilePath!)!, StringComparison.OrdinalIgnoreCase));
+
+        var outsidePath = Path.Combine(
+            Path.GetPathRoot(solution.FilePath!)!,
+            "private",
+            "SECRET-SENTINEL-references.cs");
+        var outsideKey = ReferenceService.BuildBulkResultKey(
+            solution,
+            new BulkSymbolLocator(null, null, outsidePath, 7, 11),
+            2);
+        Assert.AreEqual("symbol[2]@7:11", outsideKey);
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("BulkReference", sink.Events.Single().Category);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single()).Contains(sentinel, StringComparison.Ordinal));
     }
 }

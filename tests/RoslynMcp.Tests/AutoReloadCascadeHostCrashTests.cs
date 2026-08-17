@@ -77,8 +77,8 @@ public sealed class AutoReloadCascadeHostCrashTests : SharedWorkspaceTestBase
         var message = json.RootElement.GetProperty("message").GetString()!;
         StringAssert.Contains(message, "Workspace is transitioning between snapshots",
             "Envelope message must contain the structured retry-hint prefix.");
-        StringAssert.Contains(message, "retry after settle",
-            "The originating exception message must be preserved end-to-end.");
+        Assert.IsFalse(message.Contains("retry after settle", StringComparison.Ordinal),
+            "The originating exception message must not cross the public boundary.");
 
         // Internal-error envelopes carry a stack trace; structured known-category envelopes
         // deliberately omit it to keep the payload small. Verify StaleWorkspaceTransition

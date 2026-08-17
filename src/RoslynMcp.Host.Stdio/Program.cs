@@ -50,7 +50,6 @@ builder.Services.AddSingleton<IServerObservabilitySink>(_ => observabilityOption
     ServerObservabilitySinkKind.Stderr => new StderrServerObservabilitySink(),
     _ => throw new InvalidOperationException("Unsupported server observability sink."),
 });
-builder.Services.AddSingleton<ServerObservabilityReporter>();
 builder.Services
     .AddMcpServer(options =>
     {
