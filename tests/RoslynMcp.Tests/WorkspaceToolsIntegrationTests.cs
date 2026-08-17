@@ -319,7 +319,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
                 ct: CancellationToken.None));
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString()!, "<=");
+        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString()!, "less than or equal");
     }
 
     [TestMethod]

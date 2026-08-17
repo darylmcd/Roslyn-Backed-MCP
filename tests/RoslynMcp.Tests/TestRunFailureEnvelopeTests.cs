@@ -602,7 +602,8 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
         Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
         Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
-        StringAssert.Contains(root.GetProperty("message").GetString() ?? string.Empty, "no test projects matched filter");
+        Assert.IsFalse((root.GetProperty("message").GetString() ?? string.Empty)
+            .Contains("no test projects matched filter", StringComparison.Ordinal));
         Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
             $"test_run exception envelope must carry schemaHint. Envelope: {json}");
         StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "test_run(");
@@ -690,7 +691,7 @@ public sealed class TestRunFailureEnvelopeTests
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_related_files", "related-files blew up");
     }
 
-    private static void AssertNonInvalidArgumentEnvelopeHasSchemaHint(string json, string toolName, string messageFragment)
+    private static void AssertNonInvalidArgumentEnvelopeHasSchemaHint(string json, string toolName, string secretFragment)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -700,7 +701,8 @@ public sealed class TestRunFailureEnvelopeTests
             $"Expected a non-InvalidArgument category for {toolName}. Envelope: {json}");
         Assert.AreEqual(toolName, root.GetProperty("tool").GetString());
         Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
-        StringAssert.Contains(root.GetProperty("message").GetString() ?? string.Empty, messageFragment);
+        Assert.IsFalse((root.GetProperty("message").GetString() ?? string.Empty)
+            .Contains(secretFragment, StringComparison.Ordinal));
         Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
             $"{toolName} exception envelope must carry schemaHint on a non-InvalidArgument failure. Envelope: {json}");
         StringAssert.Contains(schemaHint.GetString() ?? string.Empty, $"{toolName}(");

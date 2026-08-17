@@ -11,7 +11,7 @@ public sealed class ServerObservabilitySinkTests
     private const string _secretSentinel = "SECRET-SENTINEL-C:/private/source.cs";
 
     [TestMethod]
-    public async Task Reporter_PreservesCorrelationAndSecretSafeStructureOnly()
+    public void Reporter_PreservesCorrelationAndSecretSafeStructureOnly()
     {
         var sink = new CapturingSink();
         var reporter = new ServerObservabilityReporter(sink);
@@ -25,10 +25,9 @@ public sealed class ServerObservabilitySinkTests
         using (RequestCorrelationContext.Begin())
         {
             correlationId = RequestCorrelationContext.Current!;
-            details = await reporter.ReportUnexpectedAsync(
+            details = reporter.ReportUnexpected(
                 exception,
-                ServerObservabilityCategory.ToolCall,
-                CancellationToken.None);
+                UnexpectedExceptionCategory.ToolCall);
             publicEnvelope = ToolErrorHandler.ClassifyAndFormat(exception, "synthetic_tool");
         }
 
@@ -57,37 +56,34 @@ public sealed class ServerObservabilitySinkTests
     }
 
     [TestMethod]
-    public async Task DisabledSink_ProducesNoOutputOrNetworkWork()
+    public void DisabledSink_ProducesNoOutputOrNetworkWork()
     {
         var sink = new DisabledServerObservabilitySink();
         var reporter = new ServerObservabilityReporter(sink);
 
-        var details = await reporter.ReportUnexpectedAsync(
+        var details = reporter.ReportUnexpected(
             new InvalidOperationException(_secretSentinel),
-            ServerObservabilityCategory.ToolCall,
-            CancellationToken.None);
+            UnexpectedExceptionCategory.ToolCall);
 
         Assert.AreEqual("unavailable", details.Public.CorrelationId);
         Assert.IsFalse(sink.IsEnabled);
     }
 
     [TestMethod]
-    public async Task StderrSink_EmitsCamelCaseStructuredJson()
+    public void StderrSink_EmitsCamelCaseStructuredJson()
     {
         var lines = new List<string>();
-        var sink = new StderrServerObservabilitySink((line, _) =>
+        var sink = new StderrServerObservabilitySink(line =>
         {
             lines.Add(line);
-            return ValueTask.CompletedTask;
         });
         var reporter = new ServerObservabilityReporter(sink);
 
         using (RequestCorrelationContext.Begin())
         {
-            await reporter.ReportUnexpectedAsync(
+            reporter.ReportUnexpected(
                 new InvalidOperationException(_secretSentinel),
-                ServerObservabilityCategory.ToolCall,
-                CancellationToken.None);
+                UnexpectedExceptionCategory.ToolCall);
         }
 
         Assert.HasCount(1, lines);
@@ -98,7 +94,7 @@ public sealed class ServerObservabilitySinkTests
     }
 
     [TestMethod]
-    public async Task SinkFailure_FallsBackOnceWithoutChangingPublicDetails()
+    public void SinkFailure_FallsBackOnceWithoutChangingPublicDetails()
     {
         var fallbacks = new List<string>();
         var reporter = new ServerObservabilityReporter(
@@ -107,10 +103,9 @@ public sealed class ServerObservabilitySinkTests
 
         using (RequestCorrelationContext.Begin())
         {
-            var details = await reporter.ReportUnexpectedAsync(
+            var details = reporter.ReportUnexpected(
                 new InvalidOperationException(_secretSentinel),
-                ServerObservabilityCategory.ToolCall,
-                CancellationToken.None);
+                UnexpectedExceptionCategory.ToolCall);
             Assert.AreEqual(RequestCorrelationContext.Current, details.Public.CorrelationId);
         }
 
@@ -142,13 +137,9 @@ public sealed class ServerObservabilitySinkTests
         public List<ServerObservabilityEvent> Events { get; } = [];
         public bool IsEnabled => true;
 
-        public ValueTask WriteAsync(
-            ServerObservabilityEvent diagnosticEvent,
-            CancellationToken cancellationToken)
+        public void Write(ServerObservabilityEvent diagnosticEvent)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             Events.Add(diagnosticEvent);
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -156,9 +147,7 @@ public sealed class ServerObservabilitySinkTests
     {
         public bool IsEnabled => true;
 
-        public ValueTask WriteAsync(
-            ServerObservabilityEvent diagnosticEvent,
-            CancellationToken cancellationToken) =>
+        public void Write(ServerObservabilityEvent diagnosticEvent) =>
             throw new IOException("sink unavailable");
     }
 

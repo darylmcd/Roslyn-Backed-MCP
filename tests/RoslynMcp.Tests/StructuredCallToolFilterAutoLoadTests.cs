@@ -87,8 +87,9 @@ public sealed class StructuredCallToolFilterAutoLoadTests
         var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
         Assert.AreEqual("InvalidArgument", payload.GetProperty("category").GetString());
         Assert.AreEqual("fast-fail", payload.GetProperty("_meta").GetProperty("autoResolution").GetString());
-        StringAssert.Contains(payload.GetProperty("message").GetString(), "Alpha.slnx");
-        StringAssert.Contains(payload.GetProperty("message").GetString(), "Beta.slnx");
-        StringAssert.Contains(payload.GetProperty("message").GetString(), "workspace_load");
+        var publicMessage = payload.GetProperty("message").GetString()!;
+        Assert.IsFalse(publicMessage.Contains("Alpha.slnx", StringComparison.Ordinal));
+        Assert.IsFalse(publicMessage.Contains("Beta.slnx", StringComparison.Ordinal));
+        StringAssert.Contains(publicMessage, "workspace_load");
     }
 }

@@ -175,16 +175,10 @@ public sealed class WorkspaceManagerEvictionTests
             "exceptionType must be the most-derived type, not the base KeyNotFoundException.");
 
         var message = json.RootElement.GetProperty("message").GetString()!;
-        StringAssert.Contains(message, $"serverStartedAt={serverStartedAtUtc:O}",
-            "Envelope must surface serverStartedAt so callers can correlate with server_info.");
-        StringAssert.Contains(message, $"workspaceLoadedAt={loadedAtUtc:O}",
-            "Envelope must surface workspaceLoadedAt for same-process evictions.");
-        // workspace-id-recovery-hints: same-process envelopes carry the rehydration path
-        // and an exact workspace_load(path: ...) call shape so agents can copy-paste recovery.
-        StringAssert.Contains(message, $"loadedPath={loadedPath};",
-            "Envelope must surface loadedPath for same-process evictions.");
-        StringAssert.Contains(message, $"recovery=workspace_load(path: \"{loadedPath}\");",
-            "Envelope must include the exact workspace_load retry shape.");
+        Assert.IsFalse(message.Contains(serverStartedAtUtc.ToString("O"), StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains(loadedAtUtc.ToString("O"), StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains(loadedPath, StringComparison.Ordinal));
+        StringAssert.Contains(message, "workspace_load");
     }
 
     /// <summary>
@@ -208,8 +202,7 @@ public sealed class WorkspaceManagerEvictionTests
 
         using var json = JsonDocument.Parse(result);
         var message = json.RootElement.GetProperty("message").GetString()!;
-        StringAssert.Contains(message, $"serverStartedAt={serverStartedAtUtc:O}",
-            "Cross-process envelope must still carry serverStartedAt.");
+        Assert.IsFalse(message.Contains(serverStartedAtUtc.ToString("O"), StringComparison.Ordinal));
         Assert.IsFalse(message.Contains("workspaceLoadedAt="),
             "Cross-process envelope must NOT emit workspaceLoadedAt — prior loadedAt is unrecoverable.");
         Assert.IsFalse(message.Contains("loadedPath="),

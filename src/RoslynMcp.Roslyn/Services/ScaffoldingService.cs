@@ -24,6 +24,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
     private readonly IFileOperationService _fileOperationService;
     private readonly Contracts.IPreviewStore _previewStore;
     private readonly ILogger<ScaffoldingService>? _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly TypeScaffolder _typeScaffolder;
     private readonly BatchTestScaffolder _batchTestScaffolder;
 
@@ -31,18 +32,20 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         IWorkspaceManager workspace,
         IFileOperationService fileOperationService,
         Contracts.IPreviewStore previewStore,
-        ILogger<ScaffoldingService>? logger = null)
+        ILogger<ScaffoldingService>? logger = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _fileOperationService = fileOperationService;
         _previewStore = previewStore;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
         _typeScaffolder = new TypeScaffolder(workspace, fileOperationService);
         // Logger-bound resolution helpers stay on the facade (their only logging paths); the
         // collaborator receives them as delegates rather than re-declaring copies.
         _batchTestScaffolder = new BatchTestScaffolder(
             workspace, fileOperationService, previewStore,
-            ResolveProject, ValidateIsTestProject, ResolveTestFramework);
+            ResolveProject, ValidateIsTestProject, ResolveTestFramework, exceptionReporter);
     }
 
     /// <summary>

@@ -124,7 +124,8 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
         var message = root.GetProperty("message").GetString() ?? string.Empty;
         StringAssert.Contains(message, "projectName");
-        StringAssert.Contains(message, "DoesNotExist");
+        StringAssert.Contains(message, "workspace_status");
+        Assert.IsFalse(message.Contains("DoesNotExist", StringComparison.Ordinal));
     }
 
     [TestMethod]

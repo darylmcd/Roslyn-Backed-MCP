@@ -3,8 +3,10 @@ using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -162,6 +164,54 @@ public sealed class WorkspaceReadinessReportTests
             doc.RootElement.GetProperty("nextRecommendedWorkflows")[0].GetProperty("workflow").GetString());
     }
 
+    [TestMethod]
+    public async Task ReadinessReport_SourceGeneratedProbeFailure_IsSecretSafeAndCorrelated()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/generated.cs";
+        var status = CreateStatus();
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+
+        string json;
+        using (RequestCorrelationContext.Begin())
+        {
+            json = (await WorkspaceTools.GetWorkspaceReadinessReport(
+                new FakeGate(),
+                new FakeWorkspaceManager(
+                    [status],
+                    new InvalidOperationException(sentinel, new IOException(sentinel))),
+                workspaceId: status.WorkspaceId,
+                ct: CancellationToken.None,
+                exceptionReporter: reporter)).TextPayload();
+        }
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("reported", doc.RootElement.GetProperty("status").GetString());
+        var limitations = ReadLimitations(doc);
+        StringAssert.Contains(limitations, "source_generated_documents");
+        StringAssert.Contains(limitations, "InternalError");
+        StringAssert.Contains(limitations, "correlationId=");
+        Assert.IsFalse(json.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("WorkspaceReadiness", sink.Events.Single().Category);
+        Assert.HasCount(2, sink.Events.Single().Exception.ExceptionTypes);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single()).Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task ReadinessReport_SourceGeneratedProbeCancellation_Propagates()
+    {
+        var status = CreateStatus();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            WorkspaceTools.GetWorkspaceReadinessReport(
+                new FakeGate(),
+                new FakeWorkspaceManager([status], new OperationCanceledException()),
+                workspaceId: status.WorkspaceId));
+    }
+
     private static async Task<string> CreateReportAsync(WorkspaceStatusDto status) =>
         (await WorkspaceTools.GetWorkspaceReadinessReport(
             new FakeGate(),
@@ -226,7 +276,9 @@ public sealed class WorkspaceReadinessReportTests
         public void RemoveGate(string workspaceId) { }
     }
 
-    private sealed class FakeWorkspaceManager(IReadOnlyList<WorkspaceStatusDto> statuses) : IWorkspaceManager
+    private sealed class FakeWorkspaceManager(
+        IReadOnlyList<WorkspaceStatusDto> statuses,
+        Exception? sourceGeneratedFailure = null) : IWorkspaceManager
     {
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
@@ -256,7 +308,9 @@ public sealed class WorkspaceReadinessReportTests
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<GeneratedDocumentDto>>([]);
+            sourceGeneratedFailure is null
+                ? Task.FromResult<IReadOnlyList<GeneratedDocumentDto>>([])
+                : Task.FromException<IReadOnlyList<GeneratedDocumentDto>>(sourceGeneratedFailure);
 
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
             throw new NotSupportedException();

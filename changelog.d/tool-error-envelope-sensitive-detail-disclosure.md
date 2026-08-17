@@ -1,0 +1,5 @@
+---
+category: Changed — BREAKING
+---
+
+- **Changed — BREAKING:** Public tool, coverage, scaffolding IO, workspace-validation, analyzer-load, bulk-reference, composite-apply, FixAll-provider, and workspace-readiness failure results now replace raw exception messages, types, stacks, supplied values, and unrestricted paths with stable categories, remediation, and correlation IDs; enabled server observability retains only secret-safe exception topology. Clients must branch on documented categories and preserve their own request paths/identifiers instead of parsing exception prose. Composite apply still reports the exact already-applied file set and now identifies the failed mutation by ordinal. Closes `tool-error-envelope-sensitive-detail-disclosure`, `test-coverage-unexpected-error-detail-redaction`, `scaffolding-io-warning-detail-redaction`, `workspace-validation-error-detail-redaction`, `analyzer-load-error-detail-redaction`, `bulk-reference-error-detail-redaction`, `composite-apply-error-detail-redaction`, `fixall-provider-error-detail-redaction`, and `workspace-readiness-probe-error-redaction`.

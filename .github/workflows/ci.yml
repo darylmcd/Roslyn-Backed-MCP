@@ -256,78 +256,10 @@ jobs:
           $target = Join-Path $PWD "artifacts/coverage/report"
           reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
 
-      # `dotnet package list --vulnerable` exits 0 even when CVEs are present, so the
-      # raw command can never fail the build — we must capture its output and gate on it.
-      # Gate on the STRUCTURED `--format json` payload (a non-empty `vulnerabilities`
-      # array on any package), NOT an English-language substring: keying on the
-      # human-readable vulnerable-packages summary line silently reverts the gate to
-      # fail-open the moment a dotnet SDK wording change or a non-English locale alters
-      # that text. The `--include-transitive` path is parsed too, so a vulnerable
-      # transitive dep also trips the gate.
       - name: Audit packages for known vulnerabilities
         if: steps.detect.outputs.docs_only != 'true'
         shell: pwsh
-        run: |
-          # Capture stdout (the JSON) and stderr SEPARATELY. Merging them (2>&1) into the
-          # parsed string would let incidental dotnet/NuGet stderr — restore warnings,
-          # first-run/telemetry notices — break ConvertFrom-Json on an otherwise-clean run
-          # (the prior English-substring match tolerated such contamination; a JSON parse
-          # does not). stderr is redirected to a temp file, echoed to the log for diagnostics,
-          # and kept out of the payload the gate parses. Only `dotnet` (a native command) sets
-          # $LASTEXITCODE; the Out-String/Get-Content/Remove-Item cmdlets below do not, so the
-          # exit-code guard still reflects the audit command.
-          $auditErr = [System.IO.Path]::GetTempFileName()
-          $auditJson = dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive --format json 2>$auditErr | Out-String
-          $auditStderr = Get-Content -Raw -LiteralPath $auditErr -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath $auditErr -Force -ErrorAction SilentlyContinue
-          Write-Host $auditJson
-          if (-not [string]::IsNullOrWhiteSpace($auditStderr)) {
-            Write-Host "dotnet package list stderr (non-fatal):`n$auditStderr"
-          }
-          # PowerShell does not honor $ErrorActionPreference for native commands, so a
-          # genuine dotnet failure (unrestored project, missing .slnx, NuGet outage, SDK
-          # fault) would otherwise fall through to the all-clear and fail the gate open.
-          # Mirror eng/verify-release.ps1's Invoke-DotnetStep: fail the job on a non-zero
-          # exit before the vuln check (a vuln finding itself still exits 0).
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error title=Vulnerability audit failed::dotnet package list exited $LASTEXITCODE (audit could not complete). See output above."
-            exit 1
-          }
-          # Unparseable / empty JSON means the audit did not produce a result we can trust,
-          # so fail closed exactly like the non-zero-exit guard above rather than assuming
-          # all-clear.
-          try {
-            $report = $auditJson | ConvertFrom-Json -ErrorAction Stop
-          } catch {
-            Write-Host "::error title=Vulnerability audit failed::Could not parse 'dotnet package list --format json' output as JSON ($($_.Exception.Message)). See output above."
-            exit 1
-          }
-          if ($null -eq $report -or $null -eq $report.projects) {
-            Write-Host "::error title=Vulnerability audit failed::Audit JSON had no 'projects' array (unexpected schema). See output above."
-            exit 1
-          }
-          # Walk every project -> framework -> top-level AND transitive package and collect
-          # any package carrying a non-empty `vulnerabilities` array. Missing keys are
-          # treated as empty (a project with no findings emits `path` and no `frameworks`).
-          $vulnerable = [System.Collections.Generic.List[string]]::new()
-          foreach ($project in $report.projects) {
-            foreach ($framework in @($project.frameworks)) {
-              if ($null -eq $framework) { continue }
-              $packages = @($framework.topLevelPackages) + @($framework.transitivePackages)
-              foreach ($pkg in $packages) {
-                if ($null -eq $pkg) { continue }
-                if ($pkg.vulnerabilities -and @($pkg.vulnerabilities).Count -gt 0) {
-                  $sev = (@($pkg.vulnerabilities) | ForEach-Object { $_.severity }) -join ', '
-                  $vulnerable.Add("$($pkg.id) $($pkg.resolvedVersion) [$sev]")
-                }
-              }
-            }
-          }
-          if ($vulnerable.Count -gt 0) {
-            Write-Host "::error title=Vulnerable packages detected::dotnet package list reported $($vulnerable.Count) package(s) with known vulnerabilities: $($vulnerable -join '; '). See the audit output above."
-            exit 1
-          }
-          Write-Host "No known package vulnerabilities found."
+        run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
 
       - name: Upload published host artifact
         if: steps.detect.outputs.docs_only != 'true'

@@ -26,11 +26,16 @@ internal sealed class SingleTestScaffolder
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IFileOperationService _fileOperationService;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
-    public SingleTestScaffolder(IWorkspaceManager workspace, IFileOperationService fileOperationService)
+    public SingleTestScaffolder(
+        IWorkspaceManager workspace,
+        IFileOperationService fileOperationService,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _fileOperationService = fileOperationService;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<RefactoringPreviewDto> PreviewAsync(
@@ -256,7 +261,7 @@ internal sealed class SingleTestScaffolder
     /// types + constructor parameter types). See <c>scaffold-test-preview-sibling-inference-overbroad</c>.
     /// </para>
     /// </summary>
-    private static SiblingInferenceResult InferSiblingTestPattern(
+    private SiblingInferenceResult InferSiblingTestPattern(
         string? referenceTestFile,
         string projectDirectory,
         string destinationFilePath,
@@ -274,7 +279,7 @@ internal sealed class SingleTestScaffolder
             if (!File.Exists(referenceTestFile))
             {
                 warnings.Add(
-                    $"referenceTestFile '{referenceTestFile}' not found on disk — falling back to auto-detection.");
+                    "referenceTestFile was not found on disk — falling back to auto-detection.");
                 resolved = FindMostRecentSiblingTestFile(projectDirectory, destinationFilePath);
             }
             else
@@ -298,8 +303,10 @@ internal sealed class SingleTestScaffolder
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            warnings.Add(
-                $"Could not read referenceTestFile '{resolved}' ({ex.GetType().Name}: {ex.Message}) — scaffolded without pattern inference.");
+            warnings.Add(ScaffoldingReadFailurePolicy.CreateWarning(
+                _exceptionReporter,
+                ex,
+                "referenceTestFile"));
             return new SiblingInferenceResult(null, warnings);
         }
     }

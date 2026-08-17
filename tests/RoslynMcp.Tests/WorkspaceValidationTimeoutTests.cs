@@ -1,6 +1,9 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -151,6 +154,50 @@ public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
 
         Assert.IsNotNull(caught,
             "Cooperative cancellation must propagate as OperationCanceledException (or a subclass like TaskCanceledException) — the new InternalValidationTimeoutException catch must NOT swallow it.");
+    }
+
+    [TestMethod]
+    public void UnexpectedInvocationFailures_UseOneSecretSafeCorrelatedDtoShape()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/validation.props";
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var service = new WorkspaceValidationService(
+            CompileCheckService,
+            DiagnosticService,
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker,
+            exceptionReporter: reporter);
+        WorkspaceValidationFailureOperation[] operations =
+        [
+            WorkspaceValidationFailureOperation.DotnetTest,
+            WorkspaceValidationFailureOperation.GitConfiguration,
+            WorkspaceValidationFailureOperation.GitStart,
+            WorkspaceValidationFailureOperation.GitStatus,
+        ];
+
+        foreach (var operation in operations)
+        {
+            WorkspaceValidationFailureDetail failure;
+            using (RequestCorrelationContext.Begin())
+            {
+                failure = service.CreateUnexpectedFailure(
+                    new InvalidOperationException(sentinel, new IOException(sentinel)),
+                    operation);
+            }
+
+            Assert.AreEqual("InternalError", failure.Category);
+            StringAssert.Contains(failure.Summary, "correlationId=");
+            Assert.IsFalse(failure.Summary.Contains(sentinel, StringComparison.Ordinal));
+            Assert.IsFalse(failure.Summary.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+            Assert.IsFalse(failure.Summary.Contains("C:/private", StringComparison.Ordinal));
+        }
+
+        Assert.HasCount(operations.Length, sink.Events);
+        Assert.IsTrue(sink.Events.All(e => e.Category == "WorkspaceValidation"));
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events).Contains(sentinel, StringComparison.Ordinal));
     }
 
     /// <summary>

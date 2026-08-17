@@ -19,6 +19,7 @@ public sealed class FixAllService : IFixAllService
     private readonly IPreviewStore _previewStore;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<FixAllService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly Lazy<ImmutableArray<CodeFixProvider>> _codeFixProviders;
     private readonly Lazy<ImmutableArray<DiagnosticAnalyzer>> _analyzers;
 
@@ -26,12 +27,14 @@ public sealed class FixAllService : IFixAllService
         IWorkspaceManager workspace,
         IPreviewStore previewStore,
         ICompilationCache compilationCache,
-        ILogger<FixAllService> logger)
+        ILogger<FixAllService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
         _codeFixProviders = new Lazy<ImmutableArray<CodeFixProvider>>(LoadCodeFixProviders);
         _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(LoadAnalyzers);
     }
@@ -157,9 +160,6 @@ public sealed class FixAllService : IFixAllService
             // commonly "Sequence contains no elements" — when internal preconditions fail
             // on a specific occurrence. Narrow catch to InvalidOperationException only; other
             // exception types indicate bugs we want surfaced, not swallowed.
-            _logger.LogWarning(ex,
-                "FixAllProvider threw for diagnostic '{DiagnosticId}' at scope '{Scope}': {Message}",
-                diagnosticId, scope, ex.Message);
             return BuildProviderCrashEnvelope(diagnosticId, scope, ex);
         }
 
@@ -183,9 +183,6 @@ public sealed class FixAllService : IFixAllService
         {
             // Same narrowing as the GetFixAsync call site above: InvalidOperationException is
             // the observed failure mode; broader catches would mask genuine defects.
-            _logger.LogWarning(ex,
-                "FixAll action GetOperationsAsync threw for '{DiagnosticId}': {Message}",
-                diagnosticId, ex.Message);
             return BuildProviderCrashEnvelope(diagnosticId, scope, ex);
         }
 
@@ -563,12 +560,14 @@ public sealed class FixAllService : IFixAllService
     /// <c>code_fix_preview</c> per occurrence is a viable recovery path.
     /// </remarks>
     internal static FixAllPreviewDto BuildProviderCrashEnvelope(
-        string diagnosticId, string scope, Exception ex)
+        string diagnosticId,
+        string scope,
+        PublicUnexpectedExceptionDetail detail)
     {
         var message =
-            $"The registered FixAll provider for '{diagnosticId}' threw while computing the fix " +
-            $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
-            "or narrow the scope (document / project) to isolate the failing occurrence.";
+            $"The registered FixAll provider for '{diagnosticId}' failed while computing the fix. " +
+            "Try code_fix_preview on individual occurrences, or narrow the scope (document / project) " +
+            $"to isolate the failing occurrence. correlationId={detail.CorrelationId}";
 
         return new FixAllPreviewDto(
             PreviewToken: "",
@@ -580,6 +579,23 @@ public sealed class FixAllService : IFixAllService
             Error: true,
             Category: "FixAllProviderCrash",
             PerOccurrenceFallbackAvailable: true);
+    }
+
+    internal FixAllPreviewDto BuildProviderCrashEnvelope(
+        string diagnosticId,
+        string scope,
+        Exception exception)
+    {
+        var detail = UnexpectedExceptionReporting.Report(
+            _exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.FixAll).Public;
+        _logger.LogWarning(
+            "FixAll provider failed for diagnostic '{DiagnosticId}' at scope '{Scope}'; correlationId={CorrelationId}",
+            diagnosticId,
+            scope,
+            detail.CorrelationId);
+        return BuildProviderCrashEnvelope(diagnosticId, scope, detail);
     }
 
     /// <summary>

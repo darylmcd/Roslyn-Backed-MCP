@@ -24,9 +24,12 @@ public static class TestCoverageTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         IProgress<ProgressNotificationValue>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
-        return RunTestCoverageCore(gate, workspace, commandRunner, workspaceId, projectName, deprecation: null, progress, ct);
+        return RunTestCoverageCore(
+            gate, workspace, commandRunner, workspaceId, projectName, deprecation: null,
+            progress, ct, exceptionReporter);
     }
 
     // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
@@ -42,7 +45,8 @@ public static class TestCoverageTools
         string? projectName,
         ToolAliasDeprecation? deprecation,
         IProgress<ProgressNotificationValue>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
@@ -116,7 +120,13 @@ public static class TestCoverageTools
             catch (Exception ex)
             {
                 ProgressHelper.Report(progress, 1, 1);
-                return SerializeWithDeprecation(TestCoverageCoordinator.BuildUnexpectedErrorResult(ex.Message), deprecation);
+                var details = UnexpectedExceptionReporting.Report(
+                    exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.TestCoverage);
+                return SerializeWithDeprecation(
+                    TestCoverageCoordinator.BuildUnexpectedErrorResult(details.Public),
+                    deprecation);
             }
         }, ct);
     }
@@ -223,7 +233,8 @@ public static class TestCoverageTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         IProgress<ProgressNotificationValue>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         return RunTestCoverageCore(
             gate,
@@ -233,7 +244,8 @@ public static class TestCoverageTools
             projectName,
             ToolAliasDeprecation.ForSisterAlias("test_coverage"),
             progress,
-            ct);
+            ct,
+            exceptionReporter);
     }
 
     // roslyn-mcp-sister-tool-name-aliases: project the TestCoverageResultDto's record fields

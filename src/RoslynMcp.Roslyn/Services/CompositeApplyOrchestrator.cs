@@ -12,17 +12,20 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private readonly ICompositePreviewStore _compositePreviewStore;
     private readonly IChangeTracker? _changeTracker;
     private readonly ILogger<CompositeApplyOrchestrator>? _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     public CompositeApplyOrchestrator(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
         IChangeTracker? changeTracker = null,
-        ILogger<CompositeApplyOrchestrator>? logger = null)
+        ILogger<CompositeApplyOrchestrator>? logger = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
         _changeTracker = changeTracker;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
@@ -113,21 +116,27 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             // exactly one entry to appliedFiles, so appliedFiles.Count is the index of the failing
             // mutation. The preview token is intentionally left valid (Invalidate is not called).
             var applied = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var failingFile = appliedFiles.Count < mutations.Count
-                ? mutations[appliedFiles.Count].FilePath
-                : "(unknown)";
-            _logger?.LogWarning(
+            var detail = UnexpectedExceptionReporting.Report(
+                _exceptionReporter,
                 ex,
-                "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing file: {FailingFile}. Prior writes are left in place (no rollback).",
+                UnexpectedExceptionCategory.CompositeApply).Public;
+            var failingTarget = $"mutation[{appliedFiles.Count}]";
+            _logger?.LogWarning(
+                "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing target: {FailingTarget}. " +
+                "Prior writes are left in place (no rollback); correlationId={CorrelationId}.",
                 appliedFiles.Count,
                 mutations.Count,
-                failingFile);
+                failingTarget,
+                detail.CorrelationId);
             var message = appliedFiles.Count > 0
-                ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingFile}. {ex.Message}"
-                : ex.Message;
+                ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingTarget}. " +
+                  $"Inspect appliedFiles, resolve the filesystem failure, and re-preview. correlationId={detail.CorrelationId}"
+                : "Composite apply failed before any files were written. Resolve the filesystem failure and retry with the same token. " +
+                  $"correlationId={detail.CorrelationId}";
             return new ApplyResultDto(false, applied, message);
         }
     }
+
 }
 
 /// <summary>

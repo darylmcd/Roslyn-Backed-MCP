@@ -227,7 +227,8 @@ public sealed class SurfaceCatalogTests
             "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
             document.RootElement.GetProperty("tool").GetString());
         StringAssert.Contains(document.RootElement.GetProperty("message").GetString() ?? string.Empty, "Unsupported catalog diff");
-        StringAssert.Contains(document.RootElement.GetProperty("message").GetString() ?? string.Empty, "v2.3.1");
+        Assert.IsFalse((document.RootElement.GetProperty("message").GetString() ?? string.Empty)
+            .Contains("v2.3.0", StringComparison.Ordinal));
     }
 
     [TestMethod]

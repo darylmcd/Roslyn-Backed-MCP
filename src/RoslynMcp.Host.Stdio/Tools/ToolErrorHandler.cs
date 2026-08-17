@@ -23,42 +23,35 @@ internal static class ToolErrorHandler
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
         // an auto-reload transition. Registered BEFORE the generic Exception handlers so the
         // structured category wins over the dictionary walk's InvalidOperation fallback.
-        [typeof(StaleWorkspaceTransitionException)] = (ex, _) => new("StaleWorkspaceTransition",
-            $"Workspace is transitioning between snapshots: {ex.Message}"),
+        [typeof(StaleWorkspaceTransitionException)] = (_, _) => new("StaleWorkspaceTransition",
+            "Workspace is transitioning between snapshots. Retry the request against the refreshed workspace."),
         // mcp-error-category-workspace-evicted-on-host-recycle: a workspace lookup miss that
-        // originated from a host recycle (graceful prior-process exit) or an explicit Close
-        // surfaces as WorkspaceEvicted with both serverStartedAt and (when known) the prior
-        // workspaceLoadedAt embedded in the message. WorkspaceEvictedException derives from
-        // KeyNotFoundException so existing catch-sites still observe it as a lookup miss; it
-        // is registered BEFORE the base KeyNotFoundException entry below so the dictionary
-        // walk's IsAssignableFrom check produces the more-specific category.
+        // originated from a host recycle (graceful prior-process exit) or an explicit Close.
+        // The public envelope intentionally omits timestamps and the prior path; clients retain
+        // their own load input and use the stable recovery action. WorkspaceEvictedException
+        // derives from KeyNotFoundException so existing catch-sites still observe it as a lookup
+        // miss; register it BEFORE the base entry so the more-specific category wins.
         [typeof(WorkspaceEvictedException)] = (ex, _) =>
         {
-            var evicted = (WorkspaceEvictedException)ex;
-            var loadedAtSegment = evicted.WorkspaceLoadedAtUtc is { } loadedAt
-                ? $" workspaceLoadedAt={loadedAt:O};"
-                : string.Empty;
-            // workspace-id-recovery-hints: when LoadedPath is known (same-process eviction),
-            // surface it as a structured field plus an exact workspace_load(path: "...")
-            // recovery hint. Cross-process recycle leaves both segments empty so the
-            // envelope stays compact. The path is double-quoted so paths with spaces
-            // copy-paste cleanly.
-            var loadedPathSegment = !string.IsNullOrEmpty(evicted.LoadedPath)
-                ? $" loadedPath={evicted.LoadedPath}; recovery=workspace_load(path: \"{evicted.LoadedPath}\");"
-                : string.Empty;
             return new("WorkspaceEvicted",
-                $"{ex.Message} serverStartedAt={evicted.ServerStartedAtUtc:O};{loadedAtSegment}{loadedPathSegment}");
+                "The workspace session is no longer available because it was closed, evicted, or owned by a prior host process. " +
+                "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
-        [typeof(FileNotFoundException)] = (ex, _) => new("FileNotFound",
-            $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
+        [typeof(FileNotFoundException)] = (_, _) => new("FileNotFound",
+            "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
-        [typeof(DirectoryNotFoundException)] = (ex, _) => new("DirectoryNotFound",
-            $"Directory not found: {ex.Message}. Verify the directory path is absolute and exists on disk."),
-        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound", FormatNotFoundMessage(ex.Message)),
-        [typeof(ArgumentException)] = (ex, _) => new("InvalidArgument",
-            $"Invalid argument: {ex.Message}. Check parameter types and values match the tool schema."),
-        [typeof(TimeoutException)] = (ex, _) => new("Timeout",
-            $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
+        [typeof(DirectoryNotFoundException)] = (_, _) => new("DirectoryNotFound",
+            "The requested directory was not found. Verify the directory path is absolute and exists on disk."),
+        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound", BuildSafeNotFoundMessage(ex.Message)),
+        [typeof(ArgumentException)] = (ex, _) =>
+        {
+            var argument = (ArgumentException)ex;
+            return new("InvalidArgument",
+                BuildSafeArgumentMessage(argument),
+                ParamName: argument.ParamName);
+        },
+        [typeof(TimeoutException)] = (_, _) => new("Timeout",
+            "The operation timed out. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
             "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
         // preview-token-stale-across-auto-reload: a *_apply call whose paired preview was
         // invalidated by an auto-reload version bump (InvalidateOnVersionBump) or TTL
@@ -72,9 +65,9 @@ internal static class ToolErrorHandler
         // is intact and the client just needs to re-issue the paired *_preview call.
         [typeof(PreviewTokenStaleException)] = (ex, _) =>
         {
-            var stale = (PreviewTokenStaleException)ex;
             return new("PreviewTokenStale",
-                $"Preview token '{stale.PreviewToken}' has expired: the workspace was reloaded after the preview was created, invalidating the stored solution snapshot. Re-issue the paired *_preview call.");
+                "The preview token has expired because the workspace was reloaded after the preview was created. " +
+                "Re-issue the paired *_preview call.");
         },
         // compile-check-not-connected-raw-transport-error-envelope: a disconnected stdio
         // pipe surfaces as InvalidOperationException("Not connected") from PipeStream when
@@ -87,17 +80,16 @@ internal static class ToolErrorHandler
             if (ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase))
             {
                 return new("Disconnected",
-                    $"Transport disconnected: {ex.Message}. " +
-                    "The stdio pipe to the MCP client has been closed. " +
+                    "The stdio transport disconnected because the MCP client closed the pipe. " +
                     "Reconnect and call workspace_reload to restore the session.");
             }
 
             return ex.Message.Contains("Rate limit")
-                ? new("RateLimited", ex.Message)
+                ? new("RateLimited", "The request rate limit was exceeded. Wait for the current rate-limit window to reset, then retry.")
                 : new("InvalidOperation",
                     ShouldSuggestReloadAfterInvalidOperation(ex.Message)
-                        ? $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."
-                        : $"Invalid operation: {ex.Message}.");
+                        ? "The operation is not valid for the current workspace state. Call workspace_reload if the state is stale, then retry."
+                        : "The operation is not valid in the current state. Check the tool contract and retry.");
         },
     };
 
@@ -109,8 +101,8 @@ internal static class ToolErrorHandler
     // casts to the typed exception internally to preserve ParamName extraction.
     private static readonly Dictionary<Type, Func<Exception, ErrorInfo>> _bindingLikeHandlers = new()
     {
-        [typeof(System.Text.Json.JsonException)] = ex => new("InvalidArgument",
-            $"Parameter binding failed (JSON deserialization): {ex.Message}. " +
+        [typeof(System.Text.Json.JsonException)] = _ => new("InvalidArgument",
+            "Parameter binding failed during JSON deserialization. " +
             "Check that JSON property names match the tool schema exactly (camelCase)."),
         [typeof(ArgumentNullException)] = ex =>
         {
@@ -124,32 +116,20 @@ internal static class ToolErrorHandler
         {
             var rangeEx = (ArgumentOutOfRangeException)ex;
             return new("InvalidArgument",
-                $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
-                "Check the tool schema for the accepted range.",
+                BuildSafeArgumentMessage(rangeEx),
                 ParamName: rangeEx.ParamName);
         },
         [typeof(ArgumentException)] = ex =>
         {
             var argEx = (ArgumentException)ex;
             return new("InvalidArgument",
-                $"Parameter '{argEx.ParamName ?? "<unknown>"}' is invalid: {argEx.Message}. " +
-                "Check that all required parameters are provided and values match the expected types.",
+                BuildSafeArgumentMessage(argEx),
                 ParamName: argEx.ParamName);
         },
-        [typeof(FormatException)] = ex => new("InvalidArgument",
-            $"Parameter format error: {ex.Message}. " +
+        [typeof(FormatException)] = _ => new("InvalidArgument",
+            "A parameter value has an invalid format. " +
             "Check that values match the expected format (e.g., integers, booleans, paths)."),
     };
-
-    private static string FormatNotFoundMessage(string message)
-    {
-        if (message.StartsWith("No identifier at this position", StringComparison.Ordinal))
-        {
-            return $"Not found: {message}";
-        }
-
-        return $"Not found: {message}. Ensure the workspace is loaded (workspace_load) and the identifier is correct.";
-    }
 
     /// <summary>
     /// Wraps a synchronous resource action with structured error handling, returning the same
@@ -340,7 +320,7 @@ internal static class ToolErrorHandler
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
             info = new("WorkspaceReloadedDuringCall",
-                $"Workspace was auto-reloaded during this call; {ex.Message} The symbol handle " +
+                "The workspace was auto-reloaded during this call. The symbol handle " +
                 "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +
                 "(e.g. via symbol_search, symbol_info, or a fresh position-based locator) and retry. " +
                 "See _meta.staleReloadMs for how long the reload held the request.");
@@ -483,6 +463,71 @@ internal static class ToolErrorHandler
                message.Contains("workspace version", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("outside the workspace", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("preview token", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSafeNotFoundMessage(string rawMessage)
+    {
+        if (rawMessage.StartsWith("No identifier at this position", StringComparison.Ordinal))
+        {
+            return "No identifier at this position. Move the source location onto a symbol name and retry.";
+        }
+
+        if (rawMessage.Contains("metadata-only", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The resolved symbol is metadata-only and has no source definition.";
+        }
+
+        return "The requested item was not found. Ensure the workspace is loaded and the identifier is correct.";
+    }
+
+    private static string BuildSafeArgumentMessage(ArgumentException exception)
+    {
+        var parameter = exception.ParamName ?? "<unknown>";
+        var rawMessage = exception.Message;
+
+        if (string.Equals(exception.ParamName, "parametersJson", StringComparison.Ordinal))
+        {
+            return "Parameter 'parametersJson' must be a JSON object whose properties match the prompt schema. " +
+                "Include every required prompt parameter and use values of the advertised types.";
+        }
+
+        if (string.Equals(exception.ParamName, "projectName", StringComparison.Ordinal))
+        {
+            return "No loaded project matches parameter 'projectName'. Use workspace_status to list project names, then retry.";
+        }
+
+        if (string.Equals(exception.ParamName, "lineRange", StringComparison.Ordinal))
+        {
+            return rawMessage.Contains("past the end", StringComparison.OrdinalIgnoreCase)
+                ? "Parameter 'lineRange' starts past the end of the source file. Request a range within the reported line count."
+                : "Parameter 'lineRange' must use the 1-based 'startLine-endLine' format with startLine less than or equal to endLine.";
+        }
+
+        if (string.Equals(exception.ParamName, "startLine", StringComparison.Ordinal) &&
+            rawMessage.Contains("must be <=", StringComparison.Ordinal))
+        {
+            return "Parameter 'startLine' must be less than or equal to endLine.";
+        }
+
+        if (string.Equals(exception.ParamName, "workspaceId", StringComparison.Ordinal) &&
+            rawMessage.Contains("candidate solution", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Workspace auto-discovery found multiple candidates. Call workspace_load with an explicit solution or project path.";
+        }
+
+        if (rawMessage.Contains("Unsupported catalog diff", StringComparison.Ordinal))
+        {
+            return "Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource.";
+        }
+
+        if (rawMessage.Contains("filePath", StringComparison.OrdinalIgnoreCase) &&
+            rawMessage.Contains("column", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Source-location mode is incomplete; provide filePath, line, and column together. " +
+                "Alternatively supply symbolHandle or metadataName.";
+        }
+
+        return $"Parameter '{parameter}' is invalid. Check that all required parameters are provided and values match the expected types.";
     }
 
     /// <summary>

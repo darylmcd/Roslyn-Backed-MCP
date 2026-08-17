@@ -1,5 +1,9 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -16,6 +20,37 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup()
     {
         DisposeServices();
+    }
+
+    [TestMethod]
+    [DataRow("referenceTestFile")]
+    [DataRow("sibling fixture")]
+    public void ScaffoldingReadFailurePolicy_SingleAndBatchWarningsAreSecretSafe(string affectedInput)
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/scaffolding.cs";
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+
+        string warning;
+        using (RequestCorrelationContext.Begin())
+        {
+            warning = ScaffoldingReadFailurePolicy.CreateWarning(
+                reporter,
+                new IOException(sentinel, new UnauthorizedAccessException(sentinel)),
+                affectedInput);
+        }
+
+        StringAssert.Contains(warning, affectedInput);
+        StringAssert.Contains(warning, "scaffolded without pattern inference");
+        StringAssert.Contains(warning, "correlationId=");
+        Assert.IsFalse(warning.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(warning.Contains(nameof(IOException), StringComparison.Ordinal));
+        Assert.IsFalse(warning.Contains("C:/private", StringComparison.Ordinal));
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("Scaffolding", sink.Events.Single().Category);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single())
+            .Contains(sentinel, StringComparison.Ordinal));
     }
 
     [TestMethod]

@@ -1,4 +1,13 @@
+using System.Collections.Immutable;
+using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -115,5 +124,54 @@ public sealed class AnalyzerInfoToolsTests : SharedWorkspaceTestBase
         Assert.AreEqual(unfilteredTotal, whitespaceFilteredTotal,
             $"A whitespace-only projectFilter must yield the same totalRules as no filter. Unfiltered={unfilteredTotal}, WhitespaceFiltered={whitespaceFilteredTotal}.");
         Assert.IsTrue(whitespaceFilteredTotal > 0, "Whitespace-only projectFilter must not silently return zero rules.");
+    }
+
+    [TestMethod]
+    public void AnalyzerLoadFailure_ReturnsSecretSafeRuleAndCapturedDiagnostic()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/analyzers/BadAnalyzer.dll";
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var service = new AnalyzerInfoService(
+            null!,
+            null!,
+            NullLogger<AnalyzerInfoService>.Instance,
+            reporter);
+
+        IReadOnlyList<AnalyzerRuleDto> rules;
+        using (RequestCorrelationContext.Begin())
+        {
+            rules = service.GetAnalyzerRules(
+                new ThrowingAnalyzerReference(sentinel),
+                LanguageNames.CSharp,
+                "BadAnalyzer.dll");
+        }
+
+        Assert.HasCount(1, rules);
+        Assert.AreEqual("LOAD_ERROR", rules.Single().Id);
+        Assert.AreEqual("Error", rules.Single().Category);
+        StringAssert.Contains(rules.Single().Title, "correlationId=");
+        Assert.IsFalse(JsonSerializer.Serialize(rules).Contains(sentinel, StringComparison.Ordinal));
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("AnalyzerLoad", sink.Events.Single().Category);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single()).Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    private sealed class ThrowingAnalyzerReference(string sentinel) : AnalyzerReference
+    {
+        public override string Display => "BadAnalyzer.dll";
+
+        public override string FullPath => sentinel;
+
+        public override object Id => "throwing-analyzer";
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzers(string language) =>
+            throw new InvalidOperationException(sentinel, new IOException(sentinel));
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() =>
+            throw new InvalidOperationException(sentinel, new IOException(sentinel));
+
+        public override ImmutableArray<ISourceGenerator> GetGenerators(string language) => [];
     }
 }

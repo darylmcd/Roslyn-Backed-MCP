@@ -175,8 +175,10 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         Assert.AreEqual("get_prompt_text", doc.RootElement.GetProperty("tool").GetString());
 
         var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        StringAssert.Contains(message, "parametersJson is not valid JSON",
+        StringAssert.Contains(message, "parametersJson",
             "Error message should name the offending parameter.");
+        StringAssert.Contains(message, "JSON object");
+        Assert.IsFalse(message.Contains("{not valid json", StringComparison.Ordinal));
         Assert.IsFalse(message.Contains(" at System."),
             "Envelope message must not contain raw .NET stack-trace frames.");
     }
@@ -223,8 +225,9 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             $"Expected structured error envelope. Actual: {json}");
         Assert.IsTrue(errorProp.GetBoolean());
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
-            "could not be deserialized");
+        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "advertised types");
+        Assert.IsFalse(message.Contains("123", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -250,11 +253,9 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
 
         var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        foreach (var requiredName in new[] { "workspaceId", "diagnosticId", "filePath", "line", "column" })
-        {
-            StringAssert.Contains(message, requiredName,
-                $"Missing-parameter message should enumerate every missing required prompt parameter. Actual: {message}");
-        }
+        StringAssert.Contains(message, "required prompt parameter");
+        Assert.IsFalse(message.Contains("workspaceId", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("diagnosticId", StringComparison.Ordinal));
     }
 
     // file-lock-aware-prompt-validation-guidance + get-prompt-text-side-effects-in-rendering:

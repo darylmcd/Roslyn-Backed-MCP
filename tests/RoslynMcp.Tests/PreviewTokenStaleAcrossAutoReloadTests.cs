@@ -90,8 +90,8 @@ public sealed class PreviewTokenStaleAcrossAutoReloadTests
             "envelope must carry the originating tool name through the harness");
 
         var message = doc.RootElement.GetProperty("message").GetString()!;
-        StringAssert.Contains(message, token,
-            "envelope must name the rejected token so log scrapers can correlate");
+        Assert.IsFalse(message.Contains(token, StringComparison.Ordinal),
+            "the public envelope must not echo the rejected preview token");
         StringAssert.Contains(message, "workspace was reloaded",
             "envelope must explain the version-bump invalidation lifecycle");
         StringAssert.Contains(message, "Re-issue the paired *_preview call",
@@ -117,8 +117,8 @@ public sealed class PreviewTokenStaleAcrossAutoReloadTests
             "registration order must make PreviewTokenStaleException win over InvalidOperationException");
 
         var message = doc.RootElement.GetProperty("message").GetString()!;
-        StringAssert.Contains(message, "tok-abc123",
-            "classifier must populate the envelope message from the PreviewToken property");
+        Assert.IsFalse(message.Contains("tok-abc123", StringComparison.Ordinal),
+            "classifier must not expose the PreviewToken property");
         StringAssert.Contains(message, "Re-issue the paired *_preview call");
     }
 

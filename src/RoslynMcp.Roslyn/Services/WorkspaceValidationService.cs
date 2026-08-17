@@ -40,6 +40,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly TimeSpan _validationPhaseTimeout;
     private readonly ILogger<WorkspaceValidationService>? _logger;
     private readonly Action<Process> _killProcessTree;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     /// <param name="validationOptions">
     /// validate-recent-git-changes-status-timeout-false-clean: supplies the operator-configurable
@@ -56,7 +57,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         IWorkspaceManager workspace,
         IChangeTracker? changeTracker = null,
         ILogger<WorkspaceValidationService>? logger = null,
-        ValidationServiceOptions? validationOptions = null)
+        ValidationServiceOptions? validationOptions = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
         : this(
             compile,
             diagnostics,
@@ -66,7 +68,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             changeTracker,
             validationOptions?.GitStatusTimeout ?? DefaultGitStatusTimeout,
             DefaultValidationPhaseTimeout,
-            logger)
+            logger,
+            killProcessTree: null,
+            exceptionReporter)
     {
     }
 
@@ -80,7 +84,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         TimeSpan gitStatusTimeout,
         TimeSpan validationPhaseTimeout,
         ILogger<WorkspaceValidationService>? logger = null,
-        Action<Process>? killProcessTree = null)
+        Action<Process>? killProcessTree = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _compile = compile;
         _diagnostics = diagnostics;
@@ -92,6 +97,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
         _logger = logger;
         _killProcessTree = killProcessTree ?? KillProcessTree;
+        _exceptionReporter = exceptionReporter;
     }
 
     private static void KillProcessTree(Process process) => process.Kill(entireProcessTree: true);
@@ -381,6 +387,10 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             {
                 // Surface the failure as a synthetic result rather than throwing — the validation
                 // bundle should always return a structured envelope so the agent can act on it.
+                var failure = CreateUnexpectedFailure(
+                    ex,
+                    WorkspaceValidationFailureOperation.DotnetTest);
+                var summary = failure.Summary;
                 testRunResult = new TestRunResultDto(
                     new CommandExecutionDto(
                         Command: "dotnet",
@@ -391,12 +401,12 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                         Succeeded: false,
                         DurationMs: 0,
                         StdOut: string.Empty,
-                        StdErr: ex.Message),
+                        StdErr: summary),
                     Total: 0, Passed: 0, Failed: 1, Skipped: 0,
                     Failures: [],
                     FailureEnvelope: new TestRunFailureEnvelopeDto(
-                        ErrorKind: "Unknown", IsRetryable: false,
-                        Summary: $"validate_workspace failed to invoke dotnet test: {ex.Message}",
+                        ErrorKind: failure.Category, IsRetryable: false,
+                        Summary: summary,
                         StdOutTail: null, StdErrTail: null));
             }
         }
@@ -671,7 +681,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             return (Array.Empty<string>(), new[]
             {
-                $"git repository not found at or above '{solutionDirectory}'; validated full workspace."
+                "git repository not found at or above the loaded workspace; validated full workspace."
             }, false);
         }
 
@@ -698,7 +708,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             return (Array.Empty<string>(), new[]
             {
-                $"git invocation failed to configure: {ex.Message}; validated full workspace."
+                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitConfiguration).Summary
             }, false);
         }
 
@@ -718,12 +728,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             // File-not-found (git not on PATH), Win32Exception, etc.
             return (Array.Empty<string>(), new[]
             {
-                $"git not available on PATH ({ex.Message}); validated full workspace."
+                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStart).Summary
             }, false);
         }
 
         string stdout;
-        string stderr;
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -732,7 +741,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
             await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
             stdout = await stdoutTask.ConfigureAwait(false);
-            stderr = await stderrTask.ConfigureAwait(false);
+            _ = await stderrTask.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -748,20 +757,45 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             TryKillProcessTree(process, "failure");
             return (Array.Empty<string>(), new[]
             {
-                $"git status failed: {ex.Message}; validated full workspace."
+                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStatus).Summary
             }, false);
         }
 
         if (process.ExitCode != 0)
         {
-            var detail = string.IsNullOrWhiteSpace(stderr) ? $"exit {process.ExitCode}" : stderr.Trim();
             return (Array.Empty<string>(), new[]
             {
-                $"git status exited non-zero ({detail}); validated full workspace."
+                $"git status exited non-zero (exit {process.ExitCode}); validated full workspace."
             }, false);
         }
 
         return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>(), false);
+    }
+
+    internal WorkspaceValidationFailureDetail CreateUnexpectedFailure(
+        Exception exception,
+        WorkspaceValidationFailureOperation operation)
+    {
+        var detail = UnexpectedExceptionReporting.Report(
+            _exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.WorkspaceValidation).Public;
+        var operationSummary = operation switch
+        {
+            WorkspaceValidationFailureOperation.DotnetTest =>
+                $"validate_workspace could not invoke dotnet test. {detail.Remediation}",
+            WorkspaceValidationFailureOperation.GitConfiguration =>
+                "git invocation failed to configure; validated full workspace.",
+            WorkspaceValidationFailureOperation.GitStart =>
+                "git is not available on PATH; validated full workspace.",
+            WorkspaceValidationFailureOperation.GitStatus =>
+                "git status failed; validated full workspace.",
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, null),
+        };
+
+        return new WorkspaceValidationFailureDetail(
+            detail.Category,
+            $"{operationSummary} correlationId={detail.CorrelationId}");
     }
 
     /// <summary>
@@ -1016,3 +1050,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         public TimeSpan Timeout { get; } = timeout;
     }
 }
+
+internal enum WorkspaceValidationFailureOperation
+{
+    DotnetTest,
+    GitConfiguration,
+    GitStart,
+    GitStatus,
+}
+
+internal sealed record WorkspaceValidationFailureDetail(string Category, string Summary);

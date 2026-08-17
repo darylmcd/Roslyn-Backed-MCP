@@ -1,9 +1,15 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.TestInfrastructure;
 
 #pragma warning disable RS1036 // Test-only analyzer double; not shipped
 #pragma warning disable RS1038 // Test assembly references Workspaces by design
@@ -105,9 +111,10 @@ public sealed class FixAllServiceTests
     public void BuildProviderCrashEnvelope_IDE0300_Emits_Structured_Envelope()
     {
         var ex = new InvalidOperationException("Sequence contains no elements");
+        var detail = PublicExceptionDetailPolicy.ProjectUnexpected(ex, "fixall-correlation").Public;
 
         var envelope = FixAllService.BuildProviderCrashEnvelope(
-            diagnosticId: "IDE0300", scope: "solution", ex: ex);
+            diagnosticId: "IDE0300", scope: "solution", detail: detail);
 
         Assert.IsTrue(envelope.Error, "Provider crash must set Error=true.");
         Assert.AreEqual("FixAllProviderCrash", envelope.Category);
@@ -119,7 +126,8 @@ public sealed class FixAllServiceTests
         Assert.AreEqual(0, envelope.Changes.Count);
         Assert.IsNotNull(envelope.GuidanceMessage);
         StringAssert.Contains(envelope.GuidanceMessage!, "IDE0300");
-        StringAssert.Contains(envelope.GuidanceMessage!, "Sequence contains no elements");
+        Assert.IsFalse(envelope.GuidanceMessage!.Contains(ex.Message, StringComparison.Ordinal));
+        StringAssert.Contains(envelope.GuidanceMessage!, "fixall-correlation");
         StringAssert.Contains(envelope.GuidanceMessage!, "code_fix_preview");
     }
 
@@ -132,9 +140,10 @@ public sealed class FixAllServiceTests
         // through BuildProviderCrashEnvelope), so this assertion pins the envelope shape for the
         // IDE0305-specific call and guards against any future per-id branching of the crash path.
         var ex = new InvalidOperationException("Sequence contains no elements");
+        var detail = PublicExceptionDetailPolicy.ProjectUnexpected(ex, "fixall-correlation").Public;
 
         var envelope = FixAllService.BuildProviderCrashEnvelope(
-            diagnosticId: "IDE0305", scope: "solution", ex: ex);
+            diagnosticId: "IDE0305", scope: "solution", detail: detail);
 
         Assert.IsTrue(envelope.Error, "Provider crash must set Error=true.");
         Assert.AreEqual("FixAllProviderCrash", envelope.Category);
@@ -146,21 +155,60 @@ public sealed class FixAllServiceTests
         Assert.AreEqual(0, envelope.Changes.Count);
         Assert.IsNotNull(envelope.GuidanceMessage);
         StringAssert.Contains(envelope.GuidanceMessage!, "IDE0305");
-        StringAssert.Contains(envelope.GuidanceMessage!, "Sequence contains no elements");
+        Assert.IsFalse(envelope.GuidanceMessage!.Contains(ex.Message, StringComparison.Ordinal));
+        StringAssert.Contains(envelope.GuidanceMessage!, "fixall-correlation");
         StringAssert.Contains(envelope.GuidanceMessage!, "code_fix_preview");
     }
 
     [TestMethod]
-    public void BuildProviderCrashEnvelope_Preserves_Exception_Type_Name()
+    public void BuildProviderCrashEnvelope_Removes_Exception_Type_And_Message()
     {
-        // The envelope's GuidanceMessage should surface the exception type so agents can tell
-        // a provider defect from a test-synthesized throw when triaging logs.
-        var ex = new InvalidOperationException("any message");
+        const string secret = "SECRET-SENTINEL-C:/private/fixall.cs";
+        var ex = new InvalidOperationException(secret);
+        var detail = PublicExceptionDetailPolicy.ProjectUnexpected(ex, "fixall-correlation").Public;
 
         var envelope = FixAllService.BuildProviderCrashEnvelope(
-            diagnosticId: "IDE0005", scope: "document", ex: ex);
+            diagnosticId: "IDE0005", scope: "document", detail: detail);
 
-        StringAssert.Contains(envelope.GuidanceMessage!, nameof(InvalidOperationException));
+        Assert.IsFalse(envelope.GuidanceMessage!.Contains(secret, StringComparison.Ordinal));
+        Assert.IsFalse(envelope.GuidanceMessage.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+        StringAssert.Contains(envelope.GuidanceMessage, "fixall-correlation");
+    }
+
+    [TestMethod]
+    public void ProviderCrashPath_RedactsNestedSecretAtPublicAndServerBoundaries()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/fixall.cs";
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var service = new FixAllService(
+            null!,
+            null!,
+            null!,
+            NullLogger<FixAllService>.Instance,
+            reporter);
+
+        FixAllPreviewDto envelope;
+        using (RequestCorrelationContext.Begin())
+        {
+            envelope = service.BuildProviderCrashEnvelope(
+                "IDE0300",
+                "solution",
+                new InvalidOperationException(sentinel, new IOException(sentinel)));
+        }
+
+        Assert.AreEqual("FixAllProviderCrash", envelope.Category);
+        Assert.AreEqual("IDE0300", envelope.DiagnosticId);
+        Assert.AreEqual("solution", envelope.Scope);
+        Assert.AreEqual(0, envelope.FixedCount);
+        Assert.AreEqual(true, envelope.PerOccurrenceFallbackAvailable);
+        Assert.IsFalse(JsonSerializer.Serialize(envelope).Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(envelope.GuidanceMessage!.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("FixAll", sink.Events.Single().Category);
+        Assert.HasCount(2, sink.Events.Single().Exception.ExceptionTypes);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single()).Contains(sentinel, StringComparison.Ordinal));
     }
 
     /// <summary>

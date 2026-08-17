@@ -1,6 +1,6 @@
 # path-boundary-link-swap-toctou — Close validation-to-use link-swap race
 
-**row:** `path-boundary-link-swap-toctou` · **pri:** `High` · **size:** `M`
+**row:** `path-boundary-link-swap-toctou` · **pri:** `High` · **size:** `M` · **deps:** `workspace-load-path-canonicalization`
 
 ## Anchors
 

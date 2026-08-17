@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -170,9 +171,11 @@ public static class TestCoverageCoordinator
                 Summary: summary));
     }
 
-    public static TestCoverageResultDto BuildUnexpectedErrorResult(string message)
+    public static TestCoverageResultDto BuildUnexpectedErrorResult(PublicUnexpectedExceptionDetail detail)
     {
-        var summary = $"test_coverage failed with an unexpected error: {message}";
+        ArgumentNullException.ThrowIfNull(detail);
+        var summary =
+            $"test_coverage failed unexpectedly. {detail.Remediation} correlationId={detail.CorrelationId}";
         return new TestCoverageResultDto(
             Success: false,
             Error: summary,
@@ -180,7 +183,7 @@ public static class TestCoverageCoordinator
             BranchCoveragePercent: null,
             Modules: [],
             FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                ErrorKind: "Unknown",
+                ErrorKind: detail.Category,
                 IsRetryable: false,
                 Summary: summary));
     }

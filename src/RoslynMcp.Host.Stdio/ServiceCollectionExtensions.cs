@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
@@ -66,6 +68,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(executionGateOptions);
         services.AddSingleton(securityOptions);
         services.AddSingleton(scriptingServiceOptions);
+
+        // Tool methods inject the interface directly. Defaults keep non-production composition
+        // roots secret-safe and output-free; Program replaces the sink registration after it
+        // parses the operator-selected observability option.
+        services.TryAddSingleton<IServerObservabilitySink, DisabledServerObservabilitySink>();
+        services.TryAddSingleton<ServerObservabilityReporter>();
+        services.TryAddSingleton<IUnexpectedExceptionReporter>(static provider =>
+            provider.GetRequiredService<ServerObservabilityReporter>());
 
         services.AddHttpClient(NuGetVersionChecker.HttpClientName);
         services.AddSingleton(sp => new NuGetVersionChecker(

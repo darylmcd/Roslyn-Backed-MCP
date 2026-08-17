@@ -32,6 +32,7 @@ internal sealed class BatchTestScaffolder
     private readonly Func<string, string, ProjectStatusDto> _resolveProject;
     private readonly Action<ProjectStatusDto> _validateIsTestProject;
     private readonly Func<string?, string?, string> _resolveTestFramework;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     public BatchTestScaffolder(
         IWorkspaceManager workspace,
@@ -39,7 +40,8 @@ internal sealed class BatchTestScaffolder
         IPreviewStore previewStore,
         Func<string, string, ProjectStatusDto> resolveProject,
         Action<ProjectStatusDto> validateIsTestProject,
-        Func<string?, string?, string> resolveTestFramework)
+        Func<string?, string?, string> resolveTestFramework,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _fileOperationService = fileOperationService;
@@ -47,6 +49,7 @@ internal sealed class BatchTestScaffolder
         _resolveProject = resolveProject;
         _validateIsTestProject = validateIsTestProject;
         _resolveTestFramework = resolveTestFramework;
+        _exceptionReporter = exceptionReporter;
     }
 
     /// <summary>
@@ -525,7 +528,7 @@ internal sealed class BatchTestScaffolder
     /// <c>scaffold-test-preview-sibling-inference-overbroad</c>.
     /// </para>
     /// </summary>
-    private static SiblingInferenceResult InferSiblingPatternFromRecent(
+    private SiblingInferenceResult InferSiblingPatternFromRecent(
         string projectDirectory, string destinationFilePath, int maxSiblings, Compilation? compilation = null)
     {
         if (!Directory.Exists(projectDirectory))
@@ -564,8 +567,10 @@ internal sealed class BatchTestScaffolder
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            warnings.Add(
-                $"Could not read sibling fixture '{siblings[0].Name}' ({ex.GetType().Name}: {ex.Message}) — scaffolded without pattern inference.");
+            warnings.Add(ScaffoldingReadFailurePolicy.CreateWarning(
+                _exceptionReporter,
+                ex,
+                "sibling fixture"));
             return new SiblingInferenceResult(null, warnings);
         }
     }

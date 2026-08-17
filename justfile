@@ -128,7 +128,7 @@ docker-build:
 
 # Audit NuGet packages for known vulnerabilities
 vuln-audit:
-    dotnet package list --project {{ solution }} --vulnerable --include-transitive
+    pwsh -NoLogo -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath {{ solution }}
 
 # --- Repo Hygiene ---
 
