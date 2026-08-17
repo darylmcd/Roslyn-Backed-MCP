@@ -11,7 +11,7 @@ public sealed class HostAssemblyMarkerTests
     {
         get
         {
-            yield return ["legacy logging provider", typeof(McpLoggingProvider)];
+            yield return ["structured observability", typeof(ServerObservabilityReporter)];
             yield return ["startup diagnostics", typeof(StartupDiagnostics)];
             yield return ["tool surface", typeof(SuppressionTools)];
         }

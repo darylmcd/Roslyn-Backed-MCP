@@ -72,6 +72,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
 | `ROSLYNMCP_ON_STALE` | `ExecutionGateOptions.OnStale` (`auto-reload`, `warn`, `off`) | `auto-reload` |
 | `ROSLYNMCP_TOOL_TIERS` | Registered MCP surface support tiers (`stable` or `stable,experimental`) across tools, prompts, and resources; experimental entries require the stable baseline; use `stable` for non-deferring clients | `stable,experimental` |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | Secret-safe structured unexpected-failure diagnostics (`disabled` or local `stderr`); independent of MCP protocol logging | `disabled` |
 | `ROSLYNMCP_SANCTIONED_ROOTS` | `SecurityOptions.SanctionedRoots` — canonical path-validation and solution-discovery boundary; delimit with `Path.PathSeparator` (`;` Windows, `:` macOS/Linux) | empty (path access denied) |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` |
 | `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `SecurityOptions.AllowRootExpansion` — server opt-in required in addition to a request's `expandSanctionedRoots=true`; widens each configured root by one parent for sibling worktrees | `false` |

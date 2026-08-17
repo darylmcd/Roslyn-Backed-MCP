@@ -141,7 +141,7 @@ public static class ServerTools
                 "Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.",
                 "Remote HTTP/SSE hosting is not part of the current stable release contract."
             ],
-            Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: true, Progress: true),
+            Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: false, Progress: true),
             Update: BuildUpdateInfo(currentSemver, versionChecker),
             PathBoundary: BuildPathBoundary(SecurityOptionsSnapshot.Value));
 

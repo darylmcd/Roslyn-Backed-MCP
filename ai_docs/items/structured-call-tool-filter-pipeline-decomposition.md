@@ -20,3 +20,4 @@
 ## Evidence
 
 - 2026-08-16 remediation review measured `StructuredCallToolFilter.Create` at cyclomatic complexity 14, 136 LOC, nesting depth 5, and maintainability index 32.49.
+2026-08-17 observability review: after adding the required server diagnostic handoff, Roslyn metrics measure StructuredCallToolFilter.Create at cyclomatic complexity 18, 155 LOC, nesting depth 5, and maintainability index 30.06. Keep the existing dependency-gated decomposition row; do not widen the protocol-boundary remediation batch.

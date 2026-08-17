@@ -89,13 +89,13 @@ the planning handle as delivery evidence.
 | Synthetic non-object result-shape compatibility | Test-only follow-up | **Tracked:** `protocol-version-result-shape-wire-contract` | No current object-schema migration. This follow-up guards natural modern array/scalar shapes and their legacy envelope translation. |
 | Legacy cache/result-field leakage | Breaking dual-protocol correction | **Delivered:** `RequestProtocolFeatureGate`, `StaticListResultFilter`, `ResourceReadResultFilter`, and `ServerDiscoveryWireTests` | On legacy sessions, treat `resultType`, `ttlMs`, and `cacheScope` as absent. On 2026-07-28, honor the required result discriminator and cache policy. |
 | Resource failures encoded as successful bodies | Breaking stable-behavior correction | **Tracked:** `resource-read-protocol-error-semantics` | Handle `resources/read` failures through JSON-RPC errors. Expect legacy missing-resource `-32002` and modern `InvalidParams` (`-32602`) according to the negotiated protocol. |
-| Protocol logging bridge and capability retirement | Breaking capability/notification correction | **Tracked:** `mcp-logging-stderr-otel-migration`, `server-structured-observability-sink` | Stop depending on `logging/setLevel` or `notifications/message` from RoslynMcp. Use client-side diagnostics plus operator-controlled stderr/OpenTelemetry output. |
+| Protocol logging bridge and capability retirement | Breaking capability/notification correction | **Delivered:** `RequestCorrelationMessageFilter`, `ServerObservabilityReporter`, `McpLoggingLifecycleWireTests`, and `ServerObservabilitySinkTests` | Stop depending on `logging/setLevel` or `notifications/message` from RoslynMcp. Use client-side diagnostics plus operator-controlled stderr output; opt into secret-safe structured events with `ROSLYNMCP_OBSERVABILITY_SINK=stderr`. |
 | Direct Elicitation replaced by request-scoped MRTR | Breaking interaction correction | **Tracked:** `mcp-mrtr-dispatch-contract`, `workspace-path-mrtr-adoption`, `symbol-choice-mrtr-adoption` | Support input requests and retry with input responses in the request scope. Do not require the server to initiate `elicitation/create` on modern sessions. |
 | Legacy Sampling replaced by request-scoped MRTR input | Breaking interaction correction | **Tracked:** `mcp-sampling-mrtr-migration` | Supply sampling input responses when offered, or accept the documented deterministic fallback. Do not require a nested `sampling/createMessage` request on modern sessions. |
 | Tasks for slow operations | Additive, opt-in extension | **Tracked:** `tasks-extension-slow-ops` | No migration until enabled. Adoption requires the separate Tasks package and a client that negotiates the extension; existing synchronous calls remain valid. |
 | Cohesion, reflection, DI, exception-flow, NuGet, and code-fix completeness fields | Additive stable-response evolution | **Tracked:** `cohesion-scan-completeness-contract`, `reflection-usage-scan-completeness`, `di-registration-scan-completeness`, `exception-flow-scan-completeness`, `nuget-dependency-scan-completeness`, `diagnostic-codefix-enumeration-completeness` | Ignore unknown fields on older clients. New clients must inspect completeness/failure counts before treating totals as exhaustive. |
 | Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Tracked:** `public-exception-detail-policy` and the surface-specific rows listed below | Stop parsing exception text, stack traces, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. |
-| Workspace lifecycle emits false resource-list changes | Non-breaking behavior correction | **Tracked:** `workspace-resource-list-notification-semantics` | Refresh `resources/list` only for an advertised list-change notification; do not rely on workspace load/reload/close to produce one. |
+| Workspace lifecycle emits false resource-list changes | Non-breaking behavior correction | **Delivered:** static workspace lifecycle notification calls removed and `WorkspaceResourceListNotificationWireTests` proves byte-equivalent legacy/modern lists with no list-changed frames | Refresh `resources/list` only for an advertised list-change notification; do not rely on workspace load/reload/close to produce one. |
 
 The disclosure group is explicitly owned by `tool-error-envelope-sensitive-detail-disclosure`,
 `prompt-call-error-filter-boundary`, `test-coverage-unexpected-error-detail-redaction`,
@@ -148,9 +148,10 @@ Handle the request as failed and do not deserialize the successful resource-cont
 
 ### Logging
 
-Before, a client could expect `logging/setLevel` and unsolicited `notifications/message`. After the
-tracked correction, those are not RoslynMcp's operational logging transport. Capture client request
-failures locally and use operator-configured stderr/OpenTelemetry for server diagnostics.
+Before, a client could expect `logging/setLevel` and unsolicited `notifications/message`. Those are
+no longer RoslynMcp's operational logging transport. Capture client request failures locally and use
+operator-configured stderr for server diagnostics; set `ROSLYNMCP_OBSERVABILITY_SINK=stderr` only
+when secret-safe structured unexpected-failure events are desired.
 
 ### Elicitation and sampling
 

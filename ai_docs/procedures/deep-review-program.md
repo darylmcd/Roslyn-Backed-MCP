@@ -85,7 +85,7 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Audit mode | Distinguish `full-surface` from `conservative`. |
 | Repo-shape tags | Explain why some families were or were not applicable. |
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
-| Debug log channel | `yes` / `partial` / `no` — whether the client surfaced MCP `notifications/message` log entries. Drives whether the rollup can rely on captured server-side log evidence. |
+| Operator diagnostic access | `yes` / `no` — whether the run can capture RoslynMcp stderr. Protocol `notifications/message` is not an observability channel. |
 | Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
 | Plugin skills repo reachable | yes / blocked. If blocked, `docs/experimental-promotion-analysis.md` cannot treat the skills as exercised. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |

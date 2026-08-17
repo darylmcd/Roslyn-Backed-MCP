@@ -25,14 +25,12 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 
 var builder = Host.CreateApplicationBuilder(args);
 var toolTierSelection = ToolTierSelection.Parse(ReadEnv(ToolTierSelection.EnvironmentVariableName));
+var observabilityOptions = ServerObservabilityOptions.Parse(
+    ReadEnv(ServerObservabilityOptions.EnvironmentVariableName));
 
 // Redirect all logging to stderr so stdout remains clean for MCP protocol
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
-
-// Register the MCP logging bridge that forwards log events to the client
-var mcpLoggingProvider = new McpLoggingProvider();
-builder.Logging.AddProvider(mcpLoggingProvider);
 
 // Bind options from environment variables (hardcoded defaults used when env vars are absent)
 // then register the entire host composition root via AddRoslynMcpHostServices — the same
@@ -45,6 +43,14 @@ builder.Services.AddRoslynMcpHostServices(
     BindExecutionGateOptions(),
     BindSecurityOptions(),
     BindScriptingServiceOptions());
+builder.Services.AddSingleton(observabilityOptions);
+builder.Services.AddSingleton<IServerObservabilitySink>(_ => observabilityOptions.Sink switch
+{
+    ServerObservabilitySinkKind.Disabled => new DisabledServerObservabilitySink(),
+    ServerObservabilitySinkKind.Stderr => new StderrServerObservabilitySink(),
+    _ => throw new InvalidOperationException("Unsupported server observability sink."),
+});
+builder.Services.AddSingleton<ServerObservabilityReporter>();
 builder.Services
     .AddMcpServer(options =>
     {
@@ -60,6 +66,8 @@ builder.Services
     .WithToolsFromAssembly()
     .WithResourcesFromAssembly()
     .WithPromptsFromAssembly()
+    .WithMessageFilters(messageFilters =>
+        messageFilters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
     // Single error-handling and observability boundary for every tools/call dispatch.
     // See ai_docs/references/mcp-server-best-practices.md § 2-3. Replaces the legacy
     // per-handler ToolErrorHandler.ExecuteAsync(...) wrapper so that pre-binding
@@ -80,10 +88,6 @@ builder.Services
 builder.Services.AddRoslynMcpSurfaceRegistrationPolicy(toolTierSelection);
 
 var host = builder.Build();
-
-// Wire the MCP logging bridge to the server instance
-var server = host.Services.GetRequiredService<McpServer>();
-mcpLoggingProvider.SetServer(server);
 
 // concurrent-mcp-instances-no-tools: cross-check SDK-registered vs reflection vs
 // catalog surface counts and publish the snapshot for server_info. When multiple
@@ -135,10 +139,8 @@ RoslynMcp.Core.Services.WorkspaceEvictionRegistry.PublishRecycleContext(
     serverStartedAtUtc,
     previousHostMetadata?.RecycleReason);
 
-// FLAG-D: Emit a structured Information event when the host starts with no loaded workspaces.
-// Clients that surface MCP `notifications/message` (via McpLoggingProvider) will see this
-// proactively after a transparent subprocess restart instead of discovering the missing
-// workspace tool-by-tool through cascading KeyNotFoundException errors.
+// FLAG-D: Emit an Information event when the host starts with no loaded workspaces.
+// Operational logs remain on stderr; clients inspect server_info/server_heartbeat for state.
 var startupWorkspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
 if (startupWorkspaceManager.ListWorkspaces().Count == 0)
 {
@@ -149,9 +151,8 @@ if (startupWorkspaceManager.ListWorkspaces().Count == 0)
 
 // sanctioned-roots-empty-boundary-fails-silently-until-first-call: an unconfigured boundary is
 // fail-closed, so EVERY path-taking tool rejects — but nothing said so until the first call threw.
-// Warn at startup for the same reason as the zero-workspaces notice above: clients that surface
-// MCP `notifications/message` learn proactively instead of discovering it tool-by-tool. Only the
-// genuinely broken shape warns; fail-open is an explicit operator choice and stays quiet.
+// Warn at startup for the same reason as the zero-workspaces notice above. Only the genuinely
+// broken shape warns; fail-open is an explicit operator choice and stays quiet.
 var startupSecurityOptions = host.Services.GetRequiredService<SecurityOptions>();
 SecurityOptionsSnapshot.Value = startupSecurityOptions;
 // The remediation text is derived from the SAME projection server_info reports, so the startup

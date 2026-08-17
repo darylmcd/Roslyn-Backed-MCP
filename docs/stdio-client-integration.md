@@ -28,9 +28,9 @@ The official C# SDK performs this discovery-first negotiation automatically and 
 3. Send **`notifications/initialized`** — a notification (no `id`) telling the server the handshake is done. **Until this arrives, every `tools/call` will be rejected** with "Server not initialized."
 4. Send any tool calls. The server accepts them after step 3.
 
-### Stdout ordering caveat
+### Response correlation
 
-During the compatibility window, startup-time notifications (`notifications/message` log lines, `notifications/resources/list_changed`) may interleave with legacy responses on stdout. Filter responses by the `id` you sent; don't assume the first line after a request is its response. Protocol Logging is deprecated in `2026-07-28`; operational logs remain on stderr.
+RoslynMcp emits no protocol logging frames and workspace load/reload/close do not claim that the static resource catalog changed. Concurrent clients must still correlate responses by request `id`; operational logs remain on stderr. Operators can opt into secret-safe structured unexpected-failure events with `ROSLYNMCP_OBSERVABILITY_SINK=stderr`.
 
 ## Parameter naming
 
@@ -63,7 +63,7 @@ def send(msg: dict) -> None:
     proc.stdin.flush()
 
 def read_response(expected_id: int) -> dict:
-    # Drain notifications (no id) until we see the matching response.
+    # Correlate by id so this remains correct when requests are concurrent.
     for line in proc.stdout:
         if not line.strip():
             continue

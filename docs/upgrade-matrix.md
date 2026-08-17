@@ -1,6 +1,6 @@
 # Upgrade matrix
 
-This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-08-14**; when you bump a row, refresh the “Current” cells in the same PR.
+This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-08-17**; when you bump a row, refresh the “Current” cells in the same PR.
 
 Related: [Release policy](release-policy.md) (product version and gates),
 [SDK 2.x wire-compatibility decision](decisions/0003-sdk-2x-wire-compatibility.md), and
@@ -68,6 +68,11 @@ both protocol eras: modern `2026-07-28` requests use `server/discover` plus requ
 while initialize-capable clients negotiate a down-level revision. The exact public contract and
 remaining compatibility migrations are recorded in
 [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md).
+
+Protocol logging is retired: the server advertises `logging: false`, emits no
+`notifications/message`, and keeps operational output on stderr. Secret-safe structured unexpected-
+failure diagnostics are opt-in through `ROSLYNMCP_OBSERVABILITY_SINK=stderr` and are independent of
+the negotiated MCP protocol revision.
 
 ---
 

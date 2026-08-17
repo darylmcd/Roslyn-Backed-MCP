@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Diagnostics;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -267,7 +268,7 @@ internal static class ToolErrorHandler
         }
     }
 
-    internal static ErrorInfo ClassifyError(Exception ex, string toolName)
+    internal static ErrorInfo ClassifyError(Exception ex, string toolName, string? correlationId = null)
     {
         // mcp-parameter-validation-error-messages: detect parameter-binding failures
         // in BOTH shapes the runtime can deliver them:
@@ -302,7 +303,7 @@ internal static class ToolErrorHandler
         if (TryClassifyRegisteredHandler(ex, toolName, out var registeredInfo))
             return registeredInfo;
 
-        return BuildUnexpectedErrorFallback(ex, toolName);
+        return BuildUnexpectedErrorFallback(ex, correlationId ?? RequestCorrelationContext.Current);
     }
 
     /// <summary>
@@ -373,19 +374,18 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
-    /// Builds the terminal <c>InternalError</c> envelope for an unexpected exception, including
-    /// up to three levels of inner-exception chain for diagnosis.
+    /// Builds the terminal <c>InternalError</c> envelope for an unexpected exception. Raw
+    /// exception detail stays server-side; the client receives only a stable recovery shape.
     /// </summary>
-    private static ErrorInfo BuildUnexpectedErrorFallback(Exception ex, string toolName)
+    private static ErrorInfo BuildUnexpectedErrorFallback(Exception ex, string? correlationId)
     {
-        var innerMessages = GetInnerExceptionChain(ex);
-        var detail = string.IsNullOrEmpty(innerMessages)
-            ? $"{ex.GetType().Name}: {ex.Message}"
-            : $"{ex.GetType().Name}: {ex.Message} --> {innerMessages}";
-
-        return new("InternalError",
-            $"Internal error in {toolName}: {detail}. " +
-            "If this persists, try reloading the workspace (workspace_reload).");
+        var publicDetail = PublicExceptionDetailPolicy
+            .ProjectUnexpected(ex, correlationId)
+            .Public;
+        return new(
+            publicDetail.Category,
+            $"{publicDetail.Summary} {publicDetail.Remediation}",
+            CorrelationId: publicDetail.CorrelationId);
     }
 
     /// <summary>
@@ -485,28 +485,6 @@ internal static class ToolErrorHandler
                message.Contains("preview token", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string GetInnerExceptionChain(Exception ex)
-    {
-        var parts = new List<string>();
-        var inner = ex.InnerException;
-        while (inner is not null && parts.Count < 3)
-        {
-            parts.Add($"{inner.GetType().Name}: {inner.Message}");
-            inner = inner.InnerException;
-        }
-        return string.Join(" --> ", parts);
-    }
-
-    private static string GetAbbreviatedStackTrace(Exception ex)
-    {
-        if (ex.StackTrace is null) return string.Empty;
-        var frames = ex.StackTrace
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Take(5)
-            .ToArray();
-        return string.Join("\n", frames);
-    }
-
     /// <summary>
     /// tool-error-handler-envelope-duplication: single constructor for the JSON error envelope.
     /// Emits the five base properties (<c>error</c>, <c>category</c>, <c>tool</c>, <c>message</c>,
@@ -552,7 +530,14 @@ internal static class ToolErrorHandler
     {
         if (info.Category == "InternalError")
         {
-            return BuildErrorEnvelope(info, toolName, ex, "stackTrace", GetAbbreviatedStackTrace(ex));
+            return new JsonObject
+            {
+                ["error"] = true,
+                ["category"] = info.Category,
+                ["tool"] = toolName,
+                ["message"] = info.Message,
+                ["correlationId"] = info.CorrelationId ?? "unavailable",
+            }.ToJsonString(JsonDefaults.Indented);
         }
 
         if (ex is SymbolNotFoundException { ClosestMatches.Count: > 0 } symbolNotFound)
@@ -634,7 +619,11 @@ internal static class ToolErrorHandler
         return firstSentence.Length > 160 ? firstSentence[..160] + "…" : firstSentence;
     }
 
-    internal readonly record struct ErrorInfo(string Category, string Message, string? ParamName = null);
+    internal readonly record struct ErrorInfo(
+        string Category,
+        string Message,
+        string? ParamName = null,
+        string? CorrelationId = null);
 }
 
 /// <summary>
