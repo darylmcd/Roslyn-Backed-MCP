@@ -4,13 +4,13 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -318,11 +318,11 @@ public static class WorkspaceTools
         }
     }
 
-    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
+    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceListDto)), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "List active workspace sessions.",
-        outputSchemaTypeRef: typeof(WorkspaceListDto))]
-    public static Task<string> ListWorkspaces(
+        "List active workspace sessions.")]
+    public static Task<CallToolResult> ListWorkspaces(
         IWorkspaceManager workspace,
         [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
     {
@@ -330,22 +330,22 @@ public static class WorkspaceTools
         if (verbose)
         {
             var verbosePayload = new WorkspaceListVerboseDto(workspaces.Count, workspaces);
-            return Task.FromResult(JsonSerializer.Serialize(verbosePayload, JsonDefaults.Indented));
+            return Task.FromResult(StructuredToolResult.Create(verbosePayload));
         }
 
         var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
         var payload = new WorkspaceListDto(summaries.Count, summaries);
-        return Task.FromResult(JsonSerializer.Serialize(payload, JsonDefaults.Indented));
+        return Task.FromResult(StructuredToolResult.Create(payload));
     }
 
-    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description(
         "Cheap health check after workspace_load — call this first before compile_check or heavy tools. " +
         "Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts. " +
         "Pass verbose=true for the full per-project tree and workspace diagnostics.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "Inspect status, diagnostics, and stale-state information for a workspace.",
-        outputSchemaTypeRef: typeof(WorkspaceStatusSummaryDto))]
-    public static Task<string> GetWorkspaceStatus(
+        "Inspect status, diagnostics, and stale-state information for a workspace.")]
+    public static Task<CallToolResult> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -356,32 +356,32 @@ public static class WorkspaceTools
         {
             var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
             return verbose
-                ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
-                : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
+                ? StructuredToolResult.Create(status)
+                : StructuredToolResult.Create(WorkspaceStatusSummaryDto.From(status));
         }, ct);
     }
 
-    [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description(
         "Alias for workspace_status with verbose=false — same summary JSON (isReady, restoreHint, solutionFileName, error counts). Use for agent bootstrap right after workspace_load.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "Lean workspace readiness summary (alias of workspace_status verbose=false).",
-        outputSchemaTypeRef: typeof(WorkspaceStatusSummaryDto))]
-    public static Task<string> GetWorkspaceHealth(
+        "Lean workspace readiness summary (alias of workspace_status verbose=false).")]
+    public static Task<CallToolResult> GetWorkspaceHealth(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default) =>
         GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
 
-    [McpServerTool(Name = "workspace_readiness_report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Name = "workspace_readiness_report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceReadinessReportDto)), Description(
         "First-run/onboarding readiness report for a loaded workspace, distinct from the incident-focused workspace_support_bundle. " +
         "Uses existing read-side workspace probes only; it does not run tests or dotnet build by default. " +
         "Returns one compact verdict: ready, restore-needed, build-needed, or analyzer-limited, plus limitations and next recommended workflows. " +
         "If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "First-run workspace readiness report with verdict, limitations, and next workflows.",
-        outputSchemaTypeRef: typeof(WorkspaceReadinessReportDto))]
-    public static Task<string> GetWorkspaceReadinessReport(
+        "First-run workspace readiness report with verdict, limitations, and next workflows.")]
+    public static Task<CallToolResult> GetWorkspaceReadinessReport(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("Optional workspace session identifier returned by workspace_load. Omit only when zero or one workspace is loaded; pass explicitly when multiple workspaces are active.")] string? workspaceId = null,
@@ -397,7 +397,7 @@ public static class WorkspaceTools
                 ? "no-workspace-loaded"
                 : "workspace-id-required";
             var report = WorkspaceReadinessReportBuilder.CreateWithoutTarget(status, workspaceId, loadedSummaries);
-            return Task.FromResult(JsonSerializer.Serialize(report, JsonDefaults.Indented));
+            return Task.FromResult(StructuredToolResult.Create(report));
         }
 
         if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
@@ -406,7 +406,7 @@ public static class WorkspaceTools
                 "workspace-not-found",
                 resolvedWorkspaceId,
                 loadedSummaries);
-            return Task.FromResult(JsonSerializer.Serialize(report, JsonDefaults.Indented));
+            return Task.FromResult(StructuredToolResult.Create(report));
         }
 
         return gate.RunReadAsync(resolvedWorkspaceId, async c =>
@@ -437,18 +437,18 @@ public static class WorkspaceTools
                 sourceGeneratedDocumentCount: sourceGeneratedDocumentCount,
                 sourceGeneratedProbeLimitation: sourceGeneratedProbeLimitation);
 
-            return JsonSerializer.Serialize(report, JsonDefaults.Indented);
+            return StructuredToolResult.Create(report);
         }, ct);
     }
 
-    [McpServerTool(Name = "workspace_support_bundle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    [McpServerTool(Name = "workspace_support_bundle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceSupportBundleDto)), Description(
         "Incident-diagnosis bundle for an existing workspace session, distinct from first-run readiness reporting. " +
         "Composes loaded path, readiness summary, drift status, capped change ledger, workspace/surface version, diagnostics totals, and next-action hints. " +
         "Does not include source snippets. If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.",
-        outputSchemaTypeRef: typeof(WorkspaceSupportBundleDto))]
-    public static Task<string> GetWorkspaceSupportBundle(
+        "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.")]
+    public static Task<CallToolResult> GetWorkspaceSupportBundle(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         IWorkspaceDriftService driftService,
@@ -474,7 +474,7 @@ public static class WorkspaceTools
                 loadedSummaries,
                 NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
                 NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
-            return Task.FromResult(JsonSerializer.Serialize(bundle, JsonDefaults.Indented));
+            return Task.FromResult(StructuredToolResult.Create(bundle));
         }
 
         if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
@@ -485,7 +485,7 @@ public static class WorkspaceTools
                 loadedSummaries,
                 NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
                 NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
-            return Task.FromResult(JsonSerializer.Serialize(bundle, JsonDefaults.Indented));
+            return Task.FromResult(StructuredToolResult.Create(bundle));
         }
 
         var changeCap = NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap);
@@ -514,7 +514,7 @@ public static class WorkspaceTools
                 changeCap: changeCap,
                 driftCap: driftCap);
 
-            return JsonSerializer.Serialize(bundle, JsonDefaults.Indented);
+            return StructuredToolResult.Create(bundle);
         }, ct);
     }
 

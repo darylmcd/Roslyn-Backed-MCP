@@ -2,14 +2,15 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
-using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Roslyn.Services;
-using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -93,12 +94,12 @@ public static class ServerTools
         }
     }
 
-    [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(ServerInfoDto)),
      McpToolMetadata("server", "stable", true, false,
-        "Inspect server capabilities, versions, and support tiers.",
-        outputSchemaTypeRef: typeof(ServerInfoDto)),
+        "Inspect server capabilities, versions, and support tiers."),
      Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug. Connection readiness: the response includes a `connection` subfield with state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt — use this (or the lighter `server_heartbeat` tool) to distinguish transport-reachable from workspace-loaded before calling workspace-scoped tools. State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Prompts that previously gated on `state==ready` to mean 'server responsive' should gate on `state in {idle, ready}`; prompts that genuinely require a loaded workspace should continue to gate on `state==ready`.")]
-    public static Task<string> GetServerInfo(
+    public static Task<CallToolResult> GetServerInfo(
         IWorkspaceManager workspace,
         ILatestVersionProvider versionChecker)
     {
@@ -144,7 +145,7 @@ public static class ServerTools
             Update: BuildUpdateInfo(currentSemver, versionChecker),
             PathBoundary: BuildPathBoundary(SecurityOptionsSnapshot.Value));
 
-        return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
+        return Task.FromResult(StructuredToolResult.Create(info));
     }
 
     /// <summary>
@@ -285,14 +286,14 @@ public static class ServerTools
     /// startup — calling <c>server_info</c> on every poll needlessly ships ~2 KB of
     /// catalog summary each time.
     /// </summary>
-    [McpServerTool(Name = "server_heartbeat", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "server_heartbeat", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(ServerHeartbeatDto)),
      McpToolMetadata("server", "stable", true, false,
-        "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload.",
-        outputSchemaTypeRef: typeof(ServerHeartbeatDto)),
+        "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
      Description("Return the connection readiness block only — state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt. Cheaper than server_info (no version, catalog, or update metadata). State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Use this to poll for 'at least one workspace loaded' before calling workspace-scoped tools; do NOT poll waiting for `idle` to transition off its own — a `workspace_load` call is required.")]
-    public static Task<string> GetServerHeartbeat(IWorkspaceManager workspace)
+    public static Task<CallToolResult> GetServerHeartbeat(IWorkspaceManager workspace)
     {
         var payload = new ServerHeartbeatDto(BuildConnection(workspace));
-        return Task.FromResult(JsonSerializer.Serialize(payload, JsonDefaults.Indented));
+        return Task.FromResult(StructuredToolResult.Create(payload));
     }
 }

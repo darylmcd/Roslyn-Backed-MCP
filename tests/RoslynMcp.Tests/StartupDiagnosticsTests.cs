@@ -288,7 +288,7 @@ public sealed class StartupDiagnosticsTests
                 new StubWorkspaceManager(),
                 new StubVersionProvider()).GetAwaiter().GetResult();
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             var surface = doc.RootElement.GetProperty("surface");
             var registered = surface.GetProperty("registered");
 
@@ -315,7 +315,7 @@ public sealed class StartupDiagnosticsTests
                 new StubWorkspaceManager(),
                 new StubVersionProvider()).GetAwaiter().GetResult();
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             var surface = doc.RootElement.GetProperty("surface");
             var registered = surface.GetProperty("registered");
 

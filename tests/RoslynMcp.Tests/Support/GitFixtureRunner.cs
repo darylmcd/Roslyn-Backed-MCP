@@ -45,50 +45,9 @@ internal static class GitFixtureRunner
     {
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            startInfo.ArgumentList.Add("--version");
-            using var process = Process.Start(startInfo);
-            if (process is null)
-            {
-                failureReason = "Process.Start returned null.";
-                return false;
-            }
-
-            if (!process.WaitForExit(5_000))
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(1_000);
-                    failureReason = "git --version timed out after 5 seconds.";
-                }
-                catch (Exception ex)
-                {
-                    failureReason =
-                        $"git --version timed out and termination failed ({ex.GetType().Name}: {ex.Message}).";
-                }
-
-                return false;
-            }
-
-            if (process.ExitCode == 0)
-            {
-                failureReason = null;
-                return true;
-            }
-
-            var stderr = process.StandardError.ReadToEnd().Trim();
-            failureReason = string.IsNullOrWhiteSpace(stderr)
-                ? $"git --version exited {process.ExitCode}."
-                : $"git --version exited {process.ExitCode}: {stderr}";
-            return false;
+            _ = RunGitCapture(Environment.CurrentDirectory, "--version");
+            failureReason = null;
+            return true;
         }
         catch (Exception ex)
         {

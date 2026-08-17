@@ -22,6 +22,18 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+# Manual publishing has the same release-note contract as the tag/release
+# workflow: every fragment must already be consumed, and any breaking section
+# must advance the major version before a package can be selected or pushed.
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'verify-breaking-version-bump.ps1') `
+    -RepoRoot $repoRoot `
+    -RequireConsumedFragments
+$breakingGateExitCode = $global:LASTEXITCODE
+if ($breakingGateExitCode -ne 0) {
+    throw "Breaking version validation failed with exit code $breakingGateExitCode."
+}
+
 if (-not $Version) {
     [xml]$props = Get-Content (Join-Path $repoRoot 'Directory.Build.props')
     $Version = @($props.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ })[0]

@@ -1,6 +1,6 @@
 # tasks-extension-slow-ops — Adopt the MCP tasks extension for slow operations
 
-**row:** `tasks-extension-slow-ops` · **pri:** `Low` · **size:** `M` · **deps:** `sdk-2x-upgrade`
+**row:** `tasks-extension-slow-ops` · **pri:** `Low` · **size:** `M` · **deps:** `stdio-shutdown-flush-transport-ownership,prompt-call-error-filter-boundary,workspace-resource-list-notification-semantics`
 
 ## Anchors
 
@@ -21,4 +21,4 @@
 
 ## Notes
 
-- Blocked on `sdk-2x-upgrade` (Extensions.Tasks requires SDK 2.x).
+- SDK 2.x is already pinned; the live blocker is the compatibility decision for the separately packaged Tasks extension.

@@ -44,7 +44,7 @@ test-release:
 verify-docs:
     ./eng/verify-ai-docs.ps1
 
-# Check version-string drift across all 5 version files
+# Check version-string drift across all six version files
 verify-version-drift:
     ./eng/verify-version-drift.ps1
 

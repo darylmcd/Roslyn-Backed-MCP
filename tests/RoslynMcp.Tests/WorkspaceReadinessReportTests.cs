@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -13,11 +14,18 @@ public sealed class WorkspaceReadinessReportTests
     [TestMethod]
     public async Task ReadinessReport_NoWorkspace_ReturnsLoadWorkflow()
     {
-        var json = await WorkspaceTools.GetWorkspaceReadinessReport(
+        var result = await WorkspaceTools.GetWorkspaceReadinessReport(
             new FakeGate(),
             new FakeWorkspaceManager([]));
 
-        using var doc = JsonDocument.Parse(json);
+        Assert.IsNotNull(result.StructuredContent);
+        var structured = result.StructuredContent.Value;
+        Assert.IsTrue(GeneratedJsonSchemaMatcher.Matches(
+            structured,
+            ToolOutputSchemaIndex.GetSchema("workspace_readiness_report")!));
+
+        using var doc = JsonDocument.Parse(result.TextPayload());
+        Assert.AreEqual(doc.RootElement.GetRawText(), structured.GetRawText());
         Assert.AreEqual("first-run-readiness", doc.RootElement.GetProperty("reportKind").GetString());
         Assert.AreEqual("no-workspace-loaded", doc.RootElement.GetProperty("status").GetString());
         Assert.AreEqual(JsonValueKind.Null, doc.RootElement.GetProperty("workspace").ValueKind);
@@ -148,17 +156,17 @@ public sealed class WorkspaceReadinessReportTests
             new FakeGate(),
             new FakeWorkspaceManager([CreateStatus(workspaceId: "ws-1"), CreateStatus(workspaceId: "ws-2")]));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("workspace-id-required", doc.RootElement.GetProperty("status").GetString());
         Assert.AreEqual("workspace_readiness_report",
             doc.RootElement.GetProperty("nextRecommendedWorkflows")[0].GetProperty("workflow").GetString());
     }
 
-    private static Task<string> CreateReportAsync(WorkspaceStatusDto status) =>
-        WorkspaceTools.GetWorkspaceReadinessReport(
+    private static async Task<string> CreateReportAsync(WorkspaceStatusDto status) =>
+        (await WorkspaceTools.GetWorkspaceReadinessReport(
             new FakeGate(),
             new FakeWorkspaceManager([status]),
-            workspaceId: status.WorkspaceId);
+            workspaceId: status.WorkspaceId)).TextPayload();
 
     private static WorkspaceStatusDto CreateStatus(
         IReadOnlyList<DiagnosticDto>? diagnostics = null,

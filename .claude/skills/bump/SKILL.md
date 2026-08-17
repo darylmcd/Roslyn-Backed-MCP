@@ -40,6 +40,20 @@ All 6 files must carry the same version string. See `docs/release-policy.md` § 
 
 ## Workflow
 
+### Step 0: Preflight release policy
+
+After validating that `$ARGUMENTS` is `major`, `minor`, or `patch`, run both
+release-policy gates before reading or mutating any version file:
+
+```bash
+pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1
+pwsh -NoProfile -File ./eng/verify-breaking-version-bump.ps1 -BumpType "$ARGUMENTS"
+```
+
+Treat either non-zero exit as a hard refusal. In particular, a pending
+`Changed — BREAKING` fragment permits only a `major` bump. Do not create the
+release-managed-edit sentinel or make any edit until both commands pass.
+
 ### Step 1: Read Current Version
 
 Read `Directory.Build.props` and extract the current `<Version>` value. Display it to the user.
@@ -158,7 +172,7 @@ Do NOT silently skip malformed fragments — a silent skip would lose the releas
 
 ### Step 5: Verify
 
-Run `eng/verify-version-drift.ps1` via Bash to confirm all 5 files agree on the new version. If it fails, fix the discrepancy and re-run.
+Run `pwsh -NoProfile -File ./eng/verify-version-drift.ps1` to confirm all six version files agree on the new version. If it fails, fix the discrepancy and re-run.
 
 Also confirm `changelog.d/` now contains only `README.md` — every fragment that was present at Step 4 start should have been consumed and deleted.
 
@@ -176,6 +190,6 @@ rm -f .release-managed-edit-allowed
 
 Display a summary:
 - Previous version → New version
-- Files modified (list all 5 version files + `CHANGELOG.md`)
+- Files modified (list all six version files, including `CHANGELOG.md`)
 - Fragments consumed (count + list of `changelog.d/` filenames deleted)
 - Reminder: "Review the `## [NEW]` section in `CHANGELOG.md` — the grouped bullets came directly from the fragments. Edit the prose if a fragment was under-specified. Run `/roslyn-mcp:publish-preflight` when ready to validate the full release."

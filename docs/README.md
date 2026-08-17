@@ -21,6 +21,8 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `large-solution-profiling-baseline.md` | Methodology and notes for profiling large MSBuild solutions |
 | `mcp-json-examples/README.md` | Copy-ready `.mcp.json` examples and when to use them; indexes `mcp-json-examples/minimal.mcp.json` and `mcp-json-examples/with-overrides.mcp.json` |
 | `decisions/0001-locationdto-nested-field-migration.md` | ADR: additive nested `Location` field on `SymbolDto`/`DiagnosticDto`/`TypeUsageDto`, legacy-flat-field deprecation window, and the bounded producer/consumer migration stages |
+| `decisions/0002-configured-sanctioned-root-boundary.md` | ADR: server-owned sanctioned-root security boundary, canonical path resolution, and migration from client Roots authority |
+| `decisions/0003-sdk-2x-wire-compatibility.md` | ADR: SDK 1.4.1→2.1.0 lineage, dual-protocol wire contract, correction classification, and consumer migration |
 
 ## Claude Code Plugin
 

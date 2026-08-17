@@ -258,7 +258,7 @@ public sealed class HostProcessMetadataTests
 
         var json = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
         Assert.AreEqual(99999, connection.GetProperty("previousStdioPid").GetInt32(),
@@ -286,7 +286,7 @@ public sealed class HostProcessMetadataTests
 
         // Second probe must NOT carry previous-* fields.
         var secondJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
-        using var secondDoc = JsonDocument.Parse(secondJson);
+        using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConnection = secondDoc.RootElement.GetProperty("connection");
 
         Assert.IsFalse(secondConnection.TryGetProperty("previousStdioPid", out _),
@@ -311,7 +311,7 @@ public sealed class HostProcessMetadataTests
 
         var json = ServerTools.GetServerHeartbeat(new FakeWorkspaceManager()).GetAwaiter().GetResult();
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
         Assert.AreEqual(88888, connection.GetProperty("previousStdioPid").GetInt32());
@@ -328,7 +328,7 @@ public sealed class HostProcessMetadataTests
         // (Cleanup() called Reset() before this test, so the provider is clean.)
 
         var json = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
         Assert.IsFalse(connection.TryGetProperty("previousStdioPid", out _),
@@ -367,7 +367,7 @@ public sealed class HostProcessMetadataTests
 
         // First probe.
         var firstJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
-        using var firstDoc = JsonDocument.Parse(firstJson);
+        using var firstDoc = JsonDocument.Parse(firstJson.TextPayload());
         var firstConn = firstDoc.RootElement.GetProperty("connection");
         Assert.AreEqual(Environment.ProcessId, firstConn.GetProperty("previousStdioPid").GetInt32(),
             "First probe after disk-loaded restart must carry the writer's pid.");
@@ -375,7 +375,7 @@ public sealed class HostProcessMetadataTests
 
         // Second probe — fields must drop.
         var secondJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
-        using var secondDoc = JsonDocument.Parse(secondJson);
+        using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConn = secondDoc.RootElement.GetProperty("connection");
         Assert.IsFalse(secondConn.TryGetProperty("previousStdioPid", out _),
             "Second probe must not re-emit previous-* fields — consume-once is enforced by the provider.");

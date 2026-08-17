@@ -24,6 +24,7 @@ Use `just --list` for the full recipe menu. `just ci` is the canonical local CI 
 | `just reinstall` | Reinstall the global tool and Claude Code plugin from this repo |
 | `just tool-install-local` | Pack and install the global tool from the local build |
 | `just plugin-reload` | Reload the Claude Code plugin from the local checkout |
+| `pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1` | Validate fragment grammar and require a changed fragment for change-bearing work |
 
 See `justfile` for the full recipe list, including packaging, Docker, and security audit recipes.
 

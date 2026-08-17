@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -477,15 +476,6 @@ internal static class StructuredCallToolFilter
     /// </summary>
     internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName) =>
         StructuredCallContentProjector.InjectMetaIntoContent(result, toolName);
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface (test seam with a custom
-    /// schema resolver). See
-    /// <see cref="StructuredCallContentProjector.InjectMetaIntoContent(CallToolResult, string, Func{string, JsonNode})"/>.
-    /// </summary>
-    internal static CallToolResult InjectMetaIntoContent(
-        CallToolResult result, string toolName, Func<string, JsonNode?> schemaResolver) =>
-        StructuredCallContentProjector.InjectMetaIntoContent(result, toolName, schemaResolver);
 
     /// <summary>
     /// Predicate for logger severity: anything that <see cref="ToolErrorHandler"/>

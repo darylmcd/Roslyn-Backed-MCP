@@ -16,9 +16,18 @@ A release is production-ready when all of the following are true:
 
 ## Compatibility Policy
 
-- Stable tools/resources keep backward-compatible request and response shapes within a release line.
+- Stable tools, prompts, and resources keep backward-compatible request and response shapes within a release line.
 - Experimental entries may change faster and can be promoted, renamed, or removed in a future minor release.
 - Preview/apply token semantics are stable only within one running server instance and workspace version.
+- Protocol-version-specific fields, methods, capabilities, and error codes must be selected from the
+  negotiated or request-scoped protocol context. Product version is never a protocol-version proxy.
+- Correcting a non-conforming stable wire shape or removing publicly observable sensitive detail is
+  still a breaking change when a client could depend on the old behavior. Record the decision and
+  migration, ship it in a major release, and cover every supported protocol era on the raw wire.
+- Additive completeness/status fields are minor-version compatible only when existing fields retain
+  their meaning and the advertised schema permits the addition. Consumers must ignore unknown fields.
+- A security correction may omit the normal deprecation window when retaining the behavior would leak
+  secrets or sensitive implementation detail; the ADR and migration note must explain the exception.
 
 ## Versioning And Deprecation
 
@@ -27,6 +36,15 @@ A release is production-ready when all of the following are true:
 - Breaking a stable request/response contract is a major-version change.
 - Experimental-surface changes must still be called out in release notes.
 - Deprecate stable entries for at least one minor release before removal.
+
+## SDK And Protocol Migration Records
+
+- [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md) records the direct
+  `ModelContextProtocol` 1.4.1→2.1.0 adoption, evaluated intervening releases, dual-era wire
+  decisions, breaking-correction migrations, and the distinction between SDK and RoslynMcp versions.
+- Future SDK major upgrades must add or supersede an ADR before release. The record must include the
+  exact package lineage, supported protocol eras, public-change classification, raw-wire evidence,
+  and consumer migration for each breaking correction.
 
 ## Where To Bump The Version String
 
@@ -46,7 +64,7 @@ Locations that are **not** manual bumps (do not edit them):
 - `src/RoslynMcp.Host.Stdio/Program.cs` — reads from the assembly attribute at runtime (`typeof(...).Assembly.GetName().Version`).
 - `src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs` — reads `AssemblyInformationalVersionAttribute` at runtime for `server_info`.
 - `eng/update-claude-plugin.ps1` — reads version from `~/.claude/plugins/installed_plugins.json` at runtime (the `1.6.0` in the doc-comment example is illustrative only).
-- `eng/verify-release.ps1` — does no version validation today.
+- `eng/verify-release.ps1` — invokes `verify-version-drift.ps1`; it is the authoritative release gate, not another version source.
 
 ### Pre-merge verification command
 
@@ -92,7 +110,9 @@ Before declaring a session complete for release-impacting work:
 
 ## CI Gate
 
-CI must run on every pull request and on `main`:
+CI runs on pull requests, manual dispatch, and the weekly schedule. Push-to-`main` is intentionally
+omitted because protected-branch changes arrive through a validated PR; see `CI_POLICY.md` for the
+canonical trigger and runner contract.
 
 - restore
 - build

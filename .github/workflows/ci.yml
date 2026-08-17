@@ -152,6 +152,12 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify changelog contract
+        shell: pwsh
+        run: ./eng/verify-changelog-fragments.ps1
 
       # Doc-only PRs (any **/*.md + ai_docs/**/*.json plan-state) don't change
       # compiled code, so skipping verify-release.ps1 and artifact uploads saves

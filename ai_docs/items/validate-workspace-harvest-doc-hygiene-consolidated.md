@@ -1,6 +1,6 @@
 # validate-workspace-harvest-doc-hygiene-consolidated — consolidated low-severity doc cleanup in the diagnostic-harvest merge
 
-**row:** `validate-workspace-harvest-doc-hygiene-consolidated` · **pri:** `Low` · **size:** `S`
+**row:** `validate-workspace-harvest-doc-hygiene-consolidated` · **pri:** `Low` · **size:** `S` · **deps:** `workspace-validation-error-detail-redaction`
 
 ## Anchors
 

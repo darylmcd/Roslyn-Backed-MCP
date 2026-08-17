@@ -73,7 +73,7 @@ public sealed class ServerHeartbeatTests
         // transient step that would auto-advance. The server only transitions via an
         // explicit workspace_load call.
         var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
         Assert.AreEqual("idle", connection.GetProperty("state").GetString(),
@@ -86,7 +86,7 @@ public sealed class ServerHeartbeatTests
     public async Task Heartbeat_OneWorkspaceLoaded_ReturnsReadyWithCountOne()
     {
         var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
         Assert.AreEqual("ready", connection.GetProperty("state").GetString(),
@@ -105,14 +105,14 @@ public sealed class ServerHeartbeatTests
         // until workspace_load is called. A hard-gate prompt that polls through this
         // transition should observe exactly two distinct states in order: idle, ready.
         var preLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
-        using var preLoadDoc = JsonDocument.Parse(preLoadJson);
+        using var preLoadDoc = JsonDocument.Parse(preLoadJson.TextPayload());
         Assert.AreEqual(
             "idle",
             preLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
             "pre-load state must be 'idle' — reverts to the broken 'initializing' label if this fails.");
 
         var postLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
-        using var postLoadDoc = JsonDocument.Parse(postLoadJson);
+        using var postLoadDoc = JsonDocument.Parse(postLoadJson.TextPayload());
         Assert.AreEqual(
             "ready",
             postLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
@@ -128,7 +128,7 @@ public sealed class ServerHeartbeatTests
         // `state=initializing` here and waited for it to flip without ever calling
         // workspace_load — that broken polling loop is what this fix closes.
         var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 0), new FakeVersionProvider(null));
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
         Assert.AreEqual("idle", connection.GetProperty("state").GetString(),
@@ -144,7 +144,7 @@ public sealed class ServerHeartbeatTests
         // If a future refactor accidentally copies the entire server_info payload into
         // the heartbeat, this test catches it.
         var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
-        using var heartbeatDoc = JsonDocument.Parse(heartbeatJson);
+        using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
 
         var root = heartbeatDoc.RootElement;
         Assert.IsTrue(root.TryGetProperty("connection", out _), "heartbeat must include connection");
@@ -160,7 +160,7 @@ public sealed class ServerHeartbeatTests
         // The `connection` block on server_info must match the heartbeat's shape so
         // consumers can use whichever poll they prefer without shape surprises.
         var infoJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 1), new FakeVersionProvider(null));
-        using var infoDoc = JsonDocument.Parse(infoJson);
+        using var infoDoc = JsonDocument.Parse(infoJson.TextPayload());
         var infoConn = infoDoc.RootElement.GetProperty("connection");
 
         Assert.AreEqual("ready", infoConn.GetProperty("state").GetString());
@@ -168,7 +168,7 @@ public sealed class ServerHeartbeatTests
         AssertIdentityFieldsPresent(infoConn);
 
         var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
-        using var heartbeatDoc = JsonDocument.Parse(heartbeatJson);
+        using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
         var heartbeatConn = heartbeatDoc.RootElement.GetProperty("connection");
 
         // Match every property name from the heartbeat's connection block on server_info.
