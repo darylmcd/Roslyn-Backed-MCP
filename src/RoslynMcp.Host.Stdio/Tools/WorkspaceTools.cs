@@ -39,10 +39,8 @@ public static class WorkspaceTools
         [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
-        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
-        var logger = CreateLogger(loggerFactory);
         return gate.RunLoadGateAsync(async c =>
         {
             // workspace-load stage emissions: clients see "validating-path → opening-workspace
@@ -77,7 +75,6 @@ public static class WorkspaceTools
             }
 
             ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
-            _ = NotifyResourcesChangedAsync(server, "workspace_load", logger);
             return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
         }, ct);
     }
@@ -86,16 +83,13 @@ public static class WorkspaceTools
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
-        McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
-        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
-        var logger = CreateLogger(loggerFactory);
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return gate.RunLoadGateAsync(outerCt =>
@@ -103,7 +97,6 @@ public static class WorkspaceTools
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
                 status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
-                _ = NotifyResourcesChangedAsync(server, "workspace_reload", logger);
                 return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, outerCt), ct);
     }
@@ -112,7 +105,6 @@ public static class WorkspaceTools
     [McpToolMetadata("workspace", "stable", false, true,
         "Close a loaded workspace session and release resources.")]
     public static Task<string> CloseWorkspace(
-        McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         IDotnetCommandRunner commandRunner,
@@ -155,7 +147,6 @@ public static class WorkspaceTools
                     }
 
                     var closed = workspace.Close(workspaceId);
-                    _ = NotifyResourcesChangedAsync(server, "workspace_close", logger);
                     return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
                 },
                 outerCt,
@@ -715,25 +706,6 @@ public static class WorkspaceTools
         return
             $"workspace auto-restore failed for '{targetPath}' (exit code {execution.ExitCode}). " +
             $"stdout tail: {TrimOutput(execution.StdOut)} stderr tail: {TrimOutput(execution.StdErr)}";
-    }
-
-    /// <summary>
-    /// Fire-and-forget notification to clients that the resource list has changed.
-    /// </summary>
-    internal static async Task NotifyResourcesChangedAsync(McpServer server, string sourceTool, ILogger? logger)
-    {
-        try
-        {
-            await server.SendNotificationAsync(NotificationMethods.ResourceListChangedNotification).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Notification failure should not affect the tool result
-            logger?.LogDebug(
-                ex,
-                "{SourceTool} could not notify clients that the resource list changed.",
-                sourceTool);
-        }
     }
 
     [McpServerTool(Name = "workspace_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

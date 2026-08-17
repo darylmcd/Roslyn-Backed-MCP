@@ -117,6 +117,7 @@ All variables below are **optional**. The server starts with the defaults listed
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
 | `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` | `10` | `evaluate_csharp` budget |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Secret-safe structured unexpected-failure diagnostics; set to `stderr` for local operator capture |
 
 Example MCP client config with overrides:
 
@@ -146,12 +147,12 @@ See [SECURITY.md](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/SECURI
 
 ## Privacy
 
-This server runs entirely on your local machine and does not collect, transmit, or store any telemetry, analytics, or personal data.
+This server runs entirely on your local machine and does not transmit or store telemetry, analytics, or personal data.
 
 - **Data processed:** `.sln`, `.csproj`, and `.cs` files from workspaces you explicitly load. All analysis happens in-process via Roslyn.
 - **Network access:** None from the server itself. `dotnet build` / `dotnet test` child processes may download NuGet packages as part of normal SDK behavior.
 - **Data retention:** Workspace state is in-memory only; preview tokens expire after 5 minutes. No data is persisted to disk beyond what `dotnet build`/`test` produce.
-- **Logging:** Diagnostic logs are emitted via MCP's logging notification channel to the connected client. No logs are written to disk or sent to external services.
+- **Logging:** Operational logs use local stderr and never the MCP protocol stream. Optional `ROSLYNMCP_OBSERVABILITY_SINK=stderr` events contain only correlation, exception-type topology, and stack-frame counts; exception messages, source paths, and user-code content are excluded. No logs are written to disk or sent to external services.
 - **Third-party sharing:** No data is shared with Anthropic, any third party, or any external service.
 
 ## Cross-platform notes

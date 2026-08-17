@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -221,8 +222,23 @@ internal static class StructuredCallToolFilter
                 stopwatch.Stop();
                 CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
 
-                var level = IsInternalError(ex) ? LogLevel.Error : LogLevel.Warning;
-                logger?.Log(level, ex, "Tool {ToolName} failed", toolName);
+                var isInternalError = IsInternalError(ex);
+                var level = isInternalError ? LogLevel.Error : LogLevel.Warning;
+                if (isInternalError &&
+                    context.Services?.GetService<ServerObservabilityReporter>() is { } reporter)
+                {
+                    await reporter.ReportUnexpectedAsync(
+                        ex,
+                        ServerObservabilityCategory.ToolCall,
+                        CancellationToken.None).ConfigureAwait(false);
+                }
+
+                logger?.Log(
+                    level,
+                    "Tool {ToolName} failed with {FailureKind}; correlationId={CorrelationId}",
+                    toolName,
+                    isInternalError ? "unexpected-error" : "expected-error",
+                    RequestCorrelationContext.Current ?? "unavailable");
 
                 return BuildErrorResult(toolName, ex);
             }

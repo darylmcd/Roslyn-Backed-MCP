@@ -65,7 +65,7 @@ The server ships as a Claude Code plugin with 32 skills and safety hooks. When m
 
 - **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
 - **Hooks** (`hooks/hooks.json`): Matchers use regex against tool names prefixed with `mcp__roslyn__`. Keep matchers in sync when tools are renamed or added.
-- **Plugin manifest** (`.claude-plugin/plugin.json`): Bump `version` when skills or hooks change. Keep `userConfig` entries in sync with env vars documented in `ai_docs/runtime.md`.
+- **Plugin manifest** (`.claude-plugin/plugin.json`): For skill or hook changes, add a valid `changelog.d/` fragment; `/bump` advances the manifest with every other version source at release-cut time. Keep `userConfig` entries in sync with env vars documented in `ai_docs/runtime.md`.
 - **Marketplace** (`.claude-plugin/marketplace.json`): Bump `version` to match `plugin.json`.
 
 ## Safety Guardrails

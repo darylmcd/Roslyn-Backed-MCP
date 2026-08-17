@@ -2,8 +2,8 @@ namespace RoslynMcp.Core.Models;
 
 /// <summary>
 /// Per-request observability summary attached to every tool response under the <c>_meta</c> key.
-/// Lets clients that don't surface MCP <c>notifications/message</c> log entries still observe
-/// concurrency-gate state, queue wait time, and lock-hold time. See FLAG-D root cause discussion.
+/// Lets clients observe concurrency-gate state, queue wait time, and lock-hold time without
+/// depending on a protocol logging capability. See FLAG-D root cause discussion.
 /// </summary>
 /// <param name="GateMode">
 /// The gate this request was serialized through: <c>rw-lock</c> (per-workspace reader/writer

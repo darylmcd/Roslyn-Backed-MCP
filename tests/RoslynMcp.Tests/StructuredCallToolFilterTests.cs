@@ -124,8 +124,10 @@ public sealed class StructuredCallToolFilterTests
         var text = ((TextContentBlock)result.Content![0]).Text;
         var payload = JsonDocument.Parse(text).RootElement;
         Assert.AreEqual("InternalError", payload.GetProperty("category").GetString());
-        Assert.IsTrue(payload.TryGetProperty("stackTrace", out _),
-            "InternalError envelopes should include an abbreviated stack trace for server-side diagnosis.");
+        Assert.IsFalse(payload.TryGetProperty("exceptionType", out _));
+        Assert.IsFalse(payload.TryGetProperty("stackTrace", out _));
+        Assert.IsTrue(payload.TryGetProperty("correlationId", out _),
+            "InternalError envelopes must retain a safe operator correlation reference.");
     }
 
     [TestMethod]

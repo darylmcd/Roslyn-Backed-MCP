@@ -23,3 +23,4 @@
 - `ToolErrorHandler` currently emits exception type/message, up to three inner messages, and up to five stack frames.
 - Existing tests explicitly lock this client-visible detail as a diagnostic contract.
 - Sampling and test-coverage domain fallbacks are owned by their dedicated rows because neither reaches this shared envelope boundary.
+2026-08-17 partial progress: the shared unexpected-exception path now returns a stable correlation reference without message/type/inner/stack detail, and the enabled structured sink retains only secret-safe type topology plus stack depth. Keep this row open: expected validation/not-found handlers still interpolate raw ex.Message, supplied values, and full paths; complete that remaining acceptance and update the stale Evidence section before closure.

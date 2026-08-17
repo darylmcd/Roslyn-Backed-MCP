@@ -21,10 +21,10 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
-    // ── BUG-05: Error messages include exception chain and stack trace ──
+    // ── Unexpected failures keep diagnostic detail server-side ──
 
     [TestMethod]
-    public async Task ToolErrorHandler_InternalError_IncludesExceptionTypeAndStackTrace()
+    public async Task ToolErrorHandler_InternalError_ExcludesExceptionTypeAndStackTrace()
     {
         var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
@@ -33,12 +33,14 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         var json = JsonDocument.Parse(result);
         Assert.IsTrue(json.RootElement.GetProperty("error").GetBoolean());
         Assert.AreEqual("InternalError", json.RootElement.GetProperty("category").GetString());
-        Assert.IsTrue(json.RootElement.GetProperty("message").GetString()!.Contains("NullReferenceException"));
-        Assert.IsTrue(json.RootElement.TryGetProperty("stackTrace", out _));
+        Assert.IsFalse(json.RootElement.GetProperty("message").GetString()!.Contains("NullReferenceException"));
+        Assert.IsFalse(json.RootElement.TryGetProperty("exceptionType", out _));
+        Assert.IsFalse(json.RootElement.TryGetProperty("stackTrace", out _));
+        Assert.IsTrue(json.RootElement.TryGetProperty("correlationId", out _));
     }
 
     [TestMethod]
-    public async Task ToolErrorHandler_InternalError_IncludesInnerExceptionChain()
+    public async Task ToolErrorHandler_InternalError_ExcludesInnerExceptionChain()
     {
         var inner2 = new ArgumentException("deep cause");
         var inner1 = new InvalidCastException("mid cause", inner2);
@@ -48,8 +50,9 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
 
         var json = JsonDocument.Parse(result);
         var message = json.RootElement.GetProperty("message").GetString()!;
-        Assert.IsTrue(message.Contains("InvalidCastException"));
-        Assert.IsTrue(message.Contains("ArgumentException"));
+        Assert.IsFalse(message.Contains("wrapper", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("mid cause", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("deep cause", StringComparison.Ordinal));
     }
 
     [TestMethod]
