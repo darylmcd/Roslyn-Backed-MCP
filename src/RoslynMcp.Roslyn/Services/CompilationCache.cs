@@ -13,9 +13,9 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The cache stores <see cref="Task{TResult}"/> values rather than materialized compilations,
-/// so concurrent first-callers awaiting the same key share a single compilation pass instead
-/// of racing to start their own. Stale entries are replaced atomically when a higher
+/// The cache stores lazily-created <see cref="Task{TResult}"/> values rather than materialized
+/// compilations, so concurrent first-callers install a winner before any compilation starts and
+/// then share that single pass. Stale entries are replaced atomically when a higher
 /// workspace version is observed; we don't bother evicting older entries proactively because
 /// each project has at most one slot per cache and stale tasks are released as soon as the
 /// new entry is installed.
@@ -36,9 +36,11 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class CompilationCache : ICompilationCache, IDisposable
 {
     private readonly IWorkspaceManager _workspaceManager;
+    private readonly Func<Project, Task<Compilation?>> _compilationFactory;
+    private readonly Func<string, Project, Task<CompilationWithAnalyzers?>> _analyzerFactory;
 
-    private sealed record CompilationEntry(int Version, Task<Compilation?> Compilation);
-    private sealed record AnalyzerEntry(int Version, Task<CompilationWithAnalyzers?> Bound);
+    private sealed record CompilationEntry(int Version, Lazy<Task<Compilation?>> Compilation);
+    private sealed record AnalyzerEntry(int Version, Lazy<Task<CompilationWithAnalyzers?>> Bound);
 
     // Two parallel maps. Splitting them lets a service that only needs the raw Compilation
     // (e.g., dead-code analysis) skip warming the analyzer pipeline.
@@ -46,8 +48,19 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
     private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), AnalyzerEntry> _analyzerBound = new();
 
     public CompilationCache(IWorkspaceManager workspaceManager)
+        : this(workspaceManager, compilationFactory: null, analyzerFactory: null)
+    {
+    }
+
+    internal CompilationCache(
+        IWorkspaceManager workspaceManager,
+        Func<Project, Task<Compilation?>>? compilationFactory,
+        Func<string, Project, Task<CompilationWithAnalyzers?>>? analyzerFactory)
     {
         _workspaceManager = workspaceManager;
+        _compilationFactory = compilationFactory
+            ?? (static project => project.GetCompilationAsync(CancellationToken.None));
+        _analyzerFactory = analyzerFactory ?? BuildCompilationWithAnalyzersAsync;
         // Free per-workspace cache slots when the workspace closes. Without this hook, closed
         // workspace IDs (GUIDs) accumulate forever — stale entries are functionally inert
         // because every read re-checks GetCurrentVersion, but they hold Compilation references
@@ -74,7 +87,7 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
 
         if (_compilations.TryGetValue(key, out var existing) && existing.Version == version)
         {
-            return ObserveWithCallerToken(existing.Compilation, ct);
+            return ObserveWithCallerToken(existing.Compilation.Value, ct);
         }
 
         // An already-canceled caller must not pay for — or install — a compile pass it can never
@@ -87,27 +100,22 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
             return Task.FromCanceled<Compilation?>(ct);
         }
 
-        // Cache miss or stale: install a fresh task. Multiple concurrent first-callers may
-        // race here; AddOrUpdate's atomicity ensures only one entry is stored, and any racer
-        // that lost will see the winner's task on the next read. The lost-racer's task will
-        // run to completion but its result is discarded — acceptable cost for the simplicity
-        // of not holding a per-key lock.
-        //
-        // CancellationToken.None is deliberate: this task becomes shared state for every later
-        // caller at this version, so it must not inherit whichever caller happened to arrive
-        // first. The caller's own token is applied to the returned wrapper instead.
-        var compilationTask = project.GetCompilationAsync(CancellationToken.None);
-        var entry = new CompilationEntry(version, compilationTask);
-        _compilations.AddOrUpdate(key, entry, (_, current) => current.Version >= version ? current : entry);
-        // Registered after AddOrUpdate so an already-completed broken task still evicts the
-        // entry we just installed rather than racing ahead of the install.
-        EvictWhenBroken(_compilations, key, entry, entry.Compilation);
-
-        // Return whichever entry actually won the AddOrUpdate so all callers observe the
-        // same task instance.
-        var shared = _compilations.TryGetValue(key, out var winner) && winner.Version == version
-            ? winner.Compilation
-            : compilationTask;
+        // Lazy is load-bearing: AddOrUpdate may invoke its factories more than once, so starting
+        // Roslyn work while constructing a candidate would still let losing racers compile.
+        // Only the entry returned by AddOrUpdate has Value evaluated.
+        var candidate = new CompilationEntry(
+            version,
+            new Lazy<Task<Compilation?>>(
+                () => _compilationFactory(project),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        var entry = _compilations.AddOrUpdate(
+            key,
+            candidate,
+            (_, current) => current.Version >= version ? current : candidate);
+        var shared = entry.Version == version
+            ? entry.Compilation.Value
+            : candidate.Compilation.Value;
+        EvictWhenBroken(_compilations, key, entry.Version == version ? entry : candidate, shared);
         return ObserveWithCallerToken(shared, ct);
     }
 
@@ -118,7 +126,7 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
 
         if (_analyzerBound.TryGetValue(key, out var existing) && existing.Version == version)
         {
-            return await ObserveWithCallerToken(existing.Bound, ct).ConfigureAwait(false);
+            return await ObserveWithCallerToken(existing.Bound.Value, ct).ConfigureAwait(false);
         }
 
         // An already-canceled caller must not pay for — or install — an analyzer-bound build pass
@@ -135,18 +143,20 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
             return await Task.FromCanceled<CompilationWithAnalyzers?>(ct).ConfigureAwait(false);
         }
 
-        // Same shared-task discipline as GetCompilationAsync: the analyzer-bound task is started
-        // detached from any caller's token, and the nested GetCompilationAsync it performs is
-        // therefore detached too.
-        var task = BuildCompilationWithAnalyzersAsync(workspaceId, project);
-        var entry = new AnalyzerEntry(version, task);
-        _analyzerBound.AddOrUpdate(key, entry, (_, current) => current.Version >= version ? current : entry);
-        EvictWhenBroken(_analyzerBound, key, entry, entry.Bound);
-
-        var winner = _analyzerBound.TryGetValue(key, out var stored) && stored.Version == version
-            ? stored.Bound
-            : task;
-        return await ObserveWithCallerToken(winner, ct).ConfigureAwait(false);
+        var candidate = new AnalyzerEntry(
+            version,
+            new Lazy<Task<CompilationWithAnalyzers?>>(
+                () => _analyzerFactory(workspaceId, project),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+        var entry = _analyzerBound.AddOrUpdate(
+            key,
+            candidate,
+            (_, current) => current.Version >= version ? current : candidate);
+        var shared = entry.Version == version
+            ? entry.Bound.Value
+            : candidate.Bound.Value;
+        EvictWhenBroken(_analyzerBound, key, entry.Version == version ? entry : candidate, shared);
+        return await ObserveWithCallerToken(shared, ct).ConfigureAwait(false);
     }
 
     /// <summary>

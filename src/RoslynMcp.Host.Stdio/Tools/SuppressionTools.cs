@@ -38,8 +38,9 @@ public static class SuppressionTools
         "Insert a #pragma warning disable before a line."),
      Description("Insert #pragma warning disable &lt;id&gt; immediately before the given 1-based line in a source file.")]
     public static Task<string> AddPragmaSuppression(
+        McpServer server,
         IWorkspaceExecutionGate gate,
-        ISuppressionService suppressionService,
+        IPinnedSuppressionWriteService suppressionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         [Description("1-based line number: pragma is inserted before this line")] int line,
@@ -48,8 +49,14 @@ public static class SuppressionTools
         => ToolDispatch.PreviewWithWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => suppressionService.AddPragmaWarningDisableAsync(
-                workspaceId, filePath, line, diagnosticId, c),
+            async c =>
+            {
+                var canonicalWritePath = await ClientRootPathValidator
+                    .ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                EditTools.EnsurePinnedTargetMatchesResolvedDocument(filePath, canonicalWritePath);
+                return await suppressionService.AddPragmaWarningDisableAsync(
+                    workspaceId, filePath, line, diagnosticId, canonicalWritePath, c).ConfigureAwait(false);
+            },
             ct);
 
     [McpServerTool(Name = "verify_pragma_suppresses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -76,8 +83,9 @@ public static class SuppressionTools
         "Extend an existing #pragma warning restore past a target line."),
      Description("Extend a matching '#pragma warning restore &lt;id&gt;' down to cover a previously-uncovered fire site. Refuses the edit when relocating the restore would cross a #region/#endregion boundary or nest into another '#pragma warning disable &lt;id&gt;' for the same id (both would silently change the effective scope of other suppressions). Idempotent no-op when the existing pair already covers the target.")]
     public static Task<string> PragmaScopeWiden(
+        McpServer server,
         IWorkspaceExecutionGate gate,
-        ISuppressionService suppressionService,
+        IPinnedSuppressionWriteService suppressionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the C# source file to modify")] string filePath,
         [Description("1-based line number that must be covered after the widen (the diagnostic fire site)")] int line,
@@ -86,7 +94,13 @@ public static class SuppressionTools
         => ToolDispatch.PreviewWithWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => suppressionService.WidenPragmaScopeAsync(
-                workspaceId, filePath, line, diagnosticId, c),
+            async c =>
+            {
+                var canonicalWritePath = await ClientRootPathValidator
+                    .ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                EditTools.EnsurePinnedTargetMatchesResolvedDocument(filePath, canonicalWritePath);
+                return await suppressionService.WidenPragmaScopeAsync(
+                    workspaceId, filePath, line, diagnosticId, canonicalWritePath, c).ConfigureAwait(false);
+            },
             ct);
 }

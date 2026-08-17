@@ -52,7 +52,7 @@ builder.Services
         {
             Name = "roslyn-mcp",
             Title = "Roslyn MCP Server",
-            Version = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+            Version = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly.GetName().Version?.ToString() ?? "1.0.0",
         };
         options.ServerInstructions = ServerInstructions.For(toolTierSelection);
     })
@@ -92,8 +92,8 @@ mcpLoggingProvider.SetServer(server);
 // operator whether the problem is server-side (registered=0 here) or client-side
 // (registered=N on every instance but the host presented an empty tool list).
 var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-var surfaceReport = StartupDiagnostics.Capture(host.Services, typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
-var assemblyVersion = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly
+var surfaceReport = StartupDiagnostics.Capture(host.Services, typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly);
+var assemblyVersion = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly
     .GetName().Version?.ToString() ?? "unknown";
 StartupDiagnostics.LogStartup(startupLogger, surfaceReport, assemblyVersion);
 SurfaceRegistrationSnapshot.Value = surfaceReport;

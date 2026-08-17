@@ -188,7 +188,9 @@ internal static class StructuredCallToolFilter
                 stopwatch.Stop();
                 CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                 logger?.LogInformation("Tool {ToolName} completed successfully", toolName);
-                return InjectMetaIntoContent(result, toolName);
+                return InjectMetaIntoContent(
+                    ApplyProtocolResultShape(context, result),
+                    toolName);
             }
             catch (OperationCanceledException)
             {
@@ -211,7 +213,9 @@ internal static class StructuredCallToolFilter
                     CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                     logger?.LogInformation(
                         "Tool {ToolName} succeeded on retry after elicitation", toolName);
-                    return InjectMetaIntoContent(elicitResult, toolName);
+                    return InjectMetaIntoContent(
+                        ApplyProtocolResultShape(context, elicitResult),
+                        toolName);
                 }
 
                 stopwatch.Stop();
@@ -476,6 +480,33 @@ internal static class StructuredCallToolFilter
     /// </summary>
     internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName) =>
         StructuredCallContentProjector.InjectMetaIntoContent(result, toolName);
+
+    /// <summary>
+    /// Removes the July 2026 result discriminator for legacy sessions. Explicit
+    /// <see cref="CallToolResult"/> producers bypass the SDK's normal result construction, so
+    /// leaving their discriminator intact would leak a field the negotiated protocol does not
+    /// define. Legacy sessions also require non-object structured content to be carried under the
+    /// advertised <c>{ "result": ... }</c> object envelope; modern sessions keep the natural root.
+    /// </summary>
+    private static CallToolResult ApplyProtocolResultShape(
+        RequestContext<CallToolRequestParams> context,
+        CallToolResult result)
+    {
+        if (!RequestProtocolFeatureGate.SupportsJuly2026Features(context))
+        {
+            result.ResultType = null;
+            if (result.StructuredContent is { ValueKind: not JsonValueKind.Object } structuredContent)
+            {
+                result.StructuredContent = JsonSerializer.SerializeToElement(
+                    new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                    {
+                        ["result"] = structuredContent,
+                    });
+            }
+        }
+
+        return result;
+    }
 
     /// <summary>
     /// Predicate for logger severity: anything that <see cref="ToolErrorHandler"/>

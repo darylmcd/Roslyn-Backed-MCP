@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -21,7 +22,7 @@ namespace RoslynMcp.Tests.Skills;
 ///      `ServerSurfaceCatalog.Tools` list.
 ///   4. No shipped markdown file under `skills/` — SKILL.md, prompt bodies, or README — contains any
 ///      banned repo-only marker (`ai_docs/`, `backlog.md`, `eng/`, etc.), after URLs and
-///      placeholder-rooted (`&lt;…-root&gt;/…`) paths are stripped. A redundant in-process echo of the
+///      allowlisted placeholder-rooted paths are stripped. A redundant in-process echo of the
 ///      `verify-skills-are-generic.ps1` gate, kept here so a build-only contributor (no `pwsh`) still
 ///      catches genericity drift.
 ///   5. The canonical promotion scorecard (`audit-reports/_latest-promotion-scorecard.json`) is
@@ -245,41 +246,44 @@ public sealed class McpServerSurfaceTestSkillTests
     }
 
     /// <summary>
-    /// Repo-only markers that must never reach a shipped file under <c>skills/</c>. This array is the
-    /// in-process mirror of the <c>$bannedPatterns</c> list in <c>eng/verify-skills-are-generic.ps1</c>
-    /// and MUST stay byte-parallel with it — the gate is canonical, this is the build-only echo.
+    /// Loads the single policy consumed by both the PowerShell gate and this build-only echo.
     /// </summary>
-    private static readonly string[] BannedRepoMarkers =
-    [
-        @"state\.json",
-        @"backlog-sweep",
-        @"\bai_docs/",
-        @"\bbacklog\.md\b",
-        @"\beng/",
-        @"just verify-",
-        @"Directory\.Build\.props",
-        @"BannedSymbols\.txt",
-    ];
+    private static GenericityPolicy LoadGenericityPolicy()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var policyPath = Path.Combine(repoRoot, "eng", "banned-skill-markers.json");
+        var policy = JsonSerializer.Deserialize<GenericityPolicy>(
+            File.ReadAllText(policyPath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return policy ?? throw new AssertFailedException($"Could not deserialize {policyPath}.");
+    }
 
     /// <summary>
     /// Applies the same two pre-scan strips the gate applies, in the same order.
     /// <list type="bullet">
     ///   <item>URLs — a GitHub link to this repo's public docs legitimately contains <c>ai_docs/</c>.</item>
-    ///   <item>Placeholder-rooted paths (<c>&lt;audited-repo-root&gt;/…</c>) — an explicitly-rooted path
-    ///         is a deliberate cross-repo pointer, the opposite of an unqualified repo-coupled path.</item>
+    ///   <item>Allowlisted placeholder-rooted paths (<c>&lt;audited-repo-root&gt;/…</c> and
+    ///         <c>&lt;Roslyn-Backed-MCP-root&gt;/…</c>) — an explicitly-rooted path is a deliberate
+    ///         cross-repo pointer, the opposite of an unqualified repo-coupled path.</item>
     /// </list>
     /// </summary>
-    private static string StripAllowedSpans(string contents)
+    private static string StripAllowedSpans(string contents, GenericityPolicy policy)
     {
-        var stripped = Regex.Replace(contents, @"https?://[^\s)]+", string.Empty);
-        return Regex.Replace(stripped, @"<[^>]+-root>/\S+", string.Empty);
+        var stripped = contents;
+        foreach (var pattern in policy.StripPatterns)
+        {
+            stripped = Regex.Replace(stripped, pattern, string.Empty);
+        }
+
+        return stripped;
     }
 
     private static List<string> FindBannedMarkers(string contents)
     {
-        var stripped = StripAllowedSpans(contents);
+        var policy = LoadGenericityPolicy();
+        var stripped = StripAllowedSpans(contents, policy);
         var violations = new List<string>();
-        foreach (var pattern in BannedRepoMarkers)
+        foreach (var pattern in policy.BannedPatterns)
         {
             if (Regex.IsMatch(stripped, pattern))
             {
@@ -288,6 +292,40 @@ public sealed class McpServerSurfaceTestSkillTests
         }
 
         return violations;
+    }
+
+    [TestMethod]
+    [DataRow("|`<audited-repo-root>/backlog.d/`|`eng/stage-review-inbox.ps1`|", @"\beng/")]
+    [DataRow("<audited-repo-root>/backlog.d/,eng/stage-review-inbox.ps1", @"\beng/")]
+    [DataRow("<repo-root>/ai_docs/domains/tool-usage-guide.md", @"\bai_docs/")]
+    [DataRow("eng/single-line.md", @"\beng/")]
+    public void GenericityPolicy_ReproducedLaunderingShapes_RemainVisible(
+        string contents,
+        string expectedPattern)
+    {
+        CollectionAssert.Contains(FindBannedMarkers(contents), expectedPattern);
+    }
+
+    [TestMethod]
+    [DataRow("<audited-repo-root>/ai_docs/domains/tool-usage-guide.md")]
+    [DataRow("<Roslyn-Backed-MCP-root>/eng/verify-skills-are-generic.ps1")]
+    public void GenericityPolicy_AllowlistedPlaceholderRoots_RemainPortable(string contents)
+    {
+        Assert.IsEmpty(FindBannedMarkers(contents));
+    }
+
+    [TestMethod]
+    public void GenericityPolicy_PowerShellGateConsumesSharedPolicyAndGlob()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(repoRoot, "eng", "verify-skills-are-generic.ps1"));
+        var policy = LoadGenericityPolicy();
+
+        Assert.AreEqual("*.md", policy.FilePattern);
+        StringAssert.Contains(script, "banned-skill-markers.json");
+        StringAssert.Contains(script, "-Filter $policy.filePattern");
+        StringAssert.Contains(script, "$lines = @(Get-Content");
+        StringAssert.Contains(script, "foreach ($stripPattern in $stripPatterns)");
     }
 
     [TestMethod]
@@ -465,4 +503,9 @@ public sealed class McpServerSurfaceTestSkillTests
                 $"mcp-server-surface-test frontmatter field `{field}` at {skillPath} must equal `{expectedValue}`.");
         }
     }
+
+    private sealed record GenericityPolicy(
+        string FilePattern,
+        string[] BannedPatterns,
+        string[] StripPatterns);
 }

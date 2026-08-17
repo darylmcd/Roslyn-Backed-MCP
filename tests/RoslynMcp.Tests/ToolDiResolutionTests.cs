@@ -34,7 +34,7 @@ public sealed class ToolDiResolutionTests
     {
         using var provider = BuildHostServiceProvider();
 
-        var toolAssembly = typeof(ServerTools).Assembly;
+        var toolAssembly = typeof(HostAssemblyMarker).Assembly;
         var toolMethods = toolAssembly.GetTypes()
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
             .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null)
@@ -103,7 +103,7 @@ public sealed class ToolDiResolutionTests
         var tools = provider.GetServices<McpServerTool>()
             .ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
 
-        var toolAssembly = typeof(ServerTools).Assembly;
+        var toolAssembly = typeof(HostAssemblyMarker).Assembly;
         var loggerFactoryToolNames = toolAssembly.GetTypes()
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
             .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() is not null)
@@ -169,7 +169,7 @@ public sealed class ToolDiResolutionTests
 
         if (includeMcpTools)
         {
-            var hostAssembly = typeof(McpLoggingProvider).Assembly;
+            var hostAssembly = typeof(HostAssemblyMarker).Assembly;
             services
                 .AddMcpServer()
                 .WithToolsFromAssembly(hostAssembly);

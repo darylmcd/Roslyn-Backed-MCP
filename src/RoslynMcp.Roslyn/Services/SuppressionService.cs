@@ -9,7 +9,7 @@ using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class SuppressionService : ISuppressionService
+public sealed class SuppressionService : ISuppressionService, IPinnedSuppressionWriteService
 {
     private readonly IEditorConfigService _editorConfig;
     private readonly IEditService _editService;
@@ -70,8 +70,33 @@ public sealed class SuppressionService : ISuppressionService
         return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, severity.Trim(), "set_diagnostic_severity", ct);
     }
 
-    public async Task<TextEditResultDto> AddPragmaWarningDisableAsync(
+    public Task<TextEditResultDto> AddPragmaWarningDisableAsync(
         string workspaceId, string filePath, int line, string diagnosticId, CancellationToken ct)
+        => AddPragmaWarningDisableCoreAsync(
+            workspaceId, filePath, line, diagnosticId, canonicalWritePath: null, ct);
+
+    public Task<TextEditResultDto> AddPragmaWarningDisableAsync(
+        string workspaceId,
+        string filePath,
+        int line,
+        string diagnosticId,
+        string canonicalWritePath,
+        CancellationToken ct)
+        => AddPragmaWarningDisableCoreAsync(
+            workspaceId,
+            filePath,
+            line,
+            diagnosticId,
+            canonicalWritePath ?? throw new ArgumentNullException(nameof(canonicalWritePath)),
+            ct);
+
+    private async Task<TextEditResultDto> AddPragmaWarningDisableCoreAsync(
+        string workspaceId,
+        string filePath,
+        int line,
+        string diagnosticId,
+        string? canonicalWritePath,
+        CancellationToken ct)
     {
         if (line < 1)
         {
@@ -142,7 +167,13 @@ public sealed class SuppressionService : ISuppressionService
         var newline = await DetectLineEndingAsync(filePath, ct).ConfigureAwait(false);
         var pragma = $"#pragma warning disable {normalizedId}{newline}";
         var edit = new TextEditDto(line, 1, line, 1, pragma);
-        return await _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], "add_pragma_suppression", ct)
+        return await _editService.ApplyTextEditsAsync(
+                workspaceId,
+                filePath,
+                [edit],
+                "add_pragma_suppression",
+                ct,
+                canonicalWritePath: canonicalWritePath)
             .ConfigureAwait(false);
     }
 
@@ -207,8 +238,33 @@ public sealed class SuppressionService : ISuppressionService
         };
     }
 
-    public async Task<PragmaWidenResultDto> WidenPragmaScopeAsync(
+    public Task<PragmaWidenResultDto> WidenPragmaScopeAsync(
         string workspaceId, string filePath, int line, string diagnosticId, CancellationToken ct)
+        => WidenPragmaScopeCoreAsync(
+            workspaceId, filePath, line, diagnosticId, canonicalWritePath: null, ct);
+
+    public Task<PragmaWidenResultDto> WidenPragmaScopeAsync(
+        string workspaceId,
+        string filePath,
+        int line,
+        string diagnosticId,
+        string canonicalWritePath,
+        CancellationToken ct)
+        => WidenPragmaScopeCoreAsync(
+            workspaceId,
+            filePath,
+            line,
+            diagnosticId,
+            canonicalWritePath ?? throw new ArgumentNullException(nameof(canonicalWritePath)),
+            ct);
+
+    private async Task<PragmaWidenResultDto> WidenPragmaScopeCoreAsync(
+        string workspaceId,
+        string filePath,
+        int line,
+        string diagnosticId,
+        string? canonicalWritePath,
+        CancellationToken ct)
     {
         ValidateVerifyWidenArgs(filePath, line, diagnosticId);
         var normalizedId = diagnosticId.Trim();
@@ -296,7 +352,8 @@ public sealed class SuppressionService : ISuppressionService
             ct,
             skipSyntaxCheck: false,
             verify: false,
-            autoRevertOnError: false).ConfigureAwait(false);
+            autoRevertOnError: false,
+            canonicalWritePath: canonicalWritePath).ConfigureAwait(false);
 
         if (!applyResult.Success)
         {
