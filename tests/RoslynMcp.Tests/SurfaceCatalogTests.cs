@@ -1,15 +1,15 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.CodeAnalysis;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
-using Microsoft.CodeAnalysis;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Tests;
 
@@ -335,7 +335,7 @@ public sealed class SurfaceCatalogTests
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
             new NuGetVersionChecker(new TestHttpClientFactory()));
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("surface", out var surface));
         Assert.IsTrue(surface.TryGetProperty("tools", out var tools));
@@ -345,12 +345,29 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void WorkspaceDriftDescription_UsesAdvertisedWireCasing()
+    {
+        var method = typeof(WorkspaceDriftTool).GetMethod(nameof(WorkspaceDriftTool.WorkspaceDriftCheck));
+        Assert.IsNotNull(method);
+        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description;
+        Assert.IsNotNull(description);
+        StringAssert.Contains(description, "filesDrifted");
+        Assert.IsFalse(description.Contains("files_drifted", StringComparison.Ordinal));
+
+        var properties = ToolOutputSchemaIndex.GetSchema("workspace_drift_check")!
+            .AsObject()["properties"]!
+            .AsObject();
+        Assert.IsTrue(properties.ContainsKey("filesDrifted"));
+        Assert.IsFalse(properties.ContainsKey("files_drifted"));
+    }
+
+    [TestMethod]
     public async Task ServerInfo_IncludesResourceServerNameHints()
     {
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
             new NuGetVersionChecker(new TestHttpClientFactory()));
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("resourceServerNames", out var hints));
         Assert.AreEqual("roslyn", hints.GetProperty("canonical").GetString());

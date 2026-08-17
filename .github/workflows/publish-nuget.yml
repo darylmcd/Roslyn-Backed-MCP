@@ -13,7 +13,7 @@ on:
       dry_run:
         description: 'Dry run — validate and pack but do NOT push to NuGet'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
@@ -39,7 +41,7 @@ jobs:
       # waste on the publish run.
       - name: Verify release build (version drift + build + test + publish)
         shell: pwsh
-        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage
+        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage -RequireConsumedFragments
 
       - name: Pack NuGet package
         shell: pwsh
@@ -82,7 +84,7 @@ jobs:
           }
 
       - name: Push to NuGet
-        if: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.dry_run != 'true' }}
+        if: ${{ github.event_name == 'release' || github.event_name == 'push' || !inputs.dry_run }}
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
@@ -97,7 +99,7 @@ jobs:
             --skip-duplicate
 
       - name: Dry run notice
-        if: ${{ inputs.dry_run == 'true' && github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: echo "Dry run — package was built and validated but NOT pushed to NuGet."
 
       - name: Upload NuGet packages as artifacts

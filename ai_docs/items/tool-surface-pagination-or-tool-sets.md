@@ -1,6 +1,6 @@
 # tool-surface-pagination-or-tool-sets — tool-set catalog resources for bounded discovery
 
-**row:** `tool-surface-pagination-or-tool-sets` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `tool-surface-pagination-or-tool-sets` · **pri:** `Low` · **size:** `M` · **deps:** `resource-read-protocol-error-semantics` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 

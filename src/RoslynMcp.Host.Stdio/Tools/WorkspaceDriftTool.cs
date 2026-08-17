@@ -1,8 +1,9 @@
 using System.ComponentModel;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
-using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -21,19 +22,19 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class WorkspaceDriftTool
 {
-    [McpServerTool(Name = "workspace_drift_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+    [McpServerTool(Name = "workspace_drift_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceDriftResult)),
      McpToolMetadata("workspace", "experimental", true, false,
-        "Compare the in-memory workspace snapshot against filesystem mtimes; return drift status, drifted file paths, and a reload/noop recommendation.",
-        outputSchemaTypeRef: typeof(WorkspaceDriftResult)),
-     Description("Fast probe that compares the in-memory MSBuildWorkspace snapshot for `workspaceId` against the current on-disk last-write times of every tracked document. Returns `{ stale: bool, files_drifted: string[], recommended: 'reload' | 'noop' }`. A document drifts when its mtime is past the workspace's loadedAtUtc, or when the file no longer exists on disk (deletion is also drift). Agents call this BEFORE a read tool to decide whether `workspace_reload` is needed — eliminates the dilemma between always-reloading (slow) and never-reloading (silent stale reads after out-of-band Edit/Write mutations). Source-generated documents have no file path and are skipped. Output is deterministic: the `files_drifted` list is sorted ordinally and deduped across linked documents.")]
-    public static Task<string> WorkspaceDriftCheck(
+        "Compare the in-memory workspace snapshot against filesystem mtimes; return drift status, drifted file paths, and a reload/noop recommendation."),
+     Description("Fast probe that compares the in-memory MSBuildWorkspace snapshot for `workspaceId` against the current on-disk last-write times of every tracked document. Returns `{ stale: bool, filesDrifted: string[], recommended: 'reload' | 'noop' }`. A document drifts when its mtime is past the workspace's loadedAtUtc, or when the file no longer exists on disk (deletion is also drift). Agents call this BEFORE a read tool to decide whether `workspace_reload` is needed — eliminates the dilemma between always-reloading (slow) and never-reloading (silent stale reads after out-of-band Edit/Write mutations). Source-generated documents have no file path and are skipped. Output is deterministic: the `filesDrifted` list is sorted ordinally and deduped across linked documents.")]
+    public static Task<CallToolResult> WorkspaceDriftCheck(
         IWorkspaceExecutionGate gate,
         IWorkspaceDriftService driftService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
+        => gate.RunReadAsync(
             workspaceId,
-            c => driftService.CheckDriftAsync(workspaceId, c),
+            async c => StructuredToolResult.Create(
+                await driftService.CheckDriftAsync(workspaceId, c).ConfigureAwait(false)),
             ct);
 }

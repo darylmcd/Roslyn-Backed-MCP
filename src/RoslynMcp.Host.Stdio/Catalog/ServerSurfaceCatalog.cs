@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Catalog;
 
@@ -356,7 +357,7 @@ public static partial class ServerSurfaceCatalog
     }
 
     // tool-output-schema-infrastructure: tool factory consults ToolOutputSchemaIndex so that
-    // any [McpToolMetadata(outputSchemaTypeRef: ...)]-annotated method publishes a JSON-Schema
+    // any [McpServerTool(OutputSchemaType = ...)]-annotated method publishes a JSON-Schema
     // on its catalog entry without per-row plumbing in the partial-class files. Tools without
     // an opt-in stay schema-less (OutputSchema == null) — the existing text-only contract.
     private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
@@ -399,7 +400,7 @@ public static partial class ServerSurfaceCatalog
 /// <param name="OutputSchema">
 /// tool-output-schema-infrastructure: the JSON-Schema describing the tool's
 /// <c>structuredContent</c> channel per MCP 2025-06-18 § Tools / Structured Content.
-/// <see langword="null"/> for tools without an <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/>
+/// <see langword="null"/> for tools without an <see cref="McpServerToolAttribute.OutputSchemaType"/>
 /// declaration (legacy text-only contract; structuredContent stays absent), and always
 /// <see langword="null"/> for resource and prompt entries. Generated lazily from the declared
 /// CLR type via <see cref="ToolOutputSchemaIndex"/>; the cache is shared across the catalog,

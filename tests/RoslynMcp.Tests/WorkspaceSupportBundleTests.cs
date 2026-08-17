@@ -1,10 +1,10 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
-using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Tests;
 
@@ -14,14 +14,21 @@ public sealed class WorkspaceSupportBundleTests
     [TestMethod]
     public async Task WorkspaceSupportBundle_NoWorkspace_ReturnsRecoveryHint()
     {
-        var json = await WorkspaceTools.GetWorkspaceSupportBundle(
+        var result = await WorkspaceTools.GetWorkspaceSupportBundle(
             new FakeGate(),
             new FakeWorkspaceManager([]),
             new FakeDriftService(new WorkspaceDriftResult(false, [], "noop")),
             new FakeChangeTracker([]),
             new FakeDiagnosticService(EmptyDiagnostics()));
 
-        using var doc = JsonDocument.Parse(json);
+        Assert.IsNotNull(result.StructuredContent);
+        var structured = result.StructuredContent.Value;
+        Assert.IsTrue(GeneratedJsonSchemaMatcher.Matches(
+            structured,
+            ToolOutputSchemaIndex.GetSchema("workspace_support_bundle")!));
+
+        using var doc = JsonDocument.Parse(result.TextPayload());
+        Assert.AreEqual(doc.RootElement.GetRawText(), structured.GetRawText());
         Assert.AreEqual("incident-support", doc.RootElement.GetProperty("bundleKind").GetString());
         Assert.AreEqual("no-workspace-loaded", doc.RootElement.GetProperty("status").GetString());
         Assert.AreEqual(JsonValueKind.Null, doc.RootElement.GetProperty("workspace").ValueKind);
@@ -42,7 +49,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeChangeTracker([]),
             new FakeDiagnosticService(EmptyDiagnostics()));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("clean", doc.RootElement.GetProperty("status").GetString());
         Assert.IsFalse(doc.RootElement.GetProperty("limits").GetProperty("sourceSnippetsIncluded").GetBoolean());
         Assert.AreEqual(status.LoadedPath, doc.RootElement.GetProperty("workspace").GetProperty("loadedPath").GetString());
@@ -64,7 +71,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeChangeTracker([]),
             new FakeDiagnosticService(EmptyDiagnostics()));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("workspace-id-required", doc.RootElement.GetProperty("status").GetString());
         Assert.AreEqual(2, doc.RootElement.GetProperty("loadedWorkspaces").GetArrayLength());
         StringAssert.Contains(
@@ -89,7 +96,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeDiagnosticService(EmptyDiagnostics()),
             maxDriftedFiles: 2);
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("stale", doc.RootElement.GetProperty("status").GetString());
         var driftJson = doc.RootElement.GetProperty("workspace").GetProperty("drift");
         Assert.IsTrue(driftJson.GetProperty("stale").GetBoolean());
@@ -119,7 +126,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeDiagnosticService(EmptyDiagnostics()),
             maxChangeEntries: 1);
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("changed", doc.RootElement.GetProperty("status").GetString());
         var ledger = doc.RootElement.GetProperty("changeLedger");
         Assert.AreEqual(2, ledger.GetProperty("totalChanges").GetInt32());
@@ -153,7 +160,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeChangeTracker([]),
             new FakeDiagnosticService(diagnostics));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("attention-needed", doc.RootElement.GetProperty("status").GetString());
         var totals = doc.RootElement.GetProperty("diagnosticsTotals");
         Assert.AreEqual(2, totals.GetProperty("totalErrors").GetInt32());
@@ -186,7 +193,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeChangeTracker([]),
             new FakeDiagnosticService(diagnostics));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("attention-needed", doc.RootElement.GetProperty("status").GetString());
         Assert.AreEqual(2, doc.RootElement.GetProperty("diagnosticsTotals").GetProperty("totalWarnings").GetInt32());
         StringAssert.Contains(
@@ -216,7 +223,7 @@ public sealed class WorkspaceSupportBundleTests
             new FakeChangeTracker([]),
             new FakeDiagnosticService(diagnostics));
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("attention-needed", doc.RootElement.GetProperty("status").GetString());
         StringAssert.Contains(
             string.Join(" ", doc.RootElement.GetProperty("nextActions").EnumerateArray().Select(a => a.GetString())),

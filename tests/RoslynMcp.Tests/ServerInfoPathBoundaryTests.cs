@@ -154,7 +154,7 @@ public sealed class ServerInfoPathBoundaryTests
                 new FakeWorkspaceManager(),
                 new FakeVersionProvider(null));
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(
                 doc.RootElement.TryGetProperty("pathBoundary", out var boundary),
                 "server_info must emit pathBoundary (camelCase) — the projection is wired but unreported.");
@@ -184,7 +184,7 @@ public sealed class ServerInfoPathBoundaryTests
                 new FakeWorkspaceManager(),
                 new FakeVersionProvider(null));
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(doc.RootElement.TryGetProperty("pathBoundary", out var boundary));
             Assert.AreEqual(JsonValueKind.Null, boundary.ValueKind);
         }

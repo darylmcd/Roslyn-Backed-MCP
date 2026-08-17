@@ -1,6 +1,6 @@
 # fixall-scope-required-validation-hoist — hoist fix_all scope-required parameter validation ahead of provider discovery
 
-**row:** `fixall-scope-required-validation-hoist` · **pri:** `Low` · **size:** `S`
+**row:** `fixall-scope-required-validation-hoist` · **pri:** `Low` · **size:** `S` · **deps:** `code-action-provider-loading-consolidation`
 
 ## Anchors
 

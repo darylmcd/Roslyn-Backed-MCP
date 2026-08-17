@@ -35,7 +35,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     public async Task WorkspaceTools_ListWorkspaces_Returns_Count_And_Id()
     {
         var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.IsTrue(doc.RootElement.GetProperty("count").GetInt32() >= 1);
         var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
         Assert.IsTrue(workspaces.Any(w => w.GetProperty("workspaceId").GetString() == WorkspaceId));
@@ -50,7 +50,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceId,
             verbose: false,
             CancellationToken.None);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.IsTrue(doc.RootElement.GetProperty("projectCount").GetInt32() >= 1);
     }
 
@@ -63,7 +63,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceId,
             verbose: false,
             CancellationToken.None);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.IsFalse(doc.RootElement.TryGetProperty("projects", out _),
             "Summary mode must NOT include the per-project tree.");
         Assert.IsTrue(doc.RootElement.TryGetProperty("workspaceDiagnosticCount", out _),
@@ -79,7 +79,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceId,
             verbose: true,
             CancellationToken.None);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
             "Verbose mode must include the per-project tree.");
         Assert.IsTrue(projects.GetArrayLength() >= 1);
@@ -89,7 +89,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     public async Task WorkspaceTools_ListWorkspaces_Default_Is_Summary()
     {
         var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false);
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
         Assert.IsTrue(workspaces.Count >= 1);
         Assert.IsFalse(workspaces[0].TryGetProperty("projects", out _),
@@ -101,22 +101,20 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     {
         var responses = new[]
         {
-            (Tool: "workspace_list", Json: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false)),
-            (Tool: "workspace_list", Json: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: true)),
-            (Tool: "workspace_status", Json: await WorkspaceTools.GetWorkspaceStatus(
+            (Tool: "workspace_list", Result: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false)),
+            (Tool: "workspace_list", Result: await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: true)),
+            (Tool: "workspace_status", Result: await WorkspaceTools.GetWorkspaceStatus(
                 WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, verbose: false, CancellationToken.None)),
-            (Tool: "workspace_status", Json: await WorkspaceTools.GetWorkspaceStatus(
+            (Tool: "workspace_status", Result: await WorkspaceTools.GetWorkspaceStatus(
                 WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, verbose: true, CancellationToken.None)),
         };
 
-        foreach (var (tool, json) in responses)
+        foreach (var (tool, result) in responses)
         {
+            var json = result.TextPayload();
             using var metrics = AmbientGateMetrics.BeginRequest();
             var projected = StructuredCallToolFilter.InjectMetaIntoContent(
-                new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = json }],
-                },
+                result,
                 tool);
 
             Assert.IsNotNull(projected.StructuredContent, $"{tool} must emit structuredContent.");
@@ -127,7 +125,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
 
             var schema = ToolOutputSchemaIndex.GetSchema(tool);
             Assert.IsNotNull(schema, $"{tool} must advertise its output schema.");
-            Assert.IsTrue(MatchesSchema(structured, schema),
+            Assert.IsTrue(GeneratedJsonSchemaMatcher.Matches(structured, schema),
                 $"{tool} response does not match any advertised outputSchema branch: {json}");
         }
     }
@@ -136,16 +134,16 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     public async Task WorkspaceList_EmptyFreshHostResult_ConformsToAdvertisedAnyOfSchema()
     {
         var json = await WorkspaceTools.ListWorkspaces(new EmptyWorkspaceManager(), verbose: false);
-        using var document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual(0, document.RootElement.GetProperty("count").GetInt32());
         Assert.AreEqual(0, document.RootElement.GetProperty("workspaces").GetArrayLength());
 
         var schema = ToolOutputSchemaIndex.GetSchema("workspace_list");
         Assert.IsNotNull(schema);
         var variants = schema.AsObject()["anyOf"]!.AsArray();
-        Assert.AreEqual(2, variants.Count(candidate => candidate is not null && MatchesSchema(document.RootElement, candidate)),
+        Assert.AreEqual(2, variants.Count(candidate => candidate is not null && GeneratedJsonSchemaMatcher.Matches(document.RootElement, candidate)),
             "The empty array intentionally overlaps both DTO branches; oneOf would reject this valid payload.");
-        Assert.IsTrue(MatchesSchema(document.RootElement, schema),
+        Assert.IsTrue(GeneratedJsonSchemaMatcher.Matches(document.RootElement, schema),
             "An empty workspace_list payload matches both DTO branches and must remain valid via anyOf.");
     }
 
@@ -411,7 +409,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
                 stopwatch.ElapsedMilliseconds < 1000,
                 $"workspace_status(verbose=true) should not block on a held LoadLock; took {stopwatch.ElapsedMilliseconds} ms.");
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
                 "Verbose mode must include the per-project tree.");
             Assert.IsTrue(projects.GetArrayLength() >= 1);
@@ -472,81 +470,6 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
-    }
-
-    private static bool MatchesSchema(JsonElement value, JsonNode schema)
-    {
-        if (schema is JsonValue booleanSchema && booleanSchema.TryGetValue<bool>(out var allowed))
-            return allowed;
-        if (schema is not JsonObject schemaObject)
-            return true;
-
-        if (schemaObject["oneOf"] is JsonArray oneOf
-            && oneOf.Count(candidate => candidate is not null && MatchesSchema(value, candidate)) != 1)
-        {
-            return false;
-        }
-        if (schemaObject["anyOf"] is JsonArray anyOf
-            && !anyOf.Any(candidate => candidate is not null && MatchesSchema(value, candidate)))
-        {
-            return false;
-        }
-
-        if (schemaObject["type"] is { } typeNode && !MatchesJsonType(value, typeNode))
-            return false;
-
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            var properties = schemaObject["properties"] as JsonObject;
-            if (schemaObject["required"] is JsonArray required)
-            {
-                foreach (var requiredName in required.Select(static node => node?.GetValue<string>()))
-                {
-                    if (requiredName is not null && !value.TryGetProperty(requiredName, out _))
-                        return false;
-                }
-            }
-
-            if (properties is not null)
-            {
-                foreach (var property in value.EnumerateObject())
-                {
-                    if (properties[property.Name] is { } propertySchema
-                        && !MatchesSchema(property.Value, propertySchema))
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-        else if (value.ValueKind == JsonValueKind.Array && schemaObject["items"] is { } itemSchema)
-        {
-            foreach (var item in value.EnumerateArray())
-            {
-                if (!MatchesSchema(item, itemSchema)) return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool MatchesJsonType(JsonElement value, JsonNode typeNode)
-    {
-        var expectedTypes = typeNode is JsonArray typeArray
-            ? typeArray.Select(static node => node?.GetValue<string>()).Where(static type => type is not null)
-            : [typeNode.GetValue<string>()];
-
-        return expectedTypes.Any(type => type switch
-        {
-            "object" => value.ValueKind == JsonValueKind.Object,
-            "array" => value.ValueKind == JsonValueKind.Array,
-            "string" => value.ValueKind == JsonValueKind.String,
-            "integer" => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out _),
-            "number" => value.ValueKind == JsonValueKind.Number,
-            "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
-            "null" => value.ValueKind == JsonValueKind.Null,
-            _ => true,
-        });
     }
 
     private static string FindProgramPath()

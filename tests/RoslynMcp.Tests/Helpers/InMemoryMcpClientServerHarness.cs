@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
@@ -57,12 +58,18 @@ internal sealed class InMemoryMcpClientServerHarness(
     Task serverRunTask,
     IReadOnlyList<Stream> transportStreams,
     ServiceProvider? serverServices,
+    Func<IReadOnlyList<string>>? serverMessageSnapshot,
     string disposalFailureContext) : IAsyncDisposable
 {
-    private const string LegacyConnectionScopedProtocolVersion = "2025-11-25";
+    private const string _legacyConnectionScopedProtocolVersion = "2025-11-25";
 
     public McpServer Server { get; } = server;
     public McpClient Client { get; } = client;
+
+    public IReadOnlyList<string> RawServerMessages =>
+        serverMessageSnapshot?.Invoke()
+        ?? throw new InvalidOperationException(
+            "Raw server-message capture was not enabled for this harness.");
 
     public static async Task<InMemoryMcpClientServerHarness> CreateAsync(
         string transportName,
@@ -70,9 +77,10 @@ internal sealed class InMemoryMcpClientServerHarness(
         McpClientHandlers clientHandlers,
         string disposalFailureContext,
         CancellationToken cancellationToken,
-        string? protocolVersion = LegacyConnectionScopedProtocolVersion,
+        string? protocolVersion = _legacyConnectionScopedProtocolVersion,
         Func<ServiceProvider>? serverServicesFactory = null,
-        McpServerOptions? serverOptions = null)
+        McpServerOptions? serverOptions = null,
+        bool captureServerMessages = false)
     {
         ArgumentException.ThrowIfNullOrEmpty(transportName);
         ArgumentNullException.ThrowIfNull(clientCapabilities);
@@ -85,6 +93,7 @@ internal sealed class InMemoryMcpClientServerHarness(
         CancellationTokenSource? serverCancellation = null;
         Task? serverRunTask = null;
         var transportStreams = new List<Stream>(capacity: 4);
+        var serverWireCapture = captureServerMessages ? new ServerWireCapture() : null;
 
         try
         {
@@ -98,7 +107,10 @@ internal sealed class InMemoryMcpClientServerHarness(
             transportStreams.Add(clientToServerWriteStream);
             var serverToClientReadStream = serverToClient.Reader.AsStream();
             transportStreams.Add(serverToClientReadStream);
-            var serverToClientWriteStream = serverToClient.Writer.AsStream();
+            var serverToClientPipeStream = serverToClient.Writer.AsStream();
+            Stream serverToClientWriteStream = serverWireCapture is null
+                ? serverToClientPipeStream
+                : new CapturingWriteStream(serverToClientPipeStream, serverWireCapture);
             transportStreams.Add(serverToClientWriteStream);
 
             var serverTransport = new StreamServerTransport(
@@ -132,6 +144,10 @@ internal sealed class InMemoryMcpClientServerHarness(
                 NullLoggerFactory.Instance,
                 cancellationToken).ConfigureAwait(false);
 
+            Func<IReadOnlyList<string>>? serverMessageSnapshot = serverWireCapture is null
+                ? null
+                : serverWireCapture.Snapshot;
+
             return new InMemoryMcpClientServerHarness(
                 server,
                 client,
@@ -139,6 +155,7 @@ internal sealed class InMemoryMcpClientServerHarness(
                 serverRunTask,
                 transportStreams,
                 serverServices,
+                serverMessageSnapshot,
                 disposalFailureContext);
         }
         catch (Exception initializationFailure)
@@ -253,5 +270,100 @@ internal sealed class InMemoryMcpClientServerHarness(
         {
             failures.Add(ex);
         }
+    }
+
+    private sealed class ServerWireCapture
+    {
+        private readonly Lock _lock = new();
+        private readonly MemoryStream _buffer = new();
+
+        public void Append(ReadOnlySpan<byte> bytes)
+        {
+            lock (_lock)
+            {
+                _buffer.Write(bytes);
+            }
+        }
+
+        public IReadOnlyList<string> Snapshot()
+        {
+            lock (_lock)
+            {
+                return Encoding.UTF8.GetString(_buffer.GetBuffer(), 0, checked((int)_buffer.Length))
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            }
+        }
+    }
+
+    private sealed class CapturingWriteStream(
+        Stream inner,
+        ServerWireCapture capture) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => inner.CanWrite;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            inner.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            capture.Append(buffer.AsSpan(offset, count));
+            inner.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            capture.Append(buffer);
+            inner.Write(buffer);
+        }
+
+        public override Task WriteAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken)
+        {
+            capture.Append(buffer.AsSpan(offset, count));
+            return inner.WriteAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            capture.Append(buffer.Span);
+            return inner.WriteAsync(buffer, cancellationToken);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        public override ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 }

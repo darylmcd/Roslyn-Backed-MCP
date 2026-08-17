@@ -1,6 +1,6 @@
 # risk-aligned-tool-consolidation — Consolidate 173 → ~117 tools within risk buckets
 
-**row:** `risk-aligned-tool-consolidation` · **pri:** `Medium` · **size:** `L` · **deps:** `sdk-2x-upgrade`
+**row:** `risk-aligned-tool-consolidation` · **pri:** `Medium` · **size:** `L`
 
 ## Anchors
 
@@ -21,6 +21,6 @@
 
 ## Notes
 
-- Ride the `sdk-2x-upgrade` major window; fold `apply-composite-preview-destructive-misnomer` (rename) into the same cycle.
+- Plan this as a post-v3 public-surface change under ADR 0003 and the current release policy; fold `apply-composite-preview-destructive-misnomer` (rename) into the same deprecation cycle.
 - Dynamic toolsets rejected: list_changed unreliable across clients; GitHub removed theirs 2026-05-20 (report §6).
 - Related-not-duplicate: `tool-surface-pagination-or-tool-sets` (catalog resources, no hiding).

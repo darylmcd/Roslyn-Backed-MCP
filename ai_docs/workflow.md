@@ -18,6 +18,12 @@ This document is the single owner for branch, worktree, pull-request, and merge-
 
 - Use a pull request for merge-ready handoff.
 - Keep the pull request scoped to one concern.
+- Change-bearing work must include a changed, valid `changelog.d/<row-id>.md`
+  fragment. Internal `ai_docs/**`-only planning/provenance is exempt.
+- The repo-local Codex `PreToolUse` hook runs the authoritative fragment
+  verifier before commit, push, PR create/merge, and ship preflight. The hook is
+  early feedback only; `verify-release.ps1` remains authoritative when hooks
+  are disabled or untrusted.
 
 ## Merge-Ready Handoff
 

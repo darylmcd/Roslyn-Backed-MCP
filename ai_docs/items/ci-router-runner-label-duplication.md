@@ -1,6 +1,6 @@
 # ci-router-runner-label-duplication — single-source the roslynmcp-dev runner label in the ci.yml route job
 
-**row:** `ci-router-runner-label-duplication` · **pri:** `Low` · **size:** `S`
+**row:** `ci-router-runner-label-duplication` · **pri:** `Low` · **size:** `S` · **deps:** `local-vulnerability-audit-fail-closed`
 
 ## Anchors
 

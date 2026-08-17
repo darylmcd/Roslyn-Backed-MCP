@@ -28,7 +28,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
             WorkspaceId,
             CancellationToken.None);
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("first-run-readiness", doc.RootElement.GetProperty("reportKind").GetString());
         Assert.AreEqual("ready", GetVerdict(doc));
         Assert.IsTrue(doc.RootElement.GetProperty("workspace").GetProperty("testProjectCount").GetInt32() >= 1);
@@ -50,7 +50,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
                 loaded.WorkspaceId,
                 CancellationToken.None);
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json.TextPayload());
             var workspace = doc.RootElement.GetProperty("workspace");
             Assert.AreEqual(loaded.WorkspaceId, workspace.GetProperty("workspaceId").GetString());
             Assert.IsTrue(workspace.GetProperty("projectCount").GetInt32() >= 1);
@@ -76,7 +76,7 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
             workspaceId,
             CancellationToken.None);
 
-        using var doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual("build-needed", GetVerdict(doc));
         StringAssert.Contains(ReadSignals(doc), "buildRequired=true");
         StringAssert.Contains(ReadWorkflows(doc), "dotnet build");

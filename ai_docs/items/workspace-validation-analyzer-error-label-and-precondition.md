@@ -1,6 +1,6 @@
 # workspace-validation-analyzer-error-label-and-precondition — consolidated low-severity cleanup in ComputeOverallStatus
 
-**row:** `workspace-validation-analyzer-error-label-and-precondition` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-validation-analyzer-error-label-and-precondition` · **pri:** `Low` · **size:** `M` · **deps:** `workspace-validation-error-detail-redaction`
 
 ## Anchors
 

@@ -2,6 +2,13 @@
 
 Every initiative (or standalone PR) that would historically have appended a bullet to `CHANGELOG.md` under `## [Unreleased]` now writes a single fragment file here instead. At release-cut time the `/bump` skill consumes all fragment files, groups them by category, emits them into the new `## [X.Y.Z]` section of `CHANGELOG.md`, and deletes the consumed files in the same commit.
 
+`eng/verify-changelog-fragments.ps1` enforces that contract. It combines the
+branch diff, staged changes, unstaged changes, and untracked files. Any shipped,
+test, build, workflow, skill, or public-documentation change requires at least
+one valid fragment changed by the current work. Internal planning and provenance
+under `ai_docs/**` are exempt. An unchanged fragment inherited from the base
+branch does not satisfy the requirement.
+
 ## Why
 
 Parallel-subagent backlog-sweeps routinely hit `CHANGELOG.md` merge conflicts because every PR appends to the same `## [Unreleased]` subsection. The 2026-04-17 pass-1 session showed 50% of parallel subagents paying a serial-rebase tax on this one file — each rebase cost 1–3 minutes of conflict resolution plus a destructive-resolution risk (`"accept ours"` silently drops a sibling entry).
@@ -48,6 +55,17 @@ Malformed fragments fail the bump skill loudly — no silent skip. Failure modes
 - Missing `category` key in frontmatter.
 - Unknown category value (not one of the five listed above).
 - Empty body (frontmatter-only file).
+- Filename is not lowercase kebab-case.
+- The bold category prefix on the first body bullet does not exactly match the
+  YAML `category` value.
+
+Run the same authoritative check used by release validation:
+
+    pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1
+
+The release-cut exception is deliberately narrow: all current fragments must be
+consumed, every canonical version file must change, and no source or other
+non-release path may share that change set.
 
 Two initiatives colliding on the same filename is rare (usually a bundled-work case) — the bump skill disambiguates by appending `-2`, `-3` suffixes at emit time; the filename-on-disk precedent wins and the second writer's `-2` file ships alongside.
 

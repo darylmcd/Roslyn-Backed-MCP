@@ -1,6 +1,6 @@
 # symbollocatorfactory-drift-tool-test-gap — Add unit coverage for SymbolLocatorFactory and workspace_drift_check
 
-**row:** `symbollocatorfactory-drift-tool-test-gap` · **pri:** `Low` · **size:** `M`
+**row:** `symbollocatorfactory-drift-tool-test-gap` · **pri:** `Low` · **size:** `M` · **deps:** `resource-read-protocol-error-semantics`
 
 ## Anchors
 

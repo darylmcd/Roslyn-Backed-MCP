@@ -1,6 +1,6 @@
 # MCP Client Compatibility Matrix
 
-The Roslyn-Backed MCP server speaks the standard MCP stdio transport. Any client that supports stdio MCP servers should work; this matrix records the install paths I have actually exercised plus known gotchas. PRs welcome to flip rows from *Likely* to *Tested* with evidence.
+The Roslyn-Backed MCP server uses the standard MCP stdio transport and explicitly supports the protocol eras recorded in [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md). A client must support both stdio and one of those protocol contracts; this matrix records the install paths actually exercised plus known gotchas. PRs welcome to flip rows from *Likely* to *Tested* with evidence.
 
 ## Status legend
 
@@ -18,7 +18,7 @@ The Roslyn-Backed MCP server speaks the standard MCP stdio transport. Any client
 | Cursor | `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) | **Likely** | Standard stdio MCP host; uses the same JSON shape as Claude Code. Project-scope wins over global. |
 | VS Code (MCP-aware extensions) | `.vscode/mcp.json` (workspace) | **Likely** | Visual Studio Code's first-party MCP support and several MCP-host extensions consume the same stdio config shape. Restart the MCP host after editing. |
 | Claude Desktop | `claude_desktop_config.json` (per-OS app-data dir) | **Likely** | macOS path: `~/Library/Application Support/Claude/`. Windows path: `%APPDATA%\Claude\`. Global only — no project-scope config. |
-| Other stdio MCP clients (custom Python / TypeScript) | client-defined | **Likely** | Server speaks the standard MCP `2025-06-18` schema over stdio with NDJSON framing. See [docs/stdio-client-integration.md](stdio-client-integration.md) for handshake order and minimal Python / C# client examples. |
+| Other stdio MCP clients (custom Python / TypeScript) | client-defined | **Likely** | Server supports initialization-based legacy sessions through 2025-11-25 and the modern 2026-07-28 discovery/request flow over stdio with NDJSON framing. See [docs/stdio-client-integration.md](stdio-client-integration.md) for handshake order and minimal Python / C# client examples. |
 
 ## Install-path × client compatibility
 

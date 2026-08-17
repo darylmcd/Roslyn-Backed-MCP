@@ -1,0 +1,19 @@
+{
+  "description": "Roslyn-Backed-MCP publication-boundary checks for Codex.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(?:Bash|shell_command|mcp__codex_apps__github_(?:create|merge)_pull_request)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$(git rev-parse --show-toplevel)/.codex/hooks/pre-publish-changelog.ps1\"",
+            "commandWindows": "pwsh -NoProfile -Command \"& (Join-Path (git rev-parse --show-toplevel) '.codex/hooks/pre-publish-changelog.ps1')\"",
+            "timeout": 30,
+            "statusMessage": "Verifying Roslyn-Backed-MCP changelog"
+          }
+        ]
+      }
+    ]
+  }
+}

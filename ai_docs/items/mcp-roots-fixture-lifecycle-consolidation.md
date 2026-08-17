@@ -1,6 +1,6 @@
 # mcp-roots-fixture-lifecycle-consolidation — Reuse the owned in-memory MCP lifecycle
 
-**row:** `mcp-roots-fixture-lifecycle-consolidation` · **pri:** `Medium` · **size:** `S`
+**row:** `mcp-roots-fixture-lifecycle-consolidation` · **pri:** `Medium` · **size:** `S` · **deps:** `test-assembly-cleanup-failure-observability,tool-call-error-envelope-wire-contract`
 
 ## Anchors
 

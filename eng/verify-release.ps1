@@ -2,7 +2,8 @@ param(
     [string]$Configuration = "Release",
     [string]$OutputRoot = "artifacts",
     [switch]$NoCoverage,
-    [switch]$ExcludeNetworkTests
+    [switch]$ExcludeNetworkTests,
+    [switch]$RequireConsumedFragments
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +14,78 @@ function Invoke-DotnetStep {
     param([string]$Description)
     if ($LASTEXITCODE -ne 0) {
         throw "$Description failed with exit code $LASTEXITCODE."
+    }
+}
+
+# Invoking a child PowerShell script with `&` does not make a nonzero `exit`
+# terminate this parent script. Reset the global native-exit state because some
+# successful validators return without an explicit `exit 0`, then capture it
+# immediately after the child returns so a later command cannot overwrite it.
+# Terminating PowerShell errors are deliberately not caught and continue to
+# propagate under $ErrorActionPreference = "Stop".
+function Invoke-ChildScriptStep {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Description,
+
+        [Parameter(Mandatory)]
+        [string]$ScriptPath,
+
+        [hashtable]$Parameters = @{}
+    )
+
+    $global:LASTEXITCODE = 0
+    & $ScriptPath @Parameters
+    $exitCode = $global:LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "$Description failed with exit code $exitCode."
+    }
+}
+
+# Windows can retain a testhost/collector handle for a short interval after
+# `dotnet test` exits. Only retry the sharing/access failures that can clear;
+# every other cleanup error remains immediately fatal.
+function Remove-PrivateTestTempRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    $testRunParent = [System.IO.Path]::GetFullPath(
+        (Join-Path ([System.IO.Path]::GetTempPath()) 'RoslynMcpTestRuns'))
+    $relativePath = [System.IO.Path]::GetRelativePath($testRunParent, $canonicalPath)
+    if ($relativePath -notmatch '^[0-9a-fA-F]{32}$') {
+        throw 'Refusing to recursively remove a path outside the private test-run directory contract.'
+    }
+
+    $delayMilliseconds = 100
+    $maxAttempts = 8
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            if (-not (Test-Path -LiteralPath $canonicalPath -PathType Container)) {
+                return
+            }
+
+            Remove-Item -LiteralPath $canonicalPath -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            $isTransient =
+                $_.Exception -is [System.IO.IOException] -or
+                $_.Exception -is [System.UnauthorizedAccessException]
+            if (-not $isTransient) {
+                throw
+            }
+
+            if ($attempt -eq $maxAttempts) {
+                throw "Private test-temp cleanup remained blocked after $maxAttempts attempts."
+            }
+
+            Write-Warning "Private test-temp cleanup was temporarily blocked (attempt $attempt of $maxAttempts); retrying."
+            Start-Sleep -Milliseconds $delayMilliseconds
+            $delayMilliseconds = [Math]::Min($delayMilliseconds * 2, 1000)
+        }
     }
 }
 
@@ -31,27 +104,52 @@ if (-not $NoCoverage) {
     New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
 }
 
-# Version-string drift check across all 5 version files.
+# Version-string drift check across all six version files.
 # Runs before build so a drift-only mistake fails fast without waiting for compilation.
-& (Join-Path $PSScriptRoot 'verify-version-drift.ps1')
+Invoke-ChildScriptStep `
+    -Description 'Version drift validation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'verify-version-drift.ps1')
 
 # Shipped-skill generality check — blocks a publish that carries repo-only
 # references in ./skills/ (repo-only skills belong in .claude/skills/).
-& (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
+Invoke-ChildScriptStep `
+    -Description 'Shipped skill validation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
 
 # Plugin package allowlist check — ensures the Claude Code plugin cache sync
 # cannot ship repo-internal source, tests, ai_docs, or release infrastructure.
-& (Join-Path $PSScriptRoot 'verify-plugin-package-files.ps1')
+Invoke-ChildScriptStep `
+    -Description 'Plugin package allowlist validation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'verify-plugin-package-files.ps1')
 
 # Changelog fragment format check — catches malformed changelog.d/*.md files
 # at PR time rather than at release-cut time (where they block /bump).
-& (Join-Path $PSScriptRoot 'verify-changelog-fragments.ps1')
+Invoke-ChildScriptStep `
+    -Description 'Changelog fragment validation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'verify-changelog-fragments.ps1')
+
+# Breaking-version policy check — pending breaking fragments may remain on an
+# implementation branch, but a consumed top release section must advance the major.
+if ($RequireConsumedFragments) {
+    Invoke-ChildScriptStep `
+        -Description 'Breaking version validation' `
+        -ScriptPath (Join-Path $PSScriptRoot 'verify-breaking-version-bump.ps1') `
+        -Parameters @{ RequireConsumedFragments = $true }
+}
+else {
+    Invoke-ChildScriptStep `
+        -Description 'Breaking version validation' `
+        -ScriptPath (Join-Path $PSScriptRoot 'verify-breaking-version-bump.ps1')
+}
 
 # Registry install-readiness scorecard — first slice of BRAIN-002.
 # Validates .claude-plugin/server.json against MCP-registry expectations,
 # cross-checks plugin.json + marketplace.json, and emits a structured
 # artifact at artifacts/registry-readiness.json that /publish-preflight reads.
-& (Join-Path $PSScriptRoot 'verify-registry-readiness.ps1') -Quiet
+Invoke-ChildScriptStep `
+    -Description 'Registry readiness validation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'verify-registry-readiness.ps1') `
+    -Parameters @{ Quiet = $true }
 
 dotnet restore $solutionPath --nologo
 Invoke-DotnetStep "dotnet restore (main solution)"
@@ -108,6 +206,7 @@ $testTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
     "RoslynMcpTestRuns\$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
 Write-Host "Testhost temp root: $testTempRoot"
+$testFailure = $null
 try {
     $testEnvironment = @(
         "--environment", "TEMP=$testTempRoot",
@@ -128,16 +227,47 @@ try {
     }
     Invoke-DotnetStep "dotnet test"
 }
-finally {
-    # Child builds can leave VBCSCompiler/MSBuild servers holding files below the private temp
-    # root. This is the repository's sanctioned Windows lock-release step; the runner executes
-    # one validation job at a time, and hosted runners are single-job ephemeral machines.
+catch {
+    $testFailure = $_
+}
+
+$cleanupFailures = [System.Collections.Generic.List[System.Exception]]::new()
+
+# Child builds can leave VBCSCompiler/MSBuild servers holding files below the private temp
+# root. This is the repository's sanctioned Windows lock-release step; the runner executes
+# one validation job at a time, and hosted runners are single-job ephemeral machines.
+try {
     dotnet build-server shutdown
     Invoke-DotnetStep "dotnet build-server shutdown"
+}
+catch {
+    $cleanupFailures.Add($_.Exception)
+}
 
-    if (Test-Path -LiteralPath $testTempRoot -PathType Container) {
-        Remove-Item -LiteralPath $testTempRoot -Recurse -Force
-    }
+try {
+    Remove-PrivateTestTempRoot -Path $testTempRoot
+}
+catch {
+    $cleanupFailures.Add($_.Exception)
+}
+
+if ($testFailure -and $cleanupFailures.Count -gt 0) {
+    $allFailures = [System.Collections.Generic.List[System.Exception]]::new()
+    $allFailures.Add($testFailure.Exception)
+    $allFailures.AddRange($cleanupFailures)
+    throw [System.AggregateException]::new(
+        'dotnet test failed and test-environment cleanup also failed.',
+        $allFailures)
+}
+
+if ($testFailure) {
+    throw $testFailure
+}
+
+if ($cleanupFailures.Count -gt 0) {
+    throw [System.AggregateException]::new(
+        'Test-environment cleanup failed.',
+        $cleanupFailures)
 }
 
 # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2

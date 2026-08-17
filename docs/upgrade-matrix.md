@@ -1,8 +1,10 @@
 # Upgrade matrix
 
-This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-08-12**; when you bump a row, refresh the “Current” cells in the same PR.
+This document maps **upgrade axes** for Roslyn-Backed MCP: what moves together, where it is pinned, and what to run after a change. Values below reflect the repository as of **2026-08-14**; when you bump a row, refresh the “Current” cells in the same PR.
 
-Related: [Release policy](release-policy.md) (product version and gates), [CI policy](../CI_POLICY.md) (merge validation).
+Related: [Release policy](release-policy.md) (product version and gates),
+[SDK 2.x wire-compatibility decision](decisions/0003-sdk-2x-wire-compatibility.md), and
+[CI policy](../CI_POLICY.md) (merge validation).
 
 ---
 
@@ -11,7 +13,7 @@ Related: [Release policy](release-policy.md) (product version and gates), [CI po
 | Axis | Current | Where pinned | Move with | After bump |
 |------|---------|--------------|-----------|------------|
 | .NET SDK (minimum) | `10.0.100` | `global.json` (`sdk.version`, `rollForward`: `latestFeature`) | Same band as `Microsoft.CodeAnalysis.NetAnalyzers` when possible; CI `dotnet-version` | `./eng/verify-release.ps1`; confirm CI `setup-dotnet` still appropriate |
-| CI / publish SDK channel | `10.0.x` | `.github/workflows/ci.yml`, `codeql.yml`, `publish-nuget.yml` | `global.json` policy (exact vs floating) | If you pin CI to an exact SDK, document it here |
+| CI / publish SDK channel | `10.0.x` | `.github/workflows/ci.yml`, `.github/workflows/publish-nuget.yml`; GitHub default CodeQL setup | `global.json` policy (exact vs floating) | If you pin CI to an exact SDK, document it here and verify the repository CodeQL setting |
 | Target framework | `net10.0` | `Directory.Build.props` (`TargetFramework`) | SDK that supports the TFM; extension packages in the `10.0.x` line | Full build + test |
 
 ---
@@ -59,7 +61,13 @@ These packages **must stay on the same `Microsoft.CodeAnalysis.*` version** for 
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.SourceLink.GitHub` | `10.0.301` | `Directory.Packages.props` | Often aligned with .NET / SDK wave; not runtime-critical |
 
-MCP SDK 2.1 serves both protocol eras by default: modern `2026-07-28` requests use `server/discover` plus per-request metadata, while initialize-capable clients negotiate a down-level revision. This stdio host temporarily retains deprecated Roots, Sampling, and Logging compatibility. Their bounded replacements are tracked by `mcp-roots-configured-validation-migration`, `mcp-roots-query-discovery-migration`, `mcp-sampling-mrtr-migration`, and `mcp-logging-stderr-otel-migration`.
+The repository adopted MCP SDK 2.1 directly from 1.4.1. The evaluated official sequence is
+2.0.0-preview.1, preview.2, preview.3, rc.1, rc.2, 2.0.0, and 2.1.0; there is no SDK
+2.0.1 or 3.x in that lineage. RoslynMcp product 2.x/3.x versions are independent. SDK 2.1 serves
+both protocol eras: modern `2026-07-28` requests use `server/discover` plus request-scoped metadata,
+while initialize-capable clients negotiate a down-level revision. The exact public contract and
+remaining compatibility migrations are recorded in
+[ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md).
 
 ---
 
@@ -76,12 +84,12 @@ MCP SDK 2.1 serves both protocol eras by default: modern `2026-07-28` requests u
 
 ## 6. Product version (ship line)
 
-Not NuGet: the **application and plugin version** must match across five files. See [Release policy — Where to bump the version string](release-policy.md#where-to-bump-the-version-string).
+Not NuGet: the **application and plugin version** must match across six files. See [Release policy — Where to bump the version string](release-policy.md#where-to-bump-the-version-string).
 
 | Source of truth | Field |
 |-----------------|--------|
 | `Directory.Build.props` | `<Version>` (also drives assembly / `server_info`) |
-| `manifest.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `CHANGELOG.md` | Per release policy |
+| `manifest.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.claude-plugin/server.json`, `CHANGELOG.md` | Per release policy; both version fields in `server.json` move together |
 
 Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-release.ps1`).
 
@@ -94,9 +102,9 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 | `global.json` SDK | Adjust `Microsoft.CodeAnalysis.NetAnalyzers` to the matching band if Microsoft publishes one; run `verify-release.ps1`; align CI if you switch major/minor. |
 | Any `Microsoft.CodeAnalysis.*` (Roslyn API) version | Bump **all** rows in section 2 together; run full tests; watch MSBuild workspace integration. |
 | `Microsoft.Build.*` or `Microsoft.Build.Locator` | Full `verify-release.ps1`; exercise solution load + `build_workspace` / `test_run` paths. |
-| `ModelContextProtocol` | Integration smoke with a real MCP client; check tool registration and catalog. |
+| `ModelContextProtocol` | Review every official release since the pin; update/supersede ADR 0003; run raw-wire matrices for every supported protocol era; check tool/prompt/resource registration and schemas. |
 | `Microsoft.Extensions.*` | Host startup, logging, and shutdown; no special Roslyn coupling. |
-| Product version only | All five version files + `eng/verify-version-drift.ps1`. |
+| Product version only | All six version files + `eng/verify-version-drift.ps1`. |
 
 ---
 

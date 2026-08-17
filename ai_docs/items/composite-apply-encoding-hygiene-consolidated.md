@@ -1,6 +1,6 @@
 # composite-apply-encoding-hygiene-consolidated — consolidated low-severity cleanup in the new encoding helpers
 
-**row:** `composite-apply-encoding-hygiene-consolidated` · **pri:** `Low` · **size:** `S`
+**row:** `composite-apply-encoding-hygiene-consolidated` · **pri:** `Low` · **size:** `S` · **deps:** `atomic-file-cleanup-error-detail-redaction`
 
 ## Anchors
 

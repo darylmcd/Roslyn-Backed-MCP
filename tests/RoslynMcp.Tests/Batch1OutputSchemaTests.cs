@@ -1,6 +1,8 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -12,8 +14,8 @@ namespace RoslynMcp.Tests;
 /// of read tools that publish an <c>outputSchema</c> per MCP 2025-06-18 § Tools / Structured
 /// Content. Each opt-in tool MUST:
 /// <list type="number">
-///   <item><description>declare an <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/>
-///     pointing at a real CLR type (so the schema lookup is non-null at static init);</description></item>
+///   <item><description>declare an <see cref="McpServerToolAttribute.OutputSchemaType"/>
+///     pointing at a real CLR type and opt into structured content;</description></item>
 ///   <item><description>have its <c>SurfaceEntry.OutputSchema</c> populated by
 ///     <see cref="ServerSurfaceCatalog"/> via the shared <see cref="ToolOutputSchemaIndex"/>;</description></item>
 ///   <item><description>publish a JSON-Schema object (<c>type: "object"</c>) at the root;
@@ -39,14 +41,12 @@ public sealed class Batch1OutputSchemaTests
     ];
 
     [TestMethod]
-    public void AllEightAdoptersDeclareOutputSchemaTypeRef()
+    public void AllEightAdoptersUseTheSdkStructuredResultContract()
     {
-        // Reflection-side check: each tool's [McpToolMetadata] carries a non-null
-        // OutputSchemaTypeRef whose value matches the expected DTO type. If a tool body is
-        // refactored away from its DTO without updating the annotation (or vice versa), this
-        // test catches the drift before ToolOutputSchemaIndex silently regresses to "no schema".
+        // The SDK attribute is the sole schema-type owner. Each producer also returns an explicit
+        // CallToolResult so the SDK never attempts to structure an already-serialized string.
         var assembly = typeof(RoslynMcp.Host.Stdio.Tools.ServerTools).Assembly;
-        var byToolName = new Dictionary<string, Type?>(StringComparer.Ordinal);
+        var byToolName = new Dictionary<string, (Type? SchemaType, bool Structured, Type ReturnType)>(StringComparer.Ordinal);
         foreach (var type in assembly.GetTypes())
         {
             foreach (var method in type.GetMethods(
@@ -55,8 +55,10 @@ public sealed class Batch1OutputSchemaTests
                 var toolAttr = method.GetCustomAttribute<McpServerToolAttribute>();
                 if (toolAttr?.Name is null) continue;
 
-                var metadataAttr = method.GetCustomAttribute<McpToolMetadataAttribute>();
-                byToolName[toolAttr.Name] = metadataAttr?.OutputSchemaTypeRef;
+                byToolName[toolAttr.Name] = (
+                    toolAttr.OutputSchemaType,
+                    toolAttr.UseStructuredContent,
+                    method.ReturnType);
             }
         }
 
@@ -64,10 +66,29 @@ public sealed class Batch1OutputSchemaTests
         {
             Assert.IsTrue(byToolName.ContainsKey(toolName),
                 $"Tool '{toolName}' is not registered (no [McpServerTool] match in the host assembly).");
-            Assert.AreEqual(expectedDtoType, byToolName[toolName],
-                $"Tool '{toolName}' must declare outputSchemaTypeRef = typeof({expectedDtoType.Name}) " +
-                $"in its [McpToolMetadata] annotation.");
+            var contract = byToolName[toolName];
+            Assert.AreEqual(expectedDtoType, contract.SchemaType,
+                $"Tool '{toolName}' must declare OutputSchemaType = typeof({expectedDtoType.Name}).");
+            Assert.IsTrue(contract.Structured,
+                $"Tool '{toolName}' must opt into SDK structured content.");
+            Assert.AreEqual(typeof(Task<CallToolResult>), contract.ReturnType,
+                $"Tool '{toolName}' must return an explicit producer-owned CallToolResult.");
         }
+    }
+
+    [TestMethod]
+    public void StructuredResultFactoryRejectsPreSerializedJson()
+    {
+        using var document = JsonDocument.Parse("{}");
+
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create("{}"));
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(document));
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(document.RootElement));
+        Assert.ThrowsExactly<ArgumentException>(
+            () => RoslynMcp.Host.Stdio.Tools.StructuredToolResult.Create(JsonNode.Parse("{}")!));
     }
 
     [TestMethod]
@@ -85,7 +106,7 @@ public sealed class Batch1OutputSchemaTests
             Assert.IsNotNull(entry!.OutputSchema,
                 $"Tool '{toolName}' must publish a non-null OutputSchema on its catalog entry " +
                 "after batch-1 wiring. A null schema means ToolOutputSchemaIndex.GetSchema(name) " +
-                "did not find a [McpToolMetadata(outputSchemaTypeRef:)] annotation at static init.");
+                "did not find an SDK [McpServerTool(OutputSchemaType = ...)] declaration at static init.");
 
             var schemaObj = entry.OutputSchema!.AsObject();
             Assert.IsTrue(schemaObj.ContainsKey("type"),
