@@ -1,0 +1,17 @@
+{
+  "filePattern": "*.md",
+  "bannedPatterns": [
+    "state\\.json",
+    "backlog-sweep",
+    "\\bai_docs/",
+    "\\bbacklog\\.md\\b",
+    "\\beng/",
+    "just verify-",
+    "Directory\\.Build\\.props",
+    "BannedSymbols\\.txt"
+  ],
+  "stripPatterns": [
+    "https?://[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+;=%-]+",
+    "<(?:audited-repo-root|Roslyn-Backed-MCP-root)>/[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+;=%-]*"
+  ]
+}

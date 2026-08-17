@@ -195,50 +195,32 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
     /// <summary>
     /// Covers <c>CompilationCache.EvictWhenBroken</c>'s compare-and-remove: an entry whose shared
     /// task ends up faulted must be dropped so the next caller re-populates instead of replaying the
-    /// failure until the workspace version bumps. Reflection is the only deterministic route — the
-    /// real shared task is always started with <see cref="CancellationToken.None"/> and there is no
-    /// reliable way to force a genuine Roslyn compile fault from a test workspace, so the
-    /// <c>NotOnRanToCompletion</c> continuation never fires in the tests above. The continuation is
-    /// registered <c>ExecuteSynchronously</c> against an already-faulted antecedent, so it evicts
-    /// inline and needs no polling.
+    /// failure until the workspace version bumps. The internal compilation factory makes the fault
+    /// deterministic without binding this test to private entry representation.
     /// </summary>
     [TestMethod]
-    public void EvictWhenBroken_FaultedSharedTask_RemovesEntryForNextCaller()
+    public async Task EvictWhenBroken_FaultedSharedTask_RemovesEntryForNextCaller()
     {
-        var entryType = typeof(CompilationCache).GetNestedType("CompilationEntry", BindingFlags.NonPublic);
-        Assert.IsNotNull(entryType,
-            "CompilationCache.CompilationEntry should remain discoverable by reflection — this test is " +
-            "deliberately implementation-coupled and must be updated alongside any rename.");
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+        var attempts = 0;
+        var cache = new CompilationCache(
+            WorkspaceManager,
+            _ => Interlocked.Increment(ref attempts) == 1
+                ? Task.FromException<Compilation?>(new InvalidOperationException("synthetic compile fault"))
+                : Task.FromResult<Compilation?>(null),
+            analyzerFactory: null);
 
-        var evictWhenBroken = typeof(CompilationCache).GetMethod(
-            "EvictWhenBroken",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.IsNotNull(evictWhenBroken,
-            "CompilationCache.EvictWhenBroken should remain discoverable by reflection — this test is " +
-            "deliberately implementation-coupled and must be updated alongside any rename.");
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            cache.GetCompilationAsync(workspace.WorkspaceId, project, CancellationToken.None));
+        var retry = await cache.GetCompilationAsync(
+            workspace.WorkspaceId,
+            project,
+            CancellationToken.None);
 
-        var mapType = typeof(ConcurrentDictionary<,>).MakeGenericType(typeof((string, ProjectId)), entryType);
-        var map = Activator.CreateInstance(mapType)!;
-        var faulted = Task.FromException<Compilation?>(new InvalidOperationException("synthetic compile fault"));
-        var entry = Activator.CreateInstance(
-            entryType,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            args: [1, faulted],
-            culture: null)!;
-        (string, ProjectId) key = ("workspace-under-test", ProjectId.CreateNewId());
-
-        mapType.GetProperty("Item")!.SetValue(map, entry, [key]);
-        Assert.IsTrue(
-            (bool)mapType.GetMethod("ContainsKey")!.Invoke(map, [key])!,
-            "Pre-seeding the synthetic cache map must succeed for the eviction assertion to mean anything.");
-
-        evictWhenBroken.MakeGenericMethod(entryType).Invoke(null, [map, key, entry, faulted]);
-
-        Assert.IsFalse(
-            (bool)mapType.GetMethod("ContainsKey")!.Invoke(map, [key])!,
-            "A faulted shared task must evict its own cache entry so the next caller re-populates " +
-            "instead of replaying the fault until the workspace version bumps.");
+        Assert.IsNull(retry);
+        Assert.AreEqual(2, attempts,
+            "The faulted winner must be evicted so the retry starts a fresh compilation task.");
     }
 
     [TestMethod]

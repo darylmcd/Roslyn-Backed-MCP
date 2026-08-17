@@ -45,7 +45,7 @@ public sealed class StartupDiagnosticsTests
 
         var report = StartupDiagnostics.Capture(
             host.Services,
-            typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
+            typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly);
 
         Assert.IsTrue(report.AllParityOk,
             $"Parity mismatch: tools={report.ToolsRegistered}/{report.ToolsReflected}/{report.ToolsInCatalog}, " +
@@ -147,7 +147,7 @@ public sealed class StartupDiagnosticsTests
 
         var report = StartupDiagnostics.Capture(
             host.Services,
-            typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
+            typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly);
         var options = host.Services.GetRequiredService<IOptions<McpServerOptions>>().Value;
         var registeredToolNames = options.ToolCollection!.ToArray()
             .Select(static tool => tool.ProtocolTool.Name)
@@ -277,7 +277,7 @@ public sealed class StartupDiagnosticsTests
     public void ServerInfo_EmitsSurfaceRegistered_WhenSnapshotIsPopulated()
     {
         using var host = BuildTestHost();
-        var report = StartupDiagnostics.Capture(host.Services, typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
+        var report = StartupDiagnostics.Capture(host.Services, typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly);
 
         var prior = SurfaceRegistrationSnapshot.Value;
         try
@@ -351,7 +351,7 @@ public sealed class StartupDiagnosticsTests
         // pass the Host.Stdio assembly explicitly, otherwise the parameterless
         // overload uses Assembly.GetCallingAssembly() = RoslynMcp.Tests, which
         // carries zero attributed methods and masks the registration count.
-        var hostAssembly = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly;
+        var hostAssembly = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly;
         builder.Services
             .AddMcpServer()
             .WithToolsFromAssembly(hostAssembly)

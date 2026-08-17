@@ -153,6 +153,27 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
             "Client-facing restore failures must stay bounded.");
     }
 
+    [TestMethod]
+    public async Task RestoreForkAsync_NonTimeoutCancellation_PropagatesWithoutTimeoutReclassification()
+    {
+        var expected = new OperationCanceledException("runner-owned cancellation");
+        var service = new WorkspaceForkApplyService(
+            workspaceManager: null!,
+            previewStore: null!,
+            validationService: null!,
+            testRunnerService: null!,
+            commandRunner: new CancelingRestoreRunner(expected),
+            logger: NullLogger<WorkspaceForkApplyService>.Instance);
+
+        var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.RestoreForkAsync(
+                Path.Combine(Path.GetTempPath(), "fork", "SampleSolution.slnx"),
+                CancellationToken.None));
+
+        Assert.AreSame(expected, actual,
+            "Only the service-owned timeout token may be reclassified as TimeoutException.");
+    }
+
     private static WorkspaceValidationService CreateValidationService() =>
         new(
             CompileCheckService,
@@ -206,5 +227,15 @@ public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
                 DurationMs: 1,
                 StdOut: string.Empty,
                 StdErr: stderr));
+    }
+
+    private sealed class CancelingRestoreRunner(OperationCanceledException exception) : IDotnetCommandRunner
+    {
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            CancellationToken ct) =>
+            Task.FromException<CommandExecutionDto>(exception);
     }
 }

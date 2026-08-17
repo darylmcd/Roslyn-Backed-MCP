@@ -226,7 +226,7 @@ public sealed class StructuredContentWireContractTests
         string? protocolVersion,
         CancellationToken cancellationToken)
     {
-        var hostAssembly = typeof(ServerTools).Assembly;
+        var hostAssembly = typeof(HostAssemblyMarker).Assembly;
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.ClearProviders());
         services.AddRoslynMcpHostServices(

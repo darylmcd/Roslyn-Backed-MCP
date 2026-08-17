@@ -29,6 +29,81 @@ namespace RoslynMcp.Tests;
 public sealed class StructuredCallElicitationCoordinatorTests
 {
     [TestMethod]
+    [DataRow("direct-path-input")]
+    [DataRow("workspace-id-input")]
+    [DataRow("workspace-load-dispatch")]
+    [DataRow("retry-dispatch")]
+    public async Task RecoveryAwaitBoundary_OperationCanceledException_PropagatesUnchanged(string phase)
+    {
+        var expected = new OperationCanceledException(phase);
+        Task InvokeAsync()
+        {
+            if (phase == "direct-path-input")
+            {
+                return StructuredCallElicitationCoordinator.TryRunRecoveryStepAsync<CallToolResult>(
+                    () => ValueTask.FromException<CallToolResult>(expected),
+                    _ => Assert.Fail("Cancellation reached the recovery-failure callback.")).AsTask();
+            }
+
+            return StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+                "workspace_status",
+                originalArguments: null,
+                elicitAsync: _ => phase == "workspace-id-input"
+                    ? ValueTask.FromException<ElicitResult>(expected)
+                    : ValueTask.FromResult(new ElicitResult
+                    {
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
+                        {
+                            ["path"] = JsonSerializer.SerializeToElement("C:/repo/SampleSolution.slnx"),
+                        },
+                    }),
+                dispatchAsync: (toolName, _) =>
+                {
+                    if ((phase == "workspace-load-dispatch" && toolName == "workspace_load")
+                        || (phase == "retry-dispatch" && toolName == "workspace_status"))
+                    {
+                        return Task.FromException<CallToolResult>(expected);
+                    }
+
+                    return Task.FromResult(new CallToolResult
+                    {
+                        Content =
+                        [
+                            new TextContentBlock
+                            {
+                                Text = JsonSerializer.Serialize(
+                                    new { WorkspaceId = "ws-recovered" },
+                                    JsonDefaults.Indented),
+                            },
+                        ],
+                    });
+                },
+                logger: null,
+                cancellationToken: CancellationToken.None);
+        }
+
+        var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(InvokeAsync);
+
+        Assert.AreSame(expected, actual, $"{phase} must preserve the original cancellation instance.");
+    }
+
+    [TestMethod]
+    public async Task TryRunRecoveryStepAsync_OrdinaryFailure_ReturnsFailedAttempt()
+    {
+        var expected = new InvalidOperationException("ordinary recovery failure");
+        Exception? observed = null;
+
+        var attempt = await StructuredCallElicitationCoordinator.TryRunRecoveryStepAsync<CallToolResult>(
+            () => ValueTask.FromException<CallToolResult>(expected),
+            ex => observed = ex);
+
+        Assert.IsFalse(attempt.Succeeded);
+        Assert.IsNull(attempt.Value);
+        Assert.AreSame(expected, observed);
+    }
+
+    [TestMethod]
     public async Task TryRecoverMissingWorkspaceIdAsync_ElicitsPathLoadsWorkspaceAndRetriesOriginalTool()
     {
         const string solutionPath = "C:/repo/SampleSolution.slnx";

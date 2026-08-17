@@ -29,7 +29,7 @@ public sealed class ServerDiscoveryWireTests
         {
             var selection = ToolTierSelection.All;
             var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
-            var hostAssembly = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly;
+            var hostAssembly = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly;
             builder.Services
                 .AddMcpServer(options =>
                 {
@@ -144,7 +144,7 @@ public sealed class ServerDiscoveryWireTests
     public async Task InitializeAndToolsList_ProjectInstructionsSchemasOrderingAndCachingHints()
     {
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
-        var hostAssembly = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly;
+        var hostAssembly = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly;
         builder.Services
             .AddMcpServer(options =>
             {
@@ -201,7 +201,7 @@ public sealed class ServerDiscoveryWireTests
     {
         var selection = ToolTierSelection.Parse("stable");
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
-        var hostAssembly = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly;
+        var hostAssembly = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly;
         builder.Services
             .AddMcpServer(options =>
             {

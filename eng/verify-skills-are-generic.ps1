@@ -17,16 +17,19 @@ $ErrorActionPreference = "Stop"
 # `state.json` shape. `state\.json` below catches that coupling directly, while the
 # bare word also fired on a shipped skill's OWN artifact schema — so the proxy was
 # retired. Do not re-add it without fenced-code-block awareness in the scanner.
-$bannedPatterns = @(
-    'state\.json',
-    'backlog-sweep',
-    '\bai_docs/',
-    '\bbacklog\.md\b',
-    '\beng/',
-    'just verify-',
-    'Directory\.Build\.props',
-    'BannedSymbols\.txt'
-)
+$policyPath = Join-Path $PSScriptRoot 'banned-skill-markers.json'
+if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+    throw "Genericity policy not found: $policyPath"
+}
+
+$policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+$bannedPatterns = @($policy.bannedPatterns)
+$stripPatterns = @($policy.stripPatterns)
+if ([string]::IsNullOrWhiteSpace($policy.filePattern) -or
+    $bannedPatterns.Count -eq 0 -or
+    $stripPatterns.Count -eq 0) {
+    throw "Genericity policy is missing filePattern, bannedPatterns, or stripPatterns: $policyPath"
+}
 
 $skillsDir = Join-Path $RepoRoot 'skills'
 if (-not (Test-Path $skillsDir)) {
@@ -36,20 +39,19 @@ if (-not (Test-Path $skillsDir)) {
 
 # Scan EVERY shipped markdown file, not just SKILL.md — prompt bodies and READMEs
 # ship to installers verbatim and leak repo coupling just as readily.
-$skillFiles = Get-ChildItem -Path $skillsDir -Recurse -File -Filter '*.md'
+$skillFiles = @(Get-ChildItem -Path $skillsDir -Recurse -File -Filter $policy.filePattern)
 $issues = New-Object System.Collections.Generic.List[string]
 
 foreach ($file in $skillFiles) {
-    $lines = Get-Content -LiteralPath $file.FullName
+    $lines = @(Get-Content -LiteralPath $file.FullName)
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         # Strip URLs before scanning — a GitHub link to this repo's docs
         # legitimately contains `ai_docs/` and is fine for installers to click.
-        $stripped = [regex]::Replace($line, 'https?://[^\s)]+', '')
-        # Strip placeholder-rooted paths — `<audited-repo-root>/backlog.md` or
-        # `<Roslyn-Backed-MCP-root>/ai_docs/...` is an explicitly-scoped pointer at
-        # another checkout, which is the opposite of an unqualified repo-coupled path.
-        $stripped = [regex]::Replace($stripped, '<[^>]+-root>/\S+', '')
+        $stripped = $line
+        foreach ($stripPattern in $stripPatterns) {
+            $stripped = [regex]::Replace($stripped, $stripPattern, '')
+        }
         foreach ($pattern in $bannedPatterns) {
             if ($stripped -match $pattern) {
                 $rel = $file.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'

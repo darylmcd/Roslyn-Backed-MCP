@@ -115,23 +115,17 @@ internal static class StructuredCallElicitationCoordinator
         // to the URL (in url mode); the client picks based on its declared sub-capability.
         var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, missingParam);
 
-        ElicitResult elicitResult;
-        try
-        {
-            elicitResult = await context.Server!.ElicitAsync(elicitRequest, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception elicitEx)
-        {
-            // ElicitAsync can throw InvalidOperationException (client doesn't support
-            // elicitation despite the capability check, transport went away, etc.) or
-            // McpException (client returned an error). Either way we fall through to the
-            // existing envelope rather than masking the original error.
-            logger?.LogWarning(elicitEx,
+        var elicitAttempt = await TryRunRecoveryStepAsync(
+            () => context.Server!.ElicitAsync(elicitRequest, cancellationToken),
+            elicitEx => logger?.LogWarning(elicitEx,
                 "Elicitation request failed for {Tool}.{Param}; falling back to schemaHint envelope.",
-                toolName, missingParam);
+                toolName, missingParam)).ConfigureAwait(false);
+        if (!elicitAttempt.Succeeded)
+        {
             return null;
         }
+
+        var elicitResult = elicitAttempt.Value!;
 
         // User declined or cancelled — surface the original error. Don't retry with empty
         // input; that would just re-trigger the same InvalidArgument.
@@ -180,18 +174,17 @@ internal static class StructuredCallElicitationCoordinator
         CancellationToken cancellationToken)
     {
         var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, WorkspaceIdParameterName);
-        ElicitResult elicitResult;
-        try
-        {
-            elicitResult = await elicitAsync(elicitRequest).ConfigureAwait(false);
-        }
-        catch (Exception elicitEx)
-        {
-            logger?.LogWarning(elicitEx,
+        var elicitAttempt = await TryRunRecoveryStepAsync(
+            () => elicitAsync(elicitRequest),
+            elicitEx => logger?.LogWarning(elicitEx,
                 "WorkspaceId recovery elicitation failed for {Tool}; falling back to schemaHint envelope.",
-                toolName);
+                toolName)).ConfigureAwait(false);
+        if (!elicitAttempt.Succeeded)
+        {
             return null;
         }
+
+        var elicitResult = elicitAttempt.Value!;
 
         if (!elicitResult.IsAccepted || elicitResult.Content is null
             || !elicitResult.Content.TryGetValue(PathParameterName, out var pathValue))
@@ -210,18 +203,17 @@ internal static class StructuredCallElicitationCoordinator
         {
             [PathParameterName] = pathValue,
         };
-        CallToolResult loadResult;
-        try
-        {
-            loadResult = await dispatchAsync(WorkspaceLoadToolName, loadArgs).ConfigureAwait(false);
-        }
-        catch (Exception loadEx)
-        {
-            logger?.LogWarning(loadEx,
+        var loadAttempt = await TryRunRecoveryStepAsync(
+            () => new ValueTask<CallToolResult>(dispatchAsync(WorkspaceLoadToolName, loadArgs)),
+            loadEx => logger?.LogWarning(loadEx,
                 "workspace_load dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
-                toolName);
+                toolName)).ConfigureAwait(false);
+        if (!loadAttempt.Succeeded)
+        {
             return null;
         }
+
+        var loadResult = loadAttempt.Value!;
 
         var workspaceId = TryExtractWorkspaceId(loadResult);
         if (string.IsNullOrWhiteSpace(workspaceId))
@@ -242,16 +234,31 @@ internal static class StructuredCallElicitationCoordinator
         }
 
         retryArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
+        var retryAttempt = await TryRunRecoveryStepAsync(
+            () => new ValueTask<CallToolResult>(dispatchAsync(toolName, retryArgs)),
+            retryEx => logger?.LogWarning(retryEx,
+                "Retried tool dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
+                toolName)).ConfigureAwait(false);
+        return retryAttempt.Succeeded ? retryAttempt.Value : null;
+    }
+
+    /// <summary>
+    /// Executes one recovery await boundary. Ordinary recovery failures fall through to the
+    /// caller's existing envelope; cooperative cancellation always escapes unchanged.
+    /// </summary>
+    internal static async ValueTask<(bool Succeeded, T? Value)> TryRunRecoveryStepAsync<T>(
+        Func<ValueTask<T>> action,
+        Action<Exception> onFailure)
+        where T : class
+    {
         try
         {
-            return await dispatchAsync(toolName, retryArgs).ConfigureAwait(false);
+            return (true, await action().ConfigureAwait(false));
         }
-        catch (Exception retryEx)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger?.LogWarning(retryEx,
-                "Retried tool dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
-                toolName);
-            return null;
+            onFailure(ex);
+            return (false, null);
         }
     }
 

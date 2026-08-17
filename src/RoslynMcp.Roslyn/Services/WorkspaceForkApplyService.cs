@@ -528,7 +528,7 @@ internal sealed class WorkspaceForkApplyService : IWorkspaceForkApplyService
                 executablePath: ResolveForkDotnetPath(),
                 ct: timeout.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
         {
             throw new TimeoutException(
                 $"dotnet restore for workspace fork exceeded the {timeoutMinutes.ToString(CultureInfo.InvariantCulture)} minute timeout.");

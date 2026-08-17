@@ -15,6 +15,43 @@ namespace RoslynMcp.Tests;
 public sealed class CompilationCacheTests
 {
     [TestMethod]
+    public async Task ConcurrentFirstCallers_StartOneRawAndOneAnalyzerBuildPerKey()
+    {
+        var (_, project, ws) = CreateCacheWithProject(initialVersion: 1);
+        var rawRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var analyzerRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rawStarts = 0;
+        var analyzerStarts = 0;
+        var cache = new CompilationCache(
+            ws,
+            async _ =>
+            {
+                Interlocked.Increment(ref rawStarts);
+                await rawRelease.Task.ConfigureAwait(false);
+                return null;
+            },
+            async (_, _) =>
+            {
+                Interlocked.Increment(ref analyzerStarts);
+                await analyzerRelease.Task.ConfigureAwait(false);
+                return null;
+            });
+
+        var rawCalls = StartConcurrentBurst(
+            () => cache.GetCompilationAsync(ws.WorkspaceId, project, CancellationToken.None));
+        rawRelease.SetResult();
+        await Task.WhenAll(rawCalls).ConfigureAwait(false);
+
+        var analyzerCalls = StartConcurrentBurst(
+            () => cache.GetCompilationWithAnalyzersAsync(ws.WorkspaceId, project, CancellationToken.None));
+        analyzerRelease.SetResult();
+        await Task.WhenAll(analyzerCalls).ConfigureAwait(false);
+
+        Assert.AreEqual(1, rawStarts, "A first-caller burst must start one raw compilation.");
+        Assert.AreEqual(1, analyzerStarts, "A first-caller burst must start one analyzer-bound build.");
+    }
+
+    [TestMethod]
     public async Task GetCompilationAsync_ReturnsSameInstance_OnRepeatedCall_AtSameVersion()
     {
         var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
@@ -103,6 +140,21 @@ public sealed class CompilationCacheTests
         var ws = new FakeWorkspaceManager(workspaceId, initialVersion);
         var cache = new CompilationCache(ws);
         return (cache, project, ws);
+    }
+
+    private static Task<T>[] StartConcurrentBurst<T>(Func<Task<T>> operation)
+    {
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callers = Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(async () =>
+            {
+                await start.Task.ConfigureAwait(false);
+                return await operation().ConfigureAwait(false);
+            }))
+            .ToArray();
+
+        start.SetResult();
+        return callers;
     }
 
     /// <summary>
