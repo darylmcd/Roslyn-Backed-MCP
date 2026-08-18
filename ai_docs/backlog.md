@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-18T21:52:25Z
+**updated_at:** 2026-08-18T22:22:57Z
 
 ## Agent contract
 
@@ -49,7 +49,6 @@
 |----|-----|------|----|------|--------|
 | `path-boundary-link-swap-toctou` | High | workspace-load-path-canonicalization | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
 | `type-extraction-composition-constructor-coverage` | High | type-extraction-member-shape-validation | **Initialize extracted composition on every construction path** — handle or refuse implicit, chained, overloaded, and expression-bodied constructors. [type: bug] [source: 2026-08-13 adjacent review] | S | items/type-extraction-composition-constructor-coverage.md |
-| `parameter-object-callsite-semantic-argument-binding` | High | — | **Bind parameter-object call arguments semantically** — use Roslyn argument bindings so named/positional, reduced-extension, and ungrouped params calls rewrite atomically. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-callsite-semantic-argument-binding.md |
 | `parameter-object-value-type-mutation-semantics` | High | — | **Preserve grouped value-type mutation semantics** — detect or safely lower mutable-struct uses before DTO-property rewriting changes observable state. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-value-type-mutation-semantics.md |
 | `parameter-object-generic-dto-type-validity` | High | — | **Validate generated DTO parameter types** — handle generic scope, accessibility, and cross-project availability before emitting a top-level record. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-generic-dto-type-validity.md |
 | `parameter-object-dto-reference-qualification` | High | — | Bind generated DTO type references correctly when target declarations and callers use different namespaces. | S | items/parameter-object-dto-reference-qualification.md |
