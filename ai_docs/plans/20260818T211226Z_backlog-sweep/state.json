@@ -47,7 +47,7 @@
     {
       "id": "parameter-object-callsite-semantic-argument-binding",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-callsite-semantic-argument-binding"
       ],
@@ -69,10 +69,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/parameter-object-callsite-semantic-argument-binding",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1265",
+      "mergedAt": "2026-08-18T22:21:50Z",
       "notes": null,
       "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
       "stanzaHash": "10b3cdb8857a290d574f101d1a0d04409f039f8edbefc20f80eb2a64c5925287",
