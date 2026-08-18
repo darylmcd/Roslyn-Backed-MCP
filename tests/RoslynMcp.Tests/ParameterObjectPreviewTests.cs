@@ -714,6 +714,229 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    public static IEnumerable<object[]> UnsupportedTargetContractCases =>
+    [
+        [
+            "constructor",
+            """
+            namespace SampleLib;
+
+            public class POCtorFixture
+            {
+                public POCtorFixture(int a, int b) { }
+
+                public static POCtorFixture Make() => new POCtorFixture(1, 2);
+            }
+            """,
+            5, 12, new[] { "a", "b" }, "method kind 'Constructor'",
+        ],
+        [
+            "user-defined operator",
+            """
+            namespace SampleLib;
+
+            public struct POOpFixture
+            {
+                public static POOpFixture operator +(POOpFixture left, POOpFixture right) => left;
+            }
+            """,
+            5, 40, new[] { "left", "right" }, "method kind 'UserDefinedOperator'",
+        ],
+        [
+            "property accessor",
+            """
+            namespace SampleLib;
+
+            public class POIndexerFixture
+            {
+                public int this[int a, int b] { set { } }
+            }
+            """,
+            5, 37, new[] { "a", "b" }, "method kind 'PropertySet'",
+        ],
+        [
+            "override",
+            """
+            namespace SampleLib;
+
+            public class POBaseFixture
+            {
+                public virtual int Sum(int a, int b) => a + b;
+            }
+
+            public class PODerivedFixture : POBaseFixture
+            {
+                public override int Sum(int a, int b) => a + b;
+            }
+            """,
+            10, 25, new[] { "a", "b" }, "is an 'override'",
+        ],
+        [
+            "virtual dispatch root",
+            """
+            namespace SampleLib;
+
+            public class POVirtualFixture
+            {
+                public virtual int Sum(int a, int b) => a + b;
+            }
+            """,
+            5, 24, new[] { "a", "b" }, "'virtual' dispatch root",
+        ],
+        [
+            "abstract dispatch root",
+            """
+            namespace SampleLib;
+
+            public abstract class POAbstractFixture
+            {
+                public abstract int Sum(int a, int b);
+            }
+            """,
+            5, 25, new[] { "a", "b" }, "'abstract' dispatch root",
+        ],
+        [
+            "implicit interface implementation",
+            """
+            namespace SampleLib;
+
+            public interface IPOContractFixture
+            {
+                int Sum(int a, int b);
+            }
+
+            public class POImplicitImplFixture : IPOContractFixture
+            {
+                public int Sum(int a, int b) => a + b;
+            }
+            """,
+            10, 16, new[] { "a", "b" }, "implements an interface member",
+        ],
+        [
+            "explicit interface implementation",
+            """
+            namespace SampleLib;
+
+            public interface IPOExplicitContractFixture
+            {
+                int Sum(int a, int b);
+            }
+
+            public class POExplicitImplFixture : IPOExplicitContractFixture
+            {
+                int IPOExplicitContractFixture.Sum(int a, int b) => a + b;
+            }
+            """,
+            10, 36, new[] { "a", "b" }, "explicitly implements an interface member",
+        ],
+        [
+            "extern/PInvoke declaration",
+            """
+            namespace SampleLib;
+
+            public static class PONativeFixture
+            {
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+                public static extern int PONativeSum(int a, int b);
+            }
+            """,
+            6, 30, new[] { "a", "b" }, "extern/PInvoke declaration",
+        ],
+        [
+            "partial definition/implementation pair",
+            """
+            namespace SampleLib;
+
+            public partial class POPartialFixture
+            {
+                public partial int Sum(int a, int b);
+            }
+
+            public partial class POPartialFixture
+            {
+                public partial int Sum(int x, int y) => x + y;
+            }
+            """,
+            10, 24, new[] { "x", "y" }, "partial method",
+        ],
+    ];
+
+    /// <summary>
+    /// parameter-object-target-method-contract-validation: every non-ordinary target kind
+    /// and non-atomically-rewritable dispatch contract must refuse BEFORE any preview is
+    /// constructed — previously these produced a redeemable token whose rewrite broke
+    /// call sites, override chains, or paired partial declarations.
+    /// </summary>
+    [TestMethod]
+    [DynamicData(nameof(UnsupportedTargetContractCases))]
+    public async Task UnsupportedTargetMethodContract_RefusesPreview(
+        string caseName,
+        string source,
+        int line,
+        int column,
+        string[] parameterNames,
+        string expectedFragment)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            source,
+            "POContractFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line, column),
+                    new ParameterObjectPreviewRequest(parameterNames, "GroupedArgs"),
+                    CancellationToken.None),
+                $"case '{caseName}' must refuse the preview");
+            StringAssert.Contains(ex.Message, expectedFragment, $"case '{caseName}'");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Guard against over-refusal: a plain (non-virtual, non-interface, non-partial)
+    /// extension method's non-receiver parameters must remain eligible for grouping.
+    /// </summary>
+    [TestMethod]
+    public async Task PlainExtensionMethod_NonReceiverParameters_StillGroup()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public static class POExtensionGroupFixture
+            {
+                public static int Sum(this string tag, int a, int b) => tag.Length + a + b;
+
+                public static int Caller() => POExtensionGroupFixture.Sum("x", 1, 2);
+            }
+            """,
+            "POExtensionGroupFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 23),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken, "plain extension methods must stay eligible");
+            var fixtureDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("POExtensionGroupFixture.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+            Assert.IsNotNull(fixtureDiff);
+            StringAssert.Contains(fixtureDiff, "SumArgs sumArgs", "declaration should take the new record param");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
         string content,
         string fileName,
