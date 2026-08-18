@@ -81,7 +81,7 @@
     {
       "id": "parameter-object-value-type-mutation-semantics",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-value-type-mutation-semantics"
       ],
@@ -103,10 +103,10 @@
         "ruleOneBundleResolved": "split"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/parameter-object-value-type-mutation-semantics",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1267",
+      "mergedAt": "2026-08-18T22:45:49Z",
       "notes": null,
       "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
       "stanzaHash": "97c2175bd1dce61e73ef0ee24b5834a988162a12ad71aa82334247e2fd0c2c7a",
