@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** three release-gate tests passed on the self-hosted Windows merge runner but failed on the GitHub-hosted Linux publish runner, so v3.0.1 tagged without ever publishing a package. `NuGetAuditGateTests` read `Justfile` where the on-disk name is `justfile` (resolves case-insensitively on Windows, throws on Linux); `BreakingVersionGateTests` and `VerifyReleaseChildScriptTests` asserted substrings against raw PowerShell `Write-Error` output, which hard-wraps at a host-dependent console width and prefixes continuation lines with a `|` gutter, splitting expected phrases mid-match. Adds a shared `PowerShellOutputNormalizer` that strips ANSI styling, rejoins gutter-wrapped lines, and collapses whitespace, with regression coverage built from the captured Linux output. The gates themselves were always correct — they fired exactly as designed and the assertions simply failed to recognize it. The underlying merge-vs-publish runner-OS split is tracked by `ci-merge-publish-runner-os-parity`.

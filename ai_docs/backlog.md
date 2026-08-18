@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-17T18:34:26Z
+**updated_at:** 2026-08-18T15:55:14Z
 
 ## Agent contract
 
@@ -73,6 +73,7 @@
 | `prompt-shim-binding-error-detail-redaction` | High | public-exception-detail-policy,prompt-call-error-filter-boundary | **Sanitize prompt-shim binding failures** — keep property/schema guidance without echoing parser exception text or supplied values. [type: security] [source: 2026-08-17 adjacent review] | S | items/prompt-shim-binding-error-detail-redaction.md |
 | `semantic-grep-pattern-error-detail-redaction` | High | public-exception-detail-policy,tool-error-envelope-sensitive-detail-disclosure | **Sanitize invalid-regex errors** — preserve actionable pattern guidance without publishing regex parser detail or secret-bearing input. [type: security] [source: 2026-08-17 adjacent review] | S | items/semantic-grep-pattern-error-detail-redaction.md |
 | `scaffolding-project-parse-diagnostic-redaction` | High | public-exception-detail-policy,scaffolding-io-warning-detail-redaction | **Sanitize scaffolding project-parse fallbacks** — preserve deterministic framework/validation behavior without raw exception objects or project paths in diagnostics. [type: security] [source: 2026-08-17 adjacent review] | S | items/scaffolding-project-parse-diagnostic-redaction.md |
+| `ci-merge-publish-runner-os-parity` | High | — | Give the pre-merge gate a Linux leg so Windows-only-passing tests cannot merge then block publish (v3.0.1 shipped no package for this reason) | M | items/ci-merge-publish-runner-os-parity.md |
 
 ## Medium
 
