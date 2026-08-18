@@ -937,6 +937,260 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// parameter-object-callsite-semantic-argument-binding: an in-position named argument
+    /// (C# 7.2+) followed by positional arguments must bind by parameter, not lexical
+    /// index — previously the positional walk overwrote the already-filled named slot and
+    /// the call site was mis-refused/mis-rewritten.
+    /// </summary>
+    [TestMethod]
+    public async Task InPositionNamedArgument_FollowedByPositionals_RewritesAndApplies()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POInPositionFixture
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public int Caller() => Sum(a: 1, 2, 3);
+            }
+            """,
+            "POInPositionFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                CancellationToken.None);
+
+            var diff = preview.Changes.First(c =>
+                c.FilePath.EndsWith("POInPositionFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(diff, "new SumArgs(1, 2, 3)", $"in-position named argument must bind to its own slot. Diff:\n{diff}");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                applyJson);
+
+            var appliedText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(appliedText, "Sum(new SumArgs(1, 2, 3))");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// parameter-object-callsite-semantic-argument-binding: a reduced extension-method
+    /// call supplies no syntactic argument for the 'this' receiver — the receiver must
+    /// not consume a parameter slot and shift every later argument by one.
+    /// </summary>
+    [TestMethod]
+    public async Task ReducedExtensionReceiver_CallSite_BindsWithoutSlotShift()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public static class POReducedExtFixture
+            {
+                public static int Sum(this string tag, int a, int b) => tag.Length + a + b;
+
+                public static int Caller() => "x".Sum(1, 2);
+            }
+            """,
+            "POReducedExtFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 23),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                CancellationToken.None);
+
+            var diff = preview.Changes.First(c =>
+                c.FilePath.EndsWith("POReducedExtFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(
+                diff,
+                "\"x\".Sum(new SumArgs(1, 2))",
+                $"the reduced receiver must stay the receiver and not shift argument slots. Diff:\n{diff}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// parameter-object-callsite-semantic-argument-binding: an ungrouped trailing 'params'
+    /// tail must survive the rewrite in full — previously every variadic argument past the
+    /// first was silently dropped from the emitted call.
+    /// </summary>
+    [TestMethod]
+    public async Task UngroupedTrailingParams_AllVariadicArgumentsSurviveAndApply()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POParamsFixture
+            {
+                public int Sum(int a, int b, params int[] rest)
+                {
+                    var total = a + b;
+                    foreach (var r in rest) total += r;
+                    return total;
+                }
+
+                public int Caller() => Sum(1, 2, 10, 20, 30);
+            }
+            """,
+            "POParamsFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                CancellationToken.None);
+
+            var diff = preview.Changes.First(c =>
+                c.FilePath.EndsWith("POParamsFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(
+                diff,
+                "Sum(new SumArgs(1, 2), 10, 20, 30)",
+                $"all three variadic arguments must survive the rewrite. Diff:\n{diff}");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                applyJson);
+
+            var appliedText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(appliedText, "Sum(new SumArgs(1, 2), 10, 20, 30)");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// parameter-object-callsite-semantic-argument-binding: rewriting emits arguments in
+    /// parameter order, so a call whose non-constant argument expressions appear out of
+    /// declaration order must refuse (before any token is stored) rather than silently
+    /// change observable evaluation order. Constant-only reordering (see
+    /// <see cref="NamedAndMixedCallSites_RewriteToPositionalDtoConstructor"/>) stays allowed.
+    /// </summary>
+    [TestMethod]
+    public async Task OutOfOrderNonConstantNamedArguments_RefusePreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POEvalOrderFixture
+            {
+                private static int _next;
+                private static int Next() => _next++;
+
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public int Caller() => Sum(c: Next(), b: Next(), a: Next());
+            }
+            """,
+            "POEvalOrderFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 8, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "different order");
+            StringAssert.Contains(ex.Message, "non-constant argument");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// parameter-object-callsite-semantic-argument-binding: a method-group (non-invocation)
+    /// reference cannot be rewritten to the new signature, so the preview must refuse before
+    /// storing a token — previously the reference was silently skipped and the redeemed
+    /// preview left the delegate conversion broken.
+    /// </summary>
+    [TestMethod]
+    public async Task MethodGroupReference_RefusesPreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POMethodGroupFixture
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public System.Func<int, int, int, int> Grab() => Sum;
+            }
+            """,
+            "POMethodGroupFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "without a direct invocation");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
         string content,
         string fileName,

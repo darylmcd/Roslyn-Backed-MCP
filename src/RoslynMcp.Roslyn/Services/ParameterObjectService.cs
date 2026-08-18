@@ -75,12 +75,12 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         var (dtoProject, dtoVisibilityIsPublic) = ResolveDtoProject(solution, method, request);
 
-        var callerLocations = await CollectCallerSpansAsync(solution, method, ct).ConfigureAwait(false);
+        var callSites = await CollectCallSiteBindingsAsync(solution, method, groupedParameters, ct).ConfigureAwait(false);
         var methodProject = solution.GetProject(method.ContainingAssembly, ct)!;
-        EnforceCrossProjectReferences(solution, methodProject, dtoProject, callerLocations);
+        EnforceCrossProjectReferences(solution, methodProject, dtoProject, callSites);
 
         var defaultValueWarnings = await CollectDefaultValueWarningsAsync(
-            solution, method, groupedParameters, callerLocations, ct).ConfigureAwait(false);
+            solution, groupedParameters, callSites, ct).ConfigureAwait(false);
         if (defaultValueWarnings.Count > 0)
         {
             throw new InvalidOperationException(
@@ -100,7 +100,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             solution, method, groupedParameters, request.NewTypeName, newParameterName, originalTexts, ct).ConfigureAwait(false);
 
         accumulator = await RewriteCallSitesAsync(
-            accumulator, solution, method, groupedParameters, request.NewTypeName, callerLocations,
+            accumulator, solution, method, groupedParameters, request.NewTypeName, callSites,
             originalTexts, perFileCallsites, ct).ConfigureAwait(false);
 
         // Add the new DTO document last so its diff is appended cleanly; we capture no
@@ -650,10 +650,33 @@ public sealed class ParameterObjectService : IParameterObjectService
         return (dtoProject, visibility);
     }
 
-    private static async Task<Dictionary<DocumentId, List<TextSpan>>> CollectCallerSpansAsync(
-        Solution solution, IMethodSymbol method, CancellationToken ct)
+    /// <summary>
+    /// Semantic argument binding for one caller invocation, captured against the baseline
+    /// solution: a child-index syntax path locating the invocation, the invocation span,
+    /// one argument-list index per target parameter ordinal (null = omitted or supplied by
+    /// the extension receiver), and the expanded params-tail argument indices in source order.
+    /// </summary>
+    private sealed record CallSiteBinding(
+        string SyntaxPath,
+        TextSpan Span,
+        int?[] SlotArgIndices,
+        IReadOnlyList<int> VariadicArgIndices);
+
+    /// <summary>
+    /// Collects every reference to the target method and binds each one semantically to a
+    /// concrete invocation shape via <see cref="IInvocationOperation"/>. Any reference that
+    /// is not a direct invocation of the target (method group, delegate conversion, nameof,
+    /// doc-comment reference) — or whose arguments cannot be mapped completely onto the
+    /// target's parameters — refuses the whole preview here, before any token is stored,
+    /// so a redeemed preview always covers every reference atomically.
+    /// </summary>
+    private static async Task<Dictionary<DocumentId, List<CallSiteBinding>>> CollectCallSiteBindingsAsync(
+        Solution solution,
+        IMethodSymbol method,
+        IReadOnlyList<IParameterSymbol> grouped,
+        CancellationToken ct)
     {
-        var locations = new Dictionary<DocumentId, List<TextSpan>>();
+        var spansByDoc = new Dictionary<DocumentId, List<TextSpan>>();
         var callers = await SymbolFinder.FindCallersAsync(method, solution, ct).ConfigureAwait(false);
         foreach (var caller in callers)
         {
@@ -663,23 +686,192 @@ public sealed class ParameterObjectService : IParameterObjectService
                 if (!location.IsInSource) continue;
                 var doc = solution.GetDocument(location.SourceTree);
                 if (doc is null) continue;
-                if (!locations.TryGetValue(doc.Id, out var spans))
+                if (!spansByDoc.TryGetValue(doc.Id, out var spans))
                 {
                     spans = [];
-                    locations[doc.Id] = spans;
+                    spansByDoc[doc.Id] = spans;
                 }
                 if (!spans.Contains(location.SourceSpan))
                     spans.Add(location.SourceSpan);
             }
         }
-        return locations;
+
+        var result = new Dictionary<DocumentId, List<CallSiteBinding>>();
+        foreach (var (docId, spans) in spansByDoc)
+        {
+            var doc = solution.GetDocument(docId);
+            if (doc is null) continue;
+            var filePath = doc.FilePath ?? doc.Name;
+            var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (root is null || semanticModel is null)
+                throw new InvalidOperationException(
+                    $"parameter_object_preview refuses: caller document '{filePath}' has no syntax root or semantic model, " +
+                    "so its references cannot be verified for an atomic rewrite.");
+
+            var bindings = new List<CallSiteBinding>();
+            var seenInvocationSpans = new HashSet<TextSpan>();
+            foreach (var span in spans)
+            {
+                var node = root.FindNode(span);
+                var invocation = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
+                if (invocation is null || !invocation.Expression.Span.Contains(span))
+                {
+                    var line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    throw new InvalidOperationException(
+                        $"parameter_object_preview refuses: '{method.ToDisplayString()}' is referenced without a direct invocation " +
+                        $"(method group, delegate conversion, nameof, or doc-comment reference) at {filePath}:{line}. " +
+                        "The rewrite is atomic-or-refused; convert or remove this reference first.");
+                }
+                if (!seenInvocationSpans.Add(invocation.Span)) continue;
+                bindings.Add(BindCallSite(semanticModel, root, invocation, method, grouped, filePath, ct));
+            }
+            if (bindings.Count > 0) result[docId] = bindings;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Derives every argument-to-parameter association for one invocation from the
+    /// compiler's <see cref="IInvocationOperation"/> bindings instead of lexical argument
+    /// position, so in-position named arguments, reduced extension-method receivers, and
+    /// expanded params tails all map correctly. Refuses any shape it cannot map completely.
+    /// </summary>
+    private static CallSiteBinding BindCallSite(
+        SemanticModel semanticModel,
+        SyntaxNode root,
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol method,
+        IReadOnlyList<IParameterSymbol> grouped,
+        string filePath,
+        CancellationToken ct)
+    {
+        var line = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        var site = $"{filePath}:{line}";
+        static InvalidOperationException Unmappable(string site) => new(
+            $"parameter_object_preview refuses: the call at {site} has an argument shape that cannot be mapped " +
+            "completely onto the target's parameters (unsupported params/collection expansion or synthesized argument).");
+
+        if (semanticModel.GetOperation(invocation, ct) is not IInvocationOperation operation)
+            throw new InvalidOperationException(
+                $"parameter_object_preview refuses: the call at {site} cannot be bound to an invocation operation, " +
+                "so its arguments cannot be mapped onto the target's parameters.");
+
+        var normalizedTarget = (method.ReducedFrom ?? method).OriginalDefinition;
+        var normalizedInvoked = (operation.TargetMethod.ReducedFrom ?? operation.TargetMethod).OriginalDefinition;
+        if (!SymbolEqualityComparer.Default.Equals(normalizedInvoked, normalizedTarget))
+            throw new InvalidOperationException(
+                $"parameter_object_preview refuses: the reference at {site} does not resolve to a direct invocation of " +
+                $"'{method.ToDisplayString()}'.");
+
+        var args = invocation.ArgumentList.Arguments;
+        var slots = new int?[method.Parameters.Length];
+        var variadic = new List<int>();
+        // IOperation represents extension invocations in unreduced form (receiver as
+        // argument 0); align its parameter ordinals with the resolved method symbol's.
+        var ordinalOffset = method.Parameters.Length - operation.TargetMethod.Parameters.Length;
+
+        foreach (var argument in operation.Arguments)
+        {
+            if (argument.Parameter is null) throw Unmappable(site);
+            var ordinal = argument.Parameter.Ordinal + ordinalOffset;
+            switch (argument.ArgumentKind)
+            {
+                case ArgumentKind.DefaultValue:
+                    continue; // omitted at the call site; grouped omissions refuse downstream
+                case ArgumentKind.Explicit when argument.Syntax is ArgumentSyntax argumentSyntax:
+                    var index = args.IndexOf(argumentSyntax);
+                    if (index < 0 || ordinal < 0 || ordinal >= slots.Length) throw Unmappable(site);
+                    slots[ordinal] = index;
+                    continue;
+                case ArgumentKind.Explicit when argument.Parameter.Ordinal == 0
+                    && operation.TargetMethod.IsExtensionMethod
+                    && operation.Instance is null:
+                    // Reduced extension receiver: IOperation surfaces it as argument 0 of the
+                    // unreduced form with the receiver expression (not an ArgumentSyntax) as
+                    // its syntax. It stays the receiver, so it takes no argument slot.
+                    continue;
+                case ArgumentKind.ParamArray:
+                    if (argument.Value is not IArrayCreationOperation { Initializer: { } initializer })
+                        throw Unmappable(site);
+                    foreach (var element in initializer.ElementValues)
+                    {
+                        var elementIndex = IndexOfArgumentContaining(args, element.Syntax.Span);
+                        if (elementIndex < 0) throw Unmappable(site);
+                        variadic.Add(elementIndex);
+                    }
+                    continue;
+                default:
+                    throw Unmappable(site);
+            }
+        }
+        variadic.Sort();
+
+        EnforceEvaluationOrderPreserved(semanticModel, args, slots, variadic, grouped, site, ct);
+
+        return new CallSiteBinding(BuildSyntaxPath(root, invocation), invocation.Span, slots, variadic);
+    }
+
+    private static int IndexOfArgumentContaining(SeparatedSyntaxList<ArgumentSyntax> args, TextSpan span)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i].Expression.Span.Contains(span)) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Refuses any call site whose rewrite would evaluate a non-constant argument
+    /// expression in a different left-to-right order than the source call. Compile-time
+    /// constants have no observable evaluation, so they may reorder freely; everything
+    /// else must keep its source-relative order or the preview is refused.
+    /// </summary>
+    private static void EnforceEvaluationOrderPreserved(
+        SemanticModel semanticModel,
+        SeparatedSyntaxList<ArgumentSyntax> args,
+        int?[] slots,
+        IReadOnlyList<int> variadic,
+        IReadOnlyList<IParameterSymbol> grouped,
+        string site,
+        CancellationToken ct)
+    {
+        var groupedOrdinals = new HashSet<int>(grouped.Select(p => p.Ordinal));
+        var firstGroupedOrdinal = grouped.Min(p => p.Ordinal);
+        var emission = new List<int>(args.Count);
+        for (var ordinal = 0; ordinal < slots.Length; ordinal++)
+        {
+            if (ordinal == firstGroupedOrdinal)
+            {
+                foreach (var parameter in grouped)
+                {
+                    if (slots[parameter.Ordinal] is int groupedIndex) emission.Add(groupedIndex);
+                }
+                continue;
+            }
+            if (groupedOrdinals.Contains(ordinal)) continue;
+            if (slots[ordinal] is int retainedIndex) emission.Add(retainedIndex);
+        }
+        emission.AddRange(variadic);
+
+        var previousNonConstantIndex = -1;
+        foreach (var index in emission)
+        {
+            if (semanticModel.GetConstantValue(args[index].Expression, ct).HasValue) continue;
+            if (index < previousNonConstantIndex)
+                throw new InvalidOperationException(
+                    $"parameter_object_preview refuses: rewriting the call at {site} would evaluate a non-constant argument " +
+                    "expression in a different order than the source call (named arguments out of declaration order, or grouped " +
+                    "parameters that interleave with retained ones). Reorder the arguments at the call site first.");
+            previousNonConstantIndex = index;
+        }
     }
 
     private static void EnforceCrossProjectReferences(
         Solution solution,
         Project methodProject,
         Project dtoProject,
-        Dictionary<DocumentId, List<TextSpan>> callerLocations)
+        Dictionary<DocumentId, List<CallSiteBinding>> callSites)
     {
         var missing = new List<string>();
         var seenProjects = new HashSet<ProjectId>();
@@ -695,7 +887,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         }
 
         Check(methodProject);
-        foreach (var docId in callerLocations.Keys)
+        foreach (var docId in callSites.Keys)
         {
             var callerProject = solution.GetProject(docId.ProjectId);
             if (callerProject is null) continue;
@@ -711,61 +903,31 @@ public sealed class ParameterObjectService : IParameterObjectService
 
     private static async Task<List<string>> CollectDefaultValueWarningsAsync(
         Solution solution,
-        IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
-        Dictionary<DocumentId, List<TextSpan>> callerLocations,
+        Dictionary<DocumentId, List<CallSiteBinding>> callSites,
         CancellationToken ct)
     {
-        var groupedSet = new HashSet<string>(grouped.Select(p => p.Name), StringComparer.Ordinal);
+        // A grouped parameter with no bound argument slot relied on its default value at
+        // that call site — the same semantic binding the rewriter consumes, so this gate
+        // and the rewrite agree by construction.
         var warnings = new List<string>();
-
-        foreach (var (docId, spans) in callerLocations)
+        foreach (var (docId, bindings) in callSites)
         {
             var doc = solution.GetDocument(docId);
             if (doc is null) continue;
-            var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (root is null) continue;
-            foreach (var span in spans)
+            var text = await doc.GetTextAsync(ct).ConfigureAwait(false);
+            var filePath = doc.FilePath ?? doc.Name;
+            foreach (var binding in bindings)
             {
-                var node = root.FindNode(span);
-                var invocation = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-                if (invocation is null) continue;
-
-                var providedNames = CollectProvidedParameterNames(invocation, method);
-                foreach (var groupedName in groupedSet)
+                foreach (var parameter in grouped)
                 {
-                    if (providedNames.Contains(groupedName)) continue;
-                    var lineSpan = invocation.GetLocation().GetLineSpan();
-                    var filePath = doc.FilePath ?? doc.Name;
-                    warnings.Add($"{filePath}:{lineSpan.StartLinePosition.Line + 1} omits '{groupedName}'");
+                    if (binding.SlotArgIndices[parameter.Ordinal] is not null) continue;
+                    var line = text.Lines.GetLinePosition(binding.Span.Start).Line + 1;
+                    warnings.Add($"{filePath}:{line} omits '{parameter.Name}'");
                 }
             }
         }
         return warnings;
-    }
-
-    private static HashSet<string> CollectProvidedParameterNames(InvocationExpressionSyntax invocation, IMethodSymbol method)
-    {
-        // Build the set of parameter names actually supplied at this call site, accounting
-        // for both positional prefix and named-argument suffix. Anything missing relied on
-        // a default value and triggers the refusal path.
-        var args = invocation.ArgumentList.Arguments;
-        var provided = new HashSet<string>(StringComparer.Ordinal);
-        var positionalIndex = 0;
-        foreach (var arg in args)
-        {
-            if (arg.NameColon is null)
-            {
-                if (positionalIndex < method.Parameters.Length)
-                    provided.Add(method.Parameters[positionalIndex].Name);
-                positionalIndex++;
-            }
-            else
-            {
-                provided.Add(arg.NameColon.Name.Identifier.ValueText);
-            }
-        }
-        return provided;
     }
 
     private static (string Namespace, IReadOnlyList<string> Folders) ResolveDtoLocation(
@@ -1014,50 +1176,40 @@ public sealed class ParameterObjectService : IParameterObjectService
         IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
         string newTypeName,
-        Dictionary<DocumentId, List<TextSpan>> callerLocations,
+        Dictionary<DocumentId, List<CallSiteBinding>> callSites,
         Dictionary<DocumentId, string> originalTexts,
         Dictionary<string, int> perFileCallsites,
         CancellationToken ct)
     {
-        var groupedNames = new HashSet<string>(grouped.Select(p => p.Name), StringComparer.Ordinal);
-
-        foreach (var (docId, spans) in callerLocations)
+        foreach (var (docId, bindings) in callSites)
         {
             ct.ThrowIfCancellationRequested();
             await CaptureOriginalTextAsync(originalTexts, baselineSolution, docId, ct).ConfigureAwait(false);
-
-            var baselineDocument = baselineSolution.GetDocument(docId);
-            var baselineRoot = baselineDocument is null
-                ? null
-                : await baselineDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (baselineRoot is null) continue;
-
-            // Declaration rewriting may change absolute positions and may replace nested
-            // invocations such as nameof(parameter). A child-index syntax path remains
-            // stable because these rewrites change expressions, not the containing member
-            // or statement structure that locates a target call site.
-            var callerPaths = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var span in spans)
-            {
-                var invocation = baselineRoot.FindNode(span).FirstAncestorOrSelf<InvocationExpressionSyntax>();
-                if (invocation is not null) callerPaths.Add(BuildSyntaxPath(baselineRoot, invocation));
-            }
 
             var doc = accumulator.GetDocument(docId);
             if (doc is null) continue;
             var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (oldRoot is null) continue;
-            var targets = callerPaths
-                .Select(path => ResolveSyntaxPath(oldRoot, path))
-                .OfType<InvocationExpressionSyntax>()
-                .ToArray();
+
+            // Declaration rewriting may change absolute positions and may replace nested
+            // invocations such as nameof(parameter). The child-index syntax path captured
+            // at binding time against the baseline root remains stable because those
+            // rewrites change expressions, not the containing member or statement
+            // structure that locates a target call site.
+            var targets = new Dictionary<SyntaxNode, CallSiteBinding>();
+            foreach (var binding in bindings)
+            {
+                if (ResolveSyntaxPath(oldRoot, binding.SyntaxPath) is InvocationExpressionSyntax target)
+                    targets[target] = binding;
+            }
+            if (targets.Count == 0) continue;
 
             var rewrittenCount = 0;
-            var newRoot = oldRoot.ReplaceNodes(targets, (_, rewrittenNode) =>
+            var newRoot = oldRoot.ReplaceNodes(targets.Keys, (original, rewrittenNode) =>
             {
                 var invocation = (InvocationExpressionSyntax)rewrittenNode;
                 var newArgList = BuildRewrittenArgumentList(
-                    invocation.ArgumentList, method, grouped, groupedNames, newTypeName);
+                    invocation.ArgumentList, method, grouped, newTypeName, targets[original]);
                 if (newArgList is null) return invocation;
                 rewrittenCount++;
                 return invocation.WithArgumentList(newArgList);
@@ -1104,56 +1256,22 @@ public sealed class ParameterObjectService : IParameterObjectService
         ArgumentListSyntax argList,
         IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
-        HashSet<string> groupedNames,
-        string newTypeName)
+        string newTypeName,
+        CallSiteBinding binding)
     {
-        // Materialize the lexical args into a semantic slot array indexed by the original
-        // method's parameter order. NameColon args land in the named slot; positional args
-        // fill the prefix lexically. Missing slots indicate default-value omission — already
-        // refused upstream for grouped parameters; for non-grouped ones we leave the
-        // omission as-is (the rewritten call still relies on the same default).
+        // Argument-to-parameter association was computed semantically at binding time
+        // (IInvocationOperation); apply it here by argument-list index so nested rewrites
+        // (e.g. nameof replacement inside a caller argument) carry through untouched.
         var args = argList.Arguments;
-        var semanticArgs = new ArgumentSyntax?[method.Parameters.Length];
-        var positionalIndex = 0;
-        foreach (var arg in args)
-        {
-            if (arg.NameColon is null)
-            {
-                if (positionalIndex < semanticArgs.Length) semanticArgs[positionalIndex] = arg;
-                positionalIndex++;
-            }
-            else
-            {
-                var name = arg.NameColon.Name.Identifier.ValueText;
-                for (var k = 0; k < method.Parameters.Length; k++)
-                {
-                    if (string.Equals(method.Parameters[k].Name, name, StringComparison.Ordinal))
-                    {
-                        semanticArgs[k] = arg;
-                        break;
-                    }
-                }
-            }
-        }
+        ArgumentSyntax? ArgumentAt(int? index) =>
+            index is int i && i >= 0 && i < args.Count ? args[i] : null;
 
         // Build the DTO constructor args in `parameterNames` order, stripping NameColon
         // (positional-record primary ctor takes positional args).
         var dtoArgs = new List<ArgumentSyntax>(grouped.Count);
         for (var i = 0; i < grouped.Count; i++)
         {
-            // grouped[i] is the i-th parameterName. Find its index on the original method.
-            var paramName = grouped[i].Name;
-            var paramIndex = -1;
-            for (var k = 0; k < method.Parameters.Length; k++)
-            {
-                if (string.Equals(method.Parameters[k].Name, paramName, StringComparison.Ordinal))
-                {
-                    paramIndex = k;
-                    break;
-                }
-            }
-            if (paramIndex < 0) return null;
-            var src = semanticArgs[paramIndex];
+            var src = ArgumentAt(binding.SlotArgIndices[grouped[i].Ordinal]);
             if (src is null) return null; // would have been caught upstream as default-value refusal
             var stripped = SyntaxFactory.Argument(src.Expression.WithoutTrivia());
             dtoArgs.Add(i == 0 ? stripped : stripped.WithLeadingTrivia(SyntaxFactory.Space));
@@ -1167,14 +1285,15 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         // Build the rewritten outer call's argument list. Walk the original method's
         // parameters in order; emit a single Argument(dtoCreation) at the first grouped
-        // index, skip the rest of the grouped params, and emit non-grouped args
-        // unchanged (preserving their original NameColon shape if any).
+        // ordinal, skip the rest of the grouped params, emit non-grouped args unchanged
+        // (preserving their original NameColon shape if any), and append the full
+        // expanded params tail last so no variadic argument is dropped.
+        var groupedOrdinals = new HashSet<int>(grouped.Select(p => p.Ordinal));
         var outerArgs = new List<ArgumentSyntax>();
         var emittedDto = false;
-        for (var k = 0; k < method.Parameters.Length; k++)
+        for (var ordinal = 0; ordinal < method.Parameters.Length; ordinal++)
         {
-            var paramName = method.Parameters[k].Name;
-            if (groupedNames.Contains(paramName))
+            if (groupedOrdinals.Contains(ordinal))
             {
                 if (!emittedDto)
                 {
@@ -1183,12 +1302,18 @@ public sealed class ParameterObjectService : IParameterObjectService
                 }
                 continue;
             }
-            var src = semanticArgs[k];
-            if (src is null) continue; // omitted, relies on original default — fine for non-grouped
+            var src = ArgumentAt(binding.SlotArgIndices[ordinal]);
+            if (src is null) continue; // omitted (relies on default) or supplied by the receiver
             outerArgs.Add(SyntaxFactory.Argument(src.NameColon, src.RefKindKeyword, src.Expression.WithoutTrivia()));
         }
         if (!emittedDto)
             outerArgs.Add(SyntaxFactory.Argument(dtoCreation));
+        foreach (var variadicIndex in binding.VariadicArgIndices)
+        {
+            var src = ArgumentAt(variadicIndex);
+            if (src is null) return null;
+            outerArgs.Add(SyntaxFactory.Argument(src.Expression.WithoutTrivia()));
+        }
 
         // Add canonical inter-arg leading-space trivia.
         for (var i = 1; i < outerArgs.Count; i++)
