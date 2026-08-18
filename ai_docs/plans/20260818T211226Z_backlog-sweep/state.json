@@ -1,0 +1,451 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-08-18T21:12:26.819Z",
+  "backlogSnapshot": "2026-08-18T20:13:13Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "parameter-object-target-method-contract-validation",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-target-method-contract-validation"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ParameterObjectTools.cs"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 38000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "split"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "2709b9fe80f2c4401e096540cd2b5c5a788356a8a4a32d22a44ea08b8abf6f8b",
+      "stanzaHash": "692229822a42419f917aae70c9ba27152c652c4b8bf3654a89802a39abc27891",
+      "reviewedStanzaHash": "692229822a42419f917aae70c9ba27152c652c4b8bf3654a89802a39abc27891"
+    },
+    {
+      "id": "parameter-object-callsite-semantic-argument-binding",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-callsite-semantic-argument-binding"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
+      "stanzaHash": "10b3cdb8857a290d574f101d1a0d04409f039f8edbefc20f80eb2a64c5925287",
+      "reviewedStanzaHash": "10b3cdb8857a290d574f101d1a0d04409f039f8edbefc20f80eb2a64c5925287"
+    },
+    {
+      "id": "parameter-object-value-type-mutation-semantics",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-value-type-mutation-semantics"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "split"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
+      "stanzaHash": "97c2175bd1dce61e73ef0ee24b5834a988162a12ad71aa82334247e2fd0c2c7a",
+      "reviewedStanzaHash": "97c2175bd1dce61e73ef0ee24b5834a988162a12ad71aa82334247e2fd0c2c7a"
+    },
+    {
+      "id": "parameter-object-generic-dto-type-validity",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-generic-dto-type-validity"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 38000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "split"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
+      "stanzaHash": "70f0691eed61cbca5fb9454819beae70279b127c1d3c70ba2fe23e82b7c0f0d9",
+      "reviewedStanzaHash": "70f0691eed61cbca5fb9454819beae70279b127c1d3c70ba2fe23e82b7c0f0d9"
+    },
+    {
+      "id": "parameter-object-dto-reference-qualification",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-dto-reference-qualification"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 38000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "split"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
+      "stanzaHash": "1a2d83832d0c85333850fc8cacc5434b4b37a9a1000c04f54d817477aac33d59",
+      "reviewedStanzaHash": "1a2d83832d0c85333850fc8cacc5434b4b37a9a1000c04f54d817477aac33d59"
+    },
+    {
+      "id": "parameter-object-dto-output-boundary-validation",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "parameter-object-dto-output-boundary-validation"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs",
+        "src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs"
+      ],
+      "testFilesAdded": 2,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 38000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "b66503e7666ebf275c45492991696bbde18af4ce4db84ed2fa6e3ba6f1914e28",
+      "stanzaHash": "4c93e99021d9a9f24da10610610a5ba4549be0db764e4762d86ae283eea7b25f",
+      "reviewedStanzaHash": "4c93e99021d9a9f24da10610610a5ba4549be0db764e4762d86ae283eea7b25f"
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [
+      {
+        "a": 1,
+        "b": 2,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 1,
+        "b": 3,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 1,
+        "b": 4,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 1,
+        "b": 5,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 1,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 2,
+        "b": 3,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 2,
+        "b": 4,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 2,
+        "b": 5,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 2,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 3,
+        "b": 4,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 3,
+        "b": 5,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 3,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 5,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      },
+      {
+        "a": 5,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 5,
+      "2": 5,
+      "3": 5,
+      "4": 5,
+      "5": 5,
+      "6": 5
+    },
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": 6,
+    "selectedCount": 6,
+    "skipped": []
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 6,
+    "info": 9
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "parameter-object-value-type-mutation-semantics",
+      "severity": "warn",
+      "rule": "5b",
+      "evidence": "fanoutEstimate is null while the Approach changes a private method signature (ClassifyVariableRequiredUse gains an IParameterSymbol parameter) and asserts 'its only caller is line 392' — a refactor-shaped initiative whose probe was declared skipped in Risks."
+    },
+    {
+      "initiativeId": "parameter-object-target-method-contract-validation",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives 1 and 2 share src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; planner Step 6 should have separated them."
+    },
+    {
+      "initiativeId": "parameter-object-callsite-semantic-argument-binding",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives 2 and 3 share src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; planner Step 6 should have separated them."
+    },
+    {
+      "initiativeId": "parameter-object-value-type-mutation-semantics",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives 3 and 4 share src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; planner Step 6 should have separated them."
+    },
+    {
+      "initiativeId": "parameter-object-generic-dto-type-validity",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives 4 and 5 share src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; planner Step 6 should have separated them."
+    },
+    {
+      "initiativeId": "parameter-object-dto-reference-qualification",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives 5 and 6 share src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; planner Step 6 should have separated them."
+    },
+    {
+      "initiativeId": "parameter-object-target-method-contract-validation",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-callsite-semantic-argument-binding",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-value-type-mutation-semantics",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-generic-dto-type-validity",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-dto-reference-qualification",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-dto-output-boundary-validation",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative conflicts with 5 peers on src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs; expect fully serial scheduling."
+    },
+    {
+      "initiativeId": "parameter-object-callsite-semantic-argument-binding",
+      "severity": "info",
+      "rule": "acceptance-deviation",
+      "evidence": "Risks self-declares that the 2026-08-13 acceptance amendment's 'observe a runtime trace' regression is substituted with a structural post-apply source-text assertion; operator should confirm the substitution is acceptable before execute."
+    },
+    {
+      "initiativeId": "parameter-object-value-type-mutation-semantics",
+      "severity": "info",
+      "rule": "acceptance-deviation",
+      "evidence": "Acceptance item 4 (apply regression proving unchanged runtime mutation result) is discharged via refusal plus a positive readonly-struct/reference-type apply; the lowering-with-write-back acceptance arm is intentionally not implemented."
+    },
+    {
+      "initiativeId": "parameter-object-target-method-contract-validation",
+      "severity": "info",
+      "rule": "5b",
+      "evidence": "Fanout narrative is internally inconsistent — Risks item (4) calls the service file 'the third and last edit target' while Scope and productionFiles list exactly 2 files; the count itself (2) is correct and matches fanoutEstimate."
+    },
+    {
+      "initiativeId": "parameter-object-dto-output-boundary-validation",
+      "severity": "info",
+      "rule": "anchor-stale",
+      "evidence": "No stale anchors found — ParameterObjectService.cs is 1171 lines and ResolveDtoLocation/:700, ResolveDtoFilePath/:735, _previewStore.Store/:126 all resolve; ProjectRelativePathValidation.cs correctly does not yet exist (new file)."
+    }
+  ],
+  "conflictGraphInputHash": "b371243c934f08162129f034f35c7f53cf9fdee25544b472662a8011656a05c8",
+  "planHash": "56695482f7f99c508e8fd72fda2544dd164b86713c84bd1b50bcc917d496dca6",
+  "backlogSnapshotHash": "7ed20de736ae9b7e43f3c24d282adabda18854106222ff1c90accdfd7cdee8ed",
+  "reviewedPlanHash": "56695482f7f99c508e8fd72fda2544dd164b86713c84bd1b50bcc917d496dca6",
+  "reviewedBacklogSnapshotHash": "7ed20de736ae9b7e43f3c24d282adabda18854106222ff1c90accdfd7cdee8ed"
+}
