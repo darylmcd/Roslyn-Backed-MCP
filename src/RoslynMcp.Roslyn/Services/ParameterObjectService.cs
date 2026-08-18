@@ -386,7 +386,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     continue;
                 }
 
-                var useKind = ClassifyVariableRequiredUse(reference, semanticModel, ct);
+                var useKind = ClassifyVariableRequiredUse(reference, parameter, semanticModel, ct);
                 if (useKind is null) continue;
 
                 var lineSpan = reference.GetLocation().GetLineSpan();
@@ -408,11 +408,15 @@ public sealed class ParameterObjectService : IParameterObjectService
 
     private static string? ClassifyVariableRequiredUse(
         IdentifierNameSyntax reference,
+        IParameterSymbol parameter,
         SemanticModel semanticModel,
         CancellationToken ct)
     {
         var semanticUseKind = ClassifySemanticVariableRequiredUse(reference, semanticModel, ct);
         if (semanticUseKind is not null) return semanticUseKind;
+
+        var valueTypeMutationKind = ClassifyValueTypeMutation(reference, parameter, semanticModel, ct);
+        if (valueTypeMutationKind is not null) return valueTypeMutationKind;
 
         var assignment = reference.Ancestors().OfType<AssignmentExpressionSyntax>()
             .FirstOrDefault(candidate => IsDirectAssignmentTarget(candidate.Left, reference));
@@ -477,6 +481,81 @@ public sealed class ParameterObjectService : IParameterObjectService
             var receiver = invocation.TargetMethod.ReducedFrom?.Parameters.FirstOrDefault();
             if (receiver?.RefKind == RefKind.Ref)
                 return "ref extension receiver";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Detects mutations that flow THROUGH a mutable value-type parameter — a non-readonly
+    /// instance member call or a nested member/element write — which the positional-record
+    /// rewrite would silently redirect onto a temporary struct copy (the mutation would
+    /// compile cleanly and be discarded). Reference-type parameters and readonly structs
+    /// short-circuit to null: member mutation through a reference lands on the shared heap
+    /// object either way, so those uses stay eligible.
+    /// </summary>
+    private static string? ClassifyValueTypeMutation(
+        IdentifierNameSyntax reference,
+        IParameterSymbol parameter,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        if (!parameter.Type.IsValueType) return null;
+        if (parameter.Type is INamedTypeSymbol { IsReadOnly: true }) return null;
+
+        var operation = semanticModel.GetOperation(reference, ct);
+        if (operation is not null)
+        {
+            var unwrapped = UnwrapTransparentOperation(operation);
+            if (unwrapped.Parent is IInvocationOperation invocation
+                && ReferenceEquals(invocation.Instance, unwrapped)
+                && invocation.TargetMethod.ContainingType?.IsValueType == true
+                && !invocation.TargetMethod.IsReadOnly)
+            {
+                return "mutable value-type member call";
+            }
+        }
+
+        // Walk the receiver chain rooted at this reference (param.Field, param[i], and
+        // nested combinations). A write through the chain mutates the parameter only when
+        // every intermediate receiver is itself value-typed — the first reference-typed
+        // segment re-anchors the write onto a shared heap object, keeping it eligible.
+        var chainRoot = UnwrapParentheses(reference);
+        ExpressionSyntax current = chainRoot;
+        while (true)
+        {
+            ExpressionSyntax? next = current.Parent switch
+            {
+                MemberAccessExpressionSyntax member when member.Expression == current => member,
+                ElementAccessExpressionSyntax element when element.Expression == current => element,
+                _ => null,
+            };
+            if (next is null) break;
+
+            if (current != chainRoot
+                && semanticModel.GetTypeInfo(current, ct).Type?.IsValueType != true)
+            {
+                return null;
+            }
+
+            current = UnwrapParentheses(next);
+        }
+
+        if (current == chainRoot) return null;
+
+        if (current.Parent is AssignmentExpressionSyntax assignment && assignment.Left == current)
+            return "value-type member assignment";
+        if (current.Parent is PrefixUnaryExpressionSyntax prefix
+            && (prefix.IsKind(SyntaxKind.PreIncrementExpression)
+                || prefix.IsKind(SyntaxKind.PreDecrementExpression)))
+        {
+            return "value-type member assignment";
+        }
+        if (current.Parent is PostfixUnaryExpressionSyntax postfix
+            && (postfix.IsKind(SyntaxKind.PostIncrementExpression)
+                || postfix.IsKind(SyntaxKind.PostDecrementExpression)))
+        {
+            return "value-type member assignment";
         }
 
         return null;

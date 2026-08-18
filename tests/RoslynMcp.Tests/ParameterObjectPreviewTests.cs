@@ -180,6 +180,148 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// parameter-object-value-type-mutation-semantics: a mutating instance member call or a
+    /// nested field write through a mutable struct parameter must refuse the preview —
+    /// previously the rewrite silently redirected the mutation onto a temporary struct copy
+    /// (the positional-record property read), compiling cleanly with changed runtime behavior.
+    /// </summary>
+    [TestMethod]
+    public async Task MutableValueTypeParameterMutations_RefusePreviewWithActionableUses()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public struct POMutableStruct
+            {
+                public int State;
+                public void Mutate() => State++;
+            }
+
+            public class POValueTypeFixture
+            {
+                public int Compute(POMutableStruct called, POMutableStruct written)
+                {
+                    called.Mutate();
+                    written.State = 1;
+                    return called.State + written.State;
+                }
+            }
+            """,
+            "POValueTypeFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 11, column: 16),
+                    new ParameterObjectPreviewRequest(["called", "written"], "ComputeArgs"),
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "'called'");
+            StringAssert.Contains(ex.Message, "(mutable value-type member call)");
+            StringAssert.Contains(ex.Message, "'written'");
+            StringAssert.Contains(ex.Message, "(value-type member assignment)");
+            StringAssert.Contains(ex.Message, "POValueTypeFixture.cs:13");
+            StringAssert.Contains(ex.Message, "POValueTypeFixture.cs:14");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// parameter-object-value-type-mutation-semantics, do-not-over-refuse acceptance:
+    /// member mutation through a reference-type parameter, an array element write, and
+    /// readonly-struct member use are all semantically preserved by the DTO property read,
+    /// so the preview must succeed and the apply must keep the mutation semantics intact.
+    /// </summary>
+    [TestMethod]
+    public async Task ReferenceTypeAndReadOnlyStructParameters_PreviewSucceedsAndApplies()
+    {
+        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class PORefHolder
+            {
+                public int Value { get; set; }
+            }
+
+            public readonly struct POReadOnlySnapshot
+            {
+                public readonly int State;
+                public POReadOnlySnapshot(int state) => State = state;
+                public int Read() => State;
+            }
+
+            public class POEligibleFixture
+            {
+                public int Compute(PORefHolder holder, int[] items, POReadOnlySnapshot snapshot)
+                {
+                    holder.Value = 1;
+                    items[0] = 2;
+                    return holder.Value + items[0] + snapshot.Read() + snapshot.State;
+                }
+
+                public int Caller() => Compute(new PORefHolder(), new int[1], new POReadOnlySnapshot(3));
+            }
+            """,
+            "POEligibleFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 17, column: 16),
+                new ParameterObjectPreviewRequest(["holder", "items", "snapshot"], "ComputeArgs"),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken, "reference-type and readonly-struct parameters must stay eligible");
+            var fixtureDiff = preview.Changes.First(c =>
+                c.FilePath.EndsWith("POEligibleFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(fixtureDiff, "computeArgs.Holder.Value = 1");
+            StringAssert.Contains(fixtureDiff, "computeArgs.Items[0] = 2");
+            StringAssert.Contains(fixtureDiff, "new ComputeArgs(new PORefHolder(), new int[1], new POReadOnlySnapshot(3))");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual(
+                "applied",
+                apply.RootElement.GetProperty("status").GetString(),
+                $"apply_with_verify must redeem the preview token. Response: {applyJson}");
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                $"Applying the preview must introduce no diagnostics. Response: {applyJson}");
+
+            Assert.IsTrue(File.Exists(Path.Combine(fixtureDir, "ComputeArgs.cs")), "DTO file must be written to disk");
+            var fixtureText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(fixtureText, "Compute(ComputeArgs computeArgs)");
+            StringAssert.Contains(fixtureText, "computeArgs.Holder.Value = 1");
+            StringAssert.Contains(fixtureText, "computeArgs.Items[0] = 2");
+            StringAssert.Contains(fixtureText, "new ComputeArgs(new PORefHolder(), new int[1], new POReadOnlySnapshot(3))");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     [TestMethod]
     public async Task NewParameterName_InvalidRetainedOrLocalCollision_RefusesPreview()
     {
