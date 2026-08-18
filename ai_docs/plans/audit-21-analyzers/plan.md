@@ -1,15 +1,17 @@
 # AUDIT-21 implementation plan
 
-<!-- purpose: Detailed implementation plan for closing AUDIT-21 — host-injected IDE/CA analyzers in MSBuildWorkspace. For review before work begins. -->
+<!-- purpose: Parked implementation plan for closing AUDIT-21 — host-injected IDE/CA analyzers in MSBuildWorkspace. Dormant pending the product trigger in the header table; citations verified 2026-08-18. -->
 <!-- scope: in-repo -->
 <!-- artifact: plan -->
-<!-- status: active -->
+<!-- status: superseded -->
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft — pending review |
+| **Status** | **Parked (dormant)** — design accepted as sound, execution gated on the product trigger below. Executable on demand. |
 | **Created** | 2026-04-08 |
-| **Owner** | TBD |
+| **Parked** | 2026-08-18 (citations re-verified against the tree the same day; see § 15) |
+| **Unpark trigger** | ANY of: (a) a user/issue report that roslyn-mcp misses `IDE0xxx` / CA diagnostics Visual Studio or Rider reports; (b) a product decision to claim IDE-parity diagnostics as a shipped capability; (c) `EnforceCodeStyleInBuild=true` becoming common in target solutions, which makes the Hidden-default problem in § 11 Q4 moot. Absent one of these, the default-severity user sees no change (§ 11 Q4) and the M-sized cost is not justified. |
+| **Owner** | TBD (unassigned while parked) |
 | **Tracking** | `ai_docs/architecture.md` § Known Gaps; `docs/parity-gap-implementation-plan.md` § Known architecture limitation |
 | **Risk** | Medium (reflection against unsanctioned API surface; behavioral change to every diagnostic-touching tool) |
 | **Reversibility** | Fully reversible behind a feature flag (`ROSLYNMCP_HOST_ANALYZERS`) |
@@ -20,7 +22,7 @@
 
 AUDIT-21 documents a known gap: `MSBuildWorkspace` does not surface the IDE-side analyzer set (`IDE0xxx` rules and their code-fix providers) that ships in `Microsoft.CodeAnalysis.Features.dll` / `Microsoft.CodeAnalysis.CSharp.Features.dll`. Those assemblies are **already loaded** in the host process — `RoslynMcp.Roslyn.csproj:9-10` references both — but nothing in the diagnostic pipeline injects their analyzers into the per-project compilations the server analyzes.
 
-This plan adds a single, reflection-based provider that discovers the host-loaded `DiagnosticAnalyzer` types and merges them into `CompilationCache.BuildCompilationWithAnalyzersAsync`. Code-fix providers from the same assemblies are already loaded by `CodeActionService.LoadCodeFixProviders` (`CodeActionService.cs:210-240`) — which is the exact reflection template this plan reuses. The change is gated behind a `ROSLYNMCP_HOST_ANALYZERS` env var, ships opt-in for one v1.x release, then becomes the v2 default.
+This plan adds a single, reflection-based provider that discovers the host-loaded `DiagnosticAnalyzer` types and merges them into `CompilationCache.BuildCompilationWithAnalyzersAsync`. Code-fix providers from the same assemblies are already loaded by `CodeActionService.LoadCodeFixProviders` (`CodeActionService.cs:263-292`) and by the extracted `CodeFixProviderRegistry` (`src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs:165-185`) — which is the exact reflection template this plan reuses. The change is gated behind a `ROSLYNMCP_HOST_ANALYZERS` env var, ships opt-in for one minor release, then flips to the default in the following major.
 
 The plan has **no new MCP surface** and **no DTO changes**. Every existing diagnostic-touching tool (`project_diagnostics`, `compile_check`, `diagnostic_details`, `code_fix_preview`, `fix_all_preview`, `dead_code_detection`, `security_diagnostics`, `find_unused_symbols`) becomes more accurate without a contract bump.
 
@@ -31,27 +33,27 @@ The plan has **no new MCP surface** and **no DTO changes**. Every existing diagn
 ### 2.1 What the documentation says
 
 > *"IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21)."*  
-> — `ai_docs/architecture.md:83`
+> — `ai_docs/architecture.md:104`
 
 > *"AUDIT-21 | IDE/CA analyzers vs SDK-implicit diagnostics in `MSBuildWorkspace` | Documented gap | `ai_docs/architecture.md` — fix only if product requires full analyzer load; likely separate spike."*  
-> — `docs/parity-gap-implementation-plan.md:75`
+> — `docs/parity-gap-implementation-plan.md:76`
 
 ### 2.2 What the code actually does today
 
 The picture is more nuanced than "no IDE/CA analyzers." A current trace through diagnostics:
 
-1. `DiagnosticService.GetDiagnosticsAsync` (`DiagnosticService.cs:35-150`) requests both raw compiler diagnostics and analyzer-bound diagnostics via `ICompilationCache`.
-2. `CompilationCache.BuildCompilationWithAnalyzersAsync` (`CompilationCache.cs:95-119`) iterates `project.AnalyzerReferences`, drops `UnresolvedAnalyzerReference` entries, calls `.GetAnalyzers(project.Language)`, and binds them via `compilation.WithAnalyzers(...)`.
+1. `DiagnosticService.GetDiagnosticsAsync` (`DiagnosticService.cs:67-140`) requests both raw compiler diagnostics and analyzer-bound diagnostics via `ICompilationCache`.
+2. `CompilationCache.BuildCompilationWithAnalyzersAsync` (`CompilationCache.cs:231-252`) iterates `project.AnalyzerReferences` (unresolved references are now stripped upstream by `WorkspaceManager.StripUnresolvedAnalyzerReferences`, so the old inline filter is gone), calls `.GetAnalyzers(project.Language)`, and binds them via `compilation.WithAnalyzers(...)`.
 3. `project.AnalyzerReferences` contains only what MSBuild evaluation populated for the target project — i.e., analyzers a project's `.csproj` explicitly pulls in via `<PackageReference>` or `<Analyzer Include="…"/>`.
 4. The IDE-side analyzers (everything in the `IDE0xxx` family) are **never** populated into `project.AnalyzerReferences` because they live behind IDE-only MEF composition (`Microsoft.CodeAnalysis.Features.MefHostServices`) that `MSBuildWorkspace` does not invoke.
 
-The smoking gun is the existing guidance in `FixAllService.cs:53`:
+The smoking gun is the existing guidance in `FixAllService.cs:624` (built by `GetAlternativeToolHint`; the IDE0005-specific arm is at `:647`, and a sibling message sits at `:104`):
 
 > *"Restore analyzer packages (IDE/CA rules) or use organize_usings_preview / organize_usings_apply for unused usings (IDE0005). Use list_analyzers to see loaded diagnostic IDs."*
 
-That guidance message exists because `fix_all_preview` cannot find a code fix provider for IDE0005 — even though the provider class **is loaded in-process** (via the `Microsoft.CodeAnalysis.CSharp.Features` package reference) and the code-fix scanning code in `CodeActionService.LoadCodeFixProviders` (`CodeActionService.cs:210-240`) does pick it up. The bottleneck is purely on the analyzer side: the diagnostic is never raised, so the fix is never offered.
+That guidance message exists because `fix_all_preview` cannot find a code fix provider for IDE0005 — even though the provider class **is loaded in-process** (via the `Microsoft.CodeAnalysis.CSharp.Features` package reference) and the code-fix scanning code in `CodeActionService.LoadCodeFixProviders` (`CodeActionService.cs:263-292`) does pick it up. The bottleneck is purely on the analyzer side: the diagnostic is never raised, so the fix is never offered.
 
-### 2.3 Why this is the right "v2 stepping stone"
+### 2.3 Why this was framed as the next correctness investment
 
 Of the four post-release roadmap items in `docs/roadmap.md` (HTTP/SSE host, editor-backed host, persistent indexing, MCP Registry publication), AUDIT-21 is the only one that closes a **correctness gap inside the existing v1 surface** rather than expanding scope. Every alternative roadmap item ships a new operational footprint that needs hardening from zero, and any future host (HTTP/SSE or VS-backed) would still ship the same hole at higher latency unless this is fixed first.
 
@@ -59,8 +61,8 @@ Concrete leverage:
 
 - **Every diagnostic-touching tool becomes more accurate with no schema change.** No new tools, no DTO churn.
 - **Unblocks `fix_all_preview` for the most common cases** (`IDE0005` unused usings, `IDE0044` make readonly, `IDE0090` simplify new) — currently the tool has to disclaim them.
-- **Dissolves several backlog rows** (`compile-check-vs-analyzers-doc`, recurring "expected this rule to fire" notes in audit reports) without changing the tools they're attached to.
-- **The reflection-scan template already exists in the codebase** (`CodeActionService.cs:198-272`) — this plan extends a known-good pattern instead of inventing one.
+- **Dissolves recurring "expected this rule to fire" notes in audit reports** without changing the tools they're attached to. (The originally-cited `compile-check-vs-analyzers-doc` backlog row is no longer present in the backlog.)
+- **The reflection-scan template already exists in the codebase** (`CodeFixProviderRegistry.cs:150-190`, plus `CodeActionService.cs:263-320`) — this plan extends a known-good pattern instead of inventing one.
 
 ---
 
@@ -70,11 +72,11 @@ Concrete leverage:
 
 | # | Goal |
 |---|------|
-| G1 | When `ROSLYNMCP_HOST_ANALYZERS=true`, all `DiagnosticAnalyzer` types shipped in `Microsoft.CodeAnalysis.Features.dll` and `Microsoft.CodeAnalysis.CSharp.Features.dll` (the host's pinned 5.3.0 versions) are bound to every C# project compilation that flows through `CompilationCache`. |
+| G1 | When `ROSLYNMCP_HOST_ANALYZERS=true`, all `DiagnosticAnalyzer` types shipped in `Microsoft.CodeAnalysis.Features.dll` and `Microsoft.CodeAnalysis.CSharp.Features.dll` (the host's pinned 5.6.0 versions) are bound to every C# project compilation that flows through `CompilationCache`. |
 | G2 | A project's existing `AnalyzerReferences` are still honored. Host-injected analyzers are deduplicated against project-supplied analyzers by analyzer `System.Type` so a project that explicitly references `Microsoft.CodeAnalysis.NetAnalyzers` does not run CA rules twice. |
 | G3 | `.editorconfig` severity overrides apply to host-injected analyzers exactly as they apply to project-supplied analyzers (no special-casing). |
 | G4 | `code_fix_preview` and `fix_all_preview` resolve providers for newly surfaced IDE diagnostics without further changes — `CodeActionService.LoadCodeFixProviders` already loads them; the bottleneck has been the missing analyzer side. |
-| G5 | The change ships behind a feature flag, defaulting to **off** for the bridge release and **on** for the v2.0 release. |
+| G5 | The change ships behind a feature flag, defaulting to **off** for the bridge (minor) release and **on** in the next major release. |
 | G6 | Cold workspace performance regression is bounded and measured. New `PerformanceBaselineTests` budgets are documented and enforced. |
 | G7 | A startup health check asserts the discovery scan returns at least N analyzers; if it returns zero (e.g., a future Roslyn refactor moves them), the host logs a Warning and degrades to "host analyzers disabled" rather than silently failing. |
 
@@ -84,9 +86,9 @@ Concrete leverage:
 |---|----------|
 | NG1 | Loading non-Roslyn analyzer packs (StyleCop, Roslynator, SonarAnalyzer) at the host level. Those remain the project's responsibility via `<PackageReference>`. |
 | NG2 | Implementing or imitating Visual Studio's full IDE diagnostic service. Live-buffer parity, on-the-fly analysis, and editor squiggles remain out of scope and are tracked separately in `docs/roadmap.md` § *Unsaved Buffer And Live Workspace Parity*. |
-| NG3 | Auto-promoting `Hidden`-default IDE rules to `Warning`. The default severity filter in `DiagnosticService.cs:40` (`Warning`) still applies; users elevate via `.editorconfig` or by passing `severity: hint` to the tool. See § 6.3. |
+| NG3 | Auto-promoting `Hidden`-default IDE rules to `Warning`. The default severity floor in `DiagnosticService.cs:85` (`ParseSeverity(severityFilter) ?? DiagnosticSeverity.Info`) still applies — `Hidden` sits below it; users elevate via `.editorconfig` or by passing `severity: hint` to the tool. See § 6.3. |
 | NG4 | Loading IDE refactoring providers beyond what `CodeActionService.LoadCodeRefactoringProviders` already does. That code path is unchanged. |
-| NG5 | Resolving SDK version skew between the host's pinned Roslyn 5.3.0 and the user's solution SDK. Documented as a caveat (§ 11.2) but not corrected. |
+| NG5 | Resolving SDK version skew between the host's pinned Roslyn 5.6.0 and the user's solution SDK. Documented as a caveat (§ 11.2) but not corrected. |
 
 ---
 
@@ -120,22 +122,22 @@ Concrete leverage:
 
 | Type | Project | Purpose |
 |------|---------|---------|
-| `IHostAnalyzerProvider` | `RoslynMcp.Core/Services/` | Singleton contract returning `ImmutableArray<DiagnosticAnalyzer>` for a given language. |
+| `IHostAnalyzerProvider` | `RoslynMcp.Roslyn/Contracts/` | Singleton contract returning `ImmutableArray<DiagnosticAnalyzer>` for a given language. Sits beside `ICompilationCache` and `ICodeFixProviderRegistry`. |
 | `HostAnalyzerProvider` | `RoslynMcp.Roslyn/Services/` | Reflection-scan implementation. Lazy-evaluated, cached for process lifetime, respects `HostAnalyzerOptions.Enabled`. |
-| `HostAnalyzerOptions` | `RoslynMcp.Core/Models/` | Record with `Enabled : bool` and `MinExpectedAnalyzers : int` for the startup health check. |
+| `HostAnalyzerOptions` | `RoslynMcp.Roslyn/Services/` | Record with `Enabled : bool` and `MinExpectedAnalyzers : int` for the startup health check. Colocated with the sibling options records (`WorkspaceManagerOptions`, `ValidationServiceOptions`, `ExecutionGateOptions`). |
 
-`Core` already references `Microsoft.CodeAnalysis.Diagnostics` (see `ICompilationCache.cs:2` importing `DiagnosticAnalyzer`), so the new contract fits the established layering rule — Roslyn types may cross into `Core` when the contract genuinely wraps a Roslyn primitive.
+**Corrected 2026-08-18.** The original draft placed both types in `RoslynMcp.Core` on the claimed precedent that `Core/Services/ICompilationCache.cs` imports `DiagnosticAnalyzer`. That precedent does not exist: `ICompilationCache` lives at `src/RoslynMcp.Roslyn/Contracts/ICompilationCache.cs`, and `RoslynMcp.Core` has **zero** references to `DiagnosticAnalyzer`. Introducing one would be a new layering violation, not a continuation of an existing one. Both new types therefore live in `RoslynMcp.Roslyn` — the contract next to its peers in `Contracts/`, the options record next to its peers in `Services/`.
 
 ### 4.3 Modified types
 
 | File | Change |
 |------|--------|
 | `src/RoslynMcp.Roslyn/Services/CompilationCache.cs` | Inject `IHostAnalyzerProvider`. In `BuildCompilationWithAnalyzersAsync`, merge host analyzers with project-derived analyzers, deduplicating by analyzer `Type`. |
-| `src/RoslynMcp.Roslyn/Services/CodeActionService.cs` | Load code-fix providers from `Microsoft.CodeAnalysis.Features` **in addition to** the existing C# Features scan, so language-agnostic IDE fixes are not missed. (Current code only scans `Microsoft.CodeAnalysis.CSharp.Features`.) |
-| `src/RoslynMcp.Roslyn/Services/FixAllService.cs` | Update the guidance message at line 53 to drop the "Restore analyzer packages" hint when host analyzers are enabled. |
+| `src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs` | **Re-targeted 2026-08-18:** the CSharp.Features reflection scan was extracted out of `CodeActionService` into this registry (`:165-185`). Load providers from `Microsoft.CodeAnalysis.Features` **in addition to** the existing C# Features scan, so language-agnostic IDE fixes are not missed. `CodeActionService.LoadCodeFixProviders` (`:263-292`) and `LoadCodeRefactoringProviders` (`:296-320`) keep their own scans and must stay consistent. |
+| `src/RoslynMcp.Roslyn/Services/FixAllService.cs` | Update the guidance message at `:624` to drop the "Restore analyzer packages" hint when host analyzers are enabled. **Constraint:** the XML-doc contract at `:606-617` requires every guidance shape to keep naming the diagnostic and pointing at `list_analyzers` — do not gate that pointer. |
 | `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` | Register `IHostAnalyzerProvider` as a singleton. |
-| `src/RoslynMcp.Host.Stdio/Program.cs` | Add `BindHostAnalyzerOptions()` (mirrors the existing `Bind*` helpers). Register the resulting options singleton. |
-| `ai_docs/architecture.md` | Remove AUDIT-21 from § Known Gaps (or downgrade to "host-injected when enabled"). |
+| `src/RoslynMcp.Host.Stdio/Program.cs` | Add `BindHostAnalyzerOptions()` (mirrors the existing `Bind*` helpers at `:221-310`). Thread it through the `AddRoslynServices(...)` call at `:39-45`. |
+| `ai_docs/architecture.md` | Remove AUDIT-21 from § Known Gaps (`:104`) or downgrade to "host-injected when enabled". |
 | `ai_docs/runtime.md` | Add `ROSLYNMCP_HOST_ANALYZERS` and `ROSLYNMCP_HOST_ANALYZER_MIN_COUNT` to the env var table. |
 | `docs/parity-gap-implementation-plan.md` | Move AUDIT-21 from "Known architecture limitation" to release log. |
 | Tool descriptions: `compile_check`, `project_diagnostics`, `fix_all_preview` | Note that host-injected IDE/CA analyzers are loaded by default (or by env var for the bridge release). |
@@ -296,7 +298,7 @@ public sealed class HostAnalyzerProvider : IHostAnalyzerProvider
 
 **Validation criteria:**
 
-- Returns ≥ 1 analyzer when invoked against the pinned Roslyn 5.3.0 packages on a clean build.
+- Returns ≥ 1 analyzer when invoked against the pinned Roslyn 5.6.0 packages on a clean build.
 - Returns `ImmutableArray.Empty` when `_options.Enabled` is `false`.
 - Survives `ReflectionTypeLoadException` partial loads without throwing.
 - The single underlying scan runs at most once per process lifetime (verified by a unit test that calls `GetAnalyzers` from two threads concurrently).
@@ -317,7 +319,7 @@ public sealed class HostAnalyzerProvider : IHostAnalyzerProvider
            sp.GetService<HostAnalyzerOptions>() ?? new HostAnalyzerOptions(),
            sp.GetRequiredService<ILogger<HostAnalyzerProvider>>()));
    ```
-2. In `Program.cs`, add `BindHostAnalyzerOptions()` mirroring the existing helpers (`Program.cs:80-167`):
+2. In `Program.cs`, add `BindHostAnalyzerOptions()` mirroring the existing helpers (`Program.cs:221-310`):
    ```csharp
    static HostAnalyzerOptions BindHostAnalyzerOptions()
    {
@@ -330,11 +332,11 @@ public sealed class HostAnalyzerProvider : IHostAnalyzerProvider
        return opts;
    }
    ```
-3. Register the bound options at `Program.cs:23-28`:
+3. Thread the bound options into `AddRoslynServices(...)` at `Program.cs:39-45` (the other six options records are passed the same way):
    ```csharp
    builder.Services.AddSingleton(BindHostAnalyzerOptions());
    ```
-4. **Default value:** ship `Enabled = false` for the bridge release. Flip to `Enabled = true` in the v2.0 commit.
+4. **Default value:** ship `Enabled = false` for the bridge (minor) release. Flip to `Enabled = true` in the next major-version commit.
 
 ### Phase 3 — `CompilationCache` injection
 
@@ -343,7 +345,7 @@ public sealed class HostAnalyzerProvider : IHostAnalyzerProvider
 **Changes:**
 
 1. Add `IHostAnalyzerProvider` constructor parameter; store as field. The DI registration is unchanged (constructor injection via `AddSingleton<ICompilationCache, CompilationCache>` already resolves dependencies).
-2. Modify `BuildCompilationWithAnalyzersAsync` (`CompilationCache.cs:95-119`) to merge host-injected analyzers with project analyzers:
+2. Modify `BuildCompilationWithAnalyzersAsync` (`CompilationCache.cs:231-252`) to merge host-injected analyzers with project analyzers. **Note (2026-08-18):** the method is now reached through the injectable `_analyzerFactory` seam (`:40`, `:58`, `:63`), so the merge logic must live inside the default factory, not at the call site:
    ```csharp
    private async Task<CompilationWithAnalyzers?> BuildCompilationWithAnalyzersAsync(
        string workspaceId, Project project, CancellationToken ct)
@@ -389,7 +391,7 @@ public sealed class HostAnalyzerProvider : IHostAnalyzerProvider
 
 **File:** `src/RoslynMcp.Roslyn/Services/CodeActionService.cs`
 
-The existing reflection scan at `CodeActionService.cs:198-272` only loads providers from `Microsoft.CodeAnalysis.CSharp.Features`. Some IDE code-fix providers (notably the language-agnostic ones in `Microsoft.CodeAnalysis.Features.dll`) are not picked up.
+The existing reflection scans (`CodeFixProviderRegistry.cs:165-185` and `CodeActionService.cs:263-292`) only load providers from `Microsoft.CodeAnalysis.CSharp.Features`. Some IDE code-fix providers (notably the language-agnostic ones in `Microsoft.CodeAnalysis.Features.dll`) are not picked up.
 
 **Changes:**
 
@@ -414,7 +416,7 @@ This phase is technically independent of the analyzer change but ships in the sa
 
 ### Phase 5 — Guidance message and FixAllService cleanup
 
-**File:** `src/RoslynMcp.Roslyn/Services/FixAllService.cs:53`
+**File:** `src/RoslynMcp.Roslyn/Services/FixAllService.cs:624` (guidance builder; IDE0005 arm at `:647`, sibling message at `:104`)
 
 **Change:** when host analyzers are enabled, drop the "Restore analyzer packages (IDE/CA rules)" portion. Inject `IHostAnalyzerProvider` into `FixAllService`, check `GetDiagnostics().Enabled`, and produce one of two messages:
 
@@ -425,9 +427,9 @@ Same treatment for any other guidance strings that disclaim missing IDE rules �
 
 ### Phase 6 — Startup health check
 
-**File:** `src/RoslynMcp.Host.Stdio/Program.cs:52-63`
+**File:** `src/RoslynMcp.Host.Stdio/Program.cs:143-150` (the zero-workspaces startup notice), or `StartupDiagnostics.Capture` / `LogStartup` at `:97-101` if the count belongs in the structured surface report
 
-Extend the existing startup health check (which currently logs an Information event when zero workspaces are loaded) to also resolve `IHostAnalyzerProvider`, call `GetDiagnostics()`, and emit a structured event:
+Extend the existing startup notice (which currently logs an Information event when zero workspaces are loaded) to also resolve `IHostAnalyzerProvider`, call `GetDiagnostics()`, and emit a structured event:
 
 - `Information` when `Enabled=true` and `LoadedAnalyzerCount >= MinExpectedAnalyzers`.
 - `Warning` when `Enabled=true` and `LoadedAnalyzerCount < MinExpectedAnalyzers` (likely a pinned-version regression).
@@ -570,7 +572,7 @@ The 60s cold-load budget is generous on purpose — it tracks the existing `Work
 
 ### 7.1 Expected impact
 
-Loading and binding ~150–250 additional analyzers per project (rough estimate from the IDE features assemblies in Roslyn 5.3.0) is the dominant new cost. The cost concentrates in:
+Loading and binding ~150–250 additional analyzers per project (rough estimate from the IDE features assemblies in Roslyn 5.6.0) is the dominant new cost. The cost concentrates in:
 
 1. **One-time process cost:** the reflection scan in `HostAnalyzerProvider.LoadAnalyzers`. Bounded; runs at most once per language per process.
 2. **Per-project cold bind:** `compilation.WithAnalyzers(merged, …)` builds a new `CompilationWithAnalyzers` instance. Memory bump roughly proportional to analyzer count.
@@ -578,9 +580,9 @@ Loading and binding ~150–250 additional analyzers per project (rough estimate 
 
 ### 7.2 What is already amortized
 
-The existing `CompilationCache._analyzerBound` dictionary (`CompilationCache.cs:32`) memoizes `CompilationWithAnalyzers` per `(workspaceId, projectId, version)`. The cold cost is paid once per project per workspace version; subsequent calls reuse the same instance. This is the single most important reason the change is feasible — without the existing cache, every diagnostic call would re-bind analyzers.
+The existing `CompilationCache._analyzerBound` dictionary (`CompilationCache.cs:48`) memoizes `CompilationWithAnalyzers` per `(workspaceId, projectId, version)`. The cold cost is paid once per project per workspace version; subsequent calls reuse the same instance. This is the single most important reason the change is feasible — without the existing cache, every diagnostic call would re-bind analyzers.
 
-Concurrent first-callers share the same in-flight task via the `Task<>`-storing pattern at `CompilationCache.cs:80-92`. Two parallel `project_diagnostics` calls do not double-bind.
+Concurrent first-callers share the same in-flight task via the `Lazy<Task<>>`-storing pattern at `CompilationCache.cs:122-155`. Two parallel `project_diagnostics` calls do not double-bind.
 
 ### 7.3 Profiling plan before merging
 
@@ -606,9 +608,9 @@ None of these are needed for the initial ship. They are documented here so revie
 
 | Step | Release | `Enabled` default | What ships |
 |------|---------|-------------------|------------|
-| 1 | v1.x bridge release (e.g., v1.9.0) | `false` | Code change + opt-in flag + tests + docs. No user-visible behavior change unless they set `ROSLYNMCP_HOST_ANALYZERS=true`. |
-| 2 | v1.x soak release (e.g., v1.9.1+) | `false` | Documentation pass: the env var is recommended in audit prompts and skill SKILL.md files for internal validation. Collect operational feedback. |
-| 3 | v2.0.0 | `true` | Default flips. AUDIT-21 is closed. `compile_check`, `project_diagnostics`, and `fix_all_preview` tool descriptions are rewritten to assume host analyzers are present. |
+| 1 | next minor after unpark | `false` | Code change + opt-in flag + tests + docs. No user-visible behavior change unless they set `ROSLYNMCP_HOST_ANALYZERS=true`. |
+| 2 | following patch/minor (soak) | `false` | Documentation pass: the env var is recommended in audit prompts and skill SKILL.md files for internal validation. Collect operational feedback. |
+| 3 | next major | `true` | Default flips. AUDIT-21 is closed. `compile_check`, `project_diagnostics`, and `fix_all_preview` tool descriptions are rewritten to assume host analyzers are present. |
 
 ### 8.2 Communication
 
@@ -629,12 +631,12 @@ None of these are needed for the initial ship. They are documented here so revie
 
 | File | Change |
 |------|--------|
-| `ai_docs/architecture.md` § Known Gaps | Either remove the AUDIT-21 line or rewrite as: *"IDE/CA analyzers are host-injected by default (v2.0+) via `IHostAnalyzerProvider`. Set `ROSLYNMCP_HOST_ANALYZERS=false` to revert to MSBuildWorkspace-only analyzer references."* |
+| `ai_docs/architecture.md` § Known Gaps | Either remove the AUDIT-21 line (`:104`) or rewrite as: *"IDE/CA analyzers are host-injected by default via `IHostAnalyzerProvider`. Set `ROSLYNMCP_HOST_ANALYZERS=false` to revert to MSBuildWorkspace-only analyzer references."* |
 | `ai_docs/runtime.md` § Environment variables | Add two rows: `ROSLYNMCP_HOST_ANALYZERS` and `ROSLYNMCP_HOST_ANALYZER_MIN_COUNT`. |
 | `docs/parity-gap-implementation-plan.md` § Known architecture limitation | Remove the AUDIT-21 row (or move to a "Closed" subsection if one is added). |
-| `ai_docs/backlog.md` | Remove the `compile-check-vs-analyzers-doc` row (it dissolves once host analyzers fire). Sync per the **Agent contract** at the top of that file. |
+| `ai_docs/backlog.md` | Sync per the **Agent contract** at the top of that file. (The originally-named `compile-check-vs-analyzers-doc` row is no longer present. Re-derive the affected rows at unpark time rather than trusting this list.) |
 | Tool descriptions in `src/RoslynMcp.Host.Stdio/Tools/` | Update `compile_check`, `project_diagnostics`, and `fix_all_preview` descriptions to mention host-injected analyzers and the env var. Search for the existing string "analyzer-inclusive" in `compile_check`'s description and rewrite around it. |
-| `src/RoslynMcp.Roslyn/Services/FixAllService.cs:53` | Remove the "Restore analyzer packages (IDE/CA rules)" hint when `Enabled=true`. |
+| `src/RoslynMcp.Roslyn/Services/FixAllService.cs:624` | Remove the "Restore analyzer packages (IDE/CA rules)" hint when `Enabled=true`, without dropping the `list_analyzers` pointer the XML-doc contract at `:606-617` requires. |
 | `CHANGELOG.md` | Two entries (one per rollout step). |
 | Skills referencing diagnostics: `skills/explain-error/SKILL.md`, `skills/security/SKILL.md`, `skills/analyze/SKILL.md` | Audit for outdated language about "missing IDE rules" or workarounds. |
 | `docs/product-contract.md` § Stable Surface | No change. The change is an accuracy improvement to existing stable tools. |
@@ -645,15 +647,15 @@ None of these are needed for the initial ship. They are documented here so revie
 
 | # | Risk | Severity | Mitigation |
 |---|------|----------|-----------|
-| R1 | **Reflection against unsanctioned API.** Roslyn's IDE features assemblies have no public contract for "list all `DiagnosticAnalyzer` types." A future Roslyn refactor could move types to a different assembly or change their attribute conventions. | Medium | Pin Roslyn version in `Directory.Packages.props` (already done — 5.3.0). Startup health check (§ 5 Phase 6) fails loud when discovery returns zero. CI test asserts a minimum analyzer count. |
-| R2 | **SDK version skew.** Host pins Roslyn 5.3.0; user's solution may target a different SDK with different IDE rule behavior. | Medium | Document as a one-line caveat in tool descriptions. No mitigation in code — IDEs face the same problem and accept it. |
-| R3 | **Cold-load performance regression.** First `project_diagnostics` call per project becomes substantially slower. | Medium | Existing `CompilationCache` already amortizes the cost. New `PerformanceBaselineTests` budget catches regressions. Profile against an external solution before merging. |
+| R1 | **Reflection against unsanctioned API.** Roslyn's IDE features assemblies have no public contract for "list all `DiagnosticAnalyzer` types." A future Roslyn refactor could move types to a different assembly or change their attribute conventions. | Medium | Pin Roslyn version in `Directory.Packages.props` (already done — 5.6.0, `:7-14`). Startup health check (§ 5 Phase 6) fails loud when discovery returns zero. CI test asserts a minimum analyzer count. |
+| R2 | **SDK version skew.** Host pins Roslyn 5.6.0; user's solution may target a different SDK with different IDE rule behavior. | Medium | Document as a one-line caveat in tool descriptions. No mitigation in code — IDEs face the same problem and accept it. |
+| R3 | **Cold-load performance regression.** First `project_diagnostics` call per project becomes substantially slower. | Medium | Existing `CompilationCache` already amortizes the cost. New `PerformanceBaselineTests` budget catches regressions. **Gap flagged 2026-08-18:** "profile before merging" is a to-do, not a mitigation — `docs/large-solution-profiling-baseline.md` is a *method* document with no recorded numbers, so there is no baseline to regress against. Recording that baseline is a prerequisite of unpark, not of merge. |
 | R4 | **Duplicate analyzer execution.** A project that already references `Microsoft.CodeAnalysis.NetAnalyzers` could end up running CA rules twice. | Low | Type-level dedup in `CompilationCache.BuildCompilationWithAnalyzersAsync`. Test case in § 6.3.5. |
 | R5 | **Hidden-default IDE rules flood `severity: hint` queries.** Users running `project_diagnostics` with `severity: hint` will see hundreds of new entries, possibly hitting the result limit. | Low | Document in tool description. Default severity filter remains `Warning`; users opt in to Hint. No change to the limit logic. |
 | R6 | **Code-fix providers double-loaded by `CodeActionService`.** Phase 4 adds a second feature assembly to the existing scan. | Low | Type-level dedup applied symmetrically in `LoadCodeFixProviders`. |
 | R7 | **Test fixture diagnostic counts shift.** Existing tests that assert absolute warning counts on the shared sample workspace may break. | Low | § 6.5 calls out the at-risk tests. Migration is a one-time fix. |
 | R8 | **IDE analyzer initialization throws on construction.** Some IDE analyzers may require services that `MSBuildWorkspace` doesn't provide. | Medium | `Activator.CreateInstance` is wrapped in try/catch in `LoadAnalyzers`; failures are logged but the scan continues. Worst case: a subset of analyzers is loaded. The startup health check exposes the count, so a sudden drop is visible. |
-| R9 | **Layer-boundary regression.** New `IHostAnalyzerProvider` interface in `Core` imports `DiagnosticAnalyzer`. | Low | Already established by `ICompilationCache.cs:2`. Architecture rule is "no raw Roslyn types in DTO contracts," which this respects — `DiagnosticAnalyzer` is a service primitive, not a DTO. |
+| R9 | **Layer-boundary regression.** The draft put `IHostAnalyzerProvider` in `Core`, importing `DiagnosticAnalyzer`. | ~~Low~~ **Resolved 2026-08-18 by relocation** | The claimed `ICompilationCache.cs:2` precedent was false — `Core` has no `DiagnosticAnalyzer` reference and `ICompilationCache` lives in `RoslynMcp.Roslyn/Contracts/`. Both new types now live in `RoslynMcp.Roslyn` (§ 4.2), so no Roslyn type crosses into `Core` and the risk is designed out rather than accepted. |
 | R10 | **Reflection scan on a trimmed/AOT host.** A future Native AOT publish path would fail because `Activator.CreateInstance(Type)` is trim-unsafe. | Low | Not a current scenario. `RoslynMcp.Host.Stdio` is published as a self-contained .NET app, not Native AOT. Document as a known incompatibility if AOT becomes a target. |
 
 ---
@@ -663,30 +665,29 @@ None of these are needed for the initial ship. They are documented here so revie
 These need decisions before implementation begins. Each has a **Recommendation** so the review can either accept or override.
 
 **Q1. Default value of `ROSLYNMCP_HOST_ANALYZERS` for the bridge release.**  
-Should the v1.x bridge release default to `Enabled=false` (opt-in) or `Enabled=true` (opt-out)?  
-**Recommendation:** `false` for the bridge release. Flip in v2.0. This minimizes the blast radius of a behavior change that could affect every diagnostic-touching tool, and gives one release cycle to surface unknown unknowns.
+Should the bridge (minor) release default to `Enabled=false` (opt-in) or `Enabled=true` (opt-out)?  
+**Recommendation:** `false` for the bridge release. Flip in the next major. This minimizes the blast radius of a behavior change that could affect every diagnostic-touching tool, and gives one release cycle to surface unknown unknowns.
 
 **Q2. `MinExpectedAnalyzers` startup threshold.**  
 What count should the startup health check use as the floor before logging a Warning?  
-**Recommendation:** Set the initial value to `50` based on the empirical count from a one-off run against Roslyn 5.3.0 — well below the expected count (~150-250) but high enough to detect a catastrophic regression. Bake the actual measured number into the default after the first PR run.
+**Recommendation:** Set the initial value to `50` based on the empirical count from a one-off run against Roslyn 5.6.0 — well below the expected count (~150-250) but high enough to detect a catastrophic regression. Bake the actual measured number into the default after the first PR run.
 
 **Q3. Should `list_analyzers` surface host-injected analyzers separately?**  
 The existing `list_analyzers` tool (`AnalyzerInfoService.cs`) groups analyzers by source assembly. Host-injected analyzers will appear as `Microsoft.CodeAnalysis.Features` and `Microsoft.CodeAnalysis.CSharp.Features` entries that look indistinguishable from project references.  
 **Recommendation:** Add a `Source: "Host" | "Project"` field to `AnalyzerInfoDto`. This is the only DTO change in the entire plan and is purely additive (existing clients ignore unknown fields). If the reviewer prefers zero DTO churn, drop this and rely on the assembly name as a soft signal.
 
 **Q4. Should we elevate Hidden-default IDE rules?**  
-Many `IDE0xxx` rules ship with `DefaultSeverity = Hidden`, meaning they fire but are filtered out by the default `severityFilter: "Warning"` in `DiagnosticService.cs:40`. After this change, users running with the default filter will see **no new diagnostics** unless they explicitly query `severity: hint` or set `EnforceCodeStyleInBuild=true` in their `.csproj`.  
+Many `IDE0xxx` rules ship with `DefaultSeverity = Hidden`, meaning they fire but are filtered out by the default severity floor in `DiagnosticService.cs:85` — `ParseSeverity(severityFilter) ?? DiagnosticSeverity.Info`, which sits above `Hidden`. (The draft said the default was `Warning` at `:40`; corrected 2026-08-18. The conclusion is unchanged — `Hidden` is below `Info` too.) After this change, users running with the default filter will see **no new diagnostics** unless they explicitly query `severity: hint` or set `EnforceCodeStyleInBuild=true` in their `.csproj`.  
 **Recommendation:** Do **not** elevate. Match `dotnet build` semantics so users get consistent results across the host and the CLI. Document the gotcha in the tool description and make it a noted talking point in the release notes.
 
-**Q5. Should this PR also load `SecurityCodeScan.VS2019` analyzers?**  
-That package is referenced in `Directory.Packages.props:26` but only consumed by `SecurityDiagnosticService` today.  
-**Recommendation:** Out of scope. Keep this PR focused on Roslyn IDE/CA analyzers only. The `SecurityCodeScan` integration follows a different code path and a separate review.
+**Q5. ~~Should this PR also load `SecurityCodeScan.VS2019` analyzers?~~ — MOOT (2026-08-18).**  
+The `SecurityCodeScan.VS2019` package is no longer referenced anywhere in `Directory.Packages.props`. The question has no subject left; nothing to decide.
 
 **Q6. Where should `HostAnalyzerOptions` live?**  
 Two options:
 - `RoslynMcp.Core/Models/HostAnalyzerOptions.cs` — alongside `WorkspaceManagerOptions`, `ValidationServiceOptions`, etc.
 - `RoslynMcp.Roslyn/Services/HostAnalyzerOptions.cs` — colocated with the implementation.  
-**Recommendation:** `Core/Models/`. The existing pattern in `Program.cs:80-167` is that all options records the host binds live in `Core` so the host can reference them without depending on `Roslyn` internals.
+**Recommendation (revised 2026-08-18): `RoslynMcp.Roslyn/Services/`.** The draft's premise — "all options records the host binds live in `Core`" — is false: `WorkspaceManagerOptions`, `ValidationServiceOptions`, and `ExecutionGateOptions` all live in `src/RoslynMcp.Roslyn/Services/`, and the host binds them via the `Bind*` helpers at `Program.cs:221-310` without any `Core` involvement. Colocate with those peers.
 
 **Q7. Should `code_fix_preview` and `fix_all_preview` get an explicit `includeHostFixes` parameter?**  
 Allows callers to opt out at the tool level rather than the env var level.  
@@ -705,9 +706,9 @@ The PR is mergeable when **all** of the following are true:
 - [ ] `HostAnalyzerIntegrationTests` (§ 6.3) — all six methods pass with `Enabled=true`.
 - [ ] Existing `DiagnosticServiceFilterTotalsTests` and `DiagnosticFixIntegrationTests` still pass with the flag default (`Enabled=false`).
 - [ ] New `PerformanceBaselineTests` budgets pass on a clean run; numbers recorded in the PR description.
-- [ ] Cold-load measurement against an external 50+ project solution is documented in the PR. If P95 exceeds 2× the pre-change baseline, the PR is held for follow-up profiling.
+- [ ] A large-solution baseline exists **before** implementation starts (per R3), and the cold-load measurement against an external 50+ project solution is documented in the PR. If P95 exceeds 2× the pre-change baseline, the PR is held for follow-up profiling.
 - [ ] `ai_docs/architecture.md`, `ai_docs/runtime.md`, `docs/parity-gap-implementation-plan.md`, and the affected tool descriptions are updated in the same PR.
-- [ ] `ai_docs/backlog.md` is synced (the `compile-check-vs-analyzers-doc` row is removed; this plan file is removed or moved to an `archive/` location only after the v2.0 default flip).
+- [ ] `ai_docs/backlog.md` is synced per its Agent contract (re-derive the affected rows at unpark time; the originally-named `compile-check-vs-analyzers-doc` row no longer exists). This plan file is removed or moved to `ai_docs/archive/` only after the default flip ships.
 - [ ] `CHANGELOG.md` entry written under the bridge release version.
 - [ ] Startup health check observed manually against a sample workspace; log lines look reasonable.
 
@@ -717,9 +718,9 @@ The PR is mergeable when **all** of the following are true:
 
 Per `ai_docs/workflow.md` § Backlog closure and `ai_docs/backlog.md` § Agent contract, this implementation plan ends with the required final todo when the work is executed:
 
-- **`backlog: sync ai_docs/backlog.md`** — remove `compile-check-vs-analyzers-doc` (closed by Phase 5 + § 9 doc updates). Confirm no other backlog row depends on AUDIT-21 remaining open. The `revert-last-apply-disk-consistency` and `test-run-failure-envelope` rows are unaffected.
+- **`backlog: sync ai_docs/backlog.md`** — at unpark time, re-derive which rows this work closes and confirm no other row depends on AUDIT-21 remaining open. **Do not trust the draft's list (corrected 2026-08-18):** none of the three rows it named — `compile-check-vs-analyzers-doc`, `revert-last-apply-disk-consistency`, `test-run-failure-envelope` — is present in `ai_docs/backlog.md` any more. The row that tracked the execute-vs-park decision for this plan (`audit-21-analyzer-load-decision`) was closed by the 2026-08-18 parking.
 
-The plan file itself (`ai_docs/audit_21_implementaion_plan.md`) should be deleted or moved to `ai_docs/archive/` once the v2.0 default flip ships, per the archive policy in `ai_docs/archive/README.md`.
+The plan file itself (`ai_docs/plans/audit-21-analyzers/plan.md` — the draft cited a misspelled path, `ai_docs/audit_21_implementaion_plan.md`, that never existed) should be deleted or moved to `ai_docs/archive/` once the default flip ships, per the archive policy in `ai_docs/archive/README.md`. While parked it stays in place and stays registered in `ai_docs/planning_index.md` so it is not an unregistered plan dir.
 
 ---
 
@@ -727,17 +728,40 @@ The plan file itself (`ai_docs/audit_21_implementaion_plan.md`) should be delete
 
 | File | Role |
 |------|------|
-| `ai_docs/architecture.md:81-83` | Source of the AUDIT-21 callout |
-| `docs/parity-gap-implementation-plan.md:71-76` | Roadmap-level scoping ("likely separate spike") |
+| `ai_docs/architecture.md:102-104` | Source of the AUDIT-21 callout |
+| `docs/parity-gap-implementation-plan.md:72-76` | Roadmap-level scoping ("likely separate spike") |
 | `docs/roadmap.md:42-69` | Large-solution performance strategy that bounds the perf risk |
-| `src/RoslynMcp.Roslyn/Services/CompilationCache.cs:95-119` | Primary modification site (Phase 3) |
-| `src/RoslynMcp.Roslyn/Services/CodeActionService.cs:198-272` | Reflection-scan template that this plan reuses (Phase 1) and extends (Phase 4) |
-| `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs:35-150` | Consumer of the analyzer-bound compilation; no direct change but heavily affected |
-| `src/RoslynMcp.Roslyn/Services/FixAllService.cs:48-55` | Guidance message that gets cleaned up in Phase 5 |
-| `src/RoslynMcp.Core/Services/ICompilationCache.cs` | Layer precedent for Roslyn types in `Core` |
-| `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:18-93` | DI registration site (Phase 2) |
-| `src/RoslynMcp.Host.Stdio/Program.cs:80-167` | Env var binding pattern (Phase 2) |
+| `src/RoslynMcp.Roslyn/Services/CompilationCache.cs:231-252` | Primary modification site (Phase 3); injectable factory seam at `:40`, `:58`, `:63` |
+| `src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs:165-185` | Reflection-scan template that this plan reuses (Phase 1) and extends (Phase 4) — extracted out of `CodeActionService` after the draft was written |
+| `src/RoslynMcp.Roslyn/Services/CodeActionService.cs:263-320` | Sibling provider/refactoring scans that must stay consistent with the registry |
+| `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs:67-140` | Consumer of the analyzer-bound compilation; no direct change but heavily affected. Default severity floor at `:85`; `ParseSeverity` at `:414-422` |
+| `src/RoslynMcp.Roslyn/Services/FixAllService.cs:624` | Guidance message that gets cleaned up in Phase 5; XML-doc contract at `:606-617`, IDE0005 arm at `:647` |
+| `src/RoslynMcp.Roslyn/Contracts/ICompilationCache.cs` | Home for the new `IHostAnalyzerProvider` contract. **Not** a precedent for Roslyn types in `Core` — the draft claimed that and was wrong (§ 4.2, R9) |
+| `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:20-40` | DI registration site (Phase 2); `ICompilationCache` registered at `:23` |
+| `src/RoslynMcp.Host.Stdio/Program.cs:221-310` | Env var binding pattern (Phase 2); options threaded into `AddRoslynServices(...)` at `:39-45`; startup notice at `:143-150` |
 | `tests/RoslynMcp.Tests/PerformanceBaselineTests.cs` | Budget test pattern (§ 6.4) |
 | `tests/RoslynMcp.Tests/DiagnosticFixIntegrationTests.cs` | Integration test pattern (§ 6.3) |
 | `samples/SampleSolution/SampleLib/DiagnosticsProbe.cs` | Existing fixture that the new probe file (`HostAnalyzerProbe.cs`) sits alongside |
-| `Directory.Packages.props:7-11` | Pinned Roslyn version (5.3.0) |
+| `Directory.Packages.props:7-14` | Pinned Roslyn version (5.6.0) |
+
+---
+
+## 15. Parking record (2026-08-18)
+
+**Decision: parked, not superseded.** The diagnosis in § 2 was re-verified against the tree on 2026-08-18 and still holds — `CompilationCache.BuildCompilationWithAnalyzersAsync` binds only `project.AnalyzerReferences`, no `IHostAnalyzerProvider` exists in `src/`, and `ai_docs/architecture.md:104` still carries the AUDIT-21 gap. Nothing about the design is known to be wrong. What is missing is a reason to spend it now.
+
+**Why parked rather than executed:**
+
+1. **§ 11 Q4 undercuts the § 2.3 pitch.** Most `IDE0xxx` rules ship `DefaultSeverity = Hidden`, and the default severity floor is `Info` (`DiagnosticService.cs:85`). A user on defaults would see **no new diagnostics**. The real win is narrower than "every diagnostic-touching tool becomes more accurate": hint-level queries, plus unblocking the fix path for IDE0005/IDE0044/IDE0090.
+2. **No perf baseline exists.** R3's mitigation is a to-do (see the amended R3 row).
+3. **The gate is a product decision nobody has made.** `docs/parity-gap-implementation-plan.md:76` conditions this on "fix only if product requires full analyzer load"; that condition went unanswered for four months.
+
+**Unpark checklist:**
+
+- [ ] One of the header's unpark triggers has fired; record which.
+- [ ] Record a large-solution profiling baseline (R3) **before** implementation starts.
+- [ ] Re-verify every § 14 anchor. They were correct on 2026-08-18 and will drift again.
+- [ ] Split into three initiatives, not one PR — the § 5 phases touch more than four production files, which is above the single-row size ceiling: (i) `HostAnalyzerProvider` + options + flag + unit tests, nothing wired; (ii) `CompilationCache` wiring + type-dedup + the perf gate; (iii) docs, tool descriptions, and the default flip. Route via `/backlog-sweep:prepare`.
+- [ ] Flip `<!-- status: -->` back to `active` and restore the `planning_index.md` row to an active registration.
+
+**Schema note.** The `<!-- status: -->` marker is `superseded` because the doc-audit enum is `active | shipped | superseded` — there is no `parked` value, and `superseded` is the only legal value that tells discovery tools to skip a plan that is not shipped. Read it as "parked"; this section, not the marker, is authoritative on intent.
