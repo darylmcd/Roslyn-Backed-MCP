@@ -60,10 +60,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             throw new InvalidOperationException(
                 $"parameter_object_preview requires a method symbol; resolved {symbol?.Kind.ToString() ?? "null"} instead.");
 
-        if (method.MethodKind == MethodKind.LocalFunction)
-            throw new ArgumentException(
-                $"parameter_object_preview does not support local functions ({method.ToDisplayString()}); v1 scope is intra-class methods only.",
-                nameof(target));
+        EnforceTargetMethodContractRefusals(method);
 
         var groupedParameters = ResolveGroupedParameters(method, request);
         ValidateGeneratedMemberNames(groupedParameters, request.NewTypeName);
@@ -530,6 +527,80 @@ public sealed class ParameterObjectService : IParameterObjectService
         while (current is ParenthesizedExpressionSyntax parenthesized)
             current = parenthesized.Expression;
         return current;
+    }
+
+    /// <summary>
+    /// Refuses target methods whose kind or dispatch contract the single-declaration
+    /// rewriter cannot rewrite atomically. Must run before any caller collection or
+    /// preview construction so no compile-breaking partial rewrite is ever stored as a
+    /// redeemable preview token.
+    /// </summary>
+    private static void EnforceTargetMethodContractRefusals(IMethodSymbol target)
+    {
+        if (target.MethodKind == MethodKind.LocalFunction)
+            throw new ArgumentException(
+                $"parameter_object_preview does not support local functions ({target.ToDisplayString()}); v1 scope is intra-class methods only.",
+                nameof(target));
+
+        if (target.MethodKind == MethodKind.ExplicitInterfaceImplementation || !target.ExplicitInterfaceImplementations.IsEmpty)
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' explicitly implements an interface member. " +
+                "The interface declaration would keep the old signature, breaking the implementation relationship; " +
+                "change the interface first, then re-run against a free-standing method.",
+                nameof(target));
+
+        if (target.MethodKind is not (MethodKind.Ordinary or MethodKind.ReducedExtension))
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' has method kind '{target.MethodKind}'. " +
+                "Constructors, destructors, accessors, operators, conversions, and delegate/anonymous functions " +
+                "cannot have their declaration and call sites rewritten atomically; only ordinary methods " +
+                "(including extension methods) are supported.",
+                nameof(target));
+
+        if (target.IsOverride)
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an 'override'. " +
+                "Rewriting it in isolation would leave the base declaration and sibling overrides at the old arity, " +
+                "breaking the override relationship; restructure the whole hierarchy manually instead.",
+                nameof(target));
+
+        if (target.IsVirtual || target.IsAbstract)
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a " +
+                $"{(target.IsAbstract ? "'abstract'" : "'virtual'")} dispatch root. " +
+                "Overrides in derived types would keep the old signature; restructure the whole hierarchy manually instead.",
+                nameof(target));
+
+        if (ImplementsInterfaceMember(target))
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' implements an interface member. " +
+                "The interface declaration would keep the old signature, breaking the implementation relationship; " +
+                "change the interface first, then re-run against a free-standing method.",
+                nameof(target));
+
+        if (target.IsExtern || target.GetAttributes().Any(a =>
+                a.AttributeClass?.Name is "DllImportAttribute" or "LibraryImportAttribute"))
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an extern/PInvoke declaration. " +
+                "Its signature is bound to a native entry point and cannot be regrouped.",
+                nameof(target));
+
+        if (target.PartialDefinitionPart is not null || target.PartialImplementationPart is not null)
+            throw new ArgumentException(
+                $"parameter_object_preview refuses: '{target.ToDisplayString()}' is a partial method with paired " +
+                "definition/implementation declarations, which may bind different parameter names. " +
+                "Merge the partial declarations first, then re-run.",
+                nameof(target));
+    }
+
+    private static bool ImplementsInterfaceMember(IMethodSymbol target)
+    {
+        var containingType = target.ContainingType;
+        if (containingType is null) return false;
+        return containingType.AllInterfaces
+            .SelectMany(i => i.GetMembers().OfType<IMethodSymbol>())
+            .Any(m => SymbolEqualityComparer.Default.Equals(
+                containingType.FindImplementationForInterfaceMember(m), target));
     }
 
     private static void EnforceParameterShapeRefusals(IMethodSymbol method, IReadOnlyList<IParameterSymbol> grouped)
