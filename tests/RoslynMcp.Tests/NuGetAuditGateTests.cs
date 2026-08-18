@@ -8,7 +8,9 @@ public sealed class NuGetAuditGateTests
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var script = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "verify-nuget-audit.ps1"));
-        var justfile = File.ReadAllText(Path.Combine(repositoryRoot, "Justfile"));
+        // Lowercase 'justfile' matches the on-disk name. A capitalized spelling resolves on
+        // case-insensitive Windows but throws on the case-sensitive Linux publish runner.
+        var justfile = File.ReadAllText(Path.Combine(repositoryRoot, "justfile"));
         var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"));
 
         StringAssert.Contains(script, "--force-evaluate");

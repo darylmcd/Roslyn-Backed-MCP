@@ -173,13 +173,9 @@ public sealed class VerifyReleaseChildScriptTests
                     cleanupMode: testCase.Mode,
                     failDotnetTest: testCase.FailDotnetTest);
                 var combinedOutput = result.StdOut + result.StdErr;
-                var normalizedOutput = System.Text.RegularExpressions.Regex.Replace(
-                    System.Text.RegularExpressions.Regex.Replace(
-                        combinedOutput,
-                        "\u001B\\[[0-9;]*m",
-                        string.Empty),
-                    "\\s+",
-                    " ");
+                // Also rejoins the formatter's '|' continuation gutter, which survives a
+                // plain whitespace collapse and splits expected phrases on Linux runners.
+                var normalizedOutput = PowerShellOutputNormalizer.Normalize(combinedOutput);
                 var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
                 var attemptPath = Path.Combine(fixtureRoot, "cleanup-attempts.txt");
                 var targetPath = Path.Combine(fixtureRoot, "cleanup-target.txt");

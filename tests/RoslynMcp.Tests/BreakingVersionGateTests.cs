@@ -205,8 +205,13 @@ public sealed class BreakingVersionGateTests
                     testCase.RequireConsumedFragments);
                 var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
 
+                // Normalize: PowerShell's error formatter wraps at console width, so the
+                // expected phrase splits across a '|' gutter at a host-dependent column.
+                var normalizedOutput = PowerShellOutputNormalizer.Normalize(
+                    result.StdOut + result.StdErr);
+
                 Assert.AreEqual(testCase.ExpectedExitCode, result.ExitCode, diagnostic);
-                StringAssert.Contains(result.StdOut + result.StdErr, testCase.ExpectedText, diagnostic);
+                StringAssert.Contains(normalizedOutput, testCase.ExpectedText, diagnostic);
             }
             finally
             {
