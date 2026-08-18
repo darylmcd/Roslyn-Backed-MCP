@@ -25,6 +25,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# --- TEMPORARY: v3.0.1 release-gate override --------------------------------
+# Operator-approved, twice-confirmed override: shipping v3.0.1 as a patch
+# despite pending `Changed — BREAKING` fragments (MCP protocol-logging
+# retirement, MCP SDK 2.x wire-contract reconciliation, tool error-envelope
+# redaction across ~9 surfaces). This bypass must be reverted in the commit
+# immediately following the v3.0.1 tag + confirmed NuGet publish — do not
+# leave it in place for any other release.
+Write-Warning 'verify-breaking-version-bump.ps1: gate bypassed for v3.0.1 (temporary, operator-approved override).'
+exit 0
+# ------------------------------------------------------------------------------
+
 try {
     $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot -ErrorAction Stop).Path
 }
