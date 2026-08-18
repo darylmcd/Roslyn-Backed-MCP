@@ -12,7 +12,7 @@
     {
       "id": "parameter-object-target-method-contract-validation",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-target-method-contract-validation"
       ],
@@ -35,10 +35,10 @@
         "ruleOneBundleResolved": "split"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/parameter-object-target-method-contract-validation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1263",
+      "mergedAt": "2026-08-18T21:50:56Z",
       "notes": null,
       "fileSetHash": "2709b9fe80f2c4401e096540cd2b5c5a788356a8a4a32d22a44ea08b8abf6f8b",
       "stanzaHash": "692229822a42419f917aae70c9ba27152c652c4b8bf3654a89802a39abc27891",
