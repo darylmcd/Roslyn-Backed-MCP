@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-18T20:13:13Z
+**updated_at:** 2026-08-18T21:52:25Z
 
 ## Agent contract
 
@@ -50,7 +50,6 @@
 | `path-boundary-link-swap-toctou` | High | workspace-load-path-canonicalization | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
 | `type-extraction-composition-constructor-coverage` | High | type-extraction-member-shape-validation | **Initialize extracted composition on every construction path** — handle or refuse implicit, chained, overloaded, and expression-bodied constructors. [type: bug] [source: 2026-08-13 adjacent review] | S | items/type-extraction-composition-constructor-coverage.md |
 | `parameter-object-callsite-semantic-argument-binding` | High | — | **Bind parameter-object call arguments semantically** — use Roslyn argument bindings so named/positional, reduced-extension, and ungrouped params calls rewrite atomically. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-callsite-semantic-argument-binding.md |
-| `parameter-object-target-method-contract-validation` | High | — | **Validate parameter-object target contracts** — reject method kinds and dispatch contracts that cannot be rewritten atomically before storing a preview. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-target-method-contract-validation.md |
 | `parameter-object-value-type-mutation-semantics` | High | — | **Preserve grouped value-type mutation semantics** — detect or safely lower mutable-struct uses before DTO-property rewriting changes observable state. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-value-type-mutation-semantics.md |
 | `parameter-object-generic-dto-type-validity` | High | — | **Validate generated DTO parameter types** — handle generic scope, accessibility, and cross-project availability before emitting a top-level record. [type: correctness] [source: 20260813 adjacent review] | S | items/parameter-object-generic-dto-type-validity.md |
 | `parameter-object-dto-reference-qualification` | High | — | Bind generated DTO type references correctly when target declarations and callers use different namespaces. | S | items/parameter-object-dto-reference-qualification.md |
@@ -115,6 +114,7 @@
 | `third-party-notice-generation-drift` | Medium | — | **Generate verified dependency notices** — derive package versions from central management and fail when license attribution or pins drift. [type: docs] [source: 2026-08-14 adjacent review] | M | items/third-party-notice-generation-drift.md |
 | `elicitation-tryelicitchoice-swallow-path-coverage` | Medium | — | **Cover the retained InvalidOperationException/McpException swallow paths in TryElicitChoiceAsync** — the narrowed catch has zero test coverage; the 2-type enumeration's provenance is an already-proven-incomplete comment. [type: chore] [source: elicitation-trychoice-cancellation-swallow cq review] | S | items/elicitation-tryelicitchoice-swallow-path-coverage.md |
 | `structured-call-tool-filter-pipeline-decomposition` | Medium | workspace-auto-load-on-demand-design,structured-tool-dispatch-adapter,tool-error-envelope-sensitive-detail-disclosure | **Decompose the structured call filter pipeline** — split workspace resolution, dispatch/retry, and result/error projection out of `StructuredCallToolFilter.Create` without changing the public wire contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/structured-call-tool-filter-pipeline-decomposition.md |
+| `symbol-interface-implementation-lookup-consolidation` | Medium | — | **Consolidate the four hand-rolled interface-implementation lookups** — one shared `SymbolServiceHelpers` helper replaces the per-service `AllInterfaces`/`FindImplementationForInterfaceMember` copies. [type: refactor] [source: PR #1263 cq review] | M | items/symbol-interface-implementation-lookup-consolidation.md |
 
 ## Low
 
@@ -204,6 +204,7 @@
 | `workspace-source-text-projection-extraction` | Low | — | **Extract source-text request validation and projection** — reduce `WorkspaceTools.GetSourceText` to endpoint orchestration while preserving its stable slice and truncation contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/workspace-source-text-projection-extraction.md |
 | `symbol-tools-disambiguation-collaborator-extraction` | Low | elicitation-choiceprompt-test-suite-consolidation | **Extract symbol disambiguation orchestration** — move `TryDisambiguateMetadataNameAsync` elicitation and candidate-selection policy out of `SymbolTools` into one tested collaborator. [type: refactor] [source: host-tools-cohesion-split rescope] | M | items/symbol-tools-disambiguation-collaborator-extraction.md |
 | `suppression-service-pragma-collaborator-decomposition` | Low | — | Extract pragma parsing and mutation from SuppressionService into one internal collaborator while preserving its public facade and pinned-write invariants. [type: refactor] [source: 2026-08-16 remediation review] | M | items/suppression-service-pragma-collaborator-decomposition.md |
+| `parameter-object-pinvoke-attribute-qualified-match` | Low | — | **Match PInvoke attributes by qualified type** — resolve DllImport/LibraryImport by metadata name so a same-simple-name user attribute stops triggering a false refusal. [type: bug] [source: PR #1263 cq review] | S | items/parameter-object-pinvoke-attribute-qualified-match.md |
 
 ## Defer
 
