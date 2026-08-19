@@ -1,6 +1,6 @@
 # initiative-executor-roslyn-tool-discovery-experiment — measure executor Roslyn first-hop bypass post-router
 
-**row:** `initiative-executor-roslyn-tool-discovery-experiment` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `initiative-executor-roslyn-tool-discovery-experiment` · **pri:** `Low` · **size:** `S` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 

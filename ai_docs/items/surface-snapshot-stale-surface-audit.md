@@ -1,6 +1,6 @@
 # surface-snapshot-stale-surface-audit — refresh the doc-audit live-surface snapshot
 
-**row:** `surface-snapshot-stale-surface-audit` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `surface-snapshot-stale-surface-audit` · **pri:** `Low` · **size:** `S` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 
