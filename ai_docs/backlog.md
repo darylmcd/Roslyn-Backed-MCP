@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-19T01:29:02Z
+**updated_at:** 2026-08-19T01:52:54Z
 
 ## Agent contract
 
@@ -49,7 +49,6 @@
 |----|-----|------|----|------|--------|
 | `path-boundary-link-swap-toctou` | High | workspace-load-path-canonicalization | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
 | `type-extraction-composition-constructor-coverage` | High | type-extraction-member-shape-validation | **Initialize extracted composition on every construction path** — handle or refuse implicit, chained, overloaded, and expression-bodied constructors. [type: bug] [source: 2026-08-13 adjacent review] | S | items/type-extraction-composition-constructor-coverage.md |
-| `parameter-object-dto-reference-qualification` | High | — | Bind generated DTO type references correctly when target declarations and callers use different namespaces. | S | items/parameter-object-dto-reference-qualification.md |
 | `parameter-object-dto-output-boundary-validation` | High | — | Confine generated DTO output to the project boundary and refuse destination collisions before preview storage. | M | items/parameter-object-dto-output-boundary-validation.md |
 | `tool-call-error-envelope-wire-contract` | High | tool-error-envelope-sensitive-detail-disclosure,protocol-version-result-shape-wire-contract | **Lock the serialized tools/call error contract** — drive one unexpected nested failure over raw JSON-RPC and pin isError, redaction, metadata, and result/error placement. [type: test] [source: 2026-08-14 SDK audit] | S | items/tool-call-error-envelope-wire-contract.md |
 | `prompt-call-error-filter-boundary` | High | public-exception-detail-policy,mcp-logging-stderr-otel-migration | **Add a prompt-call error boundary** — route prompt exceptions through one sanitized protocol failure filter with secret-safe diagnostic structure instead of successful user-role error prompts. [type: security] [source: 2026-08-14 adjacent review] | M | items/prompt-call-error-filter-boundary.md |
@@ -206,6 +205,8 @@
 | `parameter-object-pinvoke-attribute-qualified-match` | Low | — | **Match PInvoke attributes by qualified type** — resolve DllImport/LibraryImport by metadata name so a same-simple-name user attribute stops triggering a false refusal. [type: bug] [source: PR #1263 cq review] | S | items/parameter-object-pinvoke-attribute-qualified-match.md |
 | `parameter-object-classifier-shared-helpers` | Low | — | **Dedupe the parameter-object use-classifiers** — share the increment/decrement target test and compute the unwrapped operation once. [type: quality] [source: PR #1267 cq review] | S | items/parameter-object-classifier-shared-helpers.md |
 | `parameter-object-dto-gate-tidy` | Low | — | **Tidy the DTO type-validity gate** — name the third accessibility rank, share the missing-reference message, guard the null compilation, and hoist the gate above the call-site scan. [type: quality] [source: PR #1269 cq review] | S | items/parameter-object-dto-gate-tidy.md |
+| `namespace-in-scope-shared-helper` | Low | — | **Share one namespace-in-scope test across rewrite services** — the BulkRefactoringService copy is strictly weaker (compilation-unit usings only, no alias/static filter). [type: bug] [source: PR #1271 cq review] | S | items/namespace-in-scope-shared-helper.md |
+| `parameter-object-nested-namespace-coverage` | Low | — | **Cover the nested-namespace qualification branch and hoist the per-callsite walk** — the outward-lookup path is untested and resolution repeats inside ReplaceNodes. [type: quality] [source: PR #1271 cq review] | S | items/parameter-object-nested-namespace-coverage.md |
 
 ## Defer
 

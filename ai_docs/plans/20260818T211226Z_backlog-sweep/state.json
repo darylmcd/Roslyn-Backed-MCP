@@ -149,7 +149,7 @@
     {
       "id": "parameter-object-dto-reference-qualification",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parameter-object-dto-reference-qualification"
       ],
@@ -171,10 +171,10 @@
         "ruleOneBundleResolved": "split"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/parameter-object-dto-reference-qualification",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1271",
+      "mergedAt": "2026-08-19T01:52:18Z",
       "notes": null,
       "fileSetHash": "9c1bced5d8fd377d9f0983a971537ef4d956664e464235bc803002b7e5752951",
       "stanzaHash": "1a2d83832d0c85333850fc8cacc5434b4b37a9a1000c04f54d817477aac33d59",
