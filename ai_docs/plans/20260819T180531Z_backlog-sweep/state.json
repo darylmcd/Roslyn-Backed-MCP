@@ -12,7 +12,7 @@
     {
       "id": "type-extraction-composition-constructor-coverage",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "type-extraction-composition-constructor-coverage"
       ],
@@ -34,10 +34,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/type-extraction-composition-constructor-coverage",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1281",
+      "mergedAt": "2026-08-19T22:33:35Z",
       "notes": null,
       "fileSetHash": "13ad8db997a85ea737294f422c0cfc007019771df053b7260c80d3f5e81e8137",
       "stanzaHash": "6b8b9f3bfcc9305b2547570b9b9b056ef4ba3f19aa6f2cd162dce4c5eeb57dd9",
@@ -46,7 +46,7 @@
     {
       "id": "prompt-call-error-filter-boundary",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "prompt-call-error-filter-boundary"
       ],
@@ -71,10 +71,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/prompt-call-error-filter-boundary",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1284",
+      "mergedAt": "2026-08-19T22:34:03Z",
       "notes": null,
       "fileSetHash": "73d373a88e02e8d3fb839943c41de8b9d424b2a853ba303fc458d5c54a8c39eb",
       "stanzaHash": "6b65d24ed3b07a7a8106f7f7221c1654977a4bf1926563292d6234250343eac2",
@@ -120,7 +120,7 @@
     {
       "id": "atomic-file-cleanup-error-detail-redaction",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "atomic-file-cleanup-error-detail-redaction"
       ],
@@ -142,10 +142,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/atomic-file-cleanup-error-detail-redaction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1283",
+      "mergedAt": "2026-08-19T22:33:54Z",
       "notes": null,
       "fileSetHash": "6949f4358f943ab8ebe539c237712e47fb3aff46954128617009ee1c84bd16e2",
       "stanzaHash": "eec6bdec21f9a9c5c76d6e55eba5074a7ef8a62f9c3a2729c5bfe2a2954369cd",
@@ -506,7 +506,7 @@
     {
       "id": "resource-read-protocol-error-semantics-workspace",
       "order": 1.01,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
@@ -532,7 +532,10 @@
       "fileSetHash": "d885f2648f77136865bc7da3a1a80c371d978e63a0e3a8ed3ac787f59ecf6060",
       "stanzaHash": "04fbc47a75b9e47057cae21f9d764a9b936c9cc074b59a597148ba1c8326adf9",
       "parentRow": "resource-read-protocol-error-semantics",
-      "reviewedStanzaHash": "04fbc47a75b9e47057cae21f9d764a9b936c9cc074b59a597148ba1c8326adf9"
+      "reviewedStanzaHash": "04fbc47a75b9e47057cae21f9d764a9b936c9cc074b59a597148ba1c8326adf9",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1282",
+      "mergedAt": "2026-08-19T22:33:46Z",
+      "branch": "remediation/resource-read-protocol-error-semantics-workspace"
     },
     {
       "id": "resource-read-protocol-error-semantics-server-catalog",
