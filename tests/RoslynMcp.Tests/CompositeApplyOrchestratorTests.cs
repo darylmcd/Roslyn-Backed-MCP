@@ -100,10 +100,19 @@ public sealed class CompositeApplyOrchestratorTests
         await Assert.ThrowsExactlyAsync<IOException>(
             () => AtomicFileWriter.WriteAllTextAsync(path, "// content", CancellationToken.None, logger));
 
-        // (b) Exactly one Warning naming the .tmp path is recorded.
+        // (b) Exactly one Warning is recorded, and it is redacted: no raw exception attached, no
+        // absolute temp/target paths, no caught-exception message text — only the stable cleanup
+        // category, the target file name, and the shared secret-safe projection
+        // (atomic-file-cleanup-error-detail-redaction).
         var warnings = logger.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
         Assert.AreEqual(1, warnings.Count, "Exactly one Warning should be logged for the failed temp cleanup.");
-        StringAssert.Contains(warnings[0].Message, tmp, "The warning must name the orphaned .tmp path.");
+        Assert.IsNull(warnings[0].Exception, "The caught cleanup exception must not be attached to the log record.");
+        Assert.IsFalse(warnings[0].Message.Contains(_tempDir, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute directory path.");
+        Assert.IsFalse(warnings[0].Message.Contains(tmp, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute .tmp path.");
+        StringAssert.Contains(warnings[0].Message, "CompositeApplyTempCleanup", "The warning must carry the stable cleanup category token.");
+        StringAssert.Contains(warnings[0].Message, Path.GetFileName(path), "The warning must name the target file (file name only).");
+        StringAssert.Contains(warnings[0].Message, "correlationId=unavailable", "With no request scope active, the correlation token must be 'unavailable'.");
+        StringAssert.Contains(warnings[0].Message, nameof(IOException), "The warning must carry the exception-type topology from the shared projection.");
 
         // (c) The .tmp still exists — cleanup genuinely failed (it is still locked open), not a no-op.
         Assert.IsTrue(File.Exists(tmp), "The locked .tmp must remain on disk because its cleanup delete failed.");
@@ -294,7 +303,7 @@ public sealed class CompositeApplyOrchestratorTests
 
     private sealed class RecordingLogger<T> : ILogger<T>
     {
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -306,7 +315,7 @@ public sealed class CompositeApplyOrchestratorTests
             TState state,
             Exception? exception,
             Func<TState, Exception?, string> formatter)
-            => Entries.Add((logLevel, formatter(state, exception)));
+            => Entries.Add((logLevel, formatter(state, exception), exception));
     }
 
     private sealed class RecordingWorkspaceManager : IWorkspaceManager

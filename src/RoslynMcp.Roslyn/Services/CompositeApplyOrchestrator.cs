@@ -151,7 +151,10 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 /// original exception is re-thrown for the caller's catch filter. If an optional
 /// <paramref name="logger"/> is supplied, a failure to delete the orphaned <c>.tmp</c> is logged
 /// at Warning level (the primary write failure is still re-thrown either way) so a stray artifact
-/// left on disk leaves an observability trail instead of being silently discarded.
+/// left on disk leaves an observability trail instead of being silently discarded. That warning
+/// carries only a stable cleanup category, the target's file name, and the shared secret-safe
+/// projection from <see cref="PublicExceptionDetailPolicy"/> (correlation id, exception-type
+/// topology, stack depth) — never the raw exception or absolute temp/target paths.
 /// <para>
 /// Text writes accept an optional <see cref="Encoding"/> so a mutated file keeps its original
 /// BOM/encoding (<c>mutation-write-paths-drop-original-encoding</c>). Callers resolve it through
@@ -164,6 +167,12 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
 /// </summary>
 internal static class AtomicFileWriter
 {
+    /// <summary>
+    /// Stable, greppable category token for the temp-cleanup-failure warning. Aligned with the
+    /// <see cref="UnexpectedExceptionCategory.CompositeApply"/> vocabulary.
+    /// </summary>
+    private const string TempCleanupCategory = "CompositeApplyTempCleanup";
+
     /// <summary>
     /// Atomically writes <paramref name="content"/> to <paramref name="path"/>.
     /// </summary>
@@ -225,11 +234,20 @@ internal static class AtomicFileWriter
             // Best-effort cleanup — a stray .tmp is non-fatal and must not mask the original failure.
             // The primary write exception is still re-thrown by the caller; this only records that the
             // orphaned temp artifact could not be removed so it is not left on disk silently.
-            logger?.LogWarning(
-                ex,
-                "AtomicFileWriter: failed to delete orphaned temp file {TempPath} after a failed write to {TargetPath}; a stray .tmp artifact may remain on disk.",
-                tmp,
-                path);
+            // The caught exception and the absolute temp/target paths are deliberately NOT logged
+            // (atomic-file-cleanup-error-detail-redaction): only the stable cleanup category, the
+            // target's file name, and the shared secret-safe projection reach the sinks.
+            if (logger is not null)
+            {
+                var diagnostic = PublicExceptionDetailPolicy.ProjectUnexpected(ex, correlationId: null).Server;
+                logger.LogWarning(
+                    "{CleanupCategory}: failed to delete orphaned temp file {TargetFile}.tmp after a failed write; a stray .tmp artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
+                    TempCleanupCategory,
+                    Path.GetFileName(path),
+                    diagnostic.CorrelationId,
+                    string.Join(" -> ", diagnostic.ExceptionTypes),
+                    diagnostic.StackFrameCount);
+            }
         }
     }
 }
