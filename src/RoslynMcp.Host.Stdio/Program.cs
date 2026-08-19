@@ -83,6 +83,11 @@ builder.Services
         requestFilters.AddListResourceTemplatesFilter(StaticListResultFilter.CreateResourceTemplates);
         requestFilters.AddReadResourceFilter(ResourceReadResultFilter.Create);
         requestFilters.AddCallToolFilter(StructuredCallToolFilter.Create);
+        // Single error-handling and observability boundary for every prompts/get dispatch.
+        // Unexpected prompt failures ride the JSON-RPC error channel as a sanitized
+        // InternalError (-32603) instead of being returned as successful user-role prompt
+        // messages carrying raw exception text. See GetPromptErrorFilter.
+        requestFilters.AddGetPromptFilter(GetPromptErrorFilter.Create);
     });
 builder.Services.AddRoslynMcpSurfaceRegistrationPolicy(toolTierSelection);
 
