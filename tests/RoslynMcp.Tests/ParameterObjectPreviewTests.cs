@@ -1609,6 +1609,239 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    private const string BoundaryFixtureSource = """
+        namespace SampleLib;
+
+        public class POBoundaryFixture
+        {
+            public int Sum(int a, int b, int c) => a + b + c;
+
+            public int Caller() => Sum(1, 2, 3);
+        }
+        """;
+
+    /// <summary>
+    /// parameter-object-dto-output-boundary-validation: hostile <c>dtoFolders</c> input —
+    /// rooted segments, traversal, empty/whitespace entries, doubled separators, invalid
+    /// file-name characters — must refuse the preview before any token is minted, and no
+    /// DTO file may materialize anywhere in the solution tree.
+    /// </summary>
+    [TestMethod]
+    [DataRow(new[] { "/abs/evil" }, DisplayName = "rooted absolute segment")]
+    [DataRow(new[] { "\\\\host\\share" }, DisplayName = "UNC segment")]
+    [DataRow(new[] { ".." }, DisplayName = "single traversal segment")]
+    [DataRow(new[] { "Models/../../Outside" }, DisplayName = "embedded traversal")]
+    [DataRow(new[] { "" }, DisplayName = "empty entry")]
+    [DataRow(new[] { "   " }, DisplayName = "whitespace entry")]
+    [DataRow(new[] { "Models//Requests" }, DisplayName = "doubled separator")]
+    [DataRow(new[] { "Mod\0els" }, DisplayName = "invalid file-name char")]
+    public async Task HostileDtoFolders_RefusePreviewWithNoTokenAndNoFile(string[] dtoFolders)
+    {
+        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+
+        try
+        {
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: dtoFolders),
+                    CancellationToken.None));
+
+            var solutionDir = Path.GetDirectoryName(fixtureDir)!;
+            Assert.IsFalse(
+                Directory.EnumerateFiles(solutionDir, "SumArgs.cs", SearchOption.AllDirectories).Any(),
+                "a refused preview must not materialize the DTO file anywhere in the solution tree");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task DriveRootedDtoFolders_RefusePreview()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Drive-relative rooting (C:...) is a Windows path semantic.");
+
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: ["C:/Temp"]),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "C:/Temp", "refusal must name the offending entry");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task NonIdentifierDtoNamespace_RefusesPreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "Sample-Lib.Generated"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "Sample-Lib", "refusal must name the offending namespace part");
+
+            var emptyPart = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "SampleLib..Generated"),
+                    CancellationToken.None));
+            StringAssert.Contains(emptyPart.Message, "empty namespace part");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Do-not-over-refuse acceptance: a nested-path <c>dtoFolders</c> entry like
+    /// <c>"Models/Requests"</c> is common ergonomics and must keep working — split into
+    /// per-directory segments, not refused for carrying a separator.
+    /// </summary>
+    [TestMethod]
+    public async Task NestedPathDtoFoldersEntry_SplitsIntoSegmentsAndSucceeds()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoFolders: ["Models/Requests"]),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken);
+            var expectedTail = Path.Combine("Models", "Requests", "SumArgs.cs");
+            Assert.IsTrue(
+                preview.Changes.Any(c => c.FilePath.EndsWith(expectedTail, StringComparison.OrdinalIgnoreCase)),
+                $"DTO must land under {expectedTail}. Paths: {string.Join(", ", preview.Changes.Select(c => c.FilePath))}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExistingDocumentAtDtoPath_RefusesPreview()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var libDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(libDir, "POBoundaryFixture.cs");
+        await File.WriteAllTextAsync(fixturePath, BoundaryFixtureSource);
+        // Occupy the DTO destination with a document that is part of the project but
+        // declares no SumArgs type, so the document check (not the type check) must fire.
+        await File.WriteAllTextAsync(
+            Path.Combine(libDir, "SumArgs.cs"),
+            "namespace SampleLib;\n\npublic class UnrelatedOccupant { }\n");
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    loadResult.WorkspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "already contains a document");
+            StringAssert.Contains(ex.Message, "SumArgs.cs");
+        }
+        finally
+        {
+            WorkspaceManager.Close(loadResult.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExistingFileOnDiskOutsideProject_RefusesPreviewAndLeavesFileIntact()
+    {
+        var (workspaceId, fixturePath, fixtureDir) = await SetupSingleProjectFixtureAsync(
+            BoundaryFixtureSource, "POBoundaryFixture.cs");
+        // Written AFTER the workspace load, so the file exists on disk but is not a
+        // project document — only the File.Exists guard can catch it.
+        var strayPath = Path.Combine(fixtureDir, "SumArgs.cs");
+        const string strayContent = "// pre-existing content that must never be overwritten\n";
+        await File.WriteAllTextAsync(strayPath, strayContent);
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "already exists on disk");
+            Assert.AreEqual(strayContent, await File.ReadAllTextAsync(strayPath),
+                "the pre-existing file must be untouched by a refused preview");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExistingTypeWithSameName_RefusesPreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public sealed record SumArgs(int X);
+
+            public class POBoundaryTypeFixture
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public int Caller() => Sum(1, 2, 3);
+            }
+            """,
+            "POBoundaryTypeFixture.cs");
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 7, column: 16),
+                    new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "SampleLib.SumArgs");
+            StringAssert.Contains(ex.Message, "already exists in project");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     private static async Task<(string WorkspaceId, string FixturePath, string FixtureDir)> SetupSingleProjectFixtureAsync(
         string content,
         string fileName,
