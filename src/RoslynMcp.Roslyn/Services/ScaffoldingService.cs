@@ -92,7 +92,10 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to parse project file '{ProjectFilePath}' while detecting test framework; defaulting to mstest.", projectFilePath);
+            _logger?.LogWarning(
+                "{ScaffoldingParseDiagnostic}",
+                ScaffoldingReadFailurePolicy.CreateProjectParseDiagnostic(
+                    _exceptionReporter, ex, projectFilePath, "defaulting to mstest"));
         }
 
         return "mstest";
@@ -137,7 +140,10 @@ public sealed partial class ScaffoldingService : IScaffoldingService
         catch (Exception ex)
         {
             // If we can't parse the project file, allow and let downstream handle it.
-            _logger?.LogWarning(ex, "Failed to parse project file '{ProjectFilePath}' while validating test project; allowing operation to proceed.", project.FilePath);
+            _logger?.LogWarning(
+                "{ScaffoldingParseDiagnostic}",
+                ScaffoldingReadFailurePolicy.CreateProjectParseDiagnostic(
+                    _exceptionReporter, ex, project.FilePath, "allowing operation to proceed"));
         }
     }
 
