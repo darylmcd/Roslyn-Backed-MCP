@@ -132,32 +132,22 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task Resource_GetWorkspaceStatus_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
+    public async Task Resource_GetWorkspaceStatus_WithUnknownWorkspaceId_PropagatesNotFound()
     {
-        // Pre-fix: a resource exception bubbled to the framework which labelled it
-        // tool: "unknown". Post-fix: ExecuteResource catches the exception and emits
-        // the canonical error envelope with the resource URI as the tool field.
-        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("roslyn://workspace/{workspaceId}/status",
-            doc.RootElement.GetProperty("tool").GetString(),
-            "Resource URI must populate the tool field, not 'unknown'.");
+        // resource-read-protocol-error-semantics-workspace: workspace resource handlers
+        // use the success-only ExecuteResourceScopeAsync — the gate's KeyNotFoundException
+        // PROPAGATES to ResourceReadResultFilter, which answers on the JSON-RPC error
+        // channel (ResourceNotFound/InvalidParams by negotiated era) instead of
+        // serializing an error envelope into a "successful" contents body.
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }
 
     [TestMethod]
-    public async Task Resource_GetProjects_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
+    public async Task Resource_GetProjects_WithUnknownWorkspaceId_PropagatesNotFound()
     {
-        var json = await WorkspaceResources.GetProjects(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out _));
-        Assert.AreEqual("roslyn://workspace/{workspaceId}/projects",
-            doc.RootElement.GetProperty("tool").GetString());
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            WorkspaceResources.GetProjects(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }
 
     // inv-arg-envelope-schema-hint: cold-context callers (parallel-mode subagents) cannot

@@ -123,23 +123,17 @@ public sealed class FetchMcpResourceReadinessTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Error-envelope path still works when the workspaceId does not exist — the gate
-    /// throws <c>KeyNotFoundException</c>, caught by <c>ToolErrorHandler</c>, surfaced as
-    /// a structured <c>NotFound</c> envelope (not a client-side "server not ready").
+    /// resource-read-protocol-error-semantics-workspace: an unknown workspaceId now
+    /// PROPAGATES the gate's <c>KeyNotFoundException</c> out of the handler — the
+    /// <c>ResourceReadResultFilter</c> read boundary translates it into a JSON-RPC
+    /// protocol error (<c>ResourceNotFound</c>/<c>InvalidParams</c> by negotiated era)
+    /// instead of a "successful" contents body carrying a serialized error document.
     /// </summary>
     [TestMethod]
-    public async Task WorkspaceStatusResource_UnknownWorkspace_ReturnsStructuredNotFound()
+    public async Task WorkspaceStatusResource_UnknownWorkspace_PropagatesNotFound()
     {
-        var json = await WorkspaceResources.GetWorkspaceStatus(
-            WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected error envelope for unknown workspace. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("roslyn://workspace/{workspaceId}/status",
-            doc.RootElement.GetProperty("tool").GetString(),
-            "Resource URI must populate the tool field — never a bare 'server not ready'.");
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            WorkspaceResources.GetWorkspaceStatus(
+                WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }
 }
