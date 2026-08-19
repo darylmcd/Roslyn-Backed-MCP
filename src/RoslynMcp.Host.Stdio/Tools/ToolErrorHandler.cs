@@ -208,6 +208,65 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
+    /// Success-only sibling of <see cref="ExecuteResource"/> for resource handlers whose
+    /// failures travel over the JSON-RPC error channel: keeps the ambient gate-metrics scope
+    /// and success-path <c>_meta</c> injection, but has NO catch arm — every exception
+    /// propagates to <c>ResourceReadResultFilter</c>, which translates it into a protocol
+    /// error (<c>McpProtocolException</c>) instead of a serialized error document in the
+    /// resource body. Elapsed time is recorded in a <see langword="finally"/> so failed
+    /// reads still stamp <c>ElapsedMs</c> on the ambient metrics.
+    /// </summary>
+    public static string ExecuteResourceScope(string source, Func<string> action)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+
+        using var metricsScope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var result = action();
+            // Stamp elapsed BEFORE _meta injection so the success snapshot carries it;
+            // the finally re-stamp is idempotent (Stopwatch freezes on first Stop).
+            RecordElapsed(stopwatch);
+            return InjectMetaIfPossible(result, source);
+        }
+        finally
+        {
+            RecordElapsed(stopwatch);
+        }
+    }
+
+    /// <summary>
+    /// Async variant of <see cref="ExecuteResourceScope"/> for awaitable resource handlers.
+    /// </summary>
+    public static async Task<string> ExecuteResourceScopeAsync(string source, Func<Task<string>> action)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+
+        using var metricsScope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var result = await action().ConfigureAwait(false);
+            RecordElapsed(stopwatch);
+            return InjectMetaIfPossible(result, source);
+        }
+        finally
+        {
+            RecordElapsed(stopwatch);
+        }
+    }
+
+    private static void RecordElapsed(System.Diagnostics.Stopwatch stopwatch)
+    {
+        stopwatch.Stop();
+        if (AmbientGateMetrics.Current is { } metrics)
+        {
+            metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+        }
+    }
+
+    /// <summary>
     /// P3: Parse the JSON result and add a top-level <c>_meta</c> property carrying the gate
     /// metrics snapshot. Only injected when the root is a JSON object — non-object roots
     /// (arrays, primitives) are returned unchanged so we don't break consumers that expect a

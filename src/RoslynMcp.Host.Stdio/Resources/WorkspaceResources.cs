@@ -15,7 +15,7 @@ public static class WorkspaceResources
     [McpServerResource(UriTemplate = "roslyn://workspaces", Name = "workspaces", MimeType = "application/json")]
     [Description("List all currently loaded workspace sessions with a lean summary per workspace (counts and load state, no per-project tree). For the verbose payload use roslyn://workspaces/verbose. Workspace-scoped resources (status, projects, diagnostics, source_file) use URI templates — if your MCP client only shows static resources from resources/list, read roslyn://server/resource-templates to discover those templates.")]
     public static string GetWorkspaces(IWorkspaceManager workspace) =>
-        ToolErrorHandler.ExecuteResource("roslyn://workspaces", () =>
+        ToolErrorHandler.ExecuteResourceScope("roslyn://workspaces", () =>
         {
             var workspaces = workspace.ListWorkspaces();
             var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
@@ -25,7 +25,7 @@ public static class WorkspaceResources
     [McpServerResource(UriTemplate = "roslyn://workspaces/verbose", Name = "workspaces_verbose", MimeType = "application/json")]
     [Description("Verbose variant of roslyn://workspaces — returns the full per-project tree and workspace diagnostics for every loaded session. Can be large on multi-project solutions; prefer the summary resource at roslyn://workspaces unless you need the full payload.")]
     public static string GetWorkspacesVerbose(IWorkspaceManager workspace) =>
-        ToolErrorHandler.ExecuteResource("roslyn://workspaces/verbose", () =>
+        ToolErrorHandler.ExecuteResourceScope("roslyn://workspaces/verbose", () =>
         {
             var workspaces = workspace.ListWorkspaces();
             return JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented);
@@ -43,7 +43,7 @@ public static class WorkspaceResources
         // workspace_load / workspace_reload cannot race this resource dispatch and yield
         // a KeyNotFoundException / partially-loaded snapshot. Matches the tool's semantics
         // (staleness auto-reload, rate limit, global throttle, TOCTOU-safe existence check).
-        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/status", () =>
+        ToolErrorHandler.ExecuteResourceScopeAsync("roslyn://workspace/{workspaceId}/status", () =>
             gate.RunReadAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.GetStatusAsync(workspaceId, innerCt).ConfigureAwait(false);
@@ -57,7 +57,7 @@ public static class WorkspaceResources
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default) =>
-        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/status/verbose", () =>
+        ToolErrorHandler.ExecuteResourceScopeAsync("roslyn://workspace/{workspaceId}/status/verbose", () =>
             gate.RunReadAsync(workspaceId, async innerCt =>
             {
                 var status = await workspace.GetStatusAsync(workspaceId, innerCt).ConfigureAwait(false);
@@ -71,7 +71,7 @@ public static class WorkspaceResources
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default) =>
-        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/projects", () =>
+        ToolErrorHandler.ExecuteResourceScopeAsync("roslyn://workspace/{workspaceId}/projects", () =>
             gate.RunReadAsync(workspaceId, innerCt =>
             {
                 var graph = workspace.GetProjectGraph(workspaceId);
@@ -93,7 +93,7 @@ public static class WorkspaceResources
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default) =>
-        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/diagnostics", () =>
+        ToolErrorHandler.ExecuteResourceScopeAsync("roslyn://workspace/{workspaceId}/diagnostics", () =>
             gate.RunReadAsync(workspaceId, async innerCt =>
             {
                 // diagnostics-resource-timeout: the resource has no pagination affordance, so apply
@@ -155,9 +155,10 @@ public static class WorkspaceResources
         return taken;
     }
 
-    // source_file is text/x-csharp, not JSON, so we cannot return a JSON envelope on error.
-    // Throwing McpToolException with the OriginatingSource keeps the framework's default
-    // exception path; the MCP client will see a generic error rather than a structured envelope.
+    // source_file is text/x-csharp, not JSON, so there is no JSON envelope to return on error.
+    // Throwing McpToolException with the OriginatingSource lets ResourceReadResultFilter
+    // classify the wrapped cause and answer on the JSON-RPC error channel with the
+    // protocol-correct code (e.g. ResourceNotFound/InvalidParams by negotiated era).
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}", Name = "source_file", MimeType = "text/x-csharp")]
     [Description("Read the source text of a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. For a line range, use the sibling template roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}.")]
     public static async Task<string> GetSourceFile(
@@ -218,14 +219,14 @@ public static class WorkspaceResources
     /// surface. The returned text is prefixed with a `// roslyn://… lines N..M of T` marker
     /// so agents can tell the slice apart from a whole-file read.
     /// </summary>
-    // dr-9-13-flag-resource-invalid-range-resource-returns-ge:
-    // Wrapped in ToolErrorHandler.ExecuteResourceAsync so invalid lineRange/filePath inputs
-    // return a structured JSON error envelope (category, message, tool) instead of bubbling
-    // a generic JSON-RPC -32603 through the framework. On success the response is still the
-    // marker-prefixed source slice; on failure clients get an actionable error document with
-    // the resource URI template as the `tool` field.
+    // resource-read-protocol-error-semantics-workspace (supersedes
+    // dr-9-13-flag-resource-invalid-range-resource-returns-ge): wrapped in the success-only
+    // ToolErrorHandler.ExecuteResourceScopeAsync — invalid lineRange/filePath inputs propagate
+    // to ResourceReadResultFilter, which answers on the JSON-RPC error channel with a
+    // sanitized, categorized InvalidParams (-32602) error instead of serializing an error
+    // document into a "successful" contents body.
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}", Name = "source_file_lines", MimeType = "text/x-csharp")]
-    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) return a structured JSON error envelope — not the C# MIME success shape.")]
+    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) fail the read with a JSON-RPC InvalidParams (-32602) error — no C# MIME success body is returned.")]
     public static Task<string> GetSourceFileLines(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -235,7 +236,7 @@ public static class WorkspaceResources
         CancellationToken ct = default)
     {
         const string source = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}";
-        return ToolErrorHandler.ExecuteResourceAsync(source, () =>
+        return ToolErrorHandler.ExecuteResourceScopeAsync(source, () =>
             gate.RunReadAsync(workspaceId, async innerCt =>
             {
                 var normalizedPath = NormalizeFilePathForResource(filePath);

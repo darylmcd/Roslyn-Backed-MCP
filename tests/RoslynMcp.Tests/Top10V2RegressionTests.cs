@@ -79,64 +79,53 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(bodyLineCount < 20, $"Slice should be small (<20 lines including marker); got {bodyLineCount}.");
     }
 
-    // dr-9-13-flag-resource-invalid-range-resource-returns-ge:
-    // Pre-fix: invalid ranges threw McpToolException → framework surfaced -32603 JSON-RPC.
-    // Post-fix: the handler is wrapped in ToolErrorHandler.ExecuteResourceAsync which returns
-    // a structured JSON error envelope (category, message, tool) for every input-validation
-    // failure.
+    // resource-read-protocol-error-semantics-workspace (supersedes
+    // dr-9-13-flag-resource-invalid-range-resource-returns-ge):
+    // the handler now uses the success-only ToolErrorHandler.ExecuteResourceScopeAsync —
+    // input-validation failures PROPAGATE to ResourceReadResultFilter, which answers on
+    // the JSON-RPC error channel with a sanitized InvalidParams (-32602) error instead of
+    // serializing an error envelope into a "successful" contents body.
     [TestMethod]
-    public async Task SourceFileLinesResource_EndBeforeStart_ReturnsStructuredInvalidArgument()
+    public async Task SourceFileLinesResource_EndBeforeStart_PropagatesInvalidArgument()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None);
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            WorkspaceResources.GetSourceFileLines(
+                WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None));
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
-            doc.RootElement.GetProperty("tool").GetString(),
-            "Resource URI template must populate the tool field, not 'unknown'.");
+        Assert.AreEqual("lineRange", ex.ParamName,
+            "The offending parameter must be named so the read filter can surface it.");
     }
 
     [TestMethod]
-    public async Task SourceFileLinesResource_NonNumericRange_ReturnsStructuredInvalidArgument()
+    public async Task SourceFileLinesResource_NonNumericRange_PropagatesInvalidArgument()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None);
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            WorkspaceResources.GetSourceFileLines(
+                WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None));
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("lineRange", ex.ParamName);
     }
 
     [TestMethod]
-    public async Task SourceFileLinesResource_StartLinePastEof_ReturnsStructuredInvalidArgument()
+    public async Task SourceFileLinesResource_StartLinePastEof_PropagatesInvalidArgument()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
         // AnimalService.cs is ~30 lines; 9999 is safely past EOF.
-        var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None);
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() =>
+            WorkspaceResources.GetSourceFileLines(
+                WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None));
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
-            "past the end",
-            "Error message should explain the startLine-past-EOF condition.");
+        Assert.AreEqual("lineRange", ex.ParamName);
+        StringAssert.Contains(ex.Message, "past the end",
+            "Exception message should explain the startLine-past-EOF condition.");
     }
 
     // ── apply-with-verify-and-rollback ──
