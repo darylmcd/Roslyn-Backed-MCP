@@ -78,6 +78,7 @@ These files are touched by many initiatives by structural inevitability. The glo
 | `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` (and `*.Orchestration.cs`, `*.Refactoring.cs`, `*.Editing.cs`, `*.Symbols.cs`, `*.Workspace.cs`, `*.Analysis.cs`, `*.Resources.cs`, `*.Prompts.cs` partials) | Every new MCP tool registers here; many tool-extensions update descriptions. Catalog tracking gate enforced by the RMCP001/RMCP002 analyzers. |
 | `src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs` | DI registration touched by every new service. |
 | `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` | 330+ lines of workspace state shared by many backlog rows; rows that share state but not code path do NOT bundle (see Rule 1) and should not parallel-execute against this file in the same wave. |
+| `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs` | 1200+ lines carrying the whole `parameter_object_preview` pipeline (target validation, call-site binding, DTO emission, rewrite). Sweep `20260818T211226Z` planned six rows against it and the conflict graph came back a complete K6 — zero parallelizable initiatives, six sequential PRs (#1263/#1265/#1267/#1269/#1271/#1273). Expect ≥1 more sweep's worth: the anchor-overlap check still reports ~10 open rows citing this file. Plan rows here as their own conflict generations; do NOT expect a parallel wave. |
 
 ## Virtually-shared files (orchestrator-owned in parallel mode)
 
