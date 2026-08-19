@@ -11,7 +11,10 @@ namespace RoslynMcp.Tests;
 /// regression set named in <c>ai_docs/items/parameter-object-preview-design.md</c> §(f):
 /// (1) positional grouping, (2) named + mixed call sites, (3) default-value refusal,
 /// (4) ref/out refusal, (5) cross-project success, (6) cross-project missing-reference
-/// refusal, (7) end-to-end redemption through <c>apply_with_verify</c>.
+/// refusal, (7) end-to-end redemption through <c>apply_with_verify</c>. Two later cases
+/// cover DTO-reference namespace qualification: (8) explicit <c>dtoNamespace</c> qualifies
+/// the declaration and call-site references, (9) a cross-namespace caller with no matching
+/// using directive applies cleanly via a <c>global::</c>-qualified reference.
 /// </summary>
 [TestClass]
 public sealed class ParameterObjectPreviewTests : TestBase
@@ -989,6 +992,139 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(fixtureText, "Sum(SumArgs sumArgs)");
             StringAssert.Contains(fixtureText, "sumArgs.A + sumArgs.B + sumArgs.C");
             StringAssert.Contains(fixtureText, "new SumArgs(1, 2, 3)");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExplicitDtoNamespace_QualifiesDeclarationAndCallsiteReferences()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class PONsFixture
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public int Caller() => Sum(1, 2, 3);
+            }
+            """,
+            "PONsFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16), // 'Sum'
+                new ParameterObjectPreviewRequest(["a", "b", "c"], "SumArgs", DtoNamespace: "SampleLib.Contracts"),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken);
+            var fixtureDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("PONsFixture.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+            Assert.IsNotNull(fixtureDiff);
+            StringAssert.Contains(
+                fixtureDiff,
+                "Sum(global::SampleLib.Contracts.SumArgs sumArgs)",
+                "SampleLib.Contracts is not in scope in the declaring document (a child namespace is not searched by name lookup), so the parameter type must be qualified");
+            StringAssert.Contains(
+                fixtureDiff,
+                "new global::SampleLib.Contracts.SumArgs(1, 2, 3)",
+                "the caller shares the declaring document's namespace, so the object creation must be qualified too");
+
+            var addedDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("SumArgs.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+            Assert.IsNotNull(addedDiff, "preview must include the new DTO file");
+            StringAssert.Contains(addedDiff, "namespace SampleLib.Contracts;");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task CrossNamespaceCaller_NoUsingDirective_AppliesCleanlyWithQualifiedReference()
+    {
+        // Regression for the unqualified-DTO-reference defect: the caller reaches the method
+        // through a fully-qualified receiver and carries NO `using SampleLib;`, so the DTO's
+        // namespace is not in scope in the calling document — an unqualified
+        // `new QualArgs(...)` there would produce CS0246 on apply.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var libDir = Path.Combine(solutionDir, "SampleLib");
+        var appDir = Path.Combine(solutionDir, "SampleApp");
+
+        var libFile = Path.Combine(libDir, "POQualLib.cs");
+        await File.WriteAllTextAsync(libFile,
+            """
+            namespace SampleLib;
+
+            public class POQualLib
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+            }
+            """);
+        var appFile = Path.Combine(appDir, "POQualApp.cs");
+        await File.WriteAllTextAsync(appFile,
+            """
+            namespace SampleApp;
+
+            public static class POQualApp
+            {
+                public static int Run() => new SampleLib.POQualLib().Sum(1, 2, 3);
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(libFile, line: 5, column: 16), // 'Sum'
+                new ParameterObjectPreviewRequest(["a", "b", "c"], "QualArgs"),
+                CancellationToken.None);
+
+            var libDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("POQualLib.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+            Assert.IsNotNull(libDiff);
+            StringAssert.Contains(
+                libDiff,
+                "Sum(QualArgs qualArgs)",
+                "the declaring document shares the DTO namespace, so the parameter type must stay unqualified");
+            var appDiff = preview.Changes.FirstOrDefault(c => c.FilePath.EndsWith("POQualApp.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+            Assert.IsNotNull(appDiff, "cross-namespace caller must be rewritten");
+            StringAssert.Contains(
+                appDiff,
+                "new global::SampleLib.QualArgs(1, 2, 3)",
+                "the DTO namespace is not in scope in the calling document, so the object creation must be qualified");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual(
+                "applied",
+                apply.RootElement.GetProperty("status").GetString(),
+                $"apply_with_verify must redeem the preview token. Response: {applyJson}");
+            Assert.AreEqual(
+                apply.RootElement.GetProperty("preErrorCount").GetInt32(),
+                apply.RootElement.GetProperty("postErrorCount").GetInt32(),
+                $"Applying the preview must introduce no compiler errors. Response: {applyJson}");
+
+            var appText = await File.ReadAllTextAsync(appFile);
+            StringAssert.Contains(appText, "new global::SampleLib.QualArgs(1, 2, 3)");
         }
         finally
         {

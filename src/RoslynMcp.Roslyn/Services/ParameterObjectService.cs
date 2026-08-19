@@ -99,10 +99,10 @@ public sealed class ParameterObjectService : IParameterObjectService
         var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         var accumulator = await RewriteMethodDeclarationAsync(
-            solution, method, groupedParameters, request.NewTypeName, newParameterName, originalTexts, ct).ConfigureAwait(false);
+            solution, method, groupedParameters, dtoNamespace, request.NewTypeName, newParameterName, originalTexts, ct).ConfigureAwait(false);
 
         accumulator = await RewriteCallSitesAsync(
-            accumulator, solution, method, groupedParameters, request.NewTypeName, callSites,
+            accumulator, solution, method, groupedParameters, dtoNamespace, request.NewTypeName, callSites,
             originalTexts, perFileCallsites, ct).ConfigureAwait(false);
 
         // Add the new DTO document last so its diff is appended cleanly; we capture no
@@ -1187,6 +1187,61 @@ public sealed class ParameterObjectService : IParameterObjectService
         return Path.Combine([projectDir, .. folders, $"{typeName}.cs"]);
     }
 
+    /// <summary>
+    /// Returns the type reference to emit for the generated DTO from the document position of
+    /// <paramref name="contextNode"/>: the bare <paramref name="typeName"/> when the DTO
+    /// namespace is already in scope there (the enclosing namespace chain equals or is nested
+    /// under it, or a plain using directive visible to the node imports it), otherwise
+    /// <c>global::{dtoNamespace}.{typeName}</c> so the emitted reference binds regardless of
+    /// the document's local imports. Kept private to the service, mirroring the conditional
+    /// qualification pattern in <c>ExtractMethodService</c>. Note: a <c>global using</c>
+    /// declared in a different file of the same project is invisible to this syntax-only scan,
+    /// so such callers receive a technically-unnecessary but still-correct qualification.
+    /// </summary>
+    private static string ResolveDtoTypeReference(SyntaxNode contextNode, string dtoNamespace, string typeName)
+    {
+        if (string.IsNullOrWhiteSpace(dtoNamespace))
+            return typeName;
+
+        // Enclosing namespace chain, outermost-first (handles nested block namespaces).
+        var namespaceParts = new List<string>();
+        foreach (var ns in contextNode.AncestorsAndSelf().OfType<BaseNamespaceDeclarationSyntax>())
+            namespaceParts.Insert(0, ns.Name.ToString());
+        var contextNamespace = string.Join('.', namespaceParts);
+
+        // Name lookup searches each enclosing namespace outward, so the bare name binds when
+        // the context namespace equals the DTO namespace or is nested anywhere under it.
+        if (string.Equals(contextNamespace, dtoNamespace, StringComparison.Ordinal)
+            || contextNamespace.StartsWith(dtoNamespace + ".", StringComparison.Ordinal))
+        {
+            return typeName;
+        }
+
+        // Plain (non-alias, non-static) using directives on the compilation unit or any
+        // enclosing namespace declaration — including same-file `global using` — also bring
+        // the DTO namespace into scope.
+        foreach (var node in contextNode.AncestorsAndSelf())
+        {
+            var usings = node switch
+            {
+                CompilationUnitSyntax cu => cu.Usings,
+                BaseNamespaceDeclarationSyntax nsDecl => nsDecl.Usings,
+                _ => default,
+            };
+            foreach (var directive in usings)
+            {
+                if (directive.Alias is null
+                    && directive.StaticKeyword.IsKind(SyntaxKind.None)
+                    && string.Equals(directive.Name?.ToString(), dtoNamespace, StringComparison.Ordinal))
+                {
+                    return typeName;
+                }
+            }
+        }
+
+        return $"global::{dtoNamespace}.{typeName}";
+    }
+
     private static string BuildDtoSource(
         string ns, string typeName, IReadOnlyList<IParameterSymbol> grouped, bool isPublic)
     {
@@ -1214,6 +1269,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         Solution solution,
         IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
+        string dtoNamespace,
         string newTypeName,
         string newParameterName,
         Dictionary<DocumentId, string> originalTexts,
@@ -1258,6 +1314,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                     semanticModel,
                     groupedNames,
                     groupedMembersByOrdinal,
+                    dtoNamespace,
                     newTypeName,
                     newParameterName,
                     ct);
@@ -1274,10 +1331,12 @@ public sealed class ParameterObjectService : IParameterObjectService
         SemanticModel semanticModel,
         HashSet<string> groupedNames,
         IReadOnlyDictionary<int, string> groupedMembersByOrdinal,
+        string dtoNamespace,
         string newTypeName,
         string newParameterName,
         CancellationToken ct)
     {
+        var dtoTypeReference = ResolveDtoTypeReference(declaration, dtoNamespace, newTypeName);
         var declaredMethod = semanticModel.GetDeclaredSymbol(declaration, ct) as IMethodSymbol;
         var parameterMembers = new Dictionary<IParameterSymbol, string>(SymbolEqualityComparer.Default);
         if (declaredMethod is not null)
@@ -1309,7 +1368,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             {
                 if (!insertedDtoParam)
                 {
-                    newParamTexts.Add($"{newTypeName} {newParameterName}");
+                    newParamTexts.Add($"{dtoTypeReference} {newParameterName}");
                     insertedDtoParam = true;
                 }
                 continue;
@@ -1317,7 +1376,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             newParamTexts.Add(parameter.ToString());
         }
         if (!insertedDtoParam)
-            newParamTexts.Add($"{newTypeName} {newParameterName}");
+            newParamTexts.Add($"{dtoTypeReference} {newParameterName}");
 
         var newListText = "(" + string.Join(", ", newParamTexts) + ")";
         var newList = SyntaxFactory.ParseParameterList(newListText).WithTriviaFrom(existingList);
@@ -1389,6 +1448,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         Solution baselineSolution,
         IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
+        string dtoNamespace,
         string newTypeName,
         Dictionary<DocumentId, List<CallSiteBinding>> callSites,
         Dictionary<DocumentId, string> originalTexts,
@@ -1422,8 +1482,11 @@ public sealed class ParameterObjectService : IParameterObjectService
             var newRoot = oldRoot.ReplaceNodes(targets.Keys, (original, rewrittenNode) =>
             {
                 var invocation = (InvocationExpressionSyntax)rewrittenNode;
+                // Resolve scope against `original` — it is still attached to oldRoot, so
+                // its namespace/using context is visible; `rewrittenNode` may be detached.
+                var dtoTypeReference = ResolveDtoTypeReference(original, dtoNamespace, newTypeName);
                 var newArgList = BuildRewrittenArgumentList(
-                    invocation.ArgumentList, method, grouped, newTypeName, targets[original]);
+                    invocation.ArgumentList, method, grouped, dtoTypeReference, targets[original]);
                 if (newArgList is null) return invocation;
                 rewrittenCount++;
                 return invocation.WithArgumentList(newArgList);
@@ -1470,7 +1533,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         ArgumentListSyntax argList,
         IMethodSymbol method,
         IReadOnlyList<IParameterSymbol> grouped,
-        string newTypeName,
+        string dtoTypeReference,
         CallSiteBinding binding)
     {
         // Argument-to-parameter association was computed semantically at binding time
@@ -1493,7 +1556,7 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         var dtoCreation = SyntaxFactory.ObjectCreationExpression(
             SyntaxFactory.Token(SyntaxKind.NewKeyword).WithTrailingTrivia(SyntaxFactory.Space),
-            SyntaxFactory.IdentifierName(newTypeName),
+            SyntaxFactory.ParseTypeName(dtoTypeReference),
             SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(dtoArgs)),
             initializer: null);
 
