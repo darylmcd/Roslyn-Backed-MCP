@@ -15,6 +15,7 @@ public enum UnexpectedExceptionCategory
     CompositeApply,
     FixAll,
     WorkspaceReadiness,
+    GetPrompt,
 }
 
 /// <summary>
