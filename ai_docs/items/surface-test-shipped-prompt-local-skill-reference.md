@@ -1,6 +1,6 @@
 # surface-test-shipped-prompt-local-skill-reference — remove maintainer-local .claude path from shipped prompt
 
-**row:** `surface-test-shipped-prompt-local-skill-reference` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `surface-test-shipped-prompt-local-skill-reference` · **pri:** `Low` · **size:** `S` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 

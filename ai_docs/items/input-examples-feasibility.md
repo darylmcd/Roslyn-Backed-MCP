@@ -1,6 +1,6 @@
 # input-examples-feasibility — Probe whether input_examples are expressible for MCP-served tools
 
-**row:** `input-examples-feasibility` · **pri:** `Low` · **size:** `S`
+**row:** `input-examples-feasibility` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 
