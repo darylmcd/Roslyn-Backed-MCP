@@ -78,6 +78,8 @@ public sealed class ParameterObjectService : IParameterObjectService
         var callSites = await CollectCallSiteBindingsAsync(solution, method, groupedParameters, ct).ConfigureAwait(false);
         var methodProject = solution.GetProject(method.ContainingAssembly, ct)!;
         EnforceCrossProjectReferences(solution, methodProject, dtoProject, callSites);
+        await EnforceGroupedParameterTypesAreDtoCompatibleAsync(
+            solution, methodProject, dtoProject, groupedParameters, dtoVisibilityIsPublic, ct).ConfigureAwait(false);
 
         var defaultValueWarnings = await CollectDefaultValueWarningsAsync(
             solution, groupedParameters, callSites, ct).ConfigureAwait(false);
@@ -978,6 +980,139 @@ public sealed class ParameterObjectService : IParameterObjectService
                 "parameter_object_preview refuses: one or more caller projects do not reference the DTO project. " +
                 "Add a project reference (use add_project_reference_preview) for each entry, then retry. " +
                 "Missing references: " + string.Join("; ", missing));
+    }
+
+    /// <summary>
+    /// Validates that every grouped parameter type can legally appear as a positional member
+    /// of the generated record. Three refusal classes, each thrown before any preview token is
+    /// stored: (1) the type depends on a method or containing-type type parameter, which a
+    /// non-generic top-level record cannot bind; (2) some constituent type is less accessible
+    /// than the record visibility chosen by <see cref="ResolveDtoProject"/>, which would emit
+    /// an inconsistent-accessibility (CS0051-style) DTO; (3) for a cross-project DTO, some
+    /// source-declared constituent type lives in an assembly the DTO project cannot see, so
+    /// the emitted type name would not resolve (CS0246).
+    /// </summary>
+    private static async Task EnforceGroupedParameterTypesAreDtoCompatibleAsync(
+        Solution solution,
+        Project methodProject,
+        Project dtoProject,
+        IReadOnlyList<IParameterSymbol> grouped,
+        bool dtoVisibilityIsPublic,
+        CancellationToken ct)
+    {
+        var crossProject = dtoProject.Id != methodProject.Id;
+        var dtoCompilation = crossProject
+            ? await dtoProject.GetCompilationAsync(ct).ConfigureAwait(false)
+            : null;
+        var neededRank = dtoVisibilityIsPublic ? PublicAccessibilityRank : InternalAccessibilityRank;
+        var recordVisibility = dtoVisibilityIsPublic ? "public" : "internal";
+
+        foreach (var parameter in grouped)
+        {
+            foreach (var constituent in EnumerateConstituentTypes(parameter.Type))
+            {
+                if (constituent is ITypeParameterSymbol typeParameter)
+                {
+                    var declarer = typeParameter.DeclaringMethod is { } declaringMethod
+                        ? $"method '{declaringMethod.ToDisplayString()}'"
+                        : $"type '{typeParameter.DeclaringType?.ToDisplayString()}'";
+                    throw new ArgumentException(
+                        $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
+                        $"which depends on type parameter '{typeParameter.Name}' declared by {declarer}. " +
+                        "The generated record is non-generic and its new top-level file cannot bind that type parameter; " +
+                        "remove the parameter from parameterNames.",
+                        nameof(grouped));
+                }
+
+                if (constituent is not INamedTypeSymbol named || named.TypeKind == TypeKind.Error)
+                    continue;
+
+                if (AccessibilityRank(named.DeclaredAccessibility) < neededRank)
+                    throw new ArgumentException(
+                        $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
+                        $"involving '{named.ToDisplayString()}', which is '{named.DeclaredAccessibility.ToString().ToLowerInvariant()}' — " +
+                        $"less accessible than the generated '{recordVisibility}' record. " +
+                        "Widen the type's accessibility, or remove the parameter from parameterNames.",
+                        nameof(grouped));
+
+                if (crossProject
+                    && named.Locations.Any(l => l.IsInSource)
+                    && !IsAssemblyReachable(dtoCompilation!, named.ContainingAssembly))
+                {
+                    var typeProjectName = solution.GetProject(named.ContainingAssembly, ct)?.Name
+                        ?? named.ContainingAssembly.Name;
+                    throw new ArgumentException(
+                        $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
+                        $"involving '{named.ToDisplayString()}', which is declared in '{typeProjectName}' — not referenced by DTO project '{dtoProject.Name}'. " +
+                        "Add a project reference (use add_project_reference_preview) for each entry, then retry. " +
+                        $"Missing references: {dtoProject.Name} -> {typeProjectName}",
+                        nameof(grouped));
+                }
+            }
+        }
+    }
+
+    private const int PublicAccessibilityRank = 4;
+    private const int InternalAccessibilityRank = 2;
+
+    /// <summary>
+    /// Rank order for "accessible from a new top-level file": protected/private-family
+    /// accessibility never qualifies, because the generated record is never nested inside
+    /// the declaring type.
+    /// </summary>
+    private static int AccessibilityRank(Accessibility accessibility) => accessibility switch
+    {
+        Accessibility.Public => PublicAccessibilityRank,
+        Accessibility.ProtectedOrInternal => 3,
+        Accessibility.Internal => InternalAccessibilityRank,
+        _ => 1,
+    };
+
+    /// <summary>
+    /// Yields <paramref name="type"/> and every type it structurally depends on: array
+    /// element types, pointer/function-pointer constituents, generic type arguments, and
+    /// containing types of nested types.
+    /// </summary>
+    private static IEnumerable<ITypeSymbol> EnumerateConstituentTypes(ITypeSymbol type)
+    {
+        var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<ITypeSymbol>();
+        pending.Push(type);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!seen.Add(current)) continue;
+            yield return current;
+            switch (current)
+            {
+                case IArrayTypeSymbol array:
+                    pending.Push(array.ElementType);
+                    break;
+                case IPointerTypeSymbol pointer:
+                    pending.Push(pointer.PointedAtType);
+                    break;
+                case IFunctionPointerTypeSymbol functionPointer:
+                    pending.Push(functionPointer.Signature.ReturnType);
+                    foreach (var p in functionPointer.Signature.Parameters) pending.Push(p.Type);
+                    break;
+                case INamedTypeSymbol named:
+                    foreach (var argument in named.TypeArguments) pending.Push(argument);
+                    if (named.ContainingType is { } outer) pending.Push(outer);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="assembly"/>'s types resolve inside <paramref name="dtoCompilation"/>:
+    /// it is the DTO assembly itself or one of its referenced assemblies (compared by identity,
+    /// because the symbols originate from different compilations).
+    /// </summary>
+    private static bool IsAssemblyReachable(Compilation dtoCompilation, IAssemblySymbol assembly)
+    {
+        if (dtoCompilation.Assembly.Identity.Equals(assembly.Identity)) return true;
+        return dtoCompilation.SourceModule.ReferencedAssemblySymbols
+            .Any(referenced => referenced.Identity.Equals(assembly.Identity));
     }
 
     private static async Task<List<string>> CollectDefaultValueWarningsAsync(
