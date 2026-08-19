@@ -5,6 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:581`
+- `tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs`
 
 ## Acceptance
 

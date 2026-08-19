@@ -8,6 +8,7 @@
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:1046`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:1066`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:81`
+- `tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs`
 
 ## Acceptance
 
@@ -15,6 +16,7 @@
 - [ ] One shared `MissingProjectReferenceMessage(...)` formatter produces the missing-project-reference wording for BOTH refusal sites, so `EnforceCrossProjectReferences` and the new gate cannot drift.
 - [ ] A null DTO-project compilation yields a named refusal instead of the `dtoCompilation!` null-forgiveness (which turns a legitimate refusal path into an NRE for a project that does not support compilation).
 - [ ] `EnforceGroupedParameterTypesAreDtoCompatibleAsync` runs BEFORE `CollectCallSiteBindingsAsync`, so an obviously-invalid parameter type refuses without first paying a solution-wide find-references scan. (Only the cross-project arm needs the DTO compilation, not the call sites.)
+- [ ] Regressions pin the two BEHAVIOR-CHANGING bullets above: one asserting a null DTO-project compilation refuses (rather than the guard degrading to "destination is free"), one asserting an invalid parameter type refuses without a call-site scan having run. The rank-constant and shared-formatter bullets are behavior-preserving and need no new test.
 
 ## Evidence
 

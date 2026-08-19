@@ -7,6 +7,7 @@
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:427`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:506`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:548`
+- `tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs`
 
 ## Acceptance
 
