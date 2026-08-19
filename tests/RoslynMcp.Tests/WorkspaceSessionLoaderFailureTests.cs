@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -72,7 +73,7 @@ public sealed class WorkspaceSessionLoaderFailureTests
     {
         public int CallCount { get; private set; }
 
-        public override async Task<MSBuildWorkspace> CreateAndOpenAsync(
+        public override async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
             string workspaceId,
             string path,
             IDictionary<string, string>? globalProperties,
