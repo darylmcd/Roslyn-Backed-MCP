@@ -36,6 +36,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Fails in seconds when the pushed tag / published release name disagrees with the
+      # canonical Directory.Build.props <Version>. Must precede the build so a mistag never
+      # reaches pack/push (--skip-duplicate silently no-ops) or the tag-derived registry job.
+      - name: Verify release provenance (tag matches canonical version)
+        shell: pwsh
+        run: ./eng/verify-publish-version-context.ps1 -EventName '${{ github.event_name }}' -RefName '${{ github.ref_name }}' -ReleaseTag '${{ github.event.release.tag_name }}'
+
       # -NoCoverage: the release path only validates + packs; the coverage HTML/artifact
       # is never consumed here, so collecting it (~60-90s of coverlet IL-rewrite) is pure
       # waste on the publish run.
