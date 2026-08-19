@@ -93,6 +93,8 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         var (dtoNamespace, dtoFolders) = ResolveDtoLocation(dtoProject, request, method);
         var dtoFilePath = ResolveDtoFilePath(dtoProject, dtoFolders, request.NewTypeName);
+        await EnforceDtoDestinationIsFreeAsync(
+            dtoProject, dtoFilePath, dtoNamespace, request.NewTypeName, ct).ConfigureAwait(false);
         var dtoSource = BuildDtoSource(dtoNamespace, request.NewTypeName, groupedParameters, dtoVisibilityIsPublic);
 
         var originalTexts = new Dictionary<DocumentId, string>();
@@ -1154,17 +1156,59 @@ public sealed class ParameterObjectService : IParameterObjectService
                 ? method.ContainingNamespace.ToDisplayString()
                 : dtoProject.Name;
         }
+        else
+        {
+            // Caller-supplied namespace is untrusted boundary input: it is emitted into the
+            // DTO source AND (when dtoFolders is omitted) split into folder segments that
+            // feed Path.Combine, so every dot-separated part must be a legal identifier.
+            foreach (var part in ns.Split('.'))
+            {
+                if (part.Length == 0)
+                    throw new InvalidOperationException(
+                        $"dtoNamespace '{ns}' contains an empty namespace part " +
+                        "(check for doubled, leading, or trailing dots).");
+                IdentifierValidation.ThrowIfInvalidIdentifier(part, $"dtoNamespace part '{part}'");
+            }
+        }
 
         IReadOnlyList<string> folders;
         if (request.DtoFolders is { Count: > 0 })
         {
-            folders = request.DtoFolders;
+            folders = SplitCallerSuppliedFolders(request.DtoFolders);
         }
         else
         {
             folders = ResolveFolderSegmentsForNamespace(ns!, dtoProject.Name);
         }
+        ProjectRelativePathValidation.ValidateFolderSegments(folders, "dtoFolders");
         return (ns!, folders);
+    }
+
+    /// <summary>
+    /// Normalizes caller-supplied <c>dtoFolders</c> entries for validation: a nested-path
+    /// entry like <c>"Models/Requests"</c> is common ergonomics, so each entry is refused
+    /// only when rooted (which <see cref="Path.Combine(string[])"/> would honor by
+    /// discarding the project directory) and otherwise split on both separators into
+    /// per-directory segments for <see cref="ProjectRelativePathValidation.ValidateFolderSegments"/>.
+    /// Empty split products (doubled/trailing separators) are preserved so the validator
+    /// refuses them with an actionable message rather than silently dropping them.
+    /// </summary>
+    private static IReadOnlyList<string> SplitCallerSuppliedFolders(IReadOnlyList<string> dtoFolders)
+    {
+        var segments = new List<string>();
+        foreach (var entry in dtoFolders)
+        {
+            if (string.IsNullOrWhiteSpace(entry))
+                throw new InvalidOperationException(
+                    "dtoFolders contains an empty or whitespace entry; " +
+                    "each entry must name a directory inside the target project.");
+            if (Path.IsPathRooted(entry))
+                throw new InvalidOperationException(
+                    $"dtoFolders entry '{entry}' is a rooted path; " +
+                    "entries must be relative directory paths inside the target project.");
+            segments.AddRange(entry.Split(['/', '\\']));
+        }
+        return segments;
     }
 
     private static IReadOnlyList<string> ResolveFolderSegmentsForNamespace(string typeNamespace, string projectName)
@@ -1184,7 +1228,47 @@ public sealed class ParameterObjectService : IParameterObjectService
         var projectDir = Path.GetDirectoryName(dtoProject.FilePath)
             ?? throw new InvalidOperationException(
                 $"DTO project '{dtoProject.Name}' has no resolvable directory (FilePath='{dtoProject.FilePath}').");
-        return Path.Combine([projectDir, .. folders, $"{typeName}.cs"]);
+        var combined = Path.Combine([projectDir, .. folders, $"{typeName}.cs"]);
+        // Belt-and-braces: even with validated segments, require the canonical result to
+        // sit strictly under the canonical project directory before it leaves this method.
+        return ProjectRelativePathValidation.EnsureDescendantOfRoot(projectDir, combined, "dtoFolders");
+    }
+
+    /// <summary>
+    /// Refuses the preview — before any document is added or a token is minted — when the
+    /// resolved DTO destination is already occupied: an existing document at the same
+    /// canonical path, an existing file on disk (an Added document has no pre-write
+    /// snapshot, so redeeming the token would overwrite it silently and irreversibly), or
+    /// an existing type <c>{dtoNamespace}.{newTypeName}</c> declared in the DTO project.
+    /// </summary>
+    private static async Task EnforceDtoDestinationIsFreeAsync(
+        Project dtoProject,
+        string dtoFilePath,
+        string dtoNamespace,
+        string newTypeName,
+        CancellationToken ct)
+    {
+        var canonicalTarget = Path.GetFullPath(dtoFilePath);
+        var occupied = dtoProject.Documents.Any(d =>
+            d.FilePath is not null &&
+            string.Equals(Path.GetFullPath(d.FilePath), canonicalTarget, StringComparison.OrdinalIgnoreCase));
+        if (occupied)
+            throw new InvalidOperationException(
+                $"parameter_object_preview refuses: project '{dtoProject.Name}' already contains a document at " +
+                $"'{canonicalTarget}'. Choose a different newTypeName or dtoFolders.");
+
+        if (File.Exists(canonicalTarget))
+            throw new InvalidOperationException(
+                $"parameter_object_preview refuses: a file already exists on disk at '{canonicalTarget}' and " +
+                "applying the preview would overwrite it with no rollback snapshot. " +
+                "Choose a different newTypeName or dtoFolders, or remove the file first.");
+
+        var compilation = await dtoProject.GetCompilationAsync(ct).ConfigureAwait(false);
+        var metadataName = $"{dtoNamespace}.{newTypeName}";
+        if (compilation?.Assembly.GetTypeByMetadataName(metadataName) is not null)
+            throw new InvalidOperationException(
+                $"parameter_object_preview refuses: type '{metadataName}' already exists in project " +
+                $"'{dtoProject.Name}'. Choose a different newTypeName or dtoNamespace.");
     }
 
     /// <summary>
