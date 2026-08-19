@@ -8,6 +8,8 @@
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:1253`
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:1267`
 - `src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs:33`
+- `tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs`
+- `tests/RoslynMcp.Tests/ProjectRelativePathValidationTests.cs`
 
 ## Acceptance
 

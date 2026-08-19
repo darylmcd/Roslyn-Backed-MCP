@@ -6,6 +6,8 @@
 
 - `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs:1201`
 - `src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs:117`
+- `tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs`
+- `tests/RoslynMcp.Tests/BulkRefactoringTests.cs`
 
 ## Acceptance
 

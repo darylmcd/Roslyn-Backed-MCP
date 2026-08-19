@@ -1,6 +1,6 @@
 # justfile-powershell-recipe-portability — Invoke PowerShell recipes explicitly
 
-**row:** `justfile-powershell-recipe-portability` · **pri:** `Low` · **size:** `S` · **deps:** `local-vulnerability-audit-fail-closed`
+**row:** `justfile-powershell-recipe-portability` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
