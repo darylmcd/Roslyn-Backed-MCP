@@ -1,6 +1,6 @@
 # parameter-object-dto-folder-validation-consolidation — one owner for dtoFolders entry validation
 
-**row:** `parameter-object-dto-folder-validation-consolidation` · **pri:** `Low` · **size:** `S`
+**row:** `parameter-object-dto-folder-validation-consolidation` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 
