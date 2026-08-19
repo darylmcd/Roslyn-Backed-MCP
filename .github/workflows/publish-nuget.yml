@@ -41,7 +41,16 @@ jobs:
       # reaches pack/push (--skip-duplicate silently no-ops) or the tag-derived registry job.
       - name: Verify release provenance (tag matches canonical version)
         shell: pwsh
-        run: ./eng/verify-publish-version-context.ps1 -EventName '${{ github.event_name }}' -RefName '${{ github.ref_name }}' -ReleaseTag '${{ github.event.release.tag_name }}'
+        # Context values reach the script as ENVIRONMENT VARIABLES, never as ${{ }}
+        # interpolated into the run: body. github.event.release.tag_name is
+        # attacker-controlled (anyone who can cut a release names the tag); substituted
+        # into the command text it would close the quote and execute arbitrary code in a
+        # job that holds NUGET_API_KEY.
+        env:
+          PUBLISH_EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_REF_NAME: ${{ github.ref_name }}
+          PUBLISH_RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: ./eng/verify-publish-version-context.ps1 -EventName $env:PUBLISH_EVENT_NAME -RefName $env:PUBLISH_REF_NAME -ReleaseTag $env:PUBLISH_RELEASE_TAG
 
       # -NoCoverage: the release path only validates + packs; the coverage HTML/artifact
       # is never consumed here, so collecting it (~60-90s of coverlet IL-rewrite) is pure
@@ -138,9 +147,15 @@ jobs:
       - name: Resolve package version
         id: ver
         shell: bash
+        # Context values arrive as environment variables, never interpolated into the
+        # run: body — github.event.release.tag_name is attacker-named, and substituting
+        # it as source text lets a crafted tag close the quote and run commands.
+        env:
+          PUBLISH_EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            v="${{ github.event.release.tag_name }}"
+          if [ "$PUBLISH_EVENT_NAME" = "release" ]; then
+            v="$PUBLISH_RELEASE_TAG"
           else
             v="${GITHUB_REF_NAME}"
           fi
@@ -153,9 +168,13 @@ jobs:
         # and checking for the `mcp-name` marker. The flat-container README endpoint
         # returns 200 only once NuGet has finished validating + indexing the package.
         shell: bash
+        # PUBLISH_VERSION is derived from the release tag, so it is transitively
+        # attacker-influenced and must not be interpolated into this run: body either.
+        env:
+          PUBLISH_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           id="darylmcd.roslynmcp"   # flat-container ids are lowercased
-          ver="${{ steps.ver.outputs.version }}"
+          ver="$PUBLISH_VERSION"
           url="https://api.nuget.org/v3-flatcontainer/${id}/${ver}/readme"
           echo "Polling $url"
           for i in $(seq 1 80); do

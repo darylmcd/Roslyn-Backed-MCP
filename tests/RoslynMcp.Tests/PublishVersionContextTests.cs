@@ -155,18 +155,95 @@ public sealed class PublishVersionContextTests
             packIndex > gateIndex,
             "The provenance gate must run before the package is produced.");
 
+        // The gate receives its context through env: bindings, NOT ${{ }} interpolated into
+        // the run: body. Single-quoting an interpolation is NOT a mitigation: ${{ }} is
+        // substituted into the workflow source before any shell parses it, so a release tag
+        // containing a quote closes the string and executes the rest as commands.
         StringAssert.Contains(
             workflow,
-            "-EventName '${{ github.event_name }}'",
-            "The gate must receive the triggering event name.");
+            "PUBLISH_EVENT_NAME: ${{ github.event_name }}",
+            "The gate must receive the triggering event name via an env: binding.");
         StringAssert.Contains(
             workflow,
-            "-RefName '${{ github.ref_name }}'",
-            "The gate must receive the pushed ref name, single-quoted against injection.");
+            "PUBLISH_REF_NAME: ${{ github.ref_name }}",
+            "The gate must receive the pushed ref name via an env: binding.");
         StringAssert.Contains(
             workflow,
-            "-ReleaseTag '${{ github.event.release.tag_name }}'",
-            "The gate must receive the published release tag, single-quoted against injection.");
+            "PUBLISH_RELEASE_TAG: ${{ github.event.release.tag_name }}",
+            "The gate must receive the published release tag via an env: binding.");
+        StringAssert.Contains(
+            workflow,
+            "-EventName $env:PUBLISH_EVENT_NAME -RefName $env:PUBLISH_REF_NAME -ReleaseTag $env:PUBLISH_RELEASE_TAG",
+            "The gate must read its context from environment variables.");
+    }
+
+    [TestMethod]
+    public void PublishWorkflow_NeverInterpolatesContextIntoRunBodies()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml");
+        var lines = File.ReadAllLines(workflowPath);
+
+        var offenders = new List<string>();
+        var runBodyIndent = -1;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var indent = line.Length - line.TrimStart().Length;
+            var trimmed = line.TrimStart();
+
+            if (runBodyIndent >= 0)
+            {
+                // A run: | block body continues while lines are blank or indented deeper
+                // than the `run:` key itself.
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
+
+                if (indent > runBodyIndent)
+                {
+                    if (line.Contains("${{", StringComparison.Ordinal))
+                    {
+                        offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+                    }
+
+                    continue;
+                }
+
+                runBodyIndent = -1;
+            }
+
+            if (!trimmed.StartsWith("run:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var inline = trimmed["run:".Length..].Trim();
+            if (inline is "|" or ">" or "|-" or ">-" or "")
+            {
+                runBodyIndent = indent;
+                continue;
+            }
+
+            if (line.Contains("${{", StringComparison.Ordinal))
+            {
+                offenders.Add($"{workflowPath}:{i + 1}: {trimmed}");
+            }
+        }
+
+        Assert.AreEqual(
+            0,
+            offenders.Count,
+            "GitHub Actions script injection: ${{ }} expressions must never be interpolated "
+                + "into a run: body — they are substituted as source text before the shell parses "
+                + "them, so attacker-influenced values (github.event.release.tag_name, "
+                + "github.ref_name, PR titles/branches) can break out and execute commands in a "
+                + "job holding NUGET_API_KEY. Bind them via env: and read $env:NAME / $NAME "
+                + "instead. Offending lines:"
+                + Environment.NewLine
+                + string.Join(Environment.NewLine, offenders));
     }
 
     private static async Task<ProcessResult> RunAsync(
