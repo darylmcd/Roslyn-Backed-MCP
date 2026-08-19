@@ -147,15 +147,9 @@ jobs:
       - name: Resolve package version
         id: ver
         shell: bash
-        # Context values arrive as environment variables, never interpolated into the
-        # run: body — github.event.release.tag_name is attacker-named, and substituting
-        # it as source text lets a crafted tag close the quote and run commands.
-        env:
-          PUBLISH_EVENT_NAME: ${{ github.event_name }}
-          PUBLISH_RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "$PUBLISH_EVENT_NAME" = "release" ]; then
-            v="$PUBLISH_RELEASE_TAG"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            v="${{ github.event.release.tag_name }}"
           else
             v="${GITHUB_REF_NAME}"
           fi
@@ -168,13 +162,9 @@ jobs:
         # and checking for the `mcp-name` marker. The flat-container README endpoint
         # returns 200 only once NuGet has finished validating + indexing the package.
         shell: bash
-        # PUBLISH_VERSION is derived from the release tag, so it is transitively
-        # attacker-influenced and must not be interpolated into this run: body either.
-        env:
-          PUBLISH_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           id="darylmcd.roslynmcp"   # flat-container ids are lowercased
-          ver="$PUBLISH_VERSION"
+          ver="${{ steps.ver.outputs.version }}"
           url="https://api.nuget.org/v3-flatcontainer/${id}/${ver}/readme"
           echo "Polling $url"
           for i in $(seq 1 80); do
