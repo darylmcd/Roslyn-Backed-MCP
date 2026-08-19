@@ -1,6 +1,6 @@
 # namespace-in-scope-shared-helper — one namespace-in-scope test across rewrite services
 
-**row:** `namespace-in-scope-shared-helper` · **pri:** `Low` · **size:** `S`
+**row:** `namespace-in-scope-shared-helper` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-19T02:20:36Z
+**updated_at:** 2026-08-19T02:23:37Z
 
 ## Agent contract
 
@@ -204,9 +204,9 @@
 | `parameter-object-pinvoke-attribute-qualified-match` | Low | — | **Match PInvoke attributes by qualified type** — resolve DllImport/LibraryImport by metadata name so a same-simple-name user attribute stops triggering a false refusal. [type: bug] [source: PR #1263 cq review] | S | items/parameter-object-pinvoke-attribute-qualified-match.md |
 | `parameter-object-classifier-shared-helpers` | Low | — | **Dedupe the parameter-object use-classifiers** — share the increment/decrement target test and compute the unwrapped operation once. [type: quality] [source: PR #1267 cq review] | S | items/parameter-object-classifier-shared-helpers.md |
 | `parameter-object-dto-gate-tidy` | Low | — | **Tidy the DTO type-validity gate** — name the third accessibility rank, share the missing-reference message, guard the null compilation, and hoist the gate above the call-site scan. [type: quality] [source: PR #1269 cq review] | S | items/parameter-object-dto-gate-tidy.md |
-| `namespace-in-scope-shared-helper` | Low | — | **Share one namespace-in-scope test across rewrite services** — the BulkRefactoringService copy is strictly weaker (compilation-unit usings only, no alias/static filter). [type: bug] [source: PR #1271 cq review] | S | items/namespace-in-scope-shared-helper.md |
+| `namespace-in-scope-shared-helper` | Low | — | **Share one namespace-in-scope test across rewrite services** — the BulkRefactoringService copy is strictly weaker (compilation-unit usings only, no alias/static filter). [type: bug] [source: PR #1271 cq review] | M | items/namespace-in-scope-shared-helper.md |
 | `parameter-object-nested-namespace-coverage` | Low | — | **Cover the nested-namespace qualification branch and hoist the per-callsite walk** — the outward-lookup path is untested and resolution repeats inside ReplaceNodes. [type: quality] [source: PR #1271 cq review] | S | items/parameter-object-nested-namespace-coverage.md |
-| `parameter-object-dto-folder-validation-consolidation` | Low | — | **Consolidate dtoFolders entry validation** — one owner for the split/validate pre-checks, refuse on null compilation instead of failing open, and unify the case policy across the document and on-disk collision guards. [type: bug] [source: PR #1273 cq review] | S | items/parameter-object-dto-folder-validation-consolidation.md |
+| `parameter-object-dto-folder-validation-consolidation` | Low | — | **Consolidate dtoFolders entry validation** — one owner for the split/validate pre-checks, refuse on null compilation instead of failing open, and unify the case policy across the document and on-disk collision guards. [type: bug] [source: PR #1273 cq review] | M | items/parameter-object-dto-folder-validation-consolidation.md |
 
 ## Defer
 
