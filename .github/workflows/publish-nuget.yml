@@ -36,6 +36,22 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Fails in seconds when the pushed tag / published release name disagrees with the
+      # canonical Directory.Build.props <Version>. Must precede the build so a mistag never
+      # reaches pack/push (--skip-duplicate silently no-ops) or the tag-derived registry job.
+      - name: Verify release provenance (tag matches canonical version)
+        shell: pwsh
+        # Context values reach the script as ENVIRONMENT VARIABLES, never as ${{ }}
+        # interpolated into the run: body. github.event.release.tag_name is
+        # attacker-controlled (anyone who can cut a release names the tag); substituted
+        # into the command text it would close the quote and execute arbitrary code in a
+        # job that holds NUGET_API_KEY.
+        env:
+          PUBLISH_EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_REF_NAME: ${{ github.ref_name }}
+          PUBLISH_RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: ./eng/verify-publish-version-context.ps1 -EventName $env:PUBLISH_EVENT_NAME -RefName $env:PUBLISH_REF_NAME -ReleaseTag $env:PUBLISH_RELEASE_TAG
+
       # -NoCoverage: the release path only validates + packs; the coverage HTML/artifact
       # is never consumed here, so collecting it (~60-90s of coverlet IL-rewrite) is pure
       # waste on the publish run.
