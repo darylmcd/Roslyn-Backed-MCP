@@ -697,6 +697,146 @@ public sealed class ParameterObjectPreviewTests : TestBase
     }
 
     [TestMethod]
+    [DataRow(
+        """
+        namespace SampleLib;
+
+        public class POGenericMethodFixture
+        {
+            public T Pick<T>(T value, int index) => value;
+        }
+        """,
+        "POGenericMethodFixture.cs", 5, 14, "value,index",
+        "type parameter 'T'", "'value'",
+        DisplayName = "method type parameter")]
+    [DataRow(
+        """
+        namespace SampleLib;
+
+        public class POGenericTypeFixture<T>
+        {
+            public void Store(T item, int slot) { _ = item; _ = slot; }
+        }
+        """,
+        "POGenericTypeFixture.cs", 5, 17, "item,slot",
+        "type parameter 'T'", "'item'",
+        DisplayName = "containing-type type parameter")]
+    [DataRow(
+        """
+        namespace SampleLib;
+
+        internal sealed class POInternalThing;
+
+        public class POAccessFixture
+        {
+            internal void Use(POInternalThing secret, int a) { _ = secret; _ = a; }
+        }
+        """,
+        "POAccessFixture.cs", 7, 19, "secret,a",
+        "'SampleLib.POInternalThing'", "'secret'",
+        DisplayName = "internal type into public record")]
+    [DataRow(
+        """
+        namespace SampleLib;
+
+        internal sealed class POInternalElement;
+
+        public class POAccessListFixture
+        {
+            internal void UseAll(List<POInternalElement> items, int a) { _ = items; _ = a; }
+        }
+        """,
+        "POAccessListFixture.cs", 7, 19, "items,a",
+        "'SampleLib.POInternalElement'", "'items'",
+        DisplayName = "internal type argument inside public generic")]
+    [DataRow(
+        """
+        namespace SampleLib;
+
+        public class POPrivateNestedFixture
+        {
+            private sealed class Secret;
+
+            internal void Keep(Secret secret, int a) { _ = secret; _ = a; }
+        }
+        """,
+        "POPrivateNestedFixture.cs", 7, 19, "secret,a",
+        "'SampleLib.POPrivateNestedFixture.Secret'", "'secret'",
+        DisplayName = "private-nested type into public record")]
+    public async Task GroupedParameterTypeInvalidForDto_RefusesPreview(
+        string fixtureSource,
+        string fileName,
+        int line,
+        int column,
+        string parameterNames,
+        string expectedTypeFragment,
+        string expectedParameterFragment)
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(fixtureSource, fileName);
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line, column),
+                    new ParameterObjectPreviewRequest([.. parameterNames.Split(',')], "GroupedArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "parameter_object_preview refuses");
+            StringAssert.Contains(ex.Message, expectedTypeFragment);
+            StringAssert.Contains(ex.Message, expectedParameterFragment);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task CrossProject_RefusesWhenParameterTypeUnavailableFromDtoProject()
+    {
+        // SampleApp references SampleLib, so the existing caller-side reference gate passes
+        // when the DTO is routed to SampleLib — but the parameter type below is declared in
+        // SampleApp, which SampleLib does NOT reference, so the emitted record could never
+        // resolve the type name. The preview must refuse before storing a token.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var appDir = Path.Combine(solutionDir, "SampleApp");
+
+        var appFile = Path.Combine(appDir, "POAvailFixture.cs");
+        await File.WriteAllTextAsync(appFile,
+            """
+            namespace SampleApp;
+
+            public sealed class POAppOnlyType;
+
+            public class POAvailFixture
+            {
+                public void Run(POAppOnlyType first, POAppOnlyType second) { _ = first; _ = second; }
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(appFile, line: 7, column: 17),
+                    new ParameterObjectPreviewRequest(["first", "second"], "RunArgs", DtoProjectName: "SampleLib"),
+                    CancellationToken.None));
+            StringAssert.Contains(ex.Message, "'first'");
+            StringAssert.Contains(ex.Message, "'SampleApp.POAppOnlyType'");
+            StringAssert.Contains(ex.Message, "SampleLib -> SampleApp");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
     public async Task CrossProject_RewritesCallSiteWhenReferenceExists()
     {
         // SampleApp already references SampleLib in the SampleSolution fixture, so a method
