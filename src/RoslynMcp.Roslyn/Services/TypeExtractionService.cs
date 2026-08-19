@@ -99,7 +99,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var fieldName = "_" + char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
         var updatedTypeDecl = InjectFieldAndCtorParameter(
             typeDecl.WithMembers(SyntaxFactory.List(membersToKeep)),
-            newTypeName, fieldName);
+            typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
 
         // Replace in source root (normalize so field/modifier tokens get proper spacing)
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
@@ -442,9 +442,52 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return typeDecl.WithLeadingTrivia(existing.Insert(0, blankLine));
     }
 
+    /// <summary>
+    /// Injects the <c>private readonly {NewType} _field</c> composition field and wires it through
+    /// EVERY instance constructor of the source type (type-extraction-composition-constructor-coverage).
+    /// <para>
+    /// The previous implementation mutated only <c>FirstOrDefault()</c> constructor, which left the
+    /// readonly field silently null on the implicit-constructor and overloaded-constructor paths,
+    /// produced CS1729 on <c>this(...)</c>-chained constructors, and skipped the assignment entirely
+    /// for expression-bodied constructors. The rewrite classifies the whole constructor topology:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>Zero instance constructors: a <c>public {SourceType}({NewType} p)</c>
+    /// constructor is synthesized that assigns the field.</description></item>
+    /// <item><description>Root constructors (no initializer, or <c>base(...)</c>): the parameter is
+    /// inserted before the first optional parameter (preserving the BUG-005 CS1737 fix per
+    /// constructor) and the assignment is appended; expression-bodied roots are rewritten to a block
+    /// body so the assignment has somewhere to live.</description></item>
+    /// <item><description><c>this(...)</c>-chained constructors: the parameter is added and forwarded
+    /// to the delegated constructor's argument list at the target's insertion ordinal — the root the
+    /// chain terminates in owns the single write of the readonly field.</description></item>
+    /// <item><description>Static constructors are never mutated.</description></item>
+    /// </list>
+    /// <para>
+    /// Unsupported topologies REFUSE before any syntax is emitted (matching the refusal idiom used by
+    /// the external-consumer guard) instead of shipping a preview whose applied result is silently
+    /// broken: primary constructors (records / <c>class C(...)</c>), bodyless instance constructors
+    /// (extern/partial), named arguments in a <c>this(...)</c> initializer, and delegation targets
+    /// the semantic model cannot resolve.
+    /// </para>
+    /// <paramref name="originalTypeDecl"/> is the in-tree declaration <paramref name="semanticModel"/>
+    /// can answer questions about; <paramref name="typeDecl"/> is the detached copy whose members have
+    /// already been partitioned. Constructors are never extracted (see
+    /// <see cref="ValidateRequestedMemberShapes"/>), so the two constructor sequences correspond 1:1.
+    /// </summary>
     private static TypeDeclarationSyntax InjectFieldAndCtorParameter(
-        TypeDeclarationSyntax typeDecl, string newTypeName, string fieldName)
+        TypeDeclarationSyntax typeDecl, TypeDeclarationSyntax originalTypeDecl,
+        SemanticModel semanticModel, string newTypeName, string fieldName, string sourceTypeName,
+        CancellationToken ct)
     {
+        if (typeDecl.ParameterList is not null)
+        {
+            throw new InvalidOperationException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the source type declares a " +
+                $"primary constructor, and the extraction cannot wire the composition field through primary-constructor " +
+                $"parameters. Convert the primary constructor to an explicit constructor first, then retry.");
+        }
+
         var fieldDecl = SyntaxFactory.FieldDeclaration(
             SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(newTypeName))
                 .WithVariables(SyntaxFactory.SingletonSeparatedList(
@@ -453,37 +496,119 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
                 SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
 
-        var existingCtor = typeDecl.Members.OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
-        if (existingCtor is not null)
+        var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
+        var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
+            .WithType(SyntaxFactory.ParseTypeName(newTypeName));
+        var assignment = SyntaxFactory.ExpressionStatement(
+            SyntaxFactory.AssignmentExpression(
+                SyntaxKind.SimpleAssignmentExpression,
+                SyntaxFactory.IdentifierName(fieldName),
+                SyntaxFactory.IdentifierName(paramName)));
+
+        var ctors = typeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
+        var originalCtors = originalTypeDecl.Members.OfType<ConstructorDeclarationSyntax>().ToList();
+        var instanceIndexes = Enumerable.Range(0, ctors.Count)
+            .Where(i => !ctors[i].Modifiers.Any(SyntaxKind.StaticKeyword))
+            .ToList();
+
+        if (instanceIndexes.Count == 0)
         {
-            var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
-            var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-                .WithType(SyntaxFactory.ParseTypeName(newTypeName));
+            // Implicit constructor: the compiler-supplied parameterless constructor cannot assign the
+            // new readonly field, so synthesize an explicit one that does. Inserted right after the
+            // field; NormalizeWhitespace at the call site handles formatting.
+            var synthesizedCtor = SyntaxFactory.ConstructorDeclaration(SyntaxFactory.Identifier(typeDecl.Identifier.Text))
+                .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+                .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SingletonSeparatedList(newParam)))
+                .WithBody(SyntaxFactory.Block(assignment));
 
-            // BUG-005 (#1): Insert the new required parameter BEFORE any optional parameters.
-            // AddParameterListParameters appends to the end, which produced CS1737
-            // ("required after optional") whenever the existing constructor ended with an
-            // ILogger? logger = null or similar default.
-            var existingParams = existingCtor.ParameterList.Parameters;
-            var firstOptionalIndex = existingParams.IndexOf(p => p.Default is not null);
-            ConstructorDeclarationSyntax updatedCtor = firstOptionalIndex < 0
-                ? existingCtor.AddParameterListParameters(newParam)
-                : existingCtor.WithParameterList(
-                    existingCtor.ParameterList.WithParameters(
-                        existingParams.Insert(firstOptionalIndex, newParam)));
-
-            var assignment = SyntaxFactory.ExpressionStatement(
-                SyntaxFactory.AssignmentExpression(
-                    SyntaxKind.SimpleAssignmentExpression,
-                    SyntaxFactory.IdentifierName(fieldName),
-                    SyntaxFactory.IdentifierName(paramName)));
-
-            if (updatedCtor.Body is not null)
-                updatedCtor = updatedCtor.WithBody(updatedCtor.Body.AddStatements(assignment));
-
-            typeDecl = typeDecl.ReplaceNode(existingCtor, updatedCtor);
+            return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl).Insert(1, synthesizedCtor));
         }
 
+        // BUG-005 (#1), preserved per constructor: insert the new required parameter BEFORE any
+        // optional parameters. Appending produced CS1737 ("required after optional") whenever a
+        // constructor ended with an ILogger? logger = null or similar default. C# requires all
+        // optional parameters to trail the required ones, so this index is also the count of
+        // required parameters — the ordinal a forwarded this(...) argument must be inserted at.
+        static int ParameterInsertIndex(ConstructorDeclarationSyntax ctor)
+        {
+            var firstOptionalIndex = ctor.ParameterList.Parameters.IndexOf(p => p.Default is not null);
+            return firstOptionalIndex < 0 ? ctor.ParameterList.Parameters.Count : firstOptionalIndex;
+        }
+
+        var replacements = new Dictionary<ConstructorDeclarationSyntax, ConstructorDeclarationSyntax>();
+        foreach (var i in instanceIndexes)
+        {
+            var ctor = ctors[i];
+            if (ctor.Body is null && ctor.ExpressionBody is null)
+            {
+                throw new InvalidOperationException(
+                    $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': constructor " +
+                    $"'{ctor.Identifier.Text}({ctor.ParameterList.Parameters.Count} parameter(s))' has no body " +
+                    $"(extern or partial), so the composition field cannot be assigned on that construction path. " +
+                    $"Give the constructor a body first, then retry.");
+            }
+
+            var insertIndex = ParameterInsertIndex(ctor);
+            var updatedCtor = ctor.WithParameterList(
+                ctor.ParameterList.WithParameters(
+                    ctor.ParameterList.Parameters.Insert(insertIndex, newParam)));
+
+            if (ctor.Initializer is { } initializer && initializer.IsKind(SyntaxKind.ThisConstructorInitializer))
+            {
+                // Chained constructor: forward the new argument to the delegated constructor — the
+                // root the chain terminates in owns the single write of the readonly field, so no
+                // assignment is added here. The argument's ordinal must match the position the
+                // parameter was inserted at on the DELEGATION TARGET, which the semantic model
+                // resolves against the original in-tree initializer.
+                if (initializer.ArgumentList.Arguments.Any(a => a.NameColon is not null))
+                {
+                    throw new InvalidOperationException(
+                        $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': a 'this(...)' constructor " +
+                        $"initializer uses named arguments, so the forwarded '{paramName}' argument cannot be inserted " +
+                        $"positionally. Convert the initializer to positional arguments first, then retry.");
+                }
+
+                var originalInitializer = originalCtors[i].Initializer!;
+                var targetSymbol = semanticModel.GetSymbolInfo(originalInitializer, ct).Symbol as IMethodSymbol;
+                var targetCtorIndex = targetSymbol is null ? -1 : originalCtors.FindIndex(c =>
+                    targetSymbol.DeclaringSyntaxReferences.Any(r =>
+                        r.Span == c.Span &&
+                        string.Equals(r.SyntaxTree.FilePath, c.SyntaxTree.FilePath, StringComparison.Ordinal)));
+                if (targetCtorIndex < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the delegation target of a " +
+                        $"'this(...)' constructor initializer could not be resolved, so the forwarded '{paramName}' " +
+                        $"argument cannot be placed safely. Fix the constructor chain so it compiles, then retry.");
+                }
+
+                var arguments = initializer.ArgumentList.Arguments;
+                var argumentIndex = Math.Min(ParameterInsertIndex(ctors[targetCtorIndex]), arguments.Count);
+                updatedCtor = updatedCtor.WithInitializer(
+                    initializer.WithArgumentList(
+                        initializer.ArgumentList.WithArguments(
+                            arguments.Insert(argumentIndex, SyntaxFactory.Argument(SyntaxFactory.IdentifierName(paramName))))));
+            }
+            else if (ctor.ExpressionBody is { } expressionBody)
+            {
+                // Expression-bodied root: rewrite to a block body so the assignment has a home —
+                // the old `Body is not null` guard silently skipped these, leaving the field null.
+                updatedCtor = updatedCtor
+                    .WithExpressionBody(null)
+                    .WithSemicolonToken(default)
+                    .WithBody(SyntaxFactory.Block(
+                        SyntaxFactory.ExpressionStatement(expressionBody.Expression),
+                        assignment));
+            }
+            else
+            {
+                updatedCtor = updatedCtor.WithBody(ctor.Body!.AddStatements(assignment));
+            }
+
+            replacements[ctor] = updatedCtor;
+        }
+
+        typeDecl = typeDecl.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]);
         return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl));
     }
 

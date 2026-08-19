@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -807,6 +808,254 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             WorkspaceManager.Close(wsId);
             TryDeleteDirectory(solutionDir);
         }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ImplicitConstructor_SynthesizesAssigningConstructor()
+    {
+        // Regression for type-extraction-composition-constructor-coverage (1/4): a source type
+        // with no declared constructor previously got the readonly composition field with no
+        // parameter and no assignment — a permanently-null field that compiled cleanly, so the
+        // breakage was silent. The extraction must now synthesize a constructor that assigns it.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ImplicitCtorFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ImplicitCtorFixture",
+                "{",
+                "    public int InternalUser() => 42;",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "ImplicitCtorFixture", ["Compute"], "ComputeHelper", null,
+                CancellationToken.None);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
+            StringAssert.Contains(updatedSource, "public ImplicitCtorFixture(ComputeHelper computeHelper)",
+                "a constructor accepting the extracted type must be synthesized when the type had only the implicit constructor");
+            StringAssert.Contains(updatedSource, "_computeHelper = computeHelper;",
+                "the synthesized constructor must assign the composition field");
+
+            await AssertModifiedSolutionCompilesAsync(result.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ChainedConstructorOverloads_WiresEveryConstructor()
+    {
+        // Regression for type-extraction-composition-constructor-coverage (2/4): with overloaded
+        // constructors only the FIRST declared one gained the parameter/assignment; a
+        // `: this(...)`-chained overload additionally produced CS1729 at apply time because the
+        // delegated argument list was never updated. Every constructor must now carry the
+        // parameter, only the root assigns, and the chain forwards the new argument.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ChainedCtorFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ChainedCtorFixture",
+                "{",
+                "    private readonly int _seed;",
+                "    public ChainedCtorFixture(int seed) { _seed = seed; }",
+                "    public ChainedCtorFixture() : this(7) { }",
+                "    public int InternalUser() => _seed;",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "ChainedCtorFixture", ["Compute"], "ComputeHelper", null,
+                CancellationToken.None);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(int seed, ComputeHelper computeHelper)",
+                "the root constructor must gain the new parameter");
+            StringAssert.Contains(updatedSource, "ChainedCtorFixture(ComputeHelper computeHelper)",
+                "the chained constructor must gain the new parameter too");
+            StringAssert.Contains(updatedSource, "this(7, computeHelper)",
+                "the chained initializer must forward the new argument to the delegated constructor");
+            var assignmentCount = updatedSource.Split("_computeHelper = computeHelper;").Length - 1;
+            Assert.AreEqual(1, assignmentCount,
+                "only the ROOT constructor assigns the readonly field — the chain delegates the single write. " +
+                $"Updated source:\n{updatedSource}");
+
+            await AssertModifiedSolutionCompilesAsync(result.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ExpressionBodiedConstructor_RewritesToBlockWithAssignment()
+    {
+        // Regression for type-extraction-composition-constructor-coverage (3/4): an
+        // expression-bodied constructor gained the parameter but the `Body is not null` guard
+        // silently skipped the assignment, so callers passed a value that was thrown away. The
+        // constructor must be rewritten to a block body carrying both the original expression
+        // and the field assignment.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ExpressionBodiedCtorFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExpressionBodiedCtorFixture",
+                "{",
+                "    private readonly int _seed;",
+                "    public ExpressionBodiedCtorFixture(int seed) => _seed = seed;",
+                "    public int InternalUser() => _seed;",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "ExpressionBodiedCtorFixture", ["Compute"], "ComputeHelper", null,
+                CancellationToken.None);
+
+            var updatedSource = await GetModifiedDocumentTextAsync(result.PreviewToken, fixturePath);
+            StringAssert.Contains(updatedSource, "ExpressionBodiedCtorFixture(int seed, ComputeHelper computeHelper)",
+                "the expression-bodied constructor must gain the new parameter");
+            StringAssert.Contains(updatedSource, "_seed = seed;",
+                "the original expression body must survive as a block statement");
+            StringAssert.Contains(updatedSource, "_computeHelper = computeHelper;",
+                "the rewritten block body must assign the composition field");
+            Assert.IsFalse(updatedSource.Contains("=> _seed = seed;", StringComparison.Ordinal),
+                $"the constructor must no longer be expression-bodied. Updated source:\n{updatedSource}");
+
+            await AssertModifiedSolutionCompilesAsync(result.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_PrimaryConstructor_RefusesWithTopologyMessage()
+    {
+        // Regression for type-extraction-composition-constructor-coverage (4/4): a primary
+        // constructor (record or `class C(...)`) is invisible to the
+        // `OfType<ConstructorDeclarationSyntax>()` scan, so the old code shipped a preview with
+        // an unassigned composition field. The topology must be refused before any syntax is
+        // emitted, with prose naming the unsupported shape and the remedy.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "PrimaryCtorFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public record PrimaryCtorFixture(int Seed)",
+                "{",
+                "    public int InternalUser() => Compute(42);",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, fixturePath, "PrimaryCtorFixture", ["Compute"], "ComputeHelper", null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "Refusing to extract type",
+                "the refusal must use the standard refusal prose so ToolErrorHandler maps it");
+            StringAssert.Contains(ex.Message, "primary constructor",
+                "the refusal must name the unsupported topology");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    /// <summary>
+    /// Fetches the post-extraction text of <paramref name="filePath"/> from the preview's stored
+    /// modified solution — the exact content an apply would write to disk.
+    /// </summary>
+    private static async Task<string> GetModifiedDocumentTextAsync(string previewToken, string filePath)
+    {
+        var retrieved = PreviewStore.Retrieve(previewToken);
+        Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
+        var document = retrieved.Value.ModifiedSolution.Projects
+            .SelectMany(p => p.Documents)
+            .FirstOrDefault(d => string.Equals(
+                Path.GetFullPath(d.FilePath ?? string.Empty), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(document, $"modified solution must contain the source document '{filePath}'");
+        return (await document.GetTextAsync()).ToString();
+    }
+
+    /// <summary>
+    /// Acceptance gate for type-extraction-composition-constructor-coverage: the previewed source
+    /// (updated source type + generated new type) must compile with zero errors — specifically none
+    /// of CS1737 (required after optional), CS1729 (no matching constructor overload for the
+    /// `this(...)` chain), or CS0191 (readonly field assigned outside a constructor).
+    /// </summary>
+    private static async Task AssertModifiedSolutionCompilesAsync(string previewToken)
+    {
+        var retrieved = PreviewStore.Retrieve(previewToken);
+        Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
+        var project = retrieved.Value.ModifiedSolution.Projects
+            .FirstOrDefault(p => string.Equals(p.Name, "SampleLib", StringComparison.Ordinal));
+        Assert.IsNotNull(project, "modified solution must contain the SampleLib project");
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => d.ToString())
+            .ToArray();
+        Assert.AreEqual(0, errors.Length,
+            "the previewed solution must compile clean (no CS1737/CS1729/CS0191 or any other error). " +
+            $"Errors:\n{string.Join(Environment.NewLine, errors)}");
     }
 
     /// <summary>
