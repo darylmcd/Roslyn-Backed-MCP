@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [3.0.2] - 2026-08-19
+
+### Fixed
+
+- **Fixed:** `parameter_object_preview` mis-binding call-site arguments. Argument-to-parameter association is now derived from Roslyn's `IInvocationOperation` bindings instead of lexical argument position, so calls using in-position named arguments, reduced extension-method receivers, or an ungrouped trailing `params` tail rewrite correctly instead of dropping or transposing arguments. Invocation shapes that cannot be mapped completely — including out-of-order named arguments whose non-constant expressions would change evaluation order, and method-group or non-invocation references — are now refused before a preview token is stored.
+- **Fixed:** `parameter_object_preview` now validates `dtoNamespace` and `dtoFolders` before combining them with the project directory — refusing rooted and traversal segments that could place the generated DTO outside the target project — and refuses destination collisions (existing document, existing file on disk, or existing type of the same name) before a preview token is stored, so no token is minted and no directory is created or file overwritten on a refused request.
+- **Fixed:** `parameter_object_preview` emitted an unqualified generated-DTO type name in the rewritten method declaration and at every call site, so when the DTO's namespace differed from the target declaration's or a caller's namespace (explicit `dtoNamespace`, or the cross-project default) the applied edit produced CS0246. The rewriter now emits a `global::`-qualified reference when the DTO namespace is not already in scope for that document, and preserves the unqualified form otherwise.
+- **Fixed:** `parameter_object_preview` now validates every grouped parameter type before emitting the generated record — it refuses (instead of producing an uncompilable preview) when a parameter type depends on a method or containing-type type parameter, is less accessible than the chosen record visibility, or is unavailable from the selected DTO project. Refusals name the offending parameter and type, and no preview token is stored.
+- **Fixed:** `parameter_object_preview` now validates the target method's kind and dispatch contract before collecting call sites or storing a preview token. Constructors, destructors, operators and conversions, property/event accessors, overrides, virtual and abstract dispatch roots, interface implementations, `extern`/PInvoke declarations, and partial definition/implementation pairs are refused with an actionable message naming the unsupported contract. Previously these targets produced a redeemable preview that rewrote the declaration while leaving call sites or paired declarations untouched, yielding a compile-breaking partial rewrite.
+- **Fixed:** `parameter_object_preview` no longer silently changes program behavior when a grouped parameter is a mutable value type. Mutating member calls and nested field/property writes through a struct parameter are now detected and refused before a preview token is created, naming the affected parameter and source location. Reference-type member mutation and array-element writes remain supported.
+
 ## [3.0.1] - 2026-08-18
 
 ### Fixed
