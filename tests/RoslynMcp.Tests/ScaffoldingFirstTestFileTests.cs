@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -404,13 +405,14 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
     // capturing logger and the shared static ScaffoldingService is built with a NullLogger.
 
     [TestMethod]
-    public void DetectTestFramework_MalformedProjectFile_LogsWarning_AndDefaultsToMsTest()
+    public void DetectTestFramework_MalformedProjectFile_LogsRedactedWarning_AndDefaultsToMsTest()
     {
         var malformedPath = WriteMalformedProjectFile();
         try
         {
             var logger = new CaptureLogger<ScaffoldingService>();
-            var service = new ScaffoldingService(null!, null!, null!, logger);
+            var reporter = new RecordingUnexpectedExceptionReporter();
+            var service = new ScaffoldingService(null!, null!, null!, logger, reporter);
 
             var method = typeof(ScaffoldingService).GetMethod(
                 "DetectTestFrameworkFromProjectFile",
@@ -419,11 +421,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
 
             Assert.AreEqual("mstest", result,
                 "A malformed project file must still default to mstest (behavior unchanged).");
-            var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
-            Assert.IsNotNull(warning,
-                "A malformed project file must now emit a Warning log instead of being silently swallowed.");
-            StringAssert.Contains(warning!.Message, malformedPath);
-            Assert.IsNotNull(warning.Exception, "The underlying parse exception must be attached to the log entry.");
+            AssertRedactedParseWarning(logger, reporter, malformedPath, "defaulting to mstest");
         }
         finally
         {
@@ -432,13 +430,14 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void ValidateIsTestProject_MalformedProjectFile_LogsWarning_AndAllowsThrough()
+    public void ValidateIsTestProject_MalformedProjectFile_LogsRedactedWarning_AndAllowsThrough()
     {
         var malformedPath = WriteMalformedProjectFile();
         try
         {
             var logger = new CaptureLogger<ScaffoldingService>();
-            var service = new ScaffoldingService(null!, null!, null!, logger);
+            var reporter = new RecordingUnexpectedExceptionReporter();
+            var service = new ScaffoldingService(null!, null!, null!, logger, reporter);
 
             var project = new ProjectStatusDto(
                 Name: "Malformed",
@@ -457,15 +456,67 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
             // Must NOT throw — a parse failure allows the operation through (behavior unchanged).
             method.Invoke(service, [project]);
 
-            var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
-            Assert.IsNotNull(warning,
-                "A malformed project file must now emit a Warning log instead of being silently swallowed.");
-            StringAssert.Contains(warning!.Message, malformedPath);
-            Assert.IsNotNull(warning.Exception, "The underlying parse exception must be attached to the log entry.");
+            AssertRedactedParseWarning(logger, reporter, malformedPath, "allowing operation to proceed");
         }
         finally
         {
             File.Delete(malformedPath);
+        }
+    }
+
+    /// <summary>
+    /// Shared assertion body for the two malformed-project redaction tests: exactly one
+    /// Warning, no attached exception object, no absolute path or raw exception message in
+    /// the log text, a correlationId token, and a server-side projection that retains the
+    /// XmlException type topology under the Scaffolding category.
+    /// </summary>
+    private static void AssertRedactedParseWarning(
+        CaptureLogger<ScaffoldingService> logger,
+        RecordingUnexpectedExceptionReporter reporter,
+        string malformedPath,
+        string expectedOutcome)
+    {
+        var warning = logger.Entries.SingleOrDefault(e => e.Level == LogLevel.Warning);
+        Assert.IsNotNull(warning,
+            "A malformed project file must emit exactly one Warning log entry.");
+        Assert.IsNull(warning!.Exception,
+            "The raw exception object must NOT be attached to the log entry (PublicExceptionDetailPolicy).");
+        Assert.IsFalse(warning.Message.Contains(malformedPath, StringComparison.Ordinal),
+            $"The log message must not disclose the absolute project path. Message: {warning.Message}");
+        StringAssert.Contains(warning.Message, Path.GetFileName(malformedPath),
+            "The redacted project identity (bare file name) keeps the diagnostic actionable.");
+        StringAssert.Contains(warning.Message, expectedOutcome);
+        StringAssert.Contains(warning.Message, "correlationId=");
+
+        Assert.AreEqual(1, reporter.Reports.Count,
+            "The parse failure must be reported once through the unexpected-exception sink.");
+        var (exception, category) = reporter.Reports[0];
+        Assert.AreEqual(UnexpectedExceptionCategory.Scaffolding, category);
+        Assert.IsFalse(warning.Message.Contains(exception.Message, StringComparison.Ordinal),
+            "The raw parse exception message must not leak into the log text.");
+        CollectionAssert.Contains(
+            reporter.LastDetails!.Server.ExceptionTypes.ToList(),
+            "System.Xml.XmlException",
+            "The server-only projection must retain the benign exception type topology.");
+    }
+
+    /// <summary>
+    /// Recording <see cref="IUnexpectedExceptionReporter"/> double: captures each report and
+    /// delegates the projection to the shared <see cref="PublicExceptionDetailPolicy"/>.
+    /// </summary>
+    private sealed class RecordingUnexpectedExceptionReporter : IUnexpectedExceptionReporter
+    {
+        public List<(Exception Exception, UnexpectedExceptionCategory Category)> Reports { get; } = [];
+
+        public UnexpectedExceptionDetails? LastDetails { get; private set; }
+
+        public UnexpectedExceptionDetails ReportUnexpected(
+            Exception exception,
+            UnexpectedExceptionCategory category)
+        {
+            Reports.Add((exception, category));
+            LastDetails = PublicExceptionDetailPolicy.ProjectUnexpected(exception, correlationId: null);
+            return LastDetails;
         }
     }
 
