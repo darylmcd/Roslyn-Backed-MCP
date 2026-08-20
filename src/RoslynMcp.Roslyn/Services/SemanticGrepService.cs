@@ -19,6 +19,14 @@ public sealed class SemanticGrepService : ISemanticGrepService
     /// <summary>Hard cap on per-pattern regex evaluation time per document, in milliseconds.</summary>
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// semantic-grep-pattern-error-detail-redaction: fixed, input-free message thrown when the
+    /// caller's regex fails to parse. MUST stay free of the pattern text and the .NET parser
+    /// message — <c>ToolErrorHandler.BuildSafeArgumentMessage</c> keys its regex-guidance arm
+    /// on this exact substring (plus <c>ParamName == "pattern"</c>).
+    /// </summary>
+    public const string InvalidRegexSentinel = "The 'pattern' argument is not a valid .NET regular expression.";
+
     public const string ScopeIdentifiers = "identifiers";
     public const string ScopeStrings = "strings";
     public const string ScopeComments = "comments";
@@ -46,7 +54,9 @@ public sealed class SemanticGrepService : ISemanticGrepService
         int limit,
         CancellationToken ct)
     {
-        _logger.LogDebug("SemanticGrepService.SearchAsync: workspaceId={WorkspaceId} scope={Scope} pattern={Pattern} projectFilter={ProjectFilter} limit={Limit}", workspaceId, scope, pattern, projectFilter, limit);
+        // semantic-grep-pattern-error-detail-redaction: never log the caller's raw pattern —
+        // it can embed searched-for secrets. Length is enough to correlate a request.
+        _logger.LogDebug("SemanticGrepService.SearchAsync: workspaceId={WorkspaceId} scope={Scope} patternLength={PatternLength} projectFilter={ProjectFilter} limit={Limit}", workspaceId, scope, pattern?.Length ?? 0, projectFilter, limit);
         if (string.IsNullOrEmpty(pattern))
         {
             throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
@@ -69,7 +79,11 @@ public sealed class SemanticGrepService : ISemanticGrepService
         }
         catch (ArgumentException ex)
         {
-            throw new ArgumentException($"Invalid regex pattern: {ex.Message}", nameof(pattern), ex);
+            // semantic-grep-pattern-error-detail-redaction: the .NET parser message embeds the
+            // caller's raw pattern text (e.g. "Invalid pattern '(?<secret' at offset 8"), which
+            // can carry the very secret the caller is grepping for. Throw a fixed, input-free
+            // sentinel instead; ex stays as InnerException for server-side diagnostics only.
+            throw new ArgumentException(InvalidRegexSentinel, nameof(pattern), ex);
         }
 
         var includeIdentifiers = scope is ScopeAll || string.Equals(scope, ScopeIdentifiers, StringComparison.OrdinalIgnoreCase);
