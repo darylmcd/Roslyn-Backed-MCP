@@ -1,8 +1,13 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Roslyn.Services;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
@@ -144,6 +149,9 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public void BuildTimeoutResult_ProducesNonRetryableTimeoutEnvelope()
     {
+        // test-runner-timeout-error-detail-redaction: TestRunnerService now passes a sanitized
+        // composed summary and an EMPTY StdErr into the shell — the raw TimeoutException text
+        // (which carries the full argv) never reaches the parser. Mirror that caller contract.
         var shell = new CommandExecutionDto(
             Command: "dotnet",
             Arguments: ["test"],
@@ -153,15 +161,114 @@ public sealed class TestRunFailureEnvelopeTests
             Succeeded: false,
             DurationMs: 600_000,
             StdOut: string.Empty,
-            StdErr: "The command 'dotnet test' exceeded the timeout of 10.0 minute(s).");
+            StdErr: string.Empty);
 
-        var result = DotnetOutputParser.BuildTimeoutResult(shell, shell.StdErr);
+        var result = DotnetOutputParser.BuildTimeoutResult(
+            shell,
+            "'dotnet test' did not complete within the configured timeout budget of 10 minute(s). " +
+            "This failure is not retryable as-is: narrow the run with --filter or raise the configured test timeout, then retry. " +
+            "correlationId=unavailable");
 
         Assert.IsNotNull(result.FailureEnvelope);
         Assert.AreEqual("Timeout", result.FailureEnvelope!.ErrorKind);
         Assert.IsFalse(result.FailureEnvelope.IsRetryable);
         StringAssert.Contains(result.FailureEnvelope.Summary, "timeout");
+        Assert.IsTrue(string.IsNullOrEmpty(result.FailureEnvelope.StdErrTail),
+            "The sanitized timeout shell carries no StdErr, so StdErrTail must stay empty.");
         Assert.AreEqual(1, result.Failed);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // test-runner-timeout-error-detail-redaction
+    //
+    // GatedCommandExecutor's TimeoutException message carries the fully-materialized argv —
+    // the absolute target path, the absolute temp --results-directory, and the raw
+    // caller-supplied --filter value. Pre-fix, TestRunnerService copied that message verbatim
+    // into BOTH the synthesized shell's StdErr (republished as StdErrTail) and the envelope
+    // Summary. The regression below drives the real TestRunnerService with a throwing executor
+    // stub and pins the sanitized contract end to end, including the opt-in server sink arm.
+    // ---------------------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task RunTests_ExecutorTimesOut_PublishesSanitizedSummaryAndRoutesTopologyToSink()
+    {
+        const string secretSentinel = "SECRET-SENTINEL";
+        const string secretToken = "TOKEN-abc123";
+        var timeout = new TimeoutException(
+            $"{secretSentinel} C:/private/secrets.csproj --filter {secretToken}",
+            new OperationCanceledException());
+
+        // Falsifiability guard: prove each probe literal matches the raw message, so a
+        // regression that copies ex.Message back into the envelope is guaranteed to trip
+        // the negative assertions below (a dead probe would pass either way).
+        StringAssert.Contains(timeout.Message, secretSentinel);
+        StringAssert.Contains(timeout.Message, secretToken);
+        StringAssert.Contains(timeout.Message, "C:/private");
+
+        var sink = new CapturingObservabilitySink();
+        var service = new TestRunnerService(
+            new SingleTestProjectWorkspaceManager(),
+            new TimeoutThrowingExecutor(timeout),
+            NullLogger<TestRunnerService>.Instance,
+            new ValidationServiceOptions { TestTimeout = TimeSpan.FromMinutes(5) },
+            new ServerObservabilityReporter(sink));
+
+        TestRunResultDto result;
+        string correlationId;
+        using (RequestCorrelationContext.Begin())
+        {
+            correlationId = RequestCorrelationContext.Current!;
+            result = await service.RunTestsAsync(
+                "ws-timeout-redaction",
+                projectName: null,
+                filter: $"FullyQualifiedName~{secretSentinel}",
+                CancellationToken.None);
+        }
+
+        var envelope = result.FailureEnvelope;
+        Assert.IsNotNull(envelope);
+        Assert.AreEqual("Timeout", envelope!.ErrorKind);
+        Assert.IsFalse(envelope.IsRetryable);
+
+        // (b) No raw exception content in the public summary.
+        Assert.IsFalse(envelope.Summary.Contains(secretSentinel, StringComparison.Ordinal),
+            $"Summary leaked the exception message: {envelope.Summary}");
+        Assert.IsFalse(envelope.Summary.Contains(secretToken, StringComparison.Ordinal),
+            $"Summary leaked the caller-supplied --filter value: {envelope.Summary}");
+        Assert.IsFalse(envelope.Summary.Contains("C:/private", StringComparison.Ordinal),
+            $"Summary leaked a filesystem path: {envelope.Summary}");
+
+        // (c) The deterministic composed summary: command shape, configured budget,
+        // recovery guidance, and a REAL correlation id (32-char lowercase hex — the
+        // hardcoded "correlationId=" label plus the "unavailable" sentinel would
+        // otherwise satisfy a naive Contains probe).
+        StringAssert.Contains(envelope.Summary, "'dotnet test'");
+        StringAssert.Contains(envelope.Summary, "timeout budget of 5 minute(s)");
+        StringAssert.Contains(envelope.Summary, "narrow the run with --filter");
+        StringAssert.Contains(envelope.Summary, $"correlationId={correlationId}");
+        Assert.AreNotEqual("unavailable", correlationId);
+        Assert.IsTrue(Regex.IsMatch(correlationId, "^[0-9a-f]{32}$"),
+            $"Correlation id must be 32-char lowercase hex, got: {correlationId}");
+
+        // (d) StdErrTail can no longer republish the exception message.
+        Assert.IsTrue(string.IsNullOrEmpty(envelope.StdErrTail),
+            $"StdErrTail must be empty on the timeout path, got: {envelope.StdErrTail}");
+        Assert.IsTrue(string.IsNullOrEmpty(envelope.StdOutTail));
+
+        // Enabled-sink boundary: the server diagnostic carries only exception-type topology,
+        // stack depth, and correlation — never the message.
+        Assert.HasCount(1, sink.Events);
+        var diagnosticEvent = sink.Events.Single();
+        Assert.AreEqual("TestRun", diagnosticEvent.Category);
+        Assert.AreEqual(correlationId, diagnosticEvent.Exception.CorrelationId);
+        Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
+            static type => type.EndsWith(nameof(TimeoutException), StringComparison.Ordinal)));
+        Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
+            static type => type.EndsWith(nameof(OperationCanceledException), StringComparison.Ordinal)));
+        var serialized = JsonSerializer.Serialize(diagnosticEvent);
+        Assert.IsFalse(serialized.Contains(secretSentinel, StringComparison.Ordinal), serialized);
+        Assert.IsFalse(serialized.Contains(secretToken, StringComparison.Ordinal), serialized);
+        Assert.IsFalse(serialized.Contains("private/secrets.csproj", StringComparison.Ordinal), serialized);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -577,9 +684,103 @@ public sealed class TestRunFailureEnvelopeTests
                 Succeeded: false,
                 DurationMs: 600_000,
                 StdOut: string.Empty,
-                StdErr: "The command 'dotnet test' exceeded the timeout of 10.0 minute(s).");
+                StdErr: string.Empty);
 
-            return Task.FromResult(DotnetOutputParser.BuildTimeoutResult(shell, shell.StdErr));
+            return Task.FromResult(DotnetOutputParser.BuildTimeoutResult(
+                shell,
+                "'dotnet test' did not complete within the configured timeout budget of 10 minute(s). " +
+                "This failure is not retryable as-is: narrow the run with --filter or raise the configured test timeout, then retry. " +
+                "correlationId=unavailable"));
+        }
+    }
+
+    /// <summary>
+    /// Stub <see cref="IGatedCommandExecutor"/> whose <c>ExecuteAsync</c> throws the supplied
+    /// <see cref="TimeoutException"/> — the shape <c>GatedCommandExecutor</c> produces when the
+    /// total timeout budget elapses without caller cancellation (mirrors
+    /// <c>CannedBuildOutputExecutor</c> in CompilationCacheAdoptionTests).
+    /// </summary>
+    private sealed class TimeoutThrowingExecutor(TimeoutException exception) : IGatedCommandExecutor
+    {
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken ct) => throw exception;
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>
+    /// Minimal <see cref="IWorkspaceManager"/> exposing one loaded test project so
+    /// <c>TestRunnerService.RunTestsAsync</c> passes its preconditions. The fixture path is
+    /// derived per-OS: a Windows drive-rooted literal is not fully qualified on Unix.
+    /// </summary>
+    private sealed class SingleTestProjectWorkspaceManager : IWorkspaceManager
+    {
+        private static readonly string FixturePath = OperatingSystem.IsWindows()
+            ? "C:/ws/Sample.Tests.csproj"
+            : "/ws/Sample.Tests.csproj";
+
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+        public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
+        public bool IsStale(string workspaceId) => false;
+        public bool Close(string workspaceId) => throw new NotSupportedException();
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
+        public WorkspaceStatusDto GetStatus(string workspaceId) =>
+            new(
+                WorkspaceId: workspaceId,
+                LoadedPath: FixturePath,
+                WorkspaceVersion: 1,
+                SnapshotToken: "snapshot",
+                LoadedAtUtc: DateTimeOffset.UtcNow,
+                ProjectCount: 1,
+                DocumentCount: 1,
+                Projects:
+                [
+                    new ProjectStatusDto(
+                        Name: "Sample.Tests",
+                        FilePath: FixturePath,
+                        DocumentCount: 1,
+                        ProjectReferences: [],
+                        TargetFrameworks: ["net10.0"],
+                        IsTestProject: true,
+                        AssemblyName: "Sample.Tests",
+                        OutputType: "Library"),
+                ],
+                IsLoaded: true,
+                IsStale: false,
+                WorkspaceDiagnostics: []);
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(GetStatus(workspaceId));
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
+        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
+    }
+
+    private sealed class CapturingObservabilitySink : IServerObservabilitySink
+    {
+        public List<ServerObservabilityEvent> Events { get; } = [];
+        public bool IsEnabled => true;
+
+        public void Write(ServerObservabilityEvent diagnosticEvent)
+        {
+            Events.Add(diagnosticEvent);
         }
     }
 
