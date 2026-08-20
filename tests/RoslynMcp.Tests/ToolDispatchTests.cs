@@ -2,7 +2,9 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -152,6 +154,126 @@ public sealed class ToolDispatchTests
     }
 
     /// <summary>
+    /// preview-apply-token-write-path-toctou: a store that cannot enumerate the preview's write
+    /// set (<c>PeekChangedPaths</c> returns <see langword="null"/> — the interface default) must
+    /// pass through even when a restrictive boundary snapshot is set: <see langword="null"/>
+    /// means "unknown", and the delegate-peek stores that hit this shape are covered by their
+    /// own spin-off row, not silently blocked here.
+    /// </summary>
+    [TestMethod]
+    [DoNotParallelize] // mutates the process-global SecurityOptionsSnapshot
+    public async Task ApplyByTokenAsync_NullChangedPathsPeek_SkipsRevalidation_AndApplies()
+    {
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions
+            {
+                SanctionedRoots = [Path.Combine(TestTempRoot.Current, "nonexistent-boundary")],
+            };
+            var gate = new FakeGate();
+            var store = new FakePreviewStore(token: "tok-null-peek", workspaceId: "ws-np");
+
+            var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                previewToken: "tok-null-peek",
+                serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 1)),
+                ct: CancellationToken.None);
+
+            StringAssert.Contains(result, "applied",
+                "A null PeekChangedPaths (write set unknown) must skip revalidation, not refuse the apply.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+        }
+    }
+
+    /// <summary>
+    /// preview-apply-token-write-path-toctou: a <see langword="null"/>
+    /// <see cref="SecurityOptionsSnapshot"/> means "unbooted host" (the unit-test path — the
+    /// production host always populates it at startup, <c>Program.cs</c>). Per the snapshot's own
+    /// documented contract that state is "unknown", NOT "unconfigured", so revalidation is
+    /// skipped rather than fabricating a fail-closed boundary. This test asserts and documents
+    /// the skip so it never silently becomes the production path.
+    /// </summary>
+    [TestMethod]
+    [DoNotParallelize] // mutates the process-global SecurityOptionsSnapshot
+    public async Task ApplyByTokenAsync_NullSecuritySnapshot_SkipsRevalidation_AndApplies()
+    {
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = null;
+            var gate = new FakeGate();
+            var store = new FakePreviewStore(token: "tok-null-snap", workspaceId: "ws-ns")
+            {
+                ChangedPaths = [Path.Combine(TestTempRoot.Current, "anywhere", "outside.cs")],
+            };
+
+            var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                previewToken: "tok-null-snap",
+                serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 2)),
+                ct: CancellationToken.None);
+
+            StringAssert.Contains(result, "applied",
+                "A null SecurityOptionsSnapshot (unbooted host) must skip revalidation, not refuse the apply.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+        }
+    }
+
+    /// <summary>
+    /// preview-apply-token-write-path-toctou: with a configured boundary AND an enumerable write
+    /// set, a changed path outside the boundary refuses the redemption before the service call
+    /// runs. (The full link-swap scenario lives in
+    /// <c>PreviewApplyBoundaryRevalidationTests</c>; this is the pure-unit pin on the dispatch
+    /// helper's own contract.)
+    /// </summary>
+    [TestMethod]
+    [DoNotParallelize] // mutates the process-global SecurityOptionsSnapshot
+    public async Task ApplyByTokenAsync_ChangedPathOutsideBoundary_RefusesBeforeServiceCall()
+    {
+        var boundary = Path.Combine(TestTempRoot.Current, "tdt-boundary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(boundary);
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [boundary] };
+            var gate = new FakeGate();
+            var serviceCallRan = false;
+            var store = new FakePreviewStore(token: "tok-oob", workspaceId: "ws-oob")
+            {
+                ChangedPaths = [Path.Combine(TestTempRoot.Current, "elsewhere", "outside.cs")],
+            };
+
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                    gate,
+                    store,
+                    previewToken: "tok-oob",
+                    serviceCall: _ =>
+                    {
+                        serviceCallRan = true;
+                        return Task.FromResult(new FakeResultDto("must-not-run", 0));
+                    },
+                    ct: CancellationToken.None));
+
+            Assert.IsFalse(serviceCallRan, "Revalidation must refuse the apply BEFORE the service call runs.");
+            Assert.AreEqual(1, gate.WriteCallCount, "Revalidation runs INSIDE the write gate.");
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+        }
+    }
+
+    /// <summary>
     /// Minimal stand-in for <see cref="IWorkspaceExecutionGate"/> that records which verb
     /// was invoked and the workspaceId that was passed. <c>RunLoadGateAsync</c> and
     /// <c>RemoveGate</c> are not exercised by <see cref="ToolDispatch"/> so they throw to
@@ -210,7 +332,16 @@ public sealed class ToolDispatchTests
             _workspaceId = workspaceId;
         }
 
+        /// <summary>
+        /// preview-apply-token-write-path-toctou: write set the fake reports for its token, or
+        /// <see langword="null"/> (the default, matching the interface's default implementation)
+        /// for "unknown".
+        /// </summary>
+        public IReadOnlyList<string>? ChangedPaths { get; init; }
+
         public string? PeekWorkspaceId(string token) => token == _token ? _workspaceId : null;
+
+        public IReadOnlyList<string>? PeekChangedPaths(string token) => token == _token ? ChangedPaths : null;
 
         public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
             => throw new NotSupportedException();

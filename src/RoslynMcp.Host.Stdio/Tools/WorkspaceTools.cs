@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -62,6 +63,15 @@ public static class WorkspaceTools
             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
             status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
+            if (expandSanctionedRoots)
+            {
+                // preview-apply-token-write-path-toctou: record the load-time expansion grant so a
+                // later *_apply redemption re-derives the SAME boundary that admitted this
+                // workspace. Without it, every document of an expansion-loaded sibling worktree
+                // sits outside the un-widened roots and every apply would be refused.
+                RootExpansionGrantRegistry.Grant(status.WorkspaceId);
+            }
+
             var shouldPrewarm = ShouldPrewarmAfterLoad(prewarm, status);
             var resolvedTotalStages = shouldPrewarm ? 5 : totalStages;
             WorkspaceWarmResult? prewarmResult = null;
@@ -147,6 +157,9 @@ public static class WorkspaceTools
                     }
 
                     var closed = workspace.Close(workspaceId);
+                    // The expansion grant is scoped to the session it was recorded for; drop it
+                    // with the session so a later workspace id reuse cannot inherit it.
+                    RootExpansionGrantRegistry.Revoke(workspaceId);
                     return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
                 },
                 outerCt,

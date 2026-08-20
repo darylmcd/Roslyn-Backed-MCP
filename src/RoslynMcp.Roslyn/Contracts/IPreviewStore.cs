@@ -102,4 +102,19 @@ public interface IPreviewStore
     /// or <see langword="null"/> if the token is expired or not found.
     /// </summary>
     string? PeekWorkspaceId(string token);
+
+    /// <summary>
+    /// <b>preview-apply-token-write-path-toctou:</b> returns the file paths of every document the
+    /// stored preview adds, changes, or removes — the write set a redeeming <c>*_apply</c> call
+    /// will persist to disk — without consuming or TTL-refreshing the entry. Returns
+    /// <see langword="null"/> when the token is expired/not found OR when the store cannot
+    /// enumerate the write set ("unknown"); callers performing redemption-time boundary
+    /// revalidation treat <see langword="null"/> as "skip", never as "empty write set verified".
+    /// </summary>
+    /// <remarks>
+    /// Default implementation returns <see langword="null"/> so existing test fakes (and any
+    /// out-of-tree implementations) keep compiling; only stores that actually hold a solution
+    /// snapshot pair override it.
+    /// </remarks>
+    IReadOnlyList<string>? PeekChangedPaths(string token) => null;
 }

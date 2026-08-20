@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -78,8 +80,12 @@ internal static class ToolDispatch
     /// Dispatch body for <c>*_apply</c> tools that receive an opaque preview token.
     /// Resolves the workspaceId from the token via
     /// <see cref="IPreviewStore.PeekWorkspaceId"/>, acquires the per-workspace write
-    /// gate, invokes <paramref name="serviceCall"/>, and returns the indented-JSON-
-    /// serialized DTO.
+    /// gate, revalidates the preview's write set against the sanctioned-root boundary
+    /// (<see cref="RevalidateChangedPathsAsync"/> — preview-apply-token-write-path-toctou),
+    /// invokes <paramref name="serviceCall"/>, and returns the indented-JSON-serialized DTO.
+    /// The delegate-peek overload below performs NO such revalidation: its stores
+    /// (<c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) cannot yet
+    /// enumerate their write sets — tracked as a spin-off backlog row.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -111,7 +117,72 @@ internal static class ToolDispatch
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
-        => ApplyByTokenAsync(gate, previewStore.PeekWorkspaceId, previewToken, serviceCall, ct);
+    {
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new PreviewTokenStaleException(
+                previewToken,
+                $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
+        return gate.RunWriteAsync(wsId, async c =>
+        {
+            // preview-apply-token-write-path-toctou: revalidate the preview's write set against
+            // the sanctioned-root boundary AT REDEMPTION TIME, under the same write gate that
+            // holds until the persistence write. The only boundary check before this ran in the
+            // paired *_preview call — up to a full preview-TTL earlier — leaving the whole TTL as
+            // a validate-to-write window for a symlink/junction swap.
+            await RevalidateChangedPathsAsync(previewStore, previewToken, wsId, c).ConfigureAwait(false);
+            var result = await serviceCall(c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
+
+    /// <summary>
+    /// preview-apply-token-write-path-toctou: runs every path in the preview's write set through
+    /// <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/> against the host-bound
+    /// <see cref="SecurityOptionsSnapshot"/>. Skips silently — documented as "unknown", never
+    /// "verified" — when either the snapshot is <see langword="null"/> (unbooted host, i.e. unit
+    /// tests; the production host always populates it at startup) or the store cannot enumerate
+    /// the write set (<see cref="IPreviewStore.PeekChangedPaths"/> returned
+    /// <see langword="null"/>). Throws <see cref="ArgumentException"/> when any target falls
+    /// outside the configured boundary, refusing the apply before the service call runs.
+    /// <para>
+    /// The boundary re-derived here must be the SAME one that admitted the workspace, never a
+    /// narrower one: a workspace loaded with <c>workspace_load(expandSanctionedRoots: true)</c>
+    /// legitimately holds documents under the widened parent root, so
+    /// <see cref="RootExpansionGrantRegistry"/> replays that load-time grant. The widening still
+    /// takes effect only when the operator-owned <see cref="RoslynMcp.Roslyn.Services.SecurityOptions.AllowRootExpansion"/>
+    /// is set — an out-of-boundary path is refused on an expansion-loaded workspace exactly as on
+    /// any other.
+    /// </para>
+    /// </summary>
+    internal static async Task RevalidateChangedPathsAsync(
+        IPreviewStore previewStore,
+        string previewToken,
+        string workspaceId,
+        CancellationToken ct)
+    {
+        var securityOptions = SecurityOptionsSnapshot.Value;
+        if (securityOptions is null)
+        {
+            return;
+        }
+
+        var changedPaths = previewStore.PeekChangedPaths(previewToken);
+        if (changedPaths is null)
+        {
+            return;
+        }
+
+        var expandSanctionedRoots = RootExpansionGrantRegistry.IsGranted(workspaceId);
+        foreach (var path in changedPaths)
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null,
+                path,
+                ct,
+                securityOptions: securityOptions,
+                expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Overload for <c>*_apply</c> tools that use a non-<see cref="IPreviewStore"/> preview
