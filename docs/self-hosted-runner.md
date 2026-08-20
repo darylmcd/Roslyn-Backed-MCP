@@ -1,6 +1,6 @@
 # Self-hosted GitHub Actions runner
 
-This repo runs a hybrid CI model (**active since 2026-05-08**): maintainer PRs run on a self-hosted Windows runner; fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs use GitHub-hosted Linux runners. A `route` job (**active since 2026-08-10** — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)) probes the self-hosted runner's live status and falls back maintainer PRs to hosted Linux when it is offline, so a sleeping/wedged box no longer queues PRs indefinitely. See [Activation](#activation) for the exact conditional.
+This repo runs a hybrid CI model (**active since 2026-05-08**): maintainer PRs run on a self-hosted Windows runner; fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs use GitHub-hosted Linux runners. A `route` job (**active since 2026-08-10** — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)) probes the self-hosted runner's live status and falls back maintainer PRs to hosted Linux when it is offline, so a sleeping/wedged box no longer queues PRs indefinitely. Since 2026-08-19, self-hosted routing also fans `validate` out to a second, non-primary `ubuntu-latest` matrix leg so every maintainer PR is validated on the same OS the publish gate uses (merge/publish OS parity — see CI_POLICY.md § Merge Gating Expectations). See [Activation](#activation) for the exact conditional.
 
 ## Why hybrid
 
@@ -8,7 +8,7 @@ GitHub-hosted runners are 2-vcpu Linux machines that take ~10 min to run the ful
 
 ## Security model — read this first
 
-GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo (**active since 2026-08-10** — the authoritative predicate now lives in the `route` job's maintainer-PR check, `.github/workflows/ci.yml:62`; see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)):
+GitHub explicitly warns against using self-hosted runners with public repos because **anyone who opens a PR can run arbitrary code on the runner machine** via malicious workflow YAML or build scripts. The mitigation in this repo (**active since 2026-08-10** — the authoritative predicate now lives in the `route` job's maintainer-PR check, `.github/workflows/ci.yml:86`; see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)):
 
 ```yaml
 $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
@@ -16,7 +16,7 @@ $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull
 
 This says: **only the maintainer's own non-fork, non-dependabot PRs are even eligible for the self-hosted runner**. A fork-PR attacker can never reach it — `route` detects `head.repo.fork == true` and routes to `ubuntu-latest` unconditionally, without ever calling the runners API. Dependabot PRs are routed to hosted Linux the same way: although they are non-fork branches, their diffs pull third-party package versions whose code executes during `dotnet test` — a supply-chain compromise of a bumped package must not run on the maintainer's box.
 
-`validate`'s own `runs-on` (`.github/workflows/ci.yml:128`) is just `${{ fromJSON(needs.route.outputs.runs_on) }}` — it has no security logic of its own; it consumes whatever `route` decided. The security boundary lives entirely in `route`'s maintainer-PR check above, which runs before any runners-API call and is unaffected by that call's outcome.
+`validate`'s own `runs-on` (`.github/workflows/ci.yml:174`) is just `${{ matrix.leg.runs_on }}`, fed by a matrix over `route`'s `runner_matrix` output — it has no security logic of its own; it consumes whatever `route` decided. The security boundary lives entirely in `route`'s maintainer-PR check above, which runs before any runners-API call and is unaffected by that call's outcome. The runner matrix cannot widen that boundary: `route` only ever emits a self-hosted matrix entry on the maintainer-PR branch that passes the check above, and the extra parity leg it adds there targets `ubuntu-latest`, never the self-hosted box — fork and dependabot PRs still get a single hosted leg with no API call.
 
 **Residual risk:** if the maintainer ever clones a malicious branch into their own fork+PRs it (e.g., copying someone else's untrusted patch onto their own branch), it would run on the self-hosted runner. Maintainer discipline mitigates this.
 
@@ -167,28 +167,45 @@ When a job is running on it: `status: "online"`, `busy: true`.
 
 ## Activation
 
-**Active as of 2026-05-08 (routing mechanism updated 2026-08-10 — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)).** The CI workflow (`.github/workflows/ci.yml`) now splits routing across two jobs instead of one inline `runs-on:` conditional: a `route` job (`ci.yml:40-111`) computes the target runner list, and `validate` (`ci.yml:113-128`) just consumes it:
+**Active as of 2026-05-08 (routing mechanism updated 2026-08-10, runner matrix + OS-parity leg added 2026-08-19 — see [Hosted fallback for an offline runner](#hosted-fallback-for-an-offline-runner)).** The CI workflow (`.github/workflows/ci.yml`) splits routing across jobs instead of one inline `runs-on:` conditional: a `route` job (`ci.yml:40-142`) computes the target runner **matrix**, `validate` (`ci.yml:144-329`) fans out over it reporting per-leg checks named `validate-leg (<os>)`, and the `validate-gate` aggregator (`ci.yml:340-354`) carries the `name: validate` that the default-branch ruleset already requires — so the fan-out needs no branch-protection change:
 
 ```yaml
 jobs:
   route:
     outputs:
-      runs_on: ${{ steps.decide.outputs.runs_on }}
+      runner_matrix: ${{ steps.decide.outputs.runner_matrix }} # list of validate legs (only output)
     steps:
       - id: decide
         run: |
+          # $selfHostedLabels is the single source for the runner labels:
+          # both matrix payloads and the online-runner filter derive from it.
           $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
-          # non-maintainer events -> "ubuntu-latest" (no API call, ever)
-          # maintainer PRs -> probes the runners API and picks self-hosted
-          # or ubuntu-latest based on live status; missing/broken PAT falls
-          # back to self-hosted (current behavior, never blocks CI)
+          # non-maintainer events -> single ubuntu-latest leg (no API call, ever)
+          # maintainer PRs -> probes the runners API; self-hosted routing emits
+          # TWO legs: {self-hosted windows, primary} + {ubuntu-latest linux,
+          # non-primary} for merge/publish OS parity. Hosted routing (runner
+          # offline) emits a single ubuntu-latest primary leg. Missing/broken
+          # PAT falls back to self-hosted routing (never blocks CI).
 
   validate:
+    name: validate-leg (${{ matrix.leg.os }})   # per-leg check names; never pin these
     needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.route.outputs.runner_matrix) }}
+    runs-on: ${{ matrix.leg.runs_on }}
+    # artifact uploads run only where matrix.leg.primary == true
+
+  validate-gate:
+    name: validate            # the context the ruleset already requires
+    needs: validate
+    if: always()
+    runs-on: ubuntu-latest
+    # fails unless every validate leg succeeded — THIS reports `validate`
 ```
 
-The routing decision says the same thing it always has: ONLY maintainer non-fork, non-dependabot pull_request events are even eligible for self-hosted — and, since 2026-08-10, only when the runner is actually online (see the fallback section above). Everything else (workflow_dispatch, schedule, fork PRs, dependabot PRs) stays on `ubuntu-latest`, decided by `route` without ever calling the runners API. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux), the security boundary on fork/dependabot PRs, and keeps dependabot's PR waves from queueing behind the single self-hosted slot.
+The routing decision says the same thing it always has: ONLY maintainer non-fork, non-dependabot pull_request events are even eligible for self-hosted — and, since 2026-08-10, only when the runner is actually online (see the fallback section above). Everything else (workflow_dispatch, schedule, fork PRs, dependabot PRs) stays on `ubuntu-latest`, decided by `route` without ever calling the runners API. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux), the security boundary on fork/dependabot PRs, and keeps dependabot's PR waves from queueing behind the single self-hosted slot. The 2026-08-19 parity leg means a self-hosted-routed PR additionally runs the full `eng/verify-release.ps1` suite on `ubuntu-latest` concurrently (not queued behind the self-hosted slot), closing the v3.0.1 gap where an OS-sensitive test passed pre-merge on Windows and then failed the Linux publish gate at tag time.
 
 **Pre-activation checklist:**
 
@@ -200,7 +217,7 @@ The routing decision says the same thing it always has: ONLY maintainer non-fork
 
 After activation, push a no-op test PR to verify the workflow lands on the self-hosted runner and completes faster than baseline.
 
-**Rollback if anything breaks:** set `validate`'s `runs-on:` (`ci.yml:128`) directly to `ubuntu-latest` (and drop `needs: route`, or leave it — an unused `needs` is harmless). The `route` job can stay in place unused, or be deleted along with it. Self-hosted runner stays registered but idle.
+**Rollback if anything breaks:** remove `validate`'s `strategy:` block, set its `runs-on:` (`ci.yml:174`) directly to `ubuntu-latest`, delete the two `matrix.leg.primary == true` clauses from the upload/coverage step conditions, and drop its `name:` override (and drop `needs: route`, or leave it — an unused `needs` is harmless). Keep the `validate-gate` job: it is what reports the required `validate` context, and with a single validate job it simply mirrors its result. Removing it requires renaming the surviving job to `validate` in the same edit, or the ruleset waits forever on a context nothing reports. The `route` job can stay in place unused, or be deleted along with it. Self-hosted runner stays registered but idle.
 
 ## Troubleshooting
 
@@ -208,13 +225,13 @@ After activation, push a no-op test PR to verify the workflow lands on the self-
 
 **Runner picks up the job but fails on `dotnet build`.** Verify .NET SDK 10.x is installed for the service account (NetworkService by default — `dotnet` may not be on its PATH even if it's on yours). Either install machine-wide via the standard installer (default) or run the service under your user account: `.\svc.cmd install $env:USERNAME`.
 
-**Workflow stuck pending after activation.** GitHub queues self-hosted jobs that don't match available runners. Re-verify the label list the `route` job emits (`$selfHostedJson = '["self-hosted","roslynmcp-dev"]'` in `ci.yml`, consumed by `validate`'s `runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}`) matches the runner's registered labels (`roslynmcp-dev`).
+**Workflow stuck pending after activation.** GitHub queues self-hosted jobs that don't match available runners. Re-verify the label list the `route` job emits (`$selfHostedLabels = @('self-hosted', 'roslynmcp-dev')` in `ci.yml` — the single source for both matrix payloads and the online-runner filter, consumed by `validate`'s `runs-on: ${{ matrix.leg.runs_on }}`) matches the runner's registered labels (`roslynmcp-dev`).
 
 ## Removing the runner
 
 If you decide to abandon the self-hosted approach:
 
-1. Revert `.github/workflows/ci.yml`'s `validate` job to `runs-on: ubuntu-latest` if activated (and remove the `route` job entirely, since nothing else depends on it).
+1. Revert `.github/workflows/ci.yml`'s `validate` job to a plain `runs-on: ubuntu-latest` (drop the `strategy:` matrix, the `matrix.leg.*` references, and the `route` job entirely, since nothing else depends on them; keep `validate-gate` so the required `validate` context is still reported, or rename the surviving job to `validate` in the same edit).
 2. Stop the service: `Stop-Service -Name <service-name>` (find via `Get-Service | Where-Object { $_.Name -like 'actions.runner.*' }`).
 3. Generate a removal token: `gh api -X POST repos/darylmcd/Roslyn-Backed-MCP/actions/runners/remove-token`.
 4. From the runner directory: `.\config.cmd remove --token <removal-token>` — this deregisters from GitHub AND uninstalls the Windows service.
