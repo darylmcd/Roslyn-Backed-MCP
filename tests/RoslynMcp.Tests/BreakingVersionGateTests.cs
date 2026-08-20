@@ -64,17 +64,23 @@ public sealed class BreakingVersionGateTests
         var manualPublisherPath = Path.Combine(repositoryRoot, "eng", "publish-nuget.ps1");
         var manualPublisher = File.ReadAllText(manualPublisherPath);
         var manualGateIndex = manualPublisher.IndexOf(
+            "'verify-release.ps1'",
+            StringComparison.Ordinal);
+        var manualGateFragmentIndex = manualPublisher.IndexOf(
             "-RequireConsumedFragments",
             StringComparison.Ordinal);
-        var manualPackageIndex = manualPublisher.IndexOf("$packagePath =", StringComparison.Ordinal);
+        var manualPackIndex = manualPublisher.IndexOf("dotnet pack", StringComparison.Ordinal);
         var manualPushIndex = manualPublisher.IndexOf("dotnet nuget push", StringComparison.Ordinal);
-        Assert.IsTrue(manualGateIndex >= 0, "The manual publisher must require consumed fragments.");
         Assert.IsTrue(
-            manualPackageIndex > manualGateIndex,
-            "The manual publisher must validate the release contract before selecting a package.");
+            manualGateIndex >= 0,
+            "The manual publisher must run the publish-mode release gate (verify-release.ps1).");
+        Assert.IsTrue(manualGateFragmentIndex >= 0, "The manual publisher must require consumed fragments.");
+        Assert.IsTrue(
+            manualPackIndex > manualGateIndex,
+            "The manual publisher must validate the release contract before packing a package.");
         Assert.IsTrue(
             manualPushIndex > manualGateIndex,
-            "The manual publisher must validate the breaking contract before pushing a package.");
+            "The manual publisher must validate the release contract before pushing a package.");
     }
 
     [TestMethod]
@@ -222,7 +228,7 @@ public sealed class BreakingVersionGateTests
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task ManualPublisher_StopsBeforePackageSelectionWhenBreakingGateExitsNonzero()
+    public async Task ManualPublisher_StopsBeforePackagingWhenReleaseGateExitsNonzero()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var fixtureRoot = Path.Combine(
@@ -240,7 +246,7 @@ public sealed class BreakingVersionGateTests
                 Path.Combine(repositoryRoot, "eng", "publish-nuget.ps1"),
                 Path.Combine(engDirectory, "publish-nuget.ps1"));
             File.WriteAllText(
-                Path.Combine(engDirectory, "verify-breaking-version-bump.ps1"),
+                Path.Combine(engDirectory, "verify-release.ps1"),
                 "exit 37\n");
             File.WriteAllText(
                 Path.Combine(packageDirectory, "Darylmcd.RoslynMcp.9.9.9.nupkg"),
@@ -278,10 +284,13 @@ public sealed class BreakingVersionGateTests
 
             var output = await stdoutTask + await stderrTask;
             Assert.AreNotEqual(0, process.ExitCode, output);
-            StringAssert.Contains(output, "Breaking version validation failed with exit code 37.");
+            StringAssert.Contains(output, "Release validation failed with exit code 37.");
+            Assert.IsFalse(
+                output.Contains("Packing ", StringComparison.Ordinal),
+                "The publisher continued to packaging after the release gate failed.");
             Assert.IsFalse(
                 output.Contains("Pushing ", StringComparison.Ordinal),
-                "The publisher continued to package selection after the release gate failed.");
+                "The publisher continued to pushing after the release gate failed.");
         }
         finally
         {
