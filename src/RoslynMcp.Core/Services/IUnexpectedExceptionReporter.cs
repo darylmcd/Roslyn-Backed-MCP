@@ -16,6 +16,7 @@ public enum UnexpectedExceptionCategory
     FixAll,
     WorkspaceReadiness,
     GetPrompt,
+    FlowAnalysis,
 }
 
 /// <summary>

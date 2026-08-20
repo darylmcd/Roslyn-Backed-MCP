@@ -18,15 +18,18 @@ public sealed class ExtractMethodService : IExtractMethodService
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
     private readonly ILogger<ExtractMethodService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     public ExtractMethodService(
         IWorkspaceManager workspace,
         IPreviewStore previewStore,
-        ILogger<ExtractMethodService> logger)
+        ILogger<ExtractMethodService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<RefactoringPreviewDto> PreviewExtractMethodAsync(
@@ -49,7 +52,9 @@ public sealed class ExtractMethodService : IExtractMethodService
             FindEnclosingMethodAndStatements(root, selectionSpan);
 
         var (parameters, flowsOut, variablesDeclaredInRegion, isStatic) =
-            AnalyzeFlowAndInferSignature(semanticModel, statementsInSelection, enclosingMember);
+            AnalyzeFlowAndInferSignature(
+                semanticModel, statementsInSelection, enclosingMember,
+                _exceptionReporter, startLine, endLine);
 
         var (newMethod, callStatement) =
             BuildMethodAndCallSite(methodName, parameters, flowsOut, variablesDeclaredInRegion, isStatic, statementsInSelection);
@@ -138,7 +143,10 @@ public sealed class ExtractMethodService : IExtractMethodService
         AnalyzeFlowAndInferSignature(
             SemanticModel semanticModel,
             List<StatementSyntax> statementsInSelection,
-            MemberDeclarationSyntax enclosingMember)
+            MemberDeclarationSyntax enclosingMember,
+            IUnexpectedExceptionReporter? exceptionReporter,
+            int startLine,
+            int endLine)
     {
         var firstStatement = statementsInSelection[0];
         var lastStatement = statementsInSelection[^1];
@@ -150,9 +158,12 @@ public sealed class ExtractMethodService : IExtractMethodService
         }
         catch (ArgumentException ex)
         {
+            // analysis-flow-error-detail-redaction: never publish raw Roslyn exception text
+            // in the client-visible failure message; route through the shared secret-safe
+            // projection and keep the original exception server-side as InnerException.
             throw new InvalidOperationException(
-                $"Data flow analysis failed: {ex.Message}. " +
-                "Ensure the selection covers complete statements within a single block.", ex);
+                FlowAnalysisFailurePolicy.CreateFailureMessage(
+                    exceptionReporter, ex, "Extract-method data flow analysis", startLine, endLine), ex);
         }
 
         if (dataFlow is null || !dataFlow.Succeeded)

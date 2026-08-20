@@ -8,10 +8,14 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class FlowAnalysisService : IFlowAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
-    public FlowAnalysisService(IWorkspaceManager workspace)
+    public FlowAnalysisService(
+        IWorkspaceManager workspace,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<DataFlowAnalysisDto> AnalyzeDataFlowAsync(
@@ -33,9 +37,12 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         }
         catch (ArgumentException ex)
         {
+            // analysis-flow-error-detail-redaction: never publish raw Roslyn exception text
+            // in the client-visible failure message; route through the shared secret-safe
+            // projection and keep the original exception server-side as InnerException.
             throw new InvalidOperationException(
-                $"Data flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
-                "Try widening the range to a complete expression-bodied member or to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+                FlowAnalysisFailurePolicy.CreateFailureMessage(
+                    _exceptionReporter, ex, "Data flow analysis", startLine, endLine), ex);
         }
 
         return new DataFlowAnalysisDto(
@@ -88,9 +95,10 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         }
         catch (ArgumentException ex)
         {
+            // analysis-flow-error-detail-redaction: see the data-flow catch above.
             throw new InvalidOperationException(
-                $"Control flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
-                "Try widening the range to a complete expression-bodied member or to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+                FlowAnalysisFailurePolicy.CreateFailureMessage(
+                    _exceptionReporter, ex, "Control flow analysis", startLine, endLine), ex);
         }
 
         var entryPoints = result.EntryPoints
