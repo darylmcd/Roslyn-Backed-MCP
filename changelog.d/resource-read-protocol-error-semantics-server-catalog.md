@@ -1,0 +1,5 @@
+---
+category: Changed — BREAKING
+---
+
+- **Changed — BREAKING:** server-catalog resources (`roslyn://server/catalog/tools/{offset}/{limit}`, `roslyn://server/catalog/prompts/{offset}/{limit}`, `roslyn://server/catalog-diff/{fromVersion}/{toVersion}`) now report failures over the JSON-RPC error channel, completing the `resources/read` protocol-error migration. Malformed pagination slots and unsupported catalog versions return `-32602` (`InvalidParams`) in both protocol eras; unexpected handler failures return a sanitized `-32603` carrying a correlation id. A caller-supplied non-absolute `filePath` on `source_file` now also classifies as caller fault (`-32602` instead of `-32603`). Error payloads carry only a stable category, remediation text, the requested resource URI, and a correlation id. The dead body-envelope wrappers (`ToolErrorHandler.ExecuteResource`/`ExecuteResourceAsync`) were deleted. **Migration:** clients that parsed `{"error":true,"category":...}` out of the resource body must read the JSON-RPC `error` member instead.

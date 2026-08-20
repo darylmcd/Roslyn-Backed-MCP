@@ -179,8 +179,13 @@ public static class WorkspaceResources
                 var normalizedPath = NormalizeFilePathForResource(filePath);
                 if (!Path.IsPathFullyQualified(normalizedPath))
                 {
-                    throw new InvalidOperationException(
-                        $"filePath must be an absolute path after decoding. Received: {filePath}");
+                    // ArgumentException (not InvalidOperationException): a non-absolute
+                    // filePath is caller input at fault, so classification must yield
+                    // InvalidArgument -> JSON-RPC InvalidParams (-32602), never the
+                    // InternalError fallback (-32603). Mirrors GetSourceFileLines.
+                    throw new ArgumentException(
+                        $"filePath must be an absolute path after decoding. Received: {filePath}",
+                        nameof(filePath));
                 }
 
                 var text = await workspace.GetSourceTextAsync(workspaceId, normalizedPath, innerCt).ConfigureAwait(false);
@@ -190,7 +195,7 @@ public static class WorkspaceResources
             }, ct).ConfigureAwait(false);
         }
         catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
-        catch (InvalidOperationException ex) { throw new McpToolException(source, $"Invalid operation: {ex.Message}", ex); }
+        catch (ArgumentException ex) { throw new McpToolException(source, $"Invalid argument: {ex.Message}", ex); }
     }
 
     /// <summary>

@@ -145,10 +145,15 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetSourceFile_Resource_Rejects_Relative_Path()
     {
+        // resource-read-protocol-error-semantics-server-catalog: a relative filePath is
+        // caller input at fault, so the wrapped cause is ArgumentException (classified
+        // InvalidArgument -> -32602), not InvalidOperationException (-32603).
         var ex = await Assert.ThrowsExactlyAsync<McpToolException>(() =>
             WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
-        StringAssert.Contains(ex.Message, "Invalid operation");
+        StringAssert.Contains(ex.Message, "Invalid argument");
         StringAssert.Contains(ex.Message, "absolute path");
+        Assert.IsInstanceOfType<ArgumentException>(ex.InnerException,
+            "inner cause must be ArgumentException so the read filter maps it to InvalidParams");
     }
 
     private static string FindDocumentPath(string name)

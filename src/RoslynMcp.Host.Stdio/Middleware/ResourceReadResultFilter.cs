@@ -69,17 +69,45 @@ internal static class ResourceReadResultFilter
         var cause = ex is McpToolException { InnerException: { } inner } ? inner : ex;
 
         var uri = context.Params?.Uri ?? "<unknown>";
-        var info = ToolErrorHandler.ClassifyError(cause, uri);
+        // Seed the classifier with the ambient per-message correlation id so the unexpected-
+        // failure fallback stamps the REAL id instead of its own "unavailable" sentinel (which,
+        // being non-null, would win the ?? in BuildSanitizedMessage and make the wire id dead).
+        var info = ToolErrorHandler.ClassifyError(cause, uri, RequestCorrelationContext.Current);
         var code = MapErrorCode(info.Category, RequestProtocolFeatureGate.UseInvalidParamsForMissingResource(context));
         return new McpProtocolException(BuildSanitizedMessage(info, uri), code);
     }
 
+    /// <summary>
+    /// Maps EVERY category <see cref="ToolErrorHandler.ClassifyError"/> can emit onto a wire
+    /// code. Each category gets an explicit arm — including the ones that resolve to
+    /// <see cref="McpErrorCode.InternalError"/> — so adding a new category to
+    /// <see cref="ToolErrorHandler.ErrorCategories"/> without deciding its wire code is a
+    /// compile-visible gap rather than a silent server-fault default. The trailing discard arm
+    /// exists only because <c>string</c> switches cannot be exhaustive; it is unreachable for
+    /// any declared category.
+    /// </summary>
     private static McpErrorCode MapErrorCode(string category, bool useInvalidParamsForMissingResource) =>
         category switch
         {
-            "NotFound" or "FileNotFound" or "DirectoryNotFound" or "WorkspaceEvicted" =>
+            // Missing-resource family: era-dependent (-32002 legacy, -32602 from 2026-07-28).
+            ToolErrorHandler.ErrorCategories.NotFound or
+            ToolErrorHandler.ErrorCategories.FileNotFound or
+            ToolErrorHandler.ErrorCategories.DirectoryNotFound or
+            ToolErrorHandler.ErrorCategories.WorkspaceEvicted =>
                 useInvalidParamsForMissingResource ? McpErrorCode.InvalidParams : McpErrorCode.ResourceNotFound,
-            "InvalidArgument" => McpErrorCode.InvalidParams,
+            // Caller-input fault: always -32602.
+            ToolErrorHandler.ErrorCategories.InvalidArgument => McpErrorCode.InvalidParams,
+            // Server-side / transport / lifecycle conditions. The caller's request was
+            // well-formed, so these are server faults (-32603) with a retry hint in the
+            // sanitized remediation text, not InvalidParams.
+            ToolErrorHandler.ErrorCategories.StaleWorkspaceTransition or
+            ToolErrorHandler.ErrorCategories.WorkspaceReloadedDuringCall or
+            ToolErrorHandler.ErrorCategories.PreviewTokenStale or
+            ToolErrorHandler.ErrorCategories.Timeout or
+            ToolErrorHandler.ErrorCategories.Disconnected or
+            ToolErrorHandler.ErrorCategories.RateLimited or
+            ToolErrorHandler.ErrorCategories.InvalidOperation or
+            ToolErrorHandler.ErrorCategories.InternalError => McpErrorCode.InternalError,
             _ => McpErrorCode.InternalError,
         };
 
