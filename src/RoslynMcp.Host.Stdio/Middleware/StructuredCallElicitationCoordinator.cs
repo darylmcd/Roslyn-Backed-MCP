@@ -8,11 +8,13 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 
 /// <summary>
 /// The elicitation/retry orchestration layer extracted from <see cref="StructuredCallToolFilter"/>.
-/// Owns the <em>how</em> of asking the user for a missing value via MCP <c>elicitation/create</c>
-/// and re-dispatching the original call — the exception-path recovery
+/// Owns the <em>how</em> of asking the user for a missing value and re-dispatching the original
+/// call — the exception-path recovery
 /// (<see cref="TryElicitAndRetryAsync"/>) and the workspaceId-specific recover-load-retry loop
 /// (<see cref="TryRecoverMissingWorkspaceIdAsync"/>). Whether a parameter <em>may</em> be elicited
-/// stays in <see cref="ElicitationAllowlistPolicy"/>; metrics stay in
+/// stays in <see cref="ElicitationAllowlistPolicy"/>; the transport-era decision (MRTR
+/// input-required signal vs direct nested <c>elicitation/create</c>) is delegated to
+/// <see cref="RequestScopedInputAdapter"/>; metrics stay in
 /// <see cref="CallMetricsRecorder"/>; the pre-dispatch auto-resolve/auto-load flow and
 /// error-envelope construction stay in the filter. The shared select-from-N picker is NOT owned
 /// here — its canonical (and only) home is
@@ -43,7 +45,8 @@ internal static class StructuredCallElicitationCoordinator
     /// <c>InvalidArgument</c> for a missing required parameter on a tool whose
     /// (toolName, paramName) pair is on the elicitation allowlist AND the client supports
     /// elicitation, this method asks the user for the missing value via
-    /// <see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/>, patches
+    /// <see cref="RequestScopedInputAdapter.RequestInputAsElicitResultAsync"/> (which picks the
+    /// MRTR or direct-<c>elicitation/create</c> leg per session era), patches
     /// the elicited value into the request's <c>Arguments</c> dictionary, and re-invokes
     /// <paramref name="next"/>. Returns <see langword="null"/> when the recovery does not
     /// apply (any layer of the gate fails) — the caller falls through to
@@ -103,7 +106,8 @@ internal static class StructuredCallElicitationCoordinator
             return await TryRecoverMissingWorkspaceIdAsync(
                 toolName,
                 CopyArguments(context.Params!.Arguments),
-                request => context.Server!.ElicitAsync(request, cancellationToken),
+                request => RequestScopedInputAdapter.RequestInputAsElicitResultAsync(
+                    context, request, logger, cancellationToken),
                 (dispatchToolName, arguments) =>
                     DispatchWithTemporaryArgumentsAsync(context, next, dispatchToolName, arguments, cancellationToken),
                 logger,
@@ -116,7 +120,8 @@ internal static class StructuredCallElicitationCoordinator
         var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, missingParam);
 
         var elicitAttempt = await TryRunRecoveryStepAsync(
-            () => context.Server!.ElicitAsync(elicitRequest, cancellationToken),
+            () => RequestScopedInputAdapter.RequestInputAsElicitResultAsync(
+                context, elicitRequest, logger, cancellationToken),
             elicitEx => logger?.LogWarning(elicitEx,
                 "Elicitation request failed for {Tool}.{Param}; falling back to schemaHint envelope.",
                 toolName, missingParam)).ConfigureAwait(false);
@@ -244,7 +249,11 @@ internal static class StructuredCallElicitationCoordinator
 
     /// <summary>
     /// Executes one recovery await boundary. Ordinary recovery failures fall through to the
-    /// caller's existing envelope; cooperative cancellation always escapes unchanged.
+    /// caller's existing envelope; cooperative cancellation always escapes unchanged, and so
+    /// does the MRTR input-required protocol signal
+    /// (<see cref="InputRequiredException"/>) — swallowing it here would convert
+    /// "this call needs client input" into a terminal schema-hint envelope and make the
+    /// request-scoped adapter's MRTR leg unreachable.
     /// </summary>
     internal static async ValueTask<(bool Succeeded, T? Value)> TryRunRecoveryStepAsync<T>(
         Func<ValueTask<T>> action,
@@ -255,7 +264,7 @@ internal static class StructuredCallElicitationCoordinator
         {
             return (true, await action().ConfigureAwait(false));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
         {
             onFailure(ex);
             return (false, null);
