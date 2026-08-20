@@ -70,6 +70,18 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// and <see cref="ElicitationAllowlistPolicy"/> for the defense layers.
 /// </para>
 ///
+/// <para><b>MRTR passthrough (SEP-2322, protocol 2026-07-28):</b></para>
+/// <para>
+/// <see cref="ModelContextProtocol.Protocol.InputRequiredException"/> is a protocol signal —
+/// "this call needs client input before it can complete" — not a tool failure. The filter
+/// rethrows it (like cancellation) so the SDK emits an
+/// <see cref="ModelContextProtocol.Protocol.InputRequiredResult"/>; on MRTR-capable sessions
+/// the client resolves the embedded input requests and retries the call carrying
+/// <c>params.inputResponses</c>, which
+/// <see cref="Elicitation.RequestScopedInputAdapter"/> consumes request-scoped. Sessions that
+/// negotiated 2025-11-25 or earlier keep the direct <c>elicitation/create</c> path above.
+/// </para>
+///
 /// <para>
 /// Reference: <c>ai_docs/references/mcp-server-best-practices.md</c>.
 /// </para>
@@ -198,6 +210,16 @@ internal static class StructuredCallToolFilter
                 // Cancellation is a cooperative signal, not a tool error. Let the SDK
                 // translate it into the protocol-level cancellation envelope.
                 logger?.LogWarning("Tool {ToolName} was cancelled", toolName);
+                throw;
+            }
+            catch (InputRequiredException)
+            {
+                // MRTR (SEP-2322): an input-required signal is a protocol result, not a tool
+                // error. Rethrow so the SDK converts it into an InputRequiredResult; converting
+                // it into an isError CallToolResult here would make server-driven input
+                // structurally impossible on MRTR sessions. MUST stay above the general
+                // catch (Exception) below — C# picks the first matching clause.
+                logger?.LogInformation("Tool {ToolName} returned an input-required signal", toolName);
                 throw;
             }
             catch (Exception ex)
