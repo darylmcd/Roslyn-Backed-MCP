@@ -199,6 +199,6 @@ Step 8.7: Registry Readiness      ✓ PASS / ✗ FAIL (N pass / M fail / K warn)
 Overall: READY TO PUBLISH / NOT READY (N issues)
 ```
 
-If all pass, tell the user: "All checks passed. To publish: create a GitHub Release (which triggers the publish-nuget workflow) or run `eng/publish-nuget.ps1` manually."
+If all pass, tell the user: "All checks passed. To publish: create a GitHub Release (which triggers the publish-nuget workflow) or run `eng/publish-nuget.ps1` manually." The manual publisher enforces the same provenance contract as the workflow: it runs the full publish-mode release gate (`verify-release.ps1 -Configuration Release -NoCoverage -RequireConsumedFragments`, ~10-15 min locally), derives the version from `Directory.Build.props` (a supplied `-Version` is an assertion that must match, never an override), packs fresh into `artifacts/publish-nuget/<version>/`, and fails on a nonzero push exit. Validate-and-pack without pushing: `eng/publish-nuget.ps1 -NoPush`.
 
 If any fail, list the failures with remediation steps. Step 8's WARN/INFO never blocks publish — it only changes the wording of the overall summary line.
