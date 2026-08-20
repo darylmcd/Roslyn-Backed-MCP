@@ -295,7 +295,7 @@
     {
       "id": "analyzer-shadow-loader-lifecycle",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "analyzer-shadow-loader-lifecycle"
       ],
@@ -319,10 +319,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/analyzer-shadow-loader-lifecycle",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1292",
+      "mergedAt": "2026-08-20T03:20:33Z",
       "notes": null,
       "fileSetHash": "adbe7c6d8f3f43a6139df17a512b8aac8c31e8673458b01091ae073e443acade",
       "stanzaHash": "aea393c39db97619fc1c9e95729b091e1ab4164473235d8c5941a1c01e2562f2",
@@ -437,7 +437,7 @@
     {
       "id": "tool-call-error-envelope-wire-contract",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-call-error-envelope-wire-contract"
       ],
@@ -461,10 +461,10 @@
       "dependsOn": [
         "mcp-mrtr-dispatch-contract"
       ],
-      "branch": null,
+      "branch": "remediation/tool-call-error-envelope-wire-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1290",
+      "mergedAt": "2026-08-20T03:20:24Z",
       "notes": null,
       "fileSetHash": "70dcee639271962e5b7f8fa9a27a915471a055b032fda88d9b480e5435bd278e",
       "stanzaHash": "f541e78f882a25c26ba0ab5b6a33a90fa5c6e78c055e09dff02f676cfd7f8818",
