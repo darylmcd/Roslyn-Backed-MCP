@@ -41,21 +41,47 @@ public sealed class CiRunnerParityContractTests
         // Windows runner: primary Windows leg + non-primary Linux parity leg.
         StringAssert.Contains(
             workflow,
-            "$selfHostedMatrix = '[{\"runs_on\":[\"self-hosted\",\"roslynmcp-dev\"],\"os\":\"windows\",\"primary\":true},{\"runs_on\":\"ubuntu-latest\",\"os\":\"linux\",\"primary\":false}]'");
+            "[ordered]@{ runs_on = $selfHostedLabels; os = 'windows'; primary = $true },");
+        StringAssert.Contains(
+            workflow,
+            "[ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $false }");
 
         // Hosted routes stay single-leg (primary) so the Linux leg is never
         // duplicated when routing already targets ubuntu-latest.
         StringAssert.Contains(
             workflow,
-            "$hostedMatrix = '[{\"runs_on\":\"ubuntu-latest\",\"os\":\"linux\",\"primary\":true}]'");
+            "[ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $true }");
 
-        // Every runs_on emission must be paired with a runner_matrix emission,
-        // so no routing branch can leave validate's matrix unset.
-        var runsOnEmissions = CountOccurrences(workflow, "\"runs_on=$");
+        // -AsArray is load-bearing: without it the single-leg hosted payload
+        // serializes as a bare JSON object and fromJSON produces no matrix.
+        Assert.AreEqual(2, CountOccurrences(workflow, "ConvertTo-Json -Compress -Depth 5 -AsArray"),
+            "both matrix payloads must be serialized with -AsArray");
+
+        // Every routing branch must emit runner_matrix — it is now the route
+        // job's ONLY output, so a branch that skips it leaves validate unset.
+        // Branches: non-maintainer, missing PAT, runner online, runner offline,
+        // and the probe-failure catch.
+        const int routingBranches = 5;
         var matrixEmissions = CountOccurrences(workflow, "\"runner_matrix=$");
-        Assert.AreEqual(runsOnEmissions, matrixEmissions,
-            "every route branch that emits runs_on must also emit runner_matrix");
-        Assert.IsTrue(matrixEmissions >= 5, $"expected at least 5 routing branches, found {matrixEmissions}");
+        Assert.AreEqual(routingBranches, matrixEmissions,
+            $"every one of the {routingBranches} routing branches must emit runner_matrix");
+        Assert.AreEqual(0, CountOccurrences(workflow, "\"runs_on=$"),
+            "the legacy single-target runs_on output has no consumers and must stay deleted");
+    }
+
+    [TestMethod]
+    public void RunnerLabels_AreSingleSourcedInTheRouteJob()
+    {
+        var workflow = LoadCiWorkflow();
+
+        // The label list feeds BOTH matrix payloads and the online-runner
+        // filter. A second hardcoded copy can drift out of sync and silently
+        // disable the hosted fallback.
+        StringAssert.Contains(workflow, "$selfHostedLabels = @('self-hosted', 'roslynmcp-dev')");
+        StringAssert.Contains(workflow, "$selfHostedRunnerLabel = $selfHostedLabels[-1]");
+        StringAssert.Contains(workflow, "-contains $selfHostedRunnerLabel)");
+        Assert.AreEqual(1, CountOccurrences(workflow, "roslynmcp-dev"),
+            "the roslynmcp-dev label must appear exactly once in ci.yml (the $selfHostedLabels definition)");
     }
 
     [TestMethod]
@@ -104,6 +130,16 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(gateBlock, "needs: validate");
         StringAssert.Contains(gateBlock, "if: always()");
         StringAssert.Contains(gateBlock, "${{ needs.validate.result }}");
+
+        // The default-branch ruleset requires exactly one context: "validate".
+        // The aggregator must carry that name so the matrix fan-out needs no
+        // ruleset change, and the per-leg jobs must NOT collide with it —
+        // otherwise the required context is never reported and every PR in the
+        // repo becomes permanently unmergeable.
+        StringAssert.Contains(gateBlock, "name: validate\n");
+        StringAssert.Contains(workflow, "    name: validate-leg (${{ matrix.leg.os }})\n");
+        Assert.AreEqual(1, CountOccurrences(workflow, "\n    name: validate\n"),
+            "exactly one job may be named 'validate' — the branch-protection aggregator");
     }
 
     private static int CountOccurrences(string text, string value)

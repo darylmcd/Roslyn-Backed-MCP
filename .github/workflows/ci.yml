@@ -42,7 +42,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
-      runs_on: ${{ steps.decide.outputs.runs_on }}
       runner_matrix: ${{ steps.decide.outputs.runner_matrix }}
     steps:
       - name: Decide target runner
@@ -57,8 +56,13 @@ jobs:
           # current self-hosted routing (never blocks CI).
           GH_TOKEN: ${{ secrets.RUNNER_STATUS_PAT }}
         run: |
-          $selfHostedJson = '["self-hosted","roslynmcp-dev"]'
-          $hostedJson = '"ubuntu-latest"'
+          # Single source of truth for the runner labels. Both matrix payloads
+          # below AND the online-runner filter further down derive from these
+          # variables, so each label literal appears exactly once in this job
+          # (drift between two hardcoded copies silently disables the fallback).
+          $selfHostedLabels = @('self-hosted', 'roslynmcp-dev')
+          $selfHostedRunnerLabel = $selfHostedLabels[-1]
+          $hostedLabel = 'ubuntu-latest'
 
           # runner_matrix drives validate's job matrix (one leg per entry).
           # Every self-hosted route carries a non-primary ubuntu-latest leg so
@@ -68,8 +72,16 @@ jobs:
           # § Merge Gating Expectations). Hosted routes stay single-leg so the
           # Linux leg is never duplicated. Exactly one leg has primary=true;
           # artifact uploads run only there to keep artifact names unique.
-          $selfHostedMatrix = '[{"runs_on":["self-hosted","roslynmcp-dev"],"os":"windows","primary":true},{"runs_on":"ubuntu-latest","os":"linux","primary":false}]'
-          $hostedMatrix = '[{"runs_on":"ubuntu-latest","os":"linux","primary":true}]'
+          # -AsArray keeps the single-leg hosted payload a JSON array (fromJSON
+          # would otherwise receive a bare object); piping (not -InputObject)
+          # is required so the outer @() is not itself serialized as an element.
+          $selfHostedMatrix = @(
+            [ordered]@{ runs_on = $selfHostedLabels; os = 'windows'; primary = $true },
+            [ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $false }
+          ) | ConvertTo-Json -Compress -Depth 5 -AsArray
+          $hostedMatrix = @(
+            [ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $true }
+          ) | ConvertTo-Json -Compress -Depth 5 -AsArray
 
           $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
           if ($isMaintainerPr -ne 'true') {
@@ -79,14 +91,12 @@ jobs:
             # docs/self-hosted-runner.md § Security model. No API call is
             # made on this branch.
             Write-Host "Not a maintainer pull_request event - hosted routing (unconditional)."
-            "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
           if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
             Write-Host "::notice title=Router::RUNNER_STATUS_PAT secret is not set - defaulting to self-hosted routing (current behavior)."
-            "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
@@ -104,15 +114,13 @@ jobs:
 
             $data = $apiJson | ConvertFrom-Json -ErrorAction Stop
             $online = @($data.runners) | Where-Object {
-              $_.status -eq 'online' -and (@($_.labels | ForEach-Object { $_.name }) -contains 'roslynmcp-dev')
+              $_.status -eq 'online' -and (@($_.labels | ForEach-Object { $_.name }) -contains $selfHostedRunnerLabel)
             }
             if ($online.Count -gt 0) {
-              Write-Host "Self-hosted runner (label roslynmcp-dev) is online - routing to self-hosted."
-              "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              Write-Host "Self-hosted runner (label $selfHostedRunnerLabel) is online - routing to self-hosted."
               "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             } else {
-              Write-Host "::notice title=Router::No online self-hosted runner with label roslynmcp-dev - routing to ubuntu-latest fallback."
-              "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              Write-Host "::notice title=Router::No online self-hosted runner with label $selfHostedRunnerLabel - routing to $hostedLabel fallback."
               "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             }
           } catch {
@@ -121,7 +129,6 @@ jobs:
             # acceptance criterion 3, degrade to the known-working current
             # behavior (self-hosted) rather than guessing offline.
             Write-Host "::notice title=Router::Runner status probe failed ($($_.Exception.Message)) - defaulting to self-hosted routing (current behavior)."
-            "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             # Without this, $LASTEXITCODE stays non-zero from the failed `gh api`
             # call above, and GitHub's pwsh step wrapper appends
@@ -135,7 +142,7 @@ jobs:
           }
 
   validate:
-    name: validate (${{ matrix.leg.os }})
+    name: validate-leg (${{ matrix.leg.os }})
     needs: route
     # Hybrid runner model — see docs/self-hosted-runner.md.
     # Maintainer pull_request events run on the self-hosted Windows runner
@@ -157,8 +164,9 @@ jobs:
     # point, so an OS-sensitive test can no longer pass on Windows, merge,
     # and then fail the Linux publish gate at tag time (the v3.0.1 hole).
     # fail-fast is off so a Windows-only failure and a Linux-only failure
-    # both surface in one run. Branch protection pins the stable aggregator
-    # job `validate-gate` below, not the per-leg generated names.
+    # both surface in one run. These legs report as `validate-leg (windows)` /
+    # `validate-leg (linux)`; the aggregator job below carries the stable
+    # `validate` check name that branch protection already requires.
     strategy:
       fail-fast: false
       matrix:
@@ -320,15 +328,17 @@ jobs:
           path: artifacts/coverage
           retention-days: 30
 
-  # Stable aggregator for branch protection. The validate matrix legs get
-  # GitHub-generated check names that vary with the routing decision
-  # ("validate (windows)" / "validate (linux)"), which cannot be pinned as a
-  # required status check. validate-gate is the single stable name: it fails
-  # unless EVERY matrix leg succeeded (needs.validate.result is 'success'
-  # only when all legs passed; any failed, cancelled, or skipped leg yields
-  # 'failure'/'cancelled'/'skipped'). Pin THIS job in branch protection.
+  # Stable aggregator for branch protection. The validate matrix legs report
+  # check names that vary with the routing decision ("validate-leg (windows)" /
+  # "validate-leg (linux)"), which cannot be pinned as a required status check.
+  # This job carries the name `validate` — the context the default-branch
+  # ruleset ALREADY requires — so the matrix fan-out needs zero ruleset
+  # surgery. It fails unless EVERY matrix leg succeeded (needs.validate.result
+  # is 'success' only when all legs passed; any failed, cancelled, or skipped
+  # leg yields 'failure'/'cancelled'/'skipped'). Do NOT rename it without
+  # updating the ruleset's required_status_checks in the same change.
   validate-gate:
-    name: validate-gate
+    name: validate
     needs: validate
     if: always()
     runs-on: ubuntu-latest
