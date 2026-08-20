@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
@@ -22,8 +23,9 @@ namespace RoslynMcp.Tests;
 /// client-supplied path string.
 /// </summary>
 /// <remarks>
-/// [DoNotParallelize]: these tests set the process-global <see cref="SecurityOptionsSnapshot"/>,
-/// which <see cref="ToolDispatch.RevalidateChangedPathsAsync"/> reads on every token apply — a
+/// [DoNotParallelize]: these tests set the process-global <see cref="SecurityOptionsSnapshot"/> and
+/// <see cref="RootExpansionGrantRegistry"/>, both of which
+/// <see cref="ToolDispatch.RevalidateChangedPathsAsync"/> reads on every token apply — a
 /// concurrently-running class redeeming preview tokens would otherwise be validated against this
 /// class's temporary boundary.
 /// </remarks>
@@ -31,6 +33,9 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class PreviewApplyBoundaryRevalidationTests
 {
+    /// <summary>Workspace id every staged preview in this class is stored under.</summary>
+    private const string WorkspaceId = "ws-toctou";
+
     private sealed record FakeResultDto(string Message);
 
     /// <summary>
@@ -219,6 +224,122 @@ public sealed class PreviewApplyBoundaryRevalidationTests
     }
 
     /// <summary>
+    /// Regression for the boundary-narrowing defect the fix cycle caught: a workspace admitted via
+    /// <c>workspace_load(expandSanctionedRoots: true)</c> legitimately holds every document under
+    /// the WIDENED parent of a configured root (the sibling-worktree load mode). Redemption must
+    /// re-derive that same widened boundary — re-deriving the narrower configured-roots-only
+    /// boundary would permanently refuse every <c>*_apply</c> on such a workspace.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByToken_ExpansionLoadedWorkspace_WriteSetUnderWidenedParent_StillApplies()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-toctou-expand-" + Guid.NewGuid().ToString("N"));
+        var widenedParent = Path.Combine(testRoot, "repos");
+        var sanctionedRoot = Path.Combine(widenedParent, "primary");
+        var siblingWorktree = Path.Combine(widenedParent, "worktree");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(siblingWorktree);
+        var documentPath = Path.Combine(siblingWorktree, "Program.cs");
+        File.WriteAllText(documentPath, "// original");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions
+            {
+                SanctionedRoots = [sanctionedRoot],
+                AllowRootExpansion = true,
+            };
+
+            var (store, token) = StagePreview(documentPath);
+            var gate = new FakeGate();
+
+            // Premise: without the recorded load-time grant the boundary narrows to the configured
+            // root alone and the sibling-worktree write set falls outside it.
+            RootExpansionGrantRegistry.Revoke(WorkspaceId);
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                    gate,
+                    store,
+                    token,
+                    serviceCall: _ => Task.FromResult(new FakeResultDto("must-not-run")),
+                    ct: CancellationToken.None));
+
+            // With the grant replayed, redemption re-derives the SAME boundary that admitted the
+            // workspace and the apply succeeds.
+            RootExpansionGrantRegistry.Grant(WorkspaceId);
+            var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                token,
+                serviceCall: _ => Task.FromResult(new FakeResultDto("applied")),
+                ct: CancellationToken.None);
+
+            StringAssert.Contains(result, "applied");
+        }
+        finally
+        {
+            RootExpansionGrantRegistry.Revoke(WorkspaceId);
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// The grant must not degrade the check into a no-op: on an expansion-loaded workspace a write
+    /// set that escapes even the WIDENED boundary is still refused at redemption time.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByToken_ExpansionLoadedWorkspace_WriteSetOutsideWidenedParent_RefusesRedemption()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-toctou-expand-esc-" + Guid.NewGuid().ToString("N"));
+        var widenedParent = Path.Combine(testRoot, "repos");
+        var sanctionedRoot = Path.Combine(widenedParent, "primary");
+        var outside = Path.Combine(testRoot, "outside");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(outside);
+        var documentPath = Path.Combine(outside, "Program.cs");
+        File.WriteAllText(documentPath, "// outside target — must never be written");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions
+            {
+                SanctionedRoots = [sanctionedRoot],
+                AllowRootExpansion = true,
+            };
+            RootExpansionGrantRegistry.Grant(WorkspaceId);
+
+            var (store, token) = StagePreview(documentPath);
+            var gate = new FakeGate();
+            var serviceCallRan = false;
+
+            var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                    gate,
+                    store,
+                    token,
+                    serviceCall: _ =>
+                    {
+                        serviceCallRan = true;
+                        return Task.FromResult(new FakeResultDto("must-not-run"));
+                    },
+                    ct: CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsFalse(serviceCallRan,
+                "The expansion grant widens the boundary by exactly one level — it must not disable the check.");
+        }
+        finally
+        {
+            RootExpansionGrantRegistry.Revoke(WorkspaceId);
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    /// <summary>
     /// Stages a real <see cref="PreviewStore"/> entry whose single changed document carries
     /// <paramref name="documentFilePath"/>, mirroring how every in-tree preview service stores an
     /// original/modified solution pair.
@@ -238,7 +359,7 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         var modified = original.WithDocumentText(document.Id, SourceText.From("// modified"));
 
         var store = new PreviewStore();
-        var token = store.Store("ws-toctou", original, modified, workspaceVersion: 1, "toctou test preview", diffTruncated: false);
+        var token = store.Store(WorkspaceId, original, modified, workspaceVersion: 1, "toctou test preview", diffTruncated: false);
         return (store, token);
     }
 
