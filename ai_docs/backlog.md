@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-20T03:24:13Z
+**updated_at:** 2026-08-20T07:32:30Z
 
 ## Agent contract
 
@@ -52,12 +52,8 @@
 | `prompt-error-catch-retirement-refactoring-guided` | High | prompt-call-error-filter-boundary,prompt-error-catch-retirement-core-analysis | **Retire prompt catches in refactoring and guided handlers** — route failures through the shared boundary and remove the obsolete successful-error message builder. [type: bug] [source: 2026-08-14 adjacent review] | M | items/prompt-error-catch-retirement-refactoring-guided.md |
 | `workspace-path-mrtr-adoption` | High | mcp-mrtr-dispatch-contract | **Move workspace-path recovery to MRTR** — request and consume missing workspace_load.path through the shared request-scoped contract instead of parsing SDK binder exceptions. [type: bug] [source: 2026-08-14 raw wire probe] | M | items/workspace-path-mrtr-adoption.md |
 | `symbol-choice-mrtr-adoption` | High | mcp-mrtr-dispatch-contract,workspace-path-mrtr-adoption | **Move ambiguous-symbol choice to MRTR** — replace direct ElicitAsync continuation with request-scoped choices, bounded options, and deterministic retries. [type: refactor] [source: 2026-08-14 SDK audit] | M | items/symbol-choice-mrtr-adoption.md |
-| `resource-read-protocol-error-semantics` | High | tool-error-envelope-sensitive-detail-disclosure | **Return resource failures through the protocol error channel** — stop encoding NotFound and internal failures as successful resources/read bodies; add sanitized wire regressions. [type: bug] [source: 2026-08-14 raw wire probe] | M | items/resource-read-protocol-error-semantics.md |
 | `mcp-sampling-mrtr-migration` | High | mcp-mrtr-dispatch-contract,public-exception-detail-policy,mcp-logging-stderr-otel-migration,scaffolding-io-warning-detail-redaction | **Migrate sampling to request-scoped MRTR** — preserve optional name suggestions through an MRTR sampling request and return a sanitized deterministic fallback when unsupported. [type: security] [source: 2026-08-14 SDK audit] | M | items/mcp-sampling-mrtr-migration.md |
-| `analysis-flow-error-detail-redaction` | High | public-exception-detail-policy,mcp-logging-stderr-otel-migration | **Sanitize analysis failure DTOs** — preserve actionable flow context while removing raw exception detail from extract/data/control-flow results. [type: security] [source: 2026-08-17 adjacent review] | M | items/analysis-flow-error-detail-redaction.md |
-| `test-runner-timeout-error-detail-redaction` | High | public-exception-detail-policy,mcp-logging-stderr-otel-migration | **Sanitize runner timeout envelopes** — retain timeout recovery semantics without publishing raw cancellation or timeout exception detail. [type: security] [source: 2026-08-17 adjacent review] | S | items/test-runner-timeout-error-detail-redaction.md |
 | `prompt-shim-binding-error-detail-redaction` | High | public-exception-detail-policy,prompt-call-error-filter-boundary | **Sanitize prompt-shim binding failures** — keep property/schema guidance without echoing parser exception text or supplied values. [type: security] [source: 2026-08-17 adjacent review] | S | items/prompt-shim-binding-error-detail-redaction.md |
-| `semantic-grep-pattern-error-detail-redaction` | High | public-exception-detail-policy,tool-error-envelope-sensitive-detail-disclosure | **Sanitize invalid-regex errors** — preserve actionable pattern guidance without publishing regex parser detail or secret-bearing input. [type: security] [source: 2026-08-17 adjacent review] | S | items/semantic-grep-pattern-error-detail-redaction.md |
 
 ## Medium
 
@@ -109,6 +105,7 @@
 | `tool-dispatch-preview-token-review-followups` | Medium | — | **Clear the PR #1294 review follow-ups** — de-duplicate the inlined peek-or-throw in `ApplyByTokenAsync`, fix the XML doc naming an unfiled row, and settle `PeekChangedPaths` removed-project handling. [type: refactor] [source: 2026-08-19 PR #1294 review] | M | items/tool-dispatch-preview-token-review-followups.md |
 | `root-expansion-grant-revoke-on-lifecycle-event` | Medium | — | **Revoke root-expansion grants off `WorkspaceClosed`** — the close tool is the only revoke site, so LRU eviction and shutdown leak grants in a process-lifetime static dictionary. [type: bug] [source: 2026-08-19 PR #1294 re-review] | M | items/root-expansion-grant-revoke-on-lifecycle-event.md |
 | `tool-call-error-wire-fastfail-era-coverage` | Medium | — | **Cover the two fast-fail paths in the tools/call error wire suite** — both were newly era-shaped but only the general-catch path is driven, so a `resultType` regression there ships green. [type: test] [source: 2026-08-19 PR #1290 review] | S | items/tool-call-error-wire-fastfail-era-coverage.md |
+| `test-run-execution-dto-argv-path-disclosure` | Medium | — | **Redact argv/target paths from the published `execution` block** — `test_run` still returns absolute results/target paths and the raw caller `--filter` via `Execution.Arguments`, the same disclosure the summary redaction closed on one route only. [type: security] [source: 2026-08-20 PR #1299 review] | M | items/test-run-execution-dto-argv-path-disclosure.md |
 
 ## Low
 
@@ -204,6 +201,9 @@
 | `parameter-object-nested-namespace-coverage` | Low | — | **Cover the nested-namespace qualification branch and hoist the per-callsite walk** — the outward-lookup path is untested and resolution repeats inside ReplaceNodes. [type: quality] [source: PR #1271 cq review] | S | items/parameter-object-nested-namespace-coverage.md |
 | `parameter-object-dto-folder-validation-consolidation` | Low | — | **Consolidate dtoFolders entry validation** — one owner for the split/validate pre-checks, refuse on null compilation instead of failing open, and unify the case policy across the document and on-disk collision guards. [type: bug] [source: PR #1273 cq review] | M | items/parameter-object-dto-folder-validation-consolidation.md |
 | `addenda-reconcile-pr-no-skip-ci` | Low | — | **Record the no-`[skip ci]` rule in the addenda** — branch protection requires the `validate` check, so a skip token leaves a reconcile PR permanently BLOCKED. [type: docs] [source: 2026-08-19 sweep reconcile PR #1285] | S | items/addenda-reconcile-pr-no-skip-ci.md |
+| `flow-analysis-remediation-per-operation` | Low | — | **Give each flow-analysis operation accurate remediation text** — the shared const now tells `extract_method_preview` callers to widen to an expression-bodied member, which is not a valid extract selection. [type: bug] [source: 2026-08-19 PR #1297 review] | M | items/flow-analysis-remediation-per-operation.md |
+| `correlation-id-suffix-single-source` | Low | — | **Single-source the `correlationId=<id>` message suffix** — hand-interpolated in 12 files; this sweep added two more copies. [type: refactor] [source: 2026-08-19 PR #1297 review] | M | items/correlation-id-suffix-single-source.md |
+| `semantic-grep-sentinel-compile-tracked-coupling` | Low | — | **Bind the regex-guidance arm to `SemanticGrepService.InvalidRegexSentinel`** — the const was introduced as the cross-assembly contract but has zero consumers; the handler re-spells its text. [type: refactor] [source: 2026-08-20 PR #1300 review] | M | items/semantic-grep-sentinel-compile-tracked-coupling.md |
 
 ## Defer
 

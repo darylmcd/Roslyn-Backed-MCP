@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-19T18:07:29.846Z",
-  "backlogSnapshot": "2026-08-19T17:43:10Z",
+  "backlogSnapshot": "2026-08-20T07:32:30Z",
   "addendaLoaded": false,
   "phase": "complete",
   "cycleCount": 2,
@@ -83,7 +83,7 @@
     {
       "id": "analysis-flow-error-detail-redaction",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "analysis-flow-error-detail-redaction"
       ],
@@ -108,10 +108,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/analysis-flow-error-detail-redaction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1297",
+      "mergedAt": "2026-08-20T04:11:56Z",
       "notes": null,
       "fileSetHash": "bbf91dcd17be834a7d64bd23152e6a4ea72db42d02067f82ab42dcf45991de0d",
       "stanzaHash": "6dff9e29ad1a4ff8013c8b3ac0e9d8d569f655eafcd523aca13fd6a314370a54",
@@ -154,7 +154,7 @@
     {
       "id": "test-runner-timeout-error-detail-redaction",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-runner-timeout-error-detail-redaction"
       ],
@@ -177,10 +177,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/test-runner-timeout-error-detail-redaction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1299",
+      "mergedAt": "2026-08-20T07:32:27Z",
       "notes": null,
       "fileSetHash": "6168351434ca67d80e30fdc032e085dc78f630d08eec5518e5d60db706532478",
       "stanzaHash": "1c699d01c557f04b92d20c76f48c63f867da17b9db43133a1acf76a29405bd74",
@@ -189,7 +189,7 @@
     {
       "id": "semantic-grep-pattern-error-detail-redaction",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "semantic-grep-pattern-error-detail-redaction"
       ],
@@ -212,10 +212,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/semantic-grep-pattern-error-detail-redaction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1300",
+      "mergedAt": "2026-08-20T07:15:09Z",
       "notes": null,
       "fileSetHash": "d4b35b3bb41a21409b8d5cce120b1289911dae4a5cca6ebf83c4161926e43e9f",
       "stanzaHash": "8d627b6afc6825244fa210b9602d33251859ac72b682a6ecdde2ee5c773836b6",
@@ -546,7 +546,7 @@
     {
       "id": "resource-read-protocol-error-semantics-server-catalog",
       "order": 1.02,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 2,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs",
@@ -574,10 +574,13 @@
       "fileSetHash": "d8d6a480567edd6f2e8e3438262d5737e1110ab3af668a613bd0ac2515325e14",
       "stanzaHash": "8f21462fe5071491b94465042981e76c99991a4f299fa4f601a1df897eda484b",
       "parentRow": "resource-read-protocol-error-semantics",
-      "reviewedStanzaHash": "8f21462fe5071491b94465042981e76c99991a4f299fa4f601a1df897eda484b"
+      "reviewedStanzaHash": "8f21462fe5071491b94465042981e76c99991a4f299fa4f601a1df897eda484b",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1298",
+      "mergedAt": "2026-08-20T06:10:53Z",
+      "branch": "remediation/resource-read-protocol-error-semantics-server-catalog"
     }
   ],
-  "anchorVerification": "pending",
+  "anchorVerification": "partial",
   "conflictGraph": {
     "edges": [
       {
@@ -789,5 +792,7 @@
   "planHash": "6d137670ddbcd44b38e1fc047006a05cde13a2db5efdd3e67f02e762c273786a",
   "backlogSnapshotHash": "bb9d84f5dc9c8af425bb2279a3005f5f0a7a007abe06707a8091c71e3ac41586",
   "reviewedPlanHash": "6d137670ddbcd44b38e1fc047006a05cde13a2db5efdd3e67f02e762c273786a",
-  "reviewedBacklogSnapshotHash": "bb9d84f5dc9c8af425bb2279a3005f5f0a7a007abe06707a8091c71e3ac41586"
+  "reviewedBacklogSnapshotHash": "bb9d84f5dc9c8af425bb2279a3005f5f0a7a007abe06707a8091c71e3ac41586",
+  "completed": true,
+  "completedAt": "2026-08-20T07:32:45.551Z"
 }
