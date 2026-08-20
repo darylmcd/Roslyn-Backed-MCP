@@ -44,7 +44,40 @@ namespace RoslynMcp.Tests;
 public sealed class ResourceReadWireContractTests
 {
     private const string WorkspaceId = "ws-wire";
+
+    /// <summary>
+    /// A server-side path SHAPE that must never reach the wire. Deliberately Windows-shaped on
+    /// every OS: it is a literal embedded in the scripted manager's exception message (never
+    /// resolved against the filesystem), so keeping it constant keeps the leak probe's escaped
+    /// form — and its falsifiability self-check — identical on both CI legs.
+    /// </summary>
     private const string SecretServerPath = @"C:\secret-server\Internals.cs";
+
+    /// <summary>
+    /// Fixture root for the workspace-family rows, derived per-OS. The handlers precondition on
+    /// <see cref="Path.IsPathFullyQualified"/>, and Unix rooting requires a leading <c>/</c> —
+    /// a hardcoded <c>C:\ws\</c> is NOT fully qualified on Linux, so every workspace row would
+    /// short-circuit to InvalidArgument/-32602 before reaching the scripted manager and the
+    /// era-correct codes (-32002 / -32603) would never be exercised on the ubuntu leg.
+    /// </summary>
+    private static readonly string _fixtureRoot = OperatingSystem.IsWindows() ? @"C:\ws\" : "/ws/";
+
+    /// <summary>
+    /// URL-encoded <c>{filePath}</c> segment for a fixture file. Encoding at build time keeps
+    /// the URI legal on both legs (Windows <c>:</c>/<c>\</c> and Unix <c>/</c> are all reserved
+    /// in the segment grammar); the handler's normalizer decodes it back.
+    /// </summary>
+    private static string FileSegment(string fileName) => Uri.EscapeDataString(_fixtureRoot + fileName);
+
+    /// <summary>
+    /// The two negotiated protocol eras every wire assertion runs under. Shared by the failure
+    /// matrix and the success row so a new era is added in exactly one place.
+    /// </summary>
+    private static readonly (string? RequestedVersion, string ExpectedVersion, bool SupportsJuly2026Features)[] _protocolEras =
+    [
+        ("2025-11-25", "2025-11-25", false),
+        (null, "2026-07-28", true),
+    ];
 
     private sealed record FailureCase(
         string Label,
@@ -60,13 +93,13 @@ public sealed class ResourceReadWireContractTests
         // must classify the INNER KeyNotFoundException (NotFound), not the wrapper
         // (InternalError fallback → -32603, which fails this row in both eras).
         new("workspace/source_file NotFound (McpToolException inner KeyNotFoundException)",
-            "roslyn://workspace/" + WorkspaceId + "/file/C%3A%5Cws%5CMissing.cs",
+            "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Missing.cs"),
             LegacyCode: -32002,
             July2026Code: -32602,
             MessageMustContain: "NotFound",
             ForbiddenLiterals: ["KeyNotFoundException", "McpToolException"]),
         new("workspace/source_file_lines malformed lineRange",
-            "roslyn://workspace/" + WorkspaceId + "/file/C%3A%5Cws%5CPresent.cs/lines/abc-def",
+            "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Present.cs") + "/lines/abc-def",
             LegacyCode: -32602,
             July2026Code: -32602,
             // "param: lineRange" proves the HANDLER's validation fired — an SDK binding
@@ -80,7 +113,7 @@ public sealed class ResourceReadWireContractTests
             MessageMustContain: "param: filePath",
             ForbiddenLiterals: ["ArgumentException", "InvalidOperation"]),
         new("workspace/source_file unexpected handler failure is sanitized",
-            "roslyn://workspace/" + WorkspaceId + "/file/C%3A%5Cws%5CBoom.cs",
+            "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Boom.cs"),
             LegacyCode: -32603,
             July2026Code: -32603,
             MessageMustContain: "correlationId",
@@ -112,13 +145,7 @@ public sealed class ResourceReadWireContractTests
     [TestMethod]
     public async Task ResourceRead_FailureMatrix_AnswersOnErrorChannelWithEraCorrectCodes()
     {
-        var protocols = new (string? RequestedVersion, string ExpectedVersion, bool SupportsJuly2026Features)[]
-        {
-            ("2025-11-25", "2025-11-25", false),
-            (null, "2026-07-28", true),
-        };
-
-        foreach (var protocol in protocols)
+        foreach (var protocol in _protocolEras)
         {
             await using var harness = await CreateHarnessAsync(protocol.RequestedVersion, protocol.ExpectedVersion);
             Assert.AreEqual(protocol.ExpectedVersion, harness.Client.NegotiatedProtocolVersion);
@@ -159,7 +186,7 @@ public sealed class ResourceReadWireContractTests
 
                 var message = error.GetProperty("message").GetString() ?? string.Empty;
                 StringAssert.Contains(message, failureCase.MessageMustContain, $"{label}: message '{message}'");
-                StringAssert.Contains(message, "correlationId", $"{label}: message must carry a correlation id");
+                AssertCarriesRealCorrelationId(message, label);
 
                 foreach (var forbidden in failureCase.ForbiddenLiterals)
                 {
@@ -190,7 +217,7 @@ public sealed class ResourceReadWireContractTests
 
         await Assert.ThrowsAsync<McpException>(async () =>
             _ = await harness.Client.ReadResourceAsync(
-                new ReadResourceRequestParams { Uri = "roslyn://workspace/" + WorkspaceId + "/file/C%3A%5Cws%5CBoom.cs" },
+                new ReadResourceRequestParams { Uri = "roslyn://workspace/" + WorkspaceId + "/file/" + FileSegment("Boom.cs") },
                 CancellationToken.None));
 
         var rawFrame = FindSingleNewResponseFrame(harness.RawServerMessages, before, "sanitized -32603");
@@ -205,13 +232,7 @@ public sealed class ResourceReadWireContractTests
     [TestMethod]
     public async Task ResourceRead_MigratedEndpointSuccess_KeepsCacheHintNormalizationPerEra()
     {
-        var protocols = new (string? RequestedVersion, string ExpectedVersion, bool SupportsJuly2026Features)[]
-        {
-            ("2025-11-25", "2025-11-25", false),
-            (null, "2026-07-28", true),
-        };
-
-        foreach (var protocol in protocols)
+        foreach (var protocol in _protocolEras)
         {
             await using var harness = await CreateHarnessAsync(protocol.RequestedVersion, protocol.ExpectedVersion);
             var before = harness.RawServerMessages.Count;
@@ -267,6 +288,11 @@ public sealed class ResourceReadWireContractTests
             .WithToolsFromAssembly(hostAssembly)
             .WithResourcesFromAssembly(hostAssembly)
             .WithPromptsFromAssembly(hostAssembly)
+            // Production parity (Program.cs): the incoming-message filter is what opens the
+            // per-message RequestCorrelationContext scope. WITHOUT it every sanitized error
+            // frame renders the literal "unavailable", and any assertion that merely looks for
+            // the word "correlationId" passes on the hardcoded label alone — a dead assertion.
+            .WithMessageFilters(filters => filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(filters => filters.AddReadResourceFilter(ResourceReadResultFilter.Create));
         builder.Services.AddRoslynMcpSurfaceRegistrationPolicy(selection);
         using var host = builder.Build();
@@ -286,6 +312,30 @@ public sealed class ResourceReadWireContractTests
                 .AddSingleton<IWorkspaceManager>(manager)
                 .BuildServiceProvider(),
             captureServerMessages: true);
+    }
+
+    /// <summary>
+    /// Asserts the sanitized error message carries a REAL correlation id — a 32-char lowercase
+    /// hex <c>Guid("N")</c> minted by <c>RequestCorrelationContext.Begin()</c> — and explicitly
+    /// NOT the <c>"unavailable"</c> no-context sentinel. Asserting only that the word
+    /// "correlationId" appears is satisfied by the hardcoded label in the message template and
+    /// can never fail.
+    /// </summary>
+    private static void AssertCarriesRealCorrelationId(string message, string label)
+    {
+        const string marker = "correlationId: ";
+        var start = message.LastIndexOf(marker, StringComparison.Ordinal);
+        Assert.IsTrue(start >= 0, $"{label}: message carries no correlationId field: '{message}'");
+
+        var correlationId = message[(start + marker.Length)..].TrimEnd(')');
+        Assert.AreNotEqual("unavailable", correlationId,
+            $"{label}: correlationId is the no-context sentinel — the per-message correlation " +
+            $"scope never opened, so no real id reached the wire. Message: '{message}'");
+        Assert.AreEqual(32, correlationId.Length,
+            $"{label}: correlationId '{correlationId}' is not a 32-char Guid(\"N\"). Message: '{message}'");
+        Assert.IsTrue(
+            correlationId.All(static c => c is >= '0' and <= '9' or >= 'a' and <= 'f'),
+            $"{label}: correlationId '{correlationId}' is not lowercase hex. Message: '{message}'");
     }
 
     /// <summary>

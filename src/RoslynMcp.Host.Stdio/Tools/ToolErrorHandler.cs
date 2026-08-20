@@ -18,11 +18,17 @@ internal static class MetaSerializer
 internal static class ToolErrorHandler
 {
     /// <summary>
-    /// Shared error-category constants for the categories that participate in wire-level
-    /// decisions. Declared next to the classification table below so
-    /// <c>ResourceReadResultFilter.MapErrorCode</c> consumes the SAME identifiers the
-    /// classifier emits — a renamed or typo'd category breaks the compile instead of
-    /// silently falling through to the <c>InternalError</c> wire code.
+    /// The COMPLETE set of error categories this classifier can emit. Every category the
+    /// classification tables (and <see cref="ClassifyError"/>'s post-classification hooks)
+    /// produce is declared here, and <c>ResourceReadResultFilter.MapErrorCode</c> gives each
+    /// one an explicit switch arm. Two consequences, both deliberate:
+    /// <list type="bullet">
+    ///   <item><description>A renamed or typo'd category breaks the compile instead of
+    ///         silently falling through to the <c>InternalError</c> wire code.</description></item>
+    ///   <item><description>A NEWLY ADDED category must be declared here and given an explicit
+    ///         wire-code arm, so "is this a caller fault (-32602) or a server fault (-32603)?"
+    ///         is a compile-visible decision rather than a silent default.</description></item>
+    /// </list>
     /// </summary>
     internal static class ErrorCategories
     {
@@ -32,6 +38,13 @@ internal static class ToolErrorHandler
         public const string WorkspaceEvicted = "WorkspaceEvicted";
         public const string InvalidArgument = "InvalidArgument";
         public const string InternalError = "InternalError";
+        public const string StaleWorkspaceTransition = "StaleWorkspaceTransition";
+        public const string Timeout = "Timeout";
+        public const string PreviewTokenStale = "PreviewTokenStale";
+        public const string Disconnected = "Disconnected";
+        public const string RateLimited = "RateLimited";
+        public const string InvalidOperation = "InvalidOperation";
+        public const string WorkspaceReloadedDuringCall = "WorkspaceReloadedDuringCall";
     }
 
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
@@ -39,7 +52,7 @@ internal static class ToolErrorHandler
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
         // an auto-reload transition. Registered BEFORE the generic Exception handlers so the
         // structured category wins over the dictionary walk's InvalidOperation fallback.
-        [typeof(StaleWorkspaceTransitionException)] = (_, _) => new("StaleWorkspaceTransition",
+        [typeof(StaleWorkspaceTransitionException)] = (_, _) => new(ErrorCategories.StaleWorkspaceTransition,
             "Workspace is transitioning between snapshots. Retry the request against the refreshed workspace."),
         // mcp-error-category-workspace-evicted-on-host-recycle: a workspace lookup miss that
         // originated from a host recycle (graceful prior-process exit) or an explicit Close.
@@ -66,7 +79,7 @@ internal static class ToolErrorHandler
                 BuildSafeArgumentMessage(argument),
                 ParamName: argument.ParamName);
         },
-        [typeof(TimeoutException)] = (_, _) => new("Timeout",
+        [typeof(TimeoutException)] = (_, _) => new(ErrorCategories.Timeout,
             "The operation timed out. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
             "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
         // preview-token-stale-across-auto-reload: a *_apply call whose paired preview was
@@ -81,7 +94,7 @@ internal static class ToolErrorHandler
         // is intact and the client just needs to re-issue the paired *_preview call.
         [typeof(PreviewTokenStaleException)] = (ex, _) =>
         {
-            return new("PreviewTokenStale",
+            return new(ErrorCategories.PreviewTokenStale,
                 "The preview token has expired because the workspace was reloaded after the preview was created. " +
                 "Re-issue the paired *_preview call.");
         },
@@ -95,14 +108,14 @@ internal static class ToolErrorHandler
         {
             if (ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase))
             {
-                return new("Disconnected",
+                return new(ErrorCategories.Disconnected,
                     "The stdio transport disconnected because the MCP client closed the pipe. " +
                     "Reconnect and call workspace_reload to restore the session.");
             }
 
             return ex.Message.Contains("Rate limit")
-                ? new("RateLimited", "The request rate limit was exceeded. Wait for the current rate-limit window to reset, then retry.")
-                : new("InvalidOperation",
+                ? new(ErrorCategories.RateLimited, "The request rate limit was exceeded. Wait for the current rate-limit window to reset, then retry.")
+                : new(ErrorCategories.InvalidOperation,
                     ShouldSuggestReloadAfterInvalidOperation(ex.Message)
                         ? "The operation is not valid for the current workspace state. Call workspace_reload if the state is stale, then retry."
                         : "The operation is not valid in the current state. Check the tool contract and retry.");
@@ -304,7 +317,7 @@ internal static class ToolErrorHandler
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
-            info = new("WorkspaceReloadedDuringCall",
+            info = new(ErrorCategories.WorkspaceReloadedDuringCall,
                 "The workspace was auto-reloaded during this call. The symbol handle " +
                 "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +
                 "(e.g. via symbol_search, symbol_info, or a fresh position-based locator) and retry. " +
