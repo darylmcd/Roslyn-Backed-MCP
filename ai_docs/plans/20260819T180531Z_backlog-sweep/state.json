@@ -224,7 +224,7 @@
     {
       "id": "scaffolding-project-parse-diagnostic-redaction",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffolding-project-parse-diagnostic-redaction"
       ],
@@ -247,10 +247,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scaffolding-project-parse-diagnostic-redaction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1286",
+      "mergedAt": "2026-08-19T23:37:42Z",
       "notes": null,
       "fileSetHash": "43fb4b58b45626d9fffbe2d12aee6f64a973b27582c11bdfb2cb0082e933cb6a",
       "stanzaHash": "7c040433804008a034f7ac1faea8c9084a9ea032b2ba44aae3d13d7593a3d48a",
@@ -259,7 +259,7 @@
     {
       "id": "mcp-mrtr-dispatch-contract",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "mcp-mrtr-dispatch-contract"
       ],
@@ -283,10 +283,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/mcp-mrtr-dispatch-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1291",
+      "mergedAt": "2026-08-20T01:38:15Z",
       "notes": null,
       "fileSetHash": "2dd38e5f7608d1641384f258351eba685642142d0abedaf66997373b9d8bd613",
       "stanzaHash": "f42a9abdcf8ce238e260e751bb9e71062b5e801e287e55f42285d14ae23a3256",
@@ -331,7 +331,7 @@
     {
       "id": "publish-tag-version-parity",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "publish-tag-version-parity"
       ],
@@ -354,10 +354,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/publish-tag-version-parity",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1287",
+      "mergedAt": "2026-08-19T23:53:55Z",
       "notes": null,
       "fileSetHash": "bcb51e8d2ff135e8a4d9526dcbd28025f214fe087bb2ffd3b9cea9b67c0645d3",
       "stanzaHash": "7b6d733d1b11585d2c0b6b1565b697038e873b75f3bd2c59d40682553e03f271",
@@ -366,7 +366,7 @@
     {
       "id": "manual-nuget-publish-provenance",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "manual-nuget-publish-provenance"
       ],
@@ -389,10 +389,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/manual-nuget-publish-provenance",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1289",
+      "mergedAt": "2026-08-20T01:38:09Z",
       "notes": null,
       "fileSetHash": "3dd56cf814a5ebfa5c0f4fe00babd73fdc922c8e4dac92d3c85271e6f12618f5",
       "stanzaHash": "5eb5deaadc77e5a7d59451d40dfb9763ac5b0a7f362b5e641ecf030fafc8b621",
@@ -401,7 +401,7 @@
     {
       "id": "ci-merge-publish-runner-os-parity",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "ci-merge-publish-runner-os-parity"
       ],
@@ -425,10 +425,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/ci-merge-publish-runner-os-parity",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1293",
+      "mergedAt": "2026-08-20T02:40:03Z",
       "notes": null,
       "fileSetHash": "4f7101c13909098cfcb78d9ec11d22c13f5ebfdc610dc9fc7a86dbe605314735",
       "stanzaHash": "ee9383eeb188ed282a03cb78a5b812f0e1f95eeb5ed9cee46a310252f5cecd6f",
@@ -441,8 +441,10 @@
       "backlogRowsClosed": [
         "tool-call-error-envelope-wire-contract"
       ],
-      "productionFilesTouched": 0,
-      "productionFiles": [],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs"
+      ],
       "testFilesAdded": 1,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 30000,
@@ -456,31 +458,35 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "mcp-mrtr-dispatch-contract"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "90f513bcc4f2786e01c57d100afb3b3d0b65e88355900461ba5b2b50c6080202",
-      "reviewedStanzaHash": "90f513bcc4f2786e01c57d100afb3b3d0b65e88355900461ba5b2b50c6080202"
+      "fileSetHash": "70dcee639271962e5b7f8fa9a27a915471a055b032fda88d9b480e5435bd278e",
+      "stanzaHash": "f541e78f882a25c26ba0ab5b6a33a90fa5c6e78c055e09dff02f676cfd7f8818",
+      "reviewedStanzaHash": "f541e78f882a25c26ba0ab5b6a33a90fa5c6e78c055e09dff02f676cfd7f8818"
     },
     {
       "id": "preview-apply-token-write-path-toctou",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "preview-apply-token-write-path-toctou"
       ],
-      "productionFilesTouched": 4,
+      "productionFilesTouched": 6,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs",
         "src/RoslynMcp.Roslyn/Services/PreviewStore.cs",
         "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs",
-        "src/RoslynMcp.Host.Stdio/Tools/MultiFileEditTools.cs"
+        "src/RoslynMcp.Host.Stdio/Tools/MultiFileEditTools.cs",
+        "src/RoslynMcp.Host.Stdio/Security/RootExpansionGrantRegistry.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
       ],
-      "testFilesAdded": 2,
+      "testFilesAdded": 3,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
@@ -494,14 +500,14 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/preview-apply-token-write-path-toctou",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1294",
+      "mergedAt": "2026-08-20T02:40:10Z",
       "notes": null,
-      "fileSetHash": "26661f38cba98742bc0eff3a4c44553ba834218e39e4ede451e443d3d765bece",
-      "stanzaHash": "2ce3957b819e20ff96797b05af657a26805b31a52080b989500c91faec01d2d0",
-      "reviewedStanzaHash": "2ce3957b819e20ff96797b05af657a26805b31a52080b989500c91faec01d2d0"
+      "fileSetHash": "e79639f979ff5e31d30ec7d17f9ffcd3f12b701c4ec9c5d3c99cd08699d0cfc6",
+      "stanzaHash": "aba33487cec2b31c230f42d18f75bab412e3d69f3c5eda7d603c2874292ee585",
+      "reviewedStanzaHash": "aba33487cec2b31c230f42d18f75bab412e3d69f3c5eda7d603c2874292ee585"
     },
     {
       "id": "resource-read-protocol-error-semantics-workspace",
@@ -779,9 +785,9 @@
       "evidence": "Branch-protection requirement cannot land in the PR diff; must be recorded post-merge via gh api or the Linux leg ships advisory-only."
     }
   ],
-  "conflictGraphInputHash": "44820f49883858cfa4e763bca1bc0960203e97c105325fcfde7240dcef0b0750",
-  "planHash": "a807254ab1c8eef7d22269f988f78aab3b249ee65d52116cc9c9e5892728b9a3",
-  "backlogSnapshotHash": "affd1eea96529acccbb01b70a40fe37467adbf086e5adb9bba3b0bfbaaf43984",
-  "reviewedPlanHash": "a807254ab1c8eef7d22269f988f78aab3b249ee65d52116cc9c9e5892728b9a3",
-  "reviewedBacklogSnapshotHash": "affd1eea96529acccbb01b70a40fe37467adbf086e5adb9bba3b0bfbaaf43984"
+  "conflictGraphInputHash": "e099da98ba657e4a2cb9dcf37137b54729526f9ae93205169ac9213341b23277",
+  "planHash": "6d137670ddbcd44b38e1fc047006a05cde13a2db5efdd3e67f02e762c273786a",
+  "backlogSnapshotHash": "bb9d84f5dc9c8af425bb2279a3005f5f0a7a007abe06707a8091c71e3ac41586",
+  "reviewedPlanHash": "6d137670ddbcd44b38e1fc047006a05cde13a2db5efdd3e67f02e762c273786a",
+  "reviewedBacklogSnapshotHash": "bb9d84f5dc9c8af425bb2279a3005f5f0a7a007abe06707a8091c71e3ac41586"
 }
