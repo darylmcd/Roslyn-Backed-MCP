@@ -166,9 +166,11 @@ internal static class StructuredCallToolFilter
                                     "Tool {ToolName} called without workspaceId while {Count} workspaces " +
                                     "are loaded; returning a structured fast-fail.",
                                     toolName, loadedWorkspaces.Length);
-                                return BuildErrorResult(
-                                    toolName,
-                                    new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
+                                return ApplyProtocolResultShape(
+                                    context,
+                                    BuildErrorResult(
+                                        toolName,
+                                        new ArgumentException(fastFailMessage, WorkspaceIdParameterName)));
 
                             case WorkspaceIdAutoResolution.NotApplicable:
                                 {
@@ -183,7 +185,7 @@ internal static class StructuredCallToolFilter
                                     {
                                         stopwatch.Stop();
                                         CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
-                                        return autoLoadFastFail;
+                                        return ApplyProtocolResultShape(context, autoLoadFastFail);
                                     }
 
                                     break;
@@ -261,7 +263,12 @@ internal static class StructuredCallToolFilter
                     isInternalError ? "unexpected-error" : "expected-error",
                     RequestCorrelationContext.Current ?? "unavailable");
 
-                return BuildErrorResult(toolName, ex);
+                // tool-call-error-envelope-wire-contract: failure envelopes are era-shaped
+                // exactly like success envelopes. Without this, a legacy (2025-11-25) session
+                // received `resultType: "complete"` on every error frame — a field that
+                // protocol era does not define — because BuildErrorResult constructs a
+                // CallToolResult directly and the SDK stamps the discriminator by default.
+                return ApplyProtocolResultShape(context, BuildErrorResult(toolName, ex));
             }
         };
     }
