@@ -1,7 +1,9 @@
 using System.Reflection;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Analyzers.ServerSurfaceCatalog;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Helpers;
@@ -80,82 +82,124 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             return;
         }
 
+        // The fixture is deliberately SELF-CONTAINED: an isolated copy of the sample solution
+        // plus an <Analyzer/> item pointing at the analyzer assembly the TEST HOST already
+        // loaded. Depending on this repo's own build graph instead (Host.Stdio's
+        // OutputItemType="Analyzer" ProjectReference) made the fixture environment-sensitive —
+        // the analyzer's TargetPath is configuration-dependent, and
+        // AnalyzerReferenceIsolation skips any reference whose file is missing, so on a clean
+        // machine the setup collapsed before any lifetime behavior was exercised.
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var solutionPath = Path.Combine(repoRoot, "RoslynMcp.slnx");
+        var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
+            repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
+        var copiedRoot = Path.GetDirectoryName(solutionPath)!;
 
-        // Mirror ValidationIntegrationTests' host-config detection: MSBuildWorkspace defaults
-        // to Configuration=Debug evaluation; on Release-only checkouts (CI runners) the
-        // analyzer ProjectReference would resolve to a nonexistent Debug TargetPath and the
-        // AnalyzerFileReference would be dropped before the lease could shadow-copy anything.
-        var configuration = AppContext.BaseDirectory.Contains(
-            Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar,
-            StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
-        var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        try
         {
-            ["Configuration"] = configuration,
-        };
+            var analyzerAssemblyPath = InjectFixtureAnalyzer(copiedRoot);
 
-        MsBuildInitializer.EnsureInitialized();
-        using var manager = new WorkspaceManager(
-            NullLogger<WorkspaceManager>.Instance,
-            new PreviewStore(),
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
-            cacheStore: null,
-            sessionLoader: new WorkspaceSessionLoader());
+            MsBuildInitializer.EnsureInitialized();
+            using var manager = new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
+                cacheStore: null,
+                sessionLoader: new WorkspaceSessionLoader());
 
-        var status = await manager.LoadAsync(solutionPath, globalProperties, CancellationToken.None);
-        Assert.IsTrue(status.IsLoaded, "Repository solution must load before exercising the lease lifecycle.");
-        var workspaceDirectory = Path.Combine(ShadowSharedParent, status.WorkspaceId);
+            var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            Assert.IsTrue(status.IsLoaded, "Fixture solution must load before exercising the lease lifecycle.");
+            var workspaceDirectory = Path.Combine(ShadowSharedParent, status.WorkspaceId);
 
-        // (b) Force the shadow assemblies to actually load: retargeting alone creates loaders
-        // lazily, and the lease's on-disk root only materializes on the first shadow copy.
-        var firstContextRef = ForceAnalyzerLoad(manager, status.WorkspaceId);
-        var leaseDirsAfterLoad = ListLeaseDirectories(workspaceDirectory);
-        Assert.AreEqual(1, leaseDirsAfterLoad.Count,
-            $"Exactly one live shadow root expected after load; saw [{string.Join(", ", leaseDirsAfterLoad)}].");
+            // (b) Force the shadow assemblies to actually load: retargeting alone creates loaders
+            // lazily, and the lease's on-disk root only materializes on the first shadow copy.
+            var firstContextRef = ForceAnalyzerLoad(manager, status.WorkspaceId, analyzerAssemblyPath);
+            var leaseDirsAfterLoad = ListLeaseDirectories(workspaceDirectory);
+            Assert.AreEqual(1, leaseDirsAfterLoad.Count,
+                $"Exactly one live shadow root expected after load; saw [{string.Join(", ", leaseDirsAfterLoad)}].");
 
-        // (e) Reload: the old lease's root must be reclaimed while the new lease's root
-        // survives — no second leaked tree.
-        await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
-        var secondContextRef = ForceAnalyzerLoad(manager, status.WorkspaceId);
-        var leaseDirsAfterReload = ListLeaseDirectories(workspaceDirectory);
-        var newLeaseDirs = leaseDirsAfterReload.Except(leaseDirsAfterLoad, StringComparer.OrdinalIgnoreCase).ToList();
-        Assert.AreEqual(1, newLeaseDirs.Count,
-            $"Reload must materialize exactly one NEW shadow root; saw [{string.Join(", ", newLeaseDirs)}].");
-        Assert.IsTrue(
-            await WaitForReclamationOnCleanStackAsync(workspaceDirectory, surviving: newLeaseDirs[0]),
-            "The pre-reload lease's shadow root was still locked after the bounded wait — the old load context did not unload.");
-        Assert.IsTrue(Directory.Exists(newLeaseDirs[0]),
-            "The reloaded workspace's own shadow root must survive old-lease reclamation.");
+            // (e) Reload: the old lease's root must be reclaimed while the new lease's root
+            // survives — no second leaked tree.
+            await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
+            var secondContextRef = ForceAnalyzerLoad(manager, status.WorkspaceId, analyzerAssemblyPath);
+            var leaseDirsAfterReload = ListLeaseDirectories(workspaceDirectory);
+            var newLeaseDirs = leaseDirsAfterReload.Except(leaseDirsAfterLoad, StringComparer.OrdinalIgnoreCase).ToList();
+            Assert.AreEqual(1, newLeaseDirs.Count,
+                $"Reload must materialize exactly one NEW shadow root; saw [{string.Join(", ", newLeaseDirs)}].");
+            Assert.IsTrue(
+                await WaitForReclamationOnCleanStackAsync(workspaceDirectory, surviving: newLeaseDirs[0]),
+                "The pre-reload lease's shadow root was still locked after the bounded wait — the old load context did not unload.");
+            Assert.IsTrue(Directory.Exists(newLeaseDirs[0]),
+                "The reloaded workspace's own shadow root must survive old-lease reclamation.");
 
-        // (c)+(d) Close: every remaining shadow root for this workspace must be reclaimed.
-        Assert.IsTrue(manager.Close(status.WorkspaceId));
-        var (closeReclaimed, closeError) = await WaitForReclamationWithErrorOnCleanStackAsync(workspaceDirectory, surviving: null);
-        Assert.IsTrue(
-            closeReclaimed,
-            $"The workspace's shadow roots were still locked after close + bounded wait — the load contexts did not unload. Last error: {closeError}; firstContextAlive={firstContextRef.IsAlive}; secondContextAlive={secondContextRef.IsAlive}; allContexts=[{string.Join(", ", System.Runtime.Loader.AssemblyLoadContext.All.Select(c => c.GetType().Name))}]");
+            // (c)+(d) Close: every remaining shadow root for this workspace must be reclaimed.
+            Assert.IsTrue(manager.Close(status.WorkspaceId));
+            var (closeReclaimed, closeError) = await WaitForReclamationWithErrorOnCleanStackAsync(workspaceDirectory, surviving: null);
+            Assert.IsTrue(
+                closeReclaimed,
+                $"The workspace's shadow roots were still locked after close + bounded wait — the load contexts did not unload. Last error: {closeError}; firstContextAlive={firstContextRef.IsAlive}; secondContextAlive={secondContextRef.IsAlive}; allContexts=[{string.Join(", ", System.Runtime.Loader.AssemblyLoadContext.All.Select(c => c.GetType().Name))}]");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
     }
 
     /// <summary>
-    /// Loads the server-surface catalog analyzer through the session's shadow loader and
-    /// asserts the compatibility witness: shadow-copied analyzers keep a real on-disk
+    /// Makes the analyzer's presence a GUARANTEED precondition rather than an assumption:
+    /// the copied <c>SampleLib</c> project gets an explicit <c>&lt;Analyzer/&gt;</c> item
+    /// pointing at <see cref="ServerSurfaceCatalogAnalyzer"/>'s own assembly — the file the
+    /// running test host loaded this very type from, so it exists on any machine that can run
+    /// this test at all (the tests project carries a plain ProjectReference to the analyzer,
+    /// so MSBuild copies it next to the test assembly in every configuration). No build-graph
+    /// probing, no configuration guessing, no dependence on prior build output.
+    /// </summary>
+    /// <returns>The absolute path of the analyzer assembly wired into the fixture.</returns>
+    private static string InjectFixtureAnalyzer(string copiedRoot)
+    {
+        var analyzerAssemblyPath = typeof(ServerSurfaceCatalogAnalyzer).Assembly.Location;
+        Assert.IsFalse(string.IsNullOrEmpty(analyzerAssemblyPath),
+            "Fixture precondition: the analyzer assembly must be path-loaded so it can be wired into the sample project.");
+        Assert.IsTrue(File.Exists(analyzerAssemblyPath),
+            $"Fixture precondition: analyzer assembly '{analyzerAssemblyPath}' must exist on disk.");
+
+        var projectPath = Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj");
+        Assert.IsTrue(File.Exists(projectPath),
+            $"Fixture precondition: copied sample project '{projectPath}' must exist.");
+
+        var project = XDocument.Load(projectPath);
+        project.Root!.Add(new XElement("ItemGroup",
+            new XElement("Analyzer", new XAttribute("Include", analyzerAssemblyPath))));
+        project.Save(projectPath);
+
+        return analyzerAssemblyPath;
+    }
+
+    /// <summary>
+    /// Loads the fixture analyzer through the session's shadow loader and asserts the
+    /// compatibility witness: shadow-copied analyzers keep a real on-disk
     /// <see cref="System.Reflection.Assembly.Location"/> (path-loaded, never stream-loaded).
     /// Deliberately a separate method so the test body holds no reference that would root the
     /// pre-reload <see cref="Solution"/> graph and keep its collectible context alive.
     /// </summary>
-    private static WeakReference ForceAnalyzerLoad(WorkspaceManager manager, string workspaceId)
+    private static WeakReference ForceAnalyzerLoad(
+        WorkspaceManager manager, string workspaceId, string analyzerAssemblyPath)
     {
+        var analyzerFileName = Path.GetFileName(analyzerAssemblyPath);
         var solution = manager.GetCurrentSolution(workspaceId);
-        var hostProject = solution.Projects.First(project => project.Name == "RoslynMcp.Host.Stdio");
-        var analyzerReference = hostProject.AnalyzerReferences
+        var fixtureProject = solution.Projects.First(project => project.Name == "SampleLib");
+        var analyzerReference = fixtureProject.AnalyzerReferences
             .OfType<AnalyzerFileReference>()
             .FirstOrDefault(reference =>
-                reference.FullPath?.Contains("ServerSurfaceCatalogAnalyzer", StringComparison.OrdinalIgnoreCase) == true);
-        Assert.IsNotNull(analyzerReference, "Expected Host.Stdio to carry the server-surface catalog analyzer reference.");
+                string.Equals(Path.GetFileName(reference.FullPath), analyzerFileName, StringComparison.OrdinalIgnoreCase));
 
-        var analyzer = analyzerReference.GetAnalyzers(hostProject.Language)
-            .FirstOrDefault(candidate => candidate.GetType().Name == "ServerSurfaceCatalogAnalyzer");
+        // Distinguishes a broken FIXTURE (analyzer never reached the loaded project) from a
+        // genuine reclamation failure, which is asserted further down the test body.
+        Assert.IsNotNull(analyzerReference,
+            $"Fixture precondition failed (this is NOT a reclamation failure): the loaded SampleLib project must carry the injected analyzer reference '{analyzerFileName}'. Analyzer references seen: [{string.Join(", ", fixtureProject.AnalyzerReferences.Select(reference => reference.Display ?? reference.Id.ToString()))}].");
+
+        var analyzer = analyzerReference.GetAnalyzers(fixtureProject.Language)
+            .FirstOrDefault(candidate => candidate.GetType().Name == nameof(ServerSurfaceCatalogAnalyzer));
         Assert.IsNotNull(analyzer, "Expected the shadow-copy loader to preserve analyzer discovery.");
         Assert.IsFalse(string.IsNullOrEmpty(analyzer.GetType().Assembly.Location),
             "Shadow-copied analyzers must keep an on-disk Assembly.Location (collectible ALC must not imply stream loading).");
