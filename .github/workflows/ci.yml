@@ -43,6 +43,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       runs_on: ${{ steps.decide.outputs.runs_on }}
+      runner_matrix: ${{ steps.decide.outputs.runner_matrix }}
     steps:
       - name: Decide target runner
         id: decide
@@ -59,6 +60,17 @@ jobs:
           $selfHostedJson = '["self-hosted","roslynmcp-dev"]'
           $hostedJson = '"ubuntu-latest"'
 
+          # runner_matrix drives validate's job matrix (one leg per entry).
+          # Every self-hosted route carries a non-primary ubuntu-latest leg so
+          # a maintainer PR is ALSO validated on the OS the publish gate uses
+          # (merge/publish OS parity — the v3.0.1 tag failed on Linux with a
+          # suite that had passed pre-merge on Windows only; see CI_POLICY.md
+          # § Merge Gating Expectations). Hosted routes stay single-leg so the
+          # Linux leg is never duplicated. Exactly one leg has primary=true;
+          # artifact uploads run only there to keep artifact names unique.
+          $selfHostedMatrix = '[{"runs_on":["self-hosted","roslynmcp-dev"],"os":"windows","primary":true},{"runs_on":"ubuntu-latest","os":"linux","primary":false}]'
+          $hostedMatrix = '[{"runs_on":"ubuntu-latest","os":"linux","primary":true}]'
+
           $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
           if ($isMaintainerPr -ne 'true') {
             # Fork PRs, dependabot PRs, workflow_dispatch, and schedule runs
@@ -68,12 +80,14 @@ jobs:
             # made on this branch.
             Write-Host "Not a maintainer pull_request event - hosted routing (unconditional)."
             "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
           if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
             Write-Host "::notice title=Router::RUNNER_STATUS_PAT secret is not set - defaulting to self-hosted routing (current behavior)."
             "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
@@ -95,9 +109,11 @@ jobs:
             if ($online.Count -gt 0) {
               Write-Host "Self-hosted runner (label roslynmcp-dev) is online - routing to self-hosted."
               "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             } else {
               Write-Host "::notice title=Router::No online self-hosted runner with label roslynmcp-dev - routing to ubuntu-latest fallback."
               "runs_on=$hostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+              "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             }
           } catch {
             # Missing secret is handled above; this branch is an invalid
@@ -106,6 +122,7 @@ jobs:
             # behavior (self-hosted) rather than guessing offline.
             Write-Host "::notice title=Router::Runner status probe failed ($($_.Exception.Message)) - defaulting to self-hosted routing (current behavior)."
             "runs_on=$selfHostedJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             # Without this, $LASTEXITCODE stays non-zero from the failed `gh api`
             # call above, and GitHub's pwsh step wrapper appends
             # `if ($LASTEXITCODE) { exit $LASTEXITCODE }` after this script - which
@@ -118,6 +135,7 @@ jobs:
           }
 
   validate:
+    name: validate (${{ matrix.leg.os }})
     needs: route
     # Hybrid runner model — see docs/self-hosted-runner.md.
     # Maintainer pull_request events run on the self-hosted Windows runner
@@ -132,7 +150,20 @@ jobs:
     # PR waves from queueing behind the single self-hosted slot. The `route`
     # job encodes this same predicate and never calls the runners API for
     # those events, so the security boundary is unchanged.
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
+    #
+    # Merge/publish OS parity — validate fans out over route's runner_matrix.
+    # When routing is self-hosted the matrix carries a second, non-primary
+    # ubuntu-latest leg running the IDENTICAL eng/verify-release.ps1 entry
+    # point, so an OS-sensitive test can no longer pass on Windows, merge,
+    # and then fail the Linux publish gate at tag time (the v3.0.1 hole).
+    # fail-fast is off so a Windows-only failure and a Linux-only failure
+    # both surface in one run. Branch protection pins the stable aggregator
+    # job `validate-gate` below, not the per-leg generated names.
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.route.outputs.runner_matrix) }}
+    runs-on: ${{ matrix.leg.runs_on }}
     # Self-hosted validation currently completes in ~10-15 min, but hosted Linux
     # is materially slower: a July dependabot run needed 17m49s, and two fresh
     # August dependabot runs reached the former 20-min cap without reporting a
@@ -243,8 +274,12 @@ jobs:
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
+      # Coverage HTML + all artifact uploads are scoped to the primary matrix
+      # leg: upload-artifact v4+ fails on duplicate artifact names within one
+      # run, and the names (host-stdio-publish / release-manifests /
+      # code-coverage) are cited by several docs, so they must stay unsuffixed.
       - name: Generate coverage HTML summary
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.leg.primary == true
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
@@ -262,7 +297,7 @@ jobs:
         run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
 
       - name: Upload published host artifact
-        if: steps.detect.outputs.docs_only != 'true'
+        if: steps.detect.outputs.docs_only != 'true' && matrix.leg.primary == true
         uses: actions/upload-artifact@v7
         with:
           name: host-stdio-publish
@@ -270,7 +305,7 @@ jobs:
           retention-days: 14
 
       - name: Upload release manifest
-        if: steps.detect.outputs.docs_only != 'true'
+        if: steps.detect.outputs.docs_only != 'true' && matrix.leg.primary == true
         uses: actions/upload-artifact@v7
         with:
           name: release-manifests
@@ -278,9 +313,32 @@ jobs:
           retention-days: 14
 
       - name: Upload code coverage
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.leg.primary == true
         uses: actions/upload-artifact@v7
         with:
           name: code-coverage
           path: artifacts/coverage
           retention-days: 30
+
+  # Stable aggregator for branch protection. The validate matrix legs get
+  # GitHub-generated check names that vary with the routing decision
+  # ("validate (windows)" / "validate (linux)"), which cannot be pinned as a
+  # required status check. validate-gate is the single stable name: it fails
+  # unless EVERY matrix leg succeeded (needs.validate.result is 'success'
+  # only when all legs passed; any failed, cancelled, or skipped leg yields
+  # 'failure'/'cancelled'/'skipped'). Pin THIS job in branch protection.
+  validate-gate:
+    name: validate-gate
+    needs: validate
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validate leg green
+        shell: pwsh
+        run: |
+          $result = "${{ needs.validate.result }}"
+          if ($result -ne 'success') {
+            throw "validate matrix did not fully succeed (result: $result)."
+          }
+          Write-Host "All validate legs succeeded."
