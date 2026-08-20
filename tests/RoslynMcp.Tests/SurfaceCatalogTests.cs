@@ -216,19 +216,17 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
-    public void ServerCatalogVersionDiffResource_UnsupportedPair_ReturnsInvalidArgumentEnvelope()
+    public void ServerCatalogVersionDiffResource_UnsupportedPair_PropagatesArgumentException()
     {
-        var json = ServerResources.GetServerCatalogVersionDiff("v2.3.0", "current");
-        using var document = JsonDocument.Parse(json);
+        // resource-read-protocol-error-semantics-server-catalog: the handler no longer
+        // serializes an error envelope into the contents body — the ArgumentException
+        // propagates to ResourceReadResultFilter, which answers on the JSON-RPC error
+        // channel with InvalidParams (-32602). The wire-level shape is pinned by
+        // ResourceReadWireContractTests; this test pins the handler's propagation contract.
+        var ex = Assert.ThrowsExactly<ArgumentException>(
+            () => ServerResources.GetServerCatalogVersionDiff("v2.3.0", "current"));
 
-        Assert.IsTrue(document.RootElement.GetProperty("error").GetBoolean());
-        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual(
-            "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
-            document.RootElement.GetProperty("tool").GetString());
-        StringAssert.Contains(document.RootElement.GetProperty("message").GetString() ?? string.Empty, "Unsupported catalog diff");
-        Assert.IsFalse((document.RootElement.GetProperty("message").GetString() ?? string.Empty)
-            .Contains("v2.3.0", StringComparison.Ordinal));
+        StringAssert.Contains(ex.Message, "Unsupported catalog diff");
     }
 
     [TestMethod]

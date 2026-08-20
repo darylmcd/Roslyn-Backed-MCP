@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
@@ -18,6 +17,23 @@ internal static class MetaSerializer
 
 internal static class ToolErrorHandler
 {
+    /// <summary>
+    /// Shared error-category constants for the categories that participate in wire-level
+    /// decisions. Declared next to the classification table below so
+    /// <c>ResourceReadResultFilter.MapErrorCode</c> consumes the SAME identifiers the
+    /// classifier emits — a renamed or typo'd category breaks the compile instead of
+    /// silently falling through to the <c>InternalError</c> wire code.
+    /// </summary>
+    internal static class ErrorCategories
+    {
+        public const string NotFound = "NotFound";
+        public const string FileNotFound = "FileNotFound";
+        public const string DirectoryNotFound = "DirectoryNotFound";
+        public const string WorkspaceEvicted = "WorkspaceEvicted";
+        public const string InvalidArgument = "InvalidArgument";
+        public const string InternalError = "InternalError";
+    }
+
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
     {
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
@@ -33,20 +49,20 @@ internal static class ToolErrorHandler
         // miss; register it BEFORE the base entry so the more-specific category wins.
         [typeof(WorkspaceEvictedException)] = (ex, _) =>
         {
-            return new("WorkspaceEvicted",
+            return new(ErrorCategories.WorkspaceEvicted,
                 "The workspace session is no longer available because it was closed, evicted, or owned by a prior host process. " +
                 "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
-        [typeof(FileNotFoundException)] = (_, _) => new("FileNotFound",
+        [typeof(FileNotFoundException)] = (_, _) => new(ErrorCategories.FileNotFound,
             "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
-        [typeof(DirectoryNotFoundException)] = (_, _) => new("DirectoryNotFound",
+        [typeof(DirectoryNotFoundException)] = (_, _) => new(ErrorCategories.DirectoryNotFound,
             "The requested directory was not found. Verify the directory path is absolute and exists on disk."),
-        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound", BuildSafeNotFoundMessage(ex.Message)),
+        [typeof(KeyNotFoundException)] = (ex, _) => new(ErrorCategories.NotFound, BuildSafeNotFoundMessage(ex.Message)),
         [typeof(ArgumentException)] = (ex, _) =>
         {
             var argument = (ArgumentException)ex;
-            return new("InvalidArgument",
+            return new(ErrorCategories.InvalidArgument,
                 BuildSafeArgumentMessage(argument),
                 ParamName: argument.ParamName);
         },
@@ -101,13 +117,13 @@ internal static class ToolErrorHandler
     // casts to the typed exception internally to preserve ParamName extraction.
     private static readonly Dictionary<Type, Func<Exception, ErrorInfo>> _bindingLikeHandlers = new()
     {
-        [typeof(System.Text.Json.JsonException)] = _ => new("InvalidArgument",
+        [typeof(System.Text.Json.JsonException)] = _ => new(ErrorCategories.InvalidArgument,
             "Parameter binding failed during JSON deserialization. " +
             "Check that JSON property names match the tool schema exactly (camelCase)."),
         [typeof(ArgumentNullException)] = ex =>
         {
             var nullArgEx = (ArgumentNullException)ex;
-            return new("InvalidArgument",
+            return new(ErrorCategories.InvalidArgument,
                 $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
                 "Provide a value for this parameter and retry.",
                 ParamName: nullArgEx.ParamName);
@@ -115,106 +131,31 @@ internal static class ToolErrorHandler
         [typeof(ArgumentOutOfRangeException)] = ex =>
         {
             var rangeEx = (ArgumentOutOfRangeException)ex;
-            return new("InvalidArgument",
+            return new(ErrorCategories.InvalidArgument,
                 BuildSafeArgumentMessage(rangeEx),
                 ParamName: rangeEx.ParamName);
         },
         [typeof(ArgumentException)] = ex =>
         {
             var argEx = (ArgumentException)ex;
-            return new("InvalidArgument",
+            return new(ErrorCategories.InvalidArgument,
                 BuildSafeArgumentMessage(argEx),
                 ParamName: argEx.ParamName);
         },
-        [typeof(FormatException)] = _ => new("InvalidArgument",
+        [typeof(FormatException)] = _ => new(ErrorCategories.InvalidArgument,
             "A parameter value has an invalid format. " +
             "Check that values match the expected format (e.g., integers, booleans, paths)."),
     };
 
     /// <summary>
-    /// Wraps a synchronous resource action with structured error handling, returning the same
-    /// error envelope shape as <see cref="ExecuteAsync"/> so JSON-MIME resources surface a
-    /// well-formed error document with the correct <c>tool</c> field instead of bubbling an
-    /// exception that the framework labels as <c>tool: "unknown"</c>. The <paramref name="source"/>
-    /// is the resource URI (or its template form) that originated the call.
-    /// </summary>
-    public static string ExecuteResource(string source, Func<string> action, ILogger? auditLogger = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(source);
-
-        using var metricsScope = AmbientGateMetrics.BeginRequest();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var result = action();
-            stopwatch.Stop();
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            return InjectMetaIfPossible(result, source);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            var info = ClassifyError(ex, source);
-            auditLogger?.Log(
-                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
-                ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex), source);
-        }
-    }
-
-    /// <summary>
-    /// Async variant of <see cref="ExecuteResource"/> for awaitable resource handlers.
-    /// </summary>
-    public static async Task<string> ExecuteResourceAsync(string source, Func<Task<string>> action, ILogger? auditLogger = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(source);
-
-        using var metricsScope = AmbientGateMetrics.BeginRequest();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var result = await action().ConfigureAwait(false);
-            stopwatch.Stop();
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            return InjectMetaIfPossible(result, source);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            var info = ClassifyError(ex, source);
-            auditLogger?.Log(
-                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
-                ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex), source);
-        }
-    }
-
-    /// <summary>
-    /// Success-only sibling of <see cref="ExecuteResource"/> for resource handlers whose
-    /// failures travel over the JSON-RPC error channel: keeps the ambient gate-metrics scope
-    /// and success-path <c>_meta</c> injection, but has NO catch arm — every exception
-    /// propagates to <c>ResourceReadResultFilter</c>, which translates it into a protocol
-    /// error (<c>McpProtocolException</c>) instead of a serialized error document in the
-    /// resource body. Elapsed time is recorded in a <see langword="finally"/> so failed
-    /// reads still stamp <c>ElapsedMs</c> on the ambient metrics.
+    /// Success-only scope for resource handlers: failures travel over the JSON-RPC error
+    /// channel. Keeps the ambient gate-metrics scope and success-path <c>_meta</c> injection,
+    /// but has NO catch arm — every exception propagates to <c>ResourceReadResultFilter</c>,
+    /// which translates it into a protocol error (<c>McpProtocolException</c>) instead of a
+    /// serialized error document in the resource body. Elapsed time is stamped on the success
+    /// path only: on failure the ambient <c>AmbientGateMetrics</c> scope disposes before the
+    /// read filter observes the exception and nothing reads the AsyncLocal snapshot again, so
+    /// a failure-path stamp would be write-only.
     /// </summary>
     public static string ExecuteResourceScope(string source, Func<string> action)
     {
@@ -222,18 +163,10 @@ internal static class ToolErrorHandler
 
         using var metricsScope = AmbientGateMetrics.BeginRequest();
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var result = action();
-            // Stamp elapsed BEFORE _meta injection so the success snapshot carries it;
-            // the finally re-stamp is idempotent (Stopwatch freezes on first Stop).
-            RecordElapsed(stopwatch);
-            return InjectMetaIfPossible(result, source);
-        }
-        finally
-        {
-            RecordElapsed(stopwatch);
-        }
+        var result = action();
+        // Stamp elapsed BEFORE _meta injection so the success snapshot carries it.
+        RecordElapsed(stopwatch);
+        return InjectMetaIfPossible(result, source);
     }
 
     /// <summary>
@@ -245,16 +178,9 @@ internal static class ToolErrorHandler
 
         using var metricsScope = AmbientGateMetrics.BeginRequest();
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            var result = await action().ConfigureAwait(false);
-            RecordElapsed(stopwatch);
-            return InjectMetaIfPossible(result, source);
-        }
-        finally
-        {
-            RecordElapsed(stopwatch);
-        }
+        var result = await action().ConfigureAwait(false);
+        RecordElapsed(stopwatch);
+        return InjectMetaIfPossible(result, source);
     }
 
     private static void RecordElapsed(System.Diagnostics.Stopwatch stopwatch)
@@ -632,7 +558,7 @@ internal static class ToolErrorHandler
 
     internal static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
     {
-        if (info.Category == "InternalError")
+        if (info.Category == ErrorCategories.InternalError)
         {
             return new JsonObject
             {
@@ -663,7 +589,7 @@ internal static class ToolErrorHandler
         // server_info. Hint is omitted (rather than emitted as null) when the failing
         // parameter cannot be resolved against the tool catalog — keeps the envelope
         // shape stable for downstream parsers that do not expect the field.
-        var schemaHint = info.Category == "InvalidArgument"
+        var schemaHint = info.Category == ErrorCategories.InvalidArgument
             ? BuildSchemaHint(toolName, info.ParamName)
             : null;
 

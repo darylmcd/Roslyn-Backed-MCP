@@ -46,7 +46,7 @@ public static class ServerResources
         [Description("0-based start index.")] string offset,
         [Description("Entries per page (1-200).")] string limit)
     {
-        return ToolErrorHandler.ExecuteResource(
+        return ToolErrorHandler.ExecuteResourceScope(
             "roslyn://server/catalog/tools/{offset}/{limit}",
             () =>
             {
@@ -64,7 +64,7 @@ public static class ServerResources
         [Description("0-based start index.")] string offset,
         [Description("Entries per page (1-200).")] string limit)
     {
-        return ToolErrorHandler.ExecuteResource(
+        return ToolErrorHandler.ExecuteResourceScope(
             "roslyn://server/catalog/prompts/{offset}/{limit}",
             () =>
             {
@@ -82,7 +82,7 @@ public static class ServerResources
         [Description("Source version, e.g. v2.3.1 or 2.3.1.")] string fromVersion,
         [Description("Target version, e.g. v2.3.2, 2.3.2, or current.")] string toVersion)
     {
-        return ToolErrorHandler.ExecuteResource(
+        return ToolErrorHandler.ExecuteResourceScope(
             "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
             () =>
             {

@@ -77,9 +77,12 @@ internal static class ResourceReadResultFilter
     private static McpErrorCode MapErrorCode(string category, bool useInvalidParamsForMissingResource) =>
         category switch
         {
-            "NotFound" or "FileNotFound" or "DirectoryNotFound" or "WorkspaceEvicted" =>
+            ToolErrorHandler.ErrorCategories.NotFound or
+            ToolErrorHandler.ErrorCategories.FileNotFound or
+            ToolErrorHandler.ErrorCategories.DirectoryNotFound or
+            ToolErrorHandler.ErrorCategories.WorkspaceEvicted =>
                 useInvalidParamsForMissingResource ? McpErrorCode.InvalidParams : McpErrorCode.ResourceNotFound,
-            "InvalidArgument" => McpErrorCode.InvalidParams,
+            ToolErrorHandler.ErrorCategories.InvalidArgument => McpErrorCode.InvalidParams,
             _ => McpErrorCode.InternalError,
         };
 
