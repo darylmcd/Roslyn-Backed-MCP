@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -135,8 +136,17 @@ public sealed class ToolCallErrorWireContractTests
                 "stackTrace",
             })
             {
+                // Compare against the JSON-ESCAPED form, not the raw literal. rawFrame is
+                // serialized JSON, so a backslash in the sentinel (InnerMessage and
+                // LocalPathFragment both carry the local path) is written escaped -- a raw
+                // Contains for the single-backslash literal could never match even when the
+                // path really leaked, which made those two entries decorative rather than
+                // load-bearing. JsonEncodedText.Encode applies the same escaping the
+                // serializer did, so a real leak now provably fails this assertion.
+                var escaped = JsonEncodedText.Encode(forbidden).ToString();
+
                 Assert.IsFalse(
-                    rawFrame.Contains(forbidden, StringComparison.OrdinalIgnoreCase),
+                    rawFrame.Contains(escaped, StringComparison.OrdinalIgnoreCase),
                     $"Serialized failure frame leaked '{forbidden}': {rawFrame}");
             }
         }
