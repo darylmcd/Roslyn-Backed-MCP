@@ -175,9 +175,17 @@ jobs:
     # Self-hosted validation currently completes in ~10-15 min, but hosted Linux
     # is materially slower: a July dependabot run needed 17m49s, and two fresh
     # August dependabot runs reached the former 20-min cap without reporting a
-    # test failure. Keep 30 min of runner-class headroom while the per-command
-    # timeouts below still fail a wedged dotnet child well before the job cap.
-    timeout-minutes: 30
+    # test failure. The per-command timeouts below still fail a wedged dotnet
+    # child well before the job cap.
+    #
+    # Per-leg caps, NOT a shared 30. This leg is now a member of the matrix the
+    # required `validate` context aggregates, so a leg timeout blocks merge for
+    # the whole repo rather than merely informing. The hosted leg took 22m43s on
+    # PR #1293 -- only 7 minutes under a shared 30 -- on the same runner class
+    # that hit the 20-min cap twice in August. Give the slow hosted leg real
+    # headroom (45) and keep the fast self-hosted primary tight (30) so a genuine
+    # wedge there still surfaces quickly.
+    timeout-minutes: ${{ matrix.leg.primary && 30 || 45 }}
     env:
       # Fail-fast command timeouts for the integration tests (TestBase binds these
       # ROSLYNMCP_*_TIMEOUT_SECONDS vars). Production defaults (5/10/5 min) are
