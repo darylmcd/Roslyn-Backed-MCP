@@ -513,6 +513,20 @@ internal static class ToolErrorHandler
             return "Workspace auto-discovery found multiple candidates. Call workspace_load with an explicit solution or project path.";
         }
 
+        // semantic-grep-pattern-error-detail-redaction: SemanticGrepService throws a fixed
+        // input-free sentinel when the caller's regex fails to parse (the raw .NET parser
+        // message embeds the submitted pattern, which may itself be a secret). Guard on BOTH
+        // ParamName and the sentinel substring so other tools' 'pattern' parameters (e.g.
+        // RestructureService's non-empty check) keep the generic fallback below.
+        if (string.Equals(exception.ParamName, "pattern", StringComparison.Ordinal) &&
+            rawMessage.Contains("not a valid .NET regular expression", StringComparison.Ordinal))
+        {
+            return "Parameter 'pattern' is not a valid .NET regular expression. Patterns use " +
+                "System.Text.RegularExpressions syntax, not ripgrep/PCRE. Check for unbalanced " +
+                "parentheses or brackets, invalid quantifier ranges, and unescaped metacharacters, " +
+                "then retry with a corrected pattern.";
+        }
+
         if (rawMessage.Contains("Unsupported catalog diff", StringComparison.Ordinal))
         {
             return "Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource.";

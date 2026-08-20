@@ -123,6 +123,96 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
                 WorkspaceId, "(unclosed", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
     }
 
+    // ----- Pattern redaction tests (semantic-grep-pattern-error-detail-redaction) -----
+    //
+    // The .NET regex parser's ArgumentException message embeds the caller's raw pattern text
+    // (e.g. "Invalid pattern '(?<secret' at offset 8"). Since semantic_grep is routinely used
+    // to hunt for secrets, the pattern itself can be a secret — so neither the thrown message
+    // nor the public InvalidArgument envelope may carry the submitted pattern or any parser
+    // fragment. The parser detail is preserved server-side only, as InnerException.
+    //
+    // NOTE: the catastrophic-backtracking-shaped pattern `(a+)+$` is deliberately NOT in this
+    // table — it is a VALID .NET regex (pathological only at match time, which RegexTimeout
+    // bounds), so the Regex constructor does not throw for it.
+
+    /// <summary>
+    /// Leak probe used by the redaction assertions below. Kept as a single helper so
+    /// <see cref="SemanticGrep_LeakProbe_DetectsDeliberateLeak"/> can prove it is falsifiable.
+    /// </summary>
+    private static bool MessageLeaks(string message, string pattern) =>
+        message.Contains(pattern, StringComparison.Ordinal) ||
+        message.Contains("Invalid pattern", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("at offset", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("parsing", StringComparison.OrdinalIgnoreCase);
+
+    [TestMethod]
+    public void SemanticGrep_LeakProbe_DetectsDeliberateLeak()
+    {
+        // Falsifiability proof: the probe MUST match the pre-fix leaking shape. A redaction
+        // assertion that cannot detect a genuine leak is dead weight.
+        const string leakingMessage = "Invalid regex pattern: Invalid pattern '(?<secret' at offset 8. Incomplete group name.";
+        Assert.IsTrue(MessageLeaks(leakingMessage, "(?<secret"),
+            "Leak probe failed to detect a deliberately-leaking message — the redaction assertions below would be dead.");
+    }
+
+    [TestMethod]
+    [DataRow("(unclosed")]
+    [DataRow("[a-")]
+    [DataRow("a{2,1}")]
+    [DataRow("(?<name")]
+    public async Task SemanticGrep_InvalidRegex_PublicEnvelopeRedactsPatternAndCarriesGuidance(string pattern)
+    {
+        ArgumentException thrown;
+        try
+        {
+            await SemanticGrepService.SearchAsync(
+                WorkspaceId, pattern, "identifiers", projectFilter: null, limit: 10, CancellationToken.None);
+            Assert.Fail($"Expected ArgumentException for pattern '{pattern}'.");
+            return;
+        }
+        catch (ArgumentException ex)
+        {
+            thrown = ex;
+        }
+
+        // Thrown message: fixed sentinel, no pattern text, no parser fragment. Parser detail
+        // survives server-side as InnerException only.
+        Assert.IsFalse(MessageLeaks(thrown.Message, pattern),
+            $"Thrown message leaked pattern or parser text: {thrown.Message}");
+        Assert.AreEqual("pattern", thrown.ParamName);
+        Assert.IsNotNull(thrown.InnerException, "Parser detail must be preserved as InnerException for server-side diagnostics.");
+
+        // Public envelope via the real classifier path.
+        var envelopeJson = ToolErrorHandler.ClassifyAndFormat(thrown, "semantic_grep");
+        using var envelope = JsonDocument.Parse(envelopeJson);
+        var root = envelope.RootElement;
+
+        Assert.AreEqual("InvalidArgument", root.GetProperty("category").GetString());
+        var message = root.GetProperty("message").GetString()!;
+        Assert.IsFalse(MessageLeaks(message, pattern),
+            $"Public envelope message leaked pattern or parser text: {message}");
+        StringAssert.Contains(message, "not a valid .NET regular expression",
+            "Public envelope must carry regex-specific correction guidance, not the generic parameter fallback.");
+        StringAssert.Contains(message, "System.Text.RegularExpressions",
+            "Guidance must name the regex dialect so callers stop retrying ripgrep/PCRE syntax.");
+    }
+
+    [TestMethod]
+    public void SemanticGrep_OtherPatternParameters_KeepGenericFallback()
+    {
+        // The regex-guidance arm is keyed on BOTH ParamName == "pattern" AND the sentinel
+        // substring — a different tool's 'pattern' parameter (e.g. RestructureService's
+        // non-empty check) must NOT pick up regex guidance.
+        var other = new ArgumentException("pattern must be non-empty.", "pattern");
+        var envelopeJson = ToolErrorHandler.ClassifyAndFormat(other, "restructure_preview");
+        using var envelope = JsonDocument.Parse(envelopeJson);
+        var message = envelope.RootElement.GetProperty("message").GetString()!;
+
+        Assert.IsFalse(message.Contains("regular expression", StringComparison.OrdinalIgnoreCase),
+            $"Non-regex 'pattern' failures must keep the generic fallback; got: {message}");
+        StringAssert.Contains(message, "Parameter 'pattern' is invalid");
+    }
+
     // ----- Pagination envelope tests (PR for compact-semantic-grep-pagination, gh #760 split) -----
     //
     // These tests exercise the wrapper layer in AnalysisTools.SemanticGrep, not the service.
