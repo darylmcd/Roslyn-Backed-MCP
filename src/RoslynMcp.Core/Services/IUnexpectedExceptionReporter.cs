@@ -17,6 +17,7 @@ public enum UnexpectedExceptionCategory
     WorkspaceReadiness,
     GetPrompt,
     FlowAnalysis,
+    TestRun,
 }
 
 /// <summary>

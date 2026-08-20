@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -28,17 +29,20 @@ public sealed partial class TestRunnerService : ITestRunnerService
     private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<TestRunnerService> _logger;
     private readonly ValidationServiceOptions _options;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     public TestRunnerService(
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
-        ValidationServiceOptions? options = null)
+        ValidationServiceOptions? options = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspaceManager = workspaceManager;
         _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
@@ -112,6 +116,23 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 // rather than letting the exception escape to ToolErrorHandler as a bare
                 // invocation error. The caller still gets exit code, working directory,
                 // and the configured timeout in the DTO.
+                //
+                // test-runner-timeout-error-detail-redaction: the raw exception message minted
+                // by GatedCommandExecutor carries the fully-materialized argv (absolute target
+                // path, absolute temp results directory, and the caller-supplied --filter), so
+                // it is never copied into the public envelope's Summary or StdErr. The full
+                // exception topology is routed to the opt-in server diagnostic sink instead,
+                // and the client gets a deterministic, secret-safe summary. Caller cancellation
+                // never enters this path — GatedCommandExecutor only reclassifies to
+                // TimeoutException when the caller token is NOT cancelled.
+                var details = UnexpectedExceptionReporting.Report(
+                    _exceptionReporter, ex, UnexpectedExceptionCategory.TestRun);
+                var budget = _options.TestTimeout.TotalMinutes.ToString(
+                    "0.##", CultureInfo.InvariantCulture);
+                var timeoutSummary =
+                    $"'dotnet test' did not complete within the configured timeout budget of {budget} minute(s). " +
+                    "This failure is not retryable as-is: narrow the run with --filter or raise the configured test timeout, then retry. " +
+                    $"correlationId={details.Public.CorrelationId}";
                 var timeoutWorkingDirectory = Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory;
                 var shell = new CommandExecutionDto(
                     Command: "dotnet",
@@ -122,8 +143,8 @@ public sealed partial class TestRunnerService : ITestRunnerService
                     Succeeded: false,
                     DurationMs: (long)_options.TestTimeout.TotalMilliseconds,
                     StdOut: string.Empty,
-                    StdErr: ex.Message);
-                return DotnetOutputParser.BuildTimeoutResult(shell, ex.Message);
+                    StdErr: string.Empty);
+                return DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary);
             }
 
             var dotnetWorkingDirectory = GatedCommandExecutor.GetWorkingDirectory(targetPath);
