@@ -41,12 +41,21 @@ public static class MultiFileEditTools
         return gate.RunWriteAsync(workspaceId, async c =>
         {
             // Validate ALL paths before snapshotting so a bad path does not leave a stale undo entry.
-            foreach (var fileEdit in fileEdits)
+            // preview-apply-token-write-path-toctou: the validator's contract requires callers that
+            // go on to WRITE to persist to the boundary-canonicalized (fully link-resolved) path it
+            // returns — re-walking the client-supplied string at write time re-resolves every
+            // symlink/junction component, letting a link swapped between validation and write
+            // redirect the bytes outside the boundary. Rewrite each FileEditsDto to the canonical
+            // target instead of discarding the validator's return.
+            var canonicalEdits = new FileEditsDto[fileEdits.Length];
+            for (var i = 0; i < fileEdits.Length; i++)
             {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
+                var canonicalPath = await ClientRootPathValidator
+                    .ValidatePathAgainstRootsAsync(server, fileEdits[i].FilePath, c).ConfigureAwait(false);
+                canonicalEdits[i] = fileEdits[i] with { FilePath = canonicalPath };
             }
 
-            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, "apply_multi_file_edit", c, skipSyntaxCheck, verify, autoRevertOnError).ConfigureAwait(false);
+            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, canonicalEdits, "apply_multi_file_edit", c, skipSyntaxCheck, verify, autoRevertOnError).ConfigureAwait(false);
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
     }

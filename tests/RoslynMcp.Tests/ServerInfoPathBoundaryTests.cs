@@ -143,6 +143,10 @@ public sealed class ServerInfoPathBoundaryTests
     /// camelCase name, so the projection cannot be silently disconnected from the response.
     /// </summary>
     [TestMethod]
+    // preview-apply-token-write-path-toctou: ToolDispatch.ApplyByTokenAsync now reads the
+    // process-global SecurityOptionsSnapshot on every token apply, so a parallel class redeeming
+    // preview tokens would be validated against this test's temporary ["."] boundary.
+    [DoNotParallelize]
     public async Task ServerInfo_CarriesPathBoundary_FromTheStartupSnapshot()
     {
         var previous = SecurityOptionsSnapshot.Value;
@@ -173,6 +177,8 @@ public sealed class ServerInfoPathBoundaryTests
     /// matching the DTO's documented convention that nullable members emit explicit nulls.
     /// </summary>
     [TestMethod]
+    // preview-apply-token-write-path-toctou: see ServerInfo_CarriesPathBoundary_FromTheStartupSnapshot.
+    [DoNotParallelize]
     public async Task ServerInfo_UnbootedHost_EmitsExplicitNullBoundary()
     {
         var previous = SecurityOptionsSnapshot.Value;

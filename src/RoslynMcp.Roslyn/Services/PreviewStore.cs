@@ -159,6 +159,62 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         return (entry.WorkspaceId, entry.OriginalSolution, entry.ModifiedSolution, entry.WorkspaceVersion, entry.Description, entry.DiffTruncated);
     }
 
+    /// <summary>
+    /// <b>preview-apply-token-write-path-toctou:</b> enumerates the preview's write set — the
+    /// <c>FilePath</c> of every document added, changed, or removed between the stored
+    /// <c>OriginalSolution</c> and <c>ModifiedSolution</c> — so the apply dispatch path can
+    /// revalidate each target against the sanctioned-root boundary at redemption time instead of
+    /// trusting the boundary check performed at preview time (up to a full TTL earlier). Uses the
+    /// non-consuming <see cref="BoundedStore{TEntry}.RetrieveEntry"/> lookup, so a subsequent
+    /// <see cref="Retrieve"/> by the redeeming service still succeeds and the entry's TTL is not
+    /// refreshed.
+    /// </summary>
+    public IReadOnlyList<string>? PeekChangedPaths(string token)
+    {
+        var entry = RetrieveEntry(token);
+        if (entry is null) return null;
+
+        var paths = new List<string>();
+        var changes = entry.ModifiedSolution.GetChanges(entry.OriginalSolution);
+        foreach (var projectChanges in changes.GetProjectChanges())
+        {
+            foreach (var documentId in projectChanges.GetChangedDocuments())
+            {
+                AddDocumentPath(paths, projectChanges.NewProject.GetDocument(documentId));
+            }
+            foreach (var documentId in projectChanges.GetAddedDocuments())
+            {
+                AddDocumentPath(paths, projectChanges.NewProject.GetDocument(documentId));
+            }
+            foreach (var documentId in projectChanges.GetRemovedDocuments())
+            {
+                AddDocumentPath(paths, projectChanges.OldProject.GetDocument(documentId));
+            }
+        }
+
+        // A preview that introduces a whole new project (e.g. scaffold flows) writes every
+        // document of that project; enumerate them too rather than silently under-reporting.
+        foreach (var addedProject in changes.GetAddedProjects())
+        {
+            foreach (var document in addedProject.Documents)
+            {
+                AddDocumentPath(paths, document);
+            }
+        }
+
+        return paths;
+    }
+
+    private static void AddDocumentPath(List<string> paths, Document? document)
+    {
+        if (document?.FilePath is { Length: > 0 } filePath
+            // The truncated-diff sentinel is a synthetic marker, not a real write target.
+            && !string.Equals(filePath, SolutionDiffHelper.TruncatedSentinelFilePath, StringComparison.Ordinal))
+        {
+            paths.Add(filePath);
+        }
+    }
+
     /// <inheritdoc />
     public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion)
     {
