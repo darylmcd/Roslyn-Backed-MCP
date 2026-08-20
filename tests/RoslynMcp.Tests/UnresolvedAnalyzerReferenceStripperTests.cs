@@ -37,13 +37,15 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
         MsBuildInitializer.EnsureInitialized();
         var loader = new WorkspaceSessionLoader();
         var diagnosticsSink = new WorkspaceDiagnosticsSink(200);
-        using var msbuildWorkspace = await loader.CreateAndOpenAsync(
+        var (msbuildWorkspace, analyzerLease) = await loader.CreateAndOpenAsync(
             "test-workspace-unresolved",
             workspace.SolutionPath,
             globalProperties: null,
             diagnosticsSink,
             NullLogger.Instance,
             CancellationToken.None);
+        using var _ = msbuildWorkspace;
+        using var __ = analyzerLease;
 
         var sampleLibBefore = msbuildWorkspace.CurrentSolution.Projects.First(p => p.Name == "SampleLib");
         Assert.IsTrue(
@@ -83,13 +85,15 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
         MsBuildInitializer.EnsureInitialized();
         var loader = new WorkspaceSessionLoader();
         var diagnosticsSink = new WorkspaceDiagnosticsSink(200);
-        using var msbuildWorkspace = await loader.CreateAndOpenAsync(
+        var (msbuildWorkspace, analyzerLease) = await loader.CreateAndOpenAsync(
             "test-workspace-clean",
             workspace.SolutionPath,
             globalProperties: null,
             diagnosticsSink,
             NullLogger.Instance,
             CancellationToken.None);
+        using var _ = msbuildWorkspace;
+        using var __ = analyzerLease;
 
         var diagnosticsQueue = new ConcurrentQueue<DiagnosticDto>();
         var stripper = new UnresolvedAnalyzerReferenceStripper();

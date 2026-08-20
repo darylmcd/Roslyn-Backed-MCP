@@ -23,13 +23,16 @@ namespace RoslynMcp.Roslyn.Services;
 internal class WorkspaceSessionLoader
 {
     /// <summary>
-    /// Creates a new <see cref="MSBuildWorkspace"/>, attaches the diagnostics sink, and opens
-    /// the supplied solution or project path. The caller owns disposal of the returned
-    /// workspace on both success (transferred to the session) and failure (the manager's
-    /// finally block disposes the partial workspace if this method throws after returning a
-    /// reference, but the throw-before-return case is the loader's responsibility).
+    /// Creates a new <see cref="MSBuildWorkspace"/>, attaches the diagnostics sink, opens
+    /// the supplied solution or project path, and retargets file-based analyzer references
+    /// onto per-lease shadow-copy loaders. The caller owns disposal of the returned workspace
+    /// AND analyzer-shadow lease on both success (transferred to the session) and failure
+    /// (the manager's finally block disposes the partial workspace/lease if this method throws
+    /// after returning, but the throw-before-return case is the loader's responsibility). The
+    /// lease is never null: platforms/configurations where isolation cannot run get a no-op
+    /// empty lease (analyzer-shadow-loader-lifecycle).
     /// </summary>
-    public virtual async Task<MSBuildWorkspace> CreateAndOpenAsync(
+    public virtual async Task<(MSBuildWorkspace Workspace, AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease Lease)> CreateAndOpenAsync(
         string workspaceId,
         string path,
         IDictionary<string, string>? globalProperties,
@@ -47,6 +50,7 @@ internal class WorkspaceSessionLoader
         var workspace = (globalProperties is { Count: > 0 })
             ? MSBuildWorkspace.Create(globalProperties)
             : MSBuildWorkspace.Create();
+        AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? analyzerLease = null;
         try
         {
             if (globalProperties is { Count: > 0 })
@@ -74,25 +78,28 @@ internal class WorkspaceSessionLoader
                 throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
             }
 
-            var isolatedAnalyzerReferences = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+            analyzerLease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
                 workspace.CurrentSolution,
                 workspaceId,
                 logger);
-            if (isolatedAnalyzerReferences > 0)
+            if (analyzerLease.RetargetedReferenceCount > 0)
             {
                 logger.LogInformation(
                     "Workspace {WorkspaceId}: retargeted {Count} analyzer reference(s) to shadow-copy loaders.",
                     workspaceId,
-                    isolatedAnalyzerReferences);
+                    analyzerLease.RetargetedReferenceCount);
             }
 
-            return workspace;
+            return (workspace, analyzerLease);
         }
         catch
         {
-            // Partial-load failure: dispose the half-initialized workspace before propagating
-            // so the caller does not have to track ownership of a return-value-not-yet-handed-out.
+            // Partial-load failure: dispose the half-initialized workspace (and any analyzer
+            // shadow lease created before the throw — lease after workspace, so Roslyn has
+            // released the analyzer references first) before propagating, so the caller does
+            // not have to track ownership of a return-value-not-yet-handed-out.
             workspace.Dispose();
+            analyzerLease?.Dispose();
             throw;
         }
     }

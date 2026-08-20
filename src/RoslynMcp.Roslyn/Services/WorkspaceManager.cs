@@ -925,8 +925,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // success pattern, readers always see EITHER the prior loaded workspace OR the fully
         // initialized new workspace; the disposed object is never observable.
         MSBuildWorkspace? newWorkspace = null;
+        Helpers.AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? newLease = null;
         var diagnosticsSink = new WorkspaceDiagnosticsSink(MaxDiagnosticsPerWorkspace);
         var oldWorkspace = session.Workspace;
+        var oldLease = session.AnalyzerLease;
         var swapped = false;
         try
         {
@@ -976,7 +978,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // loader self-disposes on failure before returning, so the manager only handles
             // disposal of post-loader-success state (strip-analyzers, project-statuses,
             // cache-write failures).
-            newWorkspace = await _sessionLoader.CreateAndOpenAsync(
+            (newWorkspace, newLease) = await _sessionLoader.CreateAndOpenAsync(
                 session.WorkspaceId,
                 path,
                 globalProperties,
@@ -1025,6 +1027,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // the new workspace is fully loaded so concurrent readers never observe a mid-reload
             // session (disposed workspace, empty project list, or mismatched LoadedPath).
             session.Workspace = newWorkspace;
+            session.AnalyzerLease = newLease;
             session.WorkspaceDiagnostics = diagnosticsSink.Queue;
             session.ProjectStatuses = projectStatuses;
             session.LoadedPath = path;
@@ -1050,18 +1053,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             if (swapped)
             {
-                // Successful swap: oldWorkspace was captured before the swap and is no longer
-                // referenced by the session. Safe to dispose.
+                // Successful swap: oldWorkspace/oldLease were captured before the swap and are
+                // no longer referenced by the session. Safe to dispose — lease after workspace
+                // so Roslyn has released the old analyzer references first.
                 oldWorkspace?.Dispose();
+                // Null before disposing the lease: this async frame's local would otherwise
+                // keep the old solution graph (and its loaded analyzer assemblies) rooted
+                // while the lease's GC-assisted delete retries run.
+                oldWorkspace = null;
+                oldLease?.Dispose();
             }
             else
             {
                 // Load failed mid-way after the loader returned: dispose the half-initialized
-                // new workspace and leave the session's prior state untouched. Readers
-                // continue to see the previous valid workspace rather than a broken one (or
-                // null). If the loader itself threw, it already disposed `newWorkspace` is
-                // null here so this is a no-op — the autoreload-cascade invariant holds.
+                // new workspace (and its analyzer shadow lease) and leave the session's prior
+                // state untouched. Readers continue to see the previous valid workspace rather
+                // than a broken one (or null). If the loader itself threw, it already disposed
+                // both — `newWorkspace`/`newLease` are null here so this is a no-op — the
+                // autoreload-cascade invariant holds.
                 newWorkspace?.Dispose();
+                newWorkspace = null;
+                newLease?.Dispose();
             }
             session.LoadLock.Release();
         }
@@ -1248,6 +1260,15 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public ConcurrentQueue<DiagnosticDto> WorkspaceDiagnostics { get; set; } = new();
         public ImmutableArray<ProjectStatusDto> ProjectStatuses { get; set; } = ImmutableArray<ProjectStatusDto>.Empty;
         public MSBuildWorkspace? Workspace { get; set; }
+
+        /// <summary>
+        /// analyzer-shadow-loader-lifecycle: owns the per-load analyzer shadow-copy loaders'
+        /// collectible load contexts + on-disk shadow root. Swapped atomically alongside
+        /// <see cref="Workspace"/> and released exactly once — by <see cref="Dispose"/> (close,
+        /// eviction, host shutdown) or by the reload swap's old-lease disposal.
+        /// </summary>
+        public Helpers.AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease? AnalyzerLease { get; set; }
+
         public string? LoadedPath { get; set; }
         public bool RestoreRequired { get; set; }
         public bool BuildRequired { get; set; }
@@ -1262,6 +1283,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public void Dispose()
         {
             Workspace?.Dispose();
+            // Lease after workspace so Roslyn has released the analyzer references before the
+            // load contexts are unloaded and the shadow root is deleted; the Workspace field is
+            // nulled first so this frame's session reference does not keep the solution graph
+            // (and through it the loaded analyzer assemblies) rooted while the lease's
+            // GC-assisted delete retries run. Lease disposal is idempotent, so the
+            // eviction/close/host-shutdown paths can all reach here safely.
+            Workspace = null;
+            AnalyzerLease?.Dispose();
             LoadLock.Dispose();
         }
     }
