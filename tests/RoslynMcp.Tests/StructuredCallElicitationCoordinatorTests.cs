@@ -1,8 +1,12 @@
 using System.Text.Json;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -10,24 +14,97 @@ namespace RoslynMcp.Tests;
 /// Direct coverage for <see cref="StructuredCallElicitationCoordinator"/>, the elicitation/retry
 /// orchestration layer extracted from <see cref="StructuredCallToolFilter"/> by the
 /// <c>structuredcalltoolfilter-hotspot-decomposition-followup</c> initiative. These tests call the
-/// coordinator directly (not through the filter's thin delegate) so the extracted collaborator is
-/// exercised on its own surface. The delegate-forwarded behavior stays pinned by
-/// <see cref="StructuredCallToolFilterElicitationTests"/>.
-///
-/// <para>
-/// The recover-load-retry loop takes its elicit + dispatch collaborators as delegates, so it is
-/// fully unit-testable without standing up a live MCP transport. <see cref="McpServer"/>-bound
-/// entry points (<c>TryElicitAndRetryAsync</c>, the transport-driven arms of
-/// <see cref="ElicitationChoicePrompt.TryElicitChoiceAsync"/>) still require a real server; their
-/// gate logic is covered via the null-short-circuit and the allowlist tests in
-/// <see cref="StructuredCallToolFilterElicitationTests"/>. The picker itself is not a coordinator
-/// member — its canonical home is <see cref="ElicitationChoicePrompt"/>; the null-server
-/// short-circuit is pinned here for historical continuity with this suite.
-/// </para>
+/// coordinator directly so the extracted collaborator is exercised on its own surface. Live
+/// filter composition and transport behavior are pinned by <c>WorkspacePathMrtrWireTests</c>.
 /// </summary>
 [TestClass]
 public sealed class StructuredCallElicitationCoordinatorTests
 {
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task TryRecoverMissingWorkspacePathAsync_CancelledWhenDispatchCompletes_DoesNotReturnSuccess()
+    {
+        var capabilities = new ClientCapabilities
+        {
+            Elicitation = new ElicitationCapability { Form = new FormElicitationCapability() },
+        };
+        await using var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "workspace-path-post-dispatch-cancellation",
+            clientCapabilities: capabilities,
+            clientHandlers: new McpClientHandlers(),
+            disposalFailureContext: "workspace-path-post-dispatch-cancellation",
+            cancellationToken: CancellationToken.None,
+            protocolVersion: null);
+        using var cts = new CancellationTokenSource();
+        var dispatchCount = 0;
+        var context = new RequestContext<CallToolRequestParams>(
+            harness.Server,
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Context = new JsonRpcMessageContext
+                {
+                    ProtocolVersion = RequestProtocolFeatureGate.July2026ProtocolVersion,
+                    ClientCapabilities = capabilities,
+                },
+            },
+            new CallToolRequestParams
+            {
+                Name = ElicitationAllowlistPolicy.WorkspaceLoadToolName,
+                InputResponses = new Dictionary<string, InputResponse>(StringComparer.Ordinal)
+                {
+                    [RequestScopedInputAdapter.WorkspacePathInputRequestKey] =
+                        InputResponse.FromElicitResult(new ElicitResult
+                        {
+                            Action = "accept",
+                            Content = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                            {
+                                [ElicitationAllowlistPolicy.PathParameterName] =
+                                    JsonSerializer.SerializeToElement("C:/repo/SampleSolution.slnx"),
+                            },
+                        }),
+                },
+            });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspacePathAsync(
+                context,
+                (_, _) =>
+                {
+                    dispatchCount++;
+                    cts.Cancel();
+                    return ValueTask.FromResult(new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "nominal-success" }],
+                    });
+                },
+                logger: null,
+                cancellationToken: cts.Token));
+
+        Assert.AreEqual(1, dispatchCount,
+            "The non-vacuous regression must reach the accepted workspace_load dispatch exactly once.");
+    }
+
+    [TestMethod]
+    public void RecoveryFailureLogging_EmitsTypeOnly_WithoutRawExceptionDetail()
+    {
+        const string sentinel = "recovery-secret-sentinel";
+        const string privatePath = "C:/private/tenant/solution.slnx";
+        var logger = new ListLogger<StructuredCallElicitationCoordinatorTests>();
+
+        StructuredCallElicitationCoordinator.LogRecoveryFailure(
+            logger,
+            new InvalidOperationException($"{sentinel} at {privatePath}"),
+            "workspace_load dispatch");
+
+        Assert.HasCount(1, logger.Entries);
+        var entry = logger.Entries[0];
+        Assert.IsNull(entry.Exception, "Expected recovery failures must not attach raw exception detail to logs.");
+        StringAssert.Contains(entry.Message, nameof(InvalidOperationException));
+        Assert.IsFalse(entry.Message.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(entry.Message.Contains(privatePath, StringComparison.OrdinalIgnoreCase));
+    }
+
     [TestMethod]
     [DataRow("direct-path-input")]
     [DataRow("workspace-id-input")]
@@ -168,6 +245,81 @@ public sealed class StructuredCallElicitationCoordinatorTests
     }
 
     [TestMethod]
+    public async Task TryRecoverMissingWorkspaceIdAsync_CancelledWithAcceptedResponse_DoesNotDispatch()
+    {
+        using var cts = new CancellationTokenSource();
+        var dispatchCount = 0;
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+                "workspace_status",
+                originalArguments: null,
+                elicitAsync: _ =>
+                {
+                    cts.Cancel();
+                    return ValueTask.FromResult(new ElicitResult
+                    {
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
+                        {
+                            ["path"] = JsonSerializer.SerializeToElement("C:/repo/SampleSolution.slnx"),
+                        },
+                    });
+                },
+                dispatchAsync: (_, _) =>
+                {
+                    dispatchCount++;
+                    return Task.FromResult(new CallToolResult());
+                },
+                logger: null,
+                cancellationToken: cts.Token));
+
+        Assert.AreEqual(0, dispatchCount,
+            "Cancellation arriving with an accepted response must stop before workspace_load mutates session state.");
+    }
+
+    [TestMethod]
+    public async Task TryRecoverMissingWorkspaceIdAsync_CancelledWhenLoadCompletes_DoesNotRetryOriginalTool()
+    {
+        using var cts = new CancellationTokenSource();
+        var dispatches = new List<string>();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+                "workspace_status",
+                originalArguments: null,
+                elicitAsync: _ => ValueTask.FromResult(new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["path"] = JsonSerializer.SerializeToElement("C:/repo/SampleSolution.slnx"),
+                    },
+                }),
+                dispatchAsync: (toolName, _) =>
+                {
+                    dispatches.Add(toolName);
+                    Assert.AreEqual("workspace_load", toolName,
+                        "The original tool must not be retried after cancellation.");
+                    cts.Cancel();
+                    return Task.FromResult(new CallToolResult
+                    {
+                        Content =
+                        [
+                            new TextContentBlock
+                            {
+                                Text = JsonSerializer.Serialize(new { WorkspaceId = "ws-recovered" }),
+                            },
+                        ],
+                    });
+                },
+                logger: null,
+                cancellationToken: cts.Token));
+
+        CollectionAssert.AreEqual(new[] { "workspace_load" }, dispatches);
+    }
+
+    [TestMethod]
     public async Task TryRecoverMissingWorkspaceIdAsync_UserDeclines_ReturnsNull()
     {
         var result = await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
@@ -216,63 +368,52 @@ public sealed class StructuredCallElicitationCoordinatorTests
     }
 
     [TestMethod]
-    public async Task TryRecoverMissingWorkspaceIdAsync_RetriedToolDispatchThrows_ReturnsNullWithoutEscaping()
+    public async Task TryRecoverMissingWorkspaceIdAsync_RetriedToolDispatchThrows_PropagatesToOwningFilter()
     {
         const string solutionPath = "C:/repo/SampleSolution.slnx";
         const string recoveredWorkspaceId = "ws-recovered";
+        var originalDispatchCount = 0;
 
-        var result = await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
-            "workspace_status",
-            originalArguments: null,
-            elicitAsync: _ =>
-            {
-                var pathElement = JsonSerializer.SerializeToElement(solutionPath, JsonDefaults.Indented);
-                return ValueTask.FromResult(new ElicitResult
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+                "workspace_status",
+                originalArguments: null,
+                elicitAsync: _ =>
                 {
-                    Action = "accept",
-                    Content = new Dictionary<string, JsonElement> { ["path"] = pathElement },
-                });
-            },
-            dispatchAsync: (toolName, _) =>
-            {
-                if (toolName == "workspace_load")
-                {
-                    return Task.FromResult(new CallToolResult
+                    var pathElement = JsonSerializer.SerializeToElement(solutionPath, JsonDefaults.Indented);
+                    return ValueTask.FromResult(new ElicitResult
                     {
-                        Content =
-                        [
-                            new TextContentBlock
-                            {
-                                Text = JsonSerializer.Serialize(
-                                    new { WorkspaceId = recoveredWorkspaceId }, JsonDefaults.Indented),
-                            },
-                        ],
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement> { ["path"] = pathElement },
                     });
-                }
+                },
+                dispatchAsync: (toolName, _) =>
+                {
+                    if (toolName == "workspace_load")
+                    {
+                        return Task.FromResult(new CallToolResult
+                        {
+                            Content =
+                            [
+                                new TextContentBlock
+                                {
+                                    Text = JsonSerializer.Serialize(
+                                        new { WorkspaceId = recoveredWorkspaceId }, JsonDefaults.Indented),
+                                },
+                            ],
+                        });
+                    }
 
-                Assert.AreEqual("workspace_status", toolName);
-                throw new InvalidOperationException("retried tool blew up");
-            },
-            logger: null,
-            cancellationToken: CancellationToken.None);
+                    Assert.AreEqual("workspace_status", toolName);
+                    originalDispatchCount++;
+                    throw new InvalidOperationException("retried tool blew up");
+                },
+                logger: null,
+                cancellationToken: CancellationToken.None));
 
-        Assert.IsNull(result,
-            "A throwing retried-tool dispatch must be caught and surface as a null fall-through, not escape.");
+        Assert.AreEqual("retried tool blew up", exception.Message);
+        Assert.AreEqual(1, originalDispatchCount,
+            "The coordinator must dispatch the retried original tool exactly once before its failure escapes.");
     }
 
-    [TestMethod]
-    public async Task TryElicitChoiceAsync_NullServer_ReturnsNull()
-    {
-        // The disambiguation picker short-circuits to null when there is no connected server,
-        // so a caller with no elicitation-capable client falls through to its additive list.
-        var result = await ElicitationChoicePrompt.TryElicitChoiceAsync(
-            server: null,
-            paramName: "choice",
-            title: "Pick a symbol",
-            description: "Multiple symbols matched.",
-            options: [("k1", "Label 1"), ("k2", "Label 2")],
-            cancellationToken: CancellationToken.None);
-
-        Assert.IsNull(result, "A null server must short-circuit the picker to null.");
-    }
 }

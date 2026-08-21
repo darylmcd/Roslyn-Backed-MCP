@@ -24,6 +24,10 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 internal sealed class SingleTestScaffolder
 {
+    // Sampled content is untrusted client input. Bound it before parsing so a crafted MRTR retry
+    // cannot amplify an arbitrarily large legal identifier into generated source or preview output.
+    private const int _maxSuggestedTestMethodNameLength = 256;
+
     private readonly IWorkspaceManager _workspace;
     private readonly IFileOperationService _fileOperationService;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
@@ -121,37 +125,27 @@ internal sealed class SingleTestScaffolder
                 "useSampling was true but no sampling provider was available; emitted the deterministic placeholder test name.");
         }
 
-        try
+        var context = new ScaffoldTestNameSuggestionContext(
+            simpleTypeName,
+            request.TargetMethodName,
+            FormatMethodSignature(targetMethod),
+            string.IsNullOrWhiteSpace(targetNamespace) ? null : targetNamespace,
+            CollectSiblingTestMethodNames(projectDirectory, testFilePath, maxNames: 6));
+        var result = await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false);
+        var normalized = NormalizeSuggestedTestMethodName(result.MethodName);
+        if (normalized is not null)
         {
-            var context = new ScaffoldTestNameSuggestionContext(
-                simpleTypeName,
-                request.TargetMethodName,
-                FormatMethodSignature(targetMethod),
-                string.IsNullOrWhiteSpace(targetNamespace) ? null : targetNamespace,
-                CollectSiblingTestMethodNames(projectDirectory, testFilePath, maxNames: 6));
-            var result = await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false);
-            var normalized = NormalizeSuggestedTestMethodName(result.MethodName);
-            if (normalized is not null)
-            {
-                return result with { MethodName = normalized };
-            }
+            return result with { MethodName = normalized };
+        }
 
-            return string.IsNullOrWhiteSpace(result.MethodName)
-                ? new TestNameSuggestionResult(null, result.Warning)
-                : new TestNameSuggestionResult(
-                    null,
-                    AppendWarning(result.Warning, $"Sampled test method name '{result.MethodName}' was not a valid C# identifier; emitted the deterministic placeholder test name."));
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return new TestNameSuggestionResult(
+        return string.IsNullOrWhiteSpace(result.MethodName)
+            ? new TestNameSuggestionResult(null, result.Warning)
+            : new TestNameSuggestionResult(
                 null,
-                $"Sampling test-name suggestion failed ({ex.GetType().Name}: {ex.Message}); emitted the deterministic placeholder test name.");
-        }
+                AppendWarning(
+                    result.Warning,
+                    "The sampled test method name was invalid or exceeded the supported length; " +
+                    "emitted the deterministic placeholder test name."));
     }
 
     private static IReadOnlyList<string> CombineWarnings(List<string>? a, IReadOnlyList<string>? b, string? c = null)
@@ -416,7 +410,7 @@ internal sealed class SingleTestScaffolder
 
     private static string? NormalizeSuggestedTestMethodName(string? rawName)
     {
-        if (string.IsNullOrWhiteSpace(rawName))
+        if (string.IsNullOrWhiteSpace(rawName) || rawName.Length > _maxSuggestedTestMethodNameLength)
         {
             return null;
         }

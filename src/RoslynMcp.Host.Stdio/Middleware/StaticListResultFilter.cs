@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 

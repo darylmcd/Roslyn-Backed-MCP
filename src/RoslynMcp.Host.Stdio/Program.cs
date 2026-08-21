@@ -146,6 +146,10 @@ RoslynMcp.Core.Services.WorkspaceEvictionRegistry.PublishRecycleContext(
 // FLAG-D: Emit an Information event when the host starts with no loaded workspaces.
 // Operational logs remain on stderr; clients inspect server_info/server_heartbeat for state.
 var startupWorkspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
+// root-expansion-grant-revoke-on-lifecycle-event: bind grant ownership to the workspace
+// lifecycle rather than to a single close tool. WorkspaceClosed also covers cap-pressure LRU
+// eviction and host disposal, so every terminal session path revokes the authorization grant.
+startupWorkspaceManager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
 if (startupWorkspaceManager.ListWorkspaces().Count == 0)
 {
     startupLogger.LogInformation(

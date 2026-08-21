@@ -494,6 +494,83 @@ public sealed class DogExistingTests
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_Preview_InvalidSampledName_UsesSecretSafeBoundedWarning()
+    {
+        const string sentinel = "sampled-name-secret-sentinel";
+        const string privatePath = "C:/private/tenant/solution.slnx";
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var invalidSuggestion = $"{sentinel}:{privatePath}/{new string('x', 8_192)}";
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Dog",
+                "Speak",
+                ReferenceTestFile: string.Empty,
+                UseSampling: true),
+            CancellationToken.None,
+            new RecordingTestNameSuggestionProvider(invalidSuggestion));
+
+        Assert.IsNotNull(preview.Warnings);
+        var warnings = string.Join(Environment.NewLine, preview.Warnings);
+        StringAssert.Contains(warnings, "sampled test method name was invalid or exceeded the supported length");
+        Assert.IsFalse(warnings.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(warnings.Contains(privatePath, StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(warnings.Length < 512,
+            "An invalid sampled value must not amplify the client-visible warning payload.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_HugeValidSampledIdentifier_UsesBoundedFallback()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var oversizedValidIdentifier = new string('A', 1_000_000);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Dog",
+                "Speak",
+                ReferenceTestFile: string.Empty,
+                UseSampling: true),
+            CancellationToken.None,
+            new RecordingTestNameSuggestionProvider(oversizedValidIdentifier));
+
+        Assert.IsNotNull(preview.Warnings);
+        var warnings = string.Join(Environment.NewLine, preview.Warnings);
+        StringAssert.Contains(warnings, "sampled test method name was invalid or exceeded the supported length");
+        Assert.IsTrue(warnings.Length < 512,
+            "A syntactically valid but oversized identifier must not amplify preview output.");
+        var previewJson = JsonSerializer.Serialize(preview);
+        Assert.IsFalse(previewJson.Contains(oversizedValidIdentifier, StringComparison.Ordinal),
+            "The rejected sampled identifier must not be embedded in the preview contract.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_SamplingProviderCancellation_Propagates()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cancellation = new OperationCanceledException("sampling request cancelled");
+
+        var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            ScaffoldingService.PreviewScaffoldTestAsync(
+                workspace.WorkspaceId,
+                new ScaffoldTestDto(
+                    "SampleLib.Tests",
+                    "Dog",
+                    "Speak",
+                    ReferenceTestFile: string.Empty,
+                    UseSampling: true),
+                CancellationToken.None,
+                new ThrowingTestNameSuggestionProvider(cancellation)));
+
+        Assert.AreSame(cancellation, thrown,
+            "Response handling must not convert provider cancellation into a deterministic-name fallback.");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_Private_Target_Method_Adds_Warning_And_Reflection_Call()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
@@ -1235,5 +1312,14 @@ public class SnapshotContentHasher
             LastContext = context;
             return Task.FromResult(new TestNameSuggestionResult(methodName));
         }
+    }
+
+    private sealed class ThrowingTestNameSuggestionProvider(OperationCanceledException exception)
+        : ITestNameSuggestionProvider
+    {
+        public Task<TestNameSuggestionResult> SuggestTestNameAsync(
+            ScaffoldTestNameSuggestionContext context,
+            CancellationToken ct) =>
+            Task.FromException<TestNameSuggestionResult>(exception);
     }
 }

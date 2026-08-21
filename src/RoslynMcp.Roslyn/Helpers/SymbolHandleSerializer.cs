@@ -6,18 +6,19 @@ using RoslynMcp.Roslyn.Contracts;
 namespace RoslynMcp.Roslyn.Helpers;
 
 /// <summary>
-/// Serializes Roslyn <see cref="ISymbol"/> instances to opaque base-64 handles and resolves
+/// Serializes Roslyn <see cref="ISymbol"/> instances to portable base-64 handles and resolves
 /// them back to symbols in a given <see cref="Solution"/>.
 /// </summary>
 /// <remarks>
 /// A handle encodes the symbol's metadata name, display name, and source location as a
-/// base-64-encoded JSON payload. Resolution first attempts lookup by metadata name, then
-/// falls back to source position.
+/// base-64-encoded JSON payload. The encoding is reversible and may contain a source path; it is
+/// an API locator, not a confidential or non-disclosing token. Resolution first attempts lookup
+/// by metadata name, then falls back to source position.
 /// </remarks>
 public static class SymbolHandleSerializer
 {
     /// <summary>
-    /// Creates a portable, opaque handle for the given symbol that can be passed back to
+    /// Creates a portable encoded handle for the given symbol that can be passed back to
     /// <see cref="ResolveHandleAsync"/> to recover the symbol.
     /// </summary>
     /// <param name="symbol">The symbol to serialize.</param>
@@ -146,11 +147,9 @@ public static class SymbolHandleSerializer
     /// absolute paths from internal-visibility code into the prompt the user sees.
     /// </summary>
     /// <remarks>
-    /// Risks call-out from the initiative: "labels must produce labels that disambiguate
-    /// candidates without leaking sensitive type names from internal-visibility code." The
-    /// type-and-member display string is the public-API surface (Roslyn already strips
-    /// internal type members from its <c>ToDisplayString</c> when configured); the file path
-    /// is the only locally identifiable string we emit, and we trim it to a basename.
+    /// The type-and-member display string mirrors candidate metadata already returned to the
+    /// same caller; Roslyn display formatting is not an accessibility boundary. The absolute
+    /// source path is the additional locally identifying value, so only its basename is emitted.
     /// </remarks>
     public static string BuildDisplayLabel(ISymbol symbol)
     {

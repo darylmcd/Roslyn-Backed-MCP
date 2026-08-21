@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Security;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests;
@@ -20,20 +23,24 @@ namespace RoslynMcp.Tests;
 /// a workspace with a gated read in flight is NOT evicted underneath that reader — the eviction
 /// blocks until the reader drains.
 /// </para>
+/// <para>
+/// The <c>root-expansion-grant-revoke-on-lifecycle-event</c> guard verifies that the same LRU
+/// event revokes session-scoped authorization state without requiring a close-tool call.
+/// </para>
 /// </summary>
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceCapLruEvictionTests
 {
-    private static string s_repositoryRootPath = null!;
-    private static string s_sampleSolutionPath = null!;
+    private static string _repositoryRootPath = null!;
+    private static string _sampleSolutionPath = null!;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
     {
-        s_repositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
-        s_sampleSolutionPath = TestFixtureFileSystem.FindFixturePath(
-            s_repositoryRootPath,
+        _repositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
+        _sampleSolutionPath = TestFixtureFileSystem.FindFixturePath(
+            _repositoryRootPath,
             "SampleSolution",
             "SampleSolution.slnx",
             "SampleSolution.sln");
@@ -63,8 +70,8 @@ public sealed class WorkspaceCapLruEvictionTests
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
         using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -90,6 +97,67 @@ public sealed class WorkspaceCapLruEvictionTests
     }
 
     /// <summary>
+    /// The host composition subscribes the root-expansion grant registry to
+    /// <see cref="IWorkspaceManager.WorkspaceClosed"/>. Cap-pressure eviction must therefore
+    /// revoke the evicted session's grant even though no <c>workspace_close</c> tool call occurs.
+    /// </summary>
+    [TestMethod]
+    public async Task LruEviction_RevokesRootExpansionGrantThroughWorkspaceClosed()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        manager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        string? grantedWorkspaceId = null;
+
+        try
+        {
+            await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
+                [Path.GetDirectoryName(path1)!, Path.GetDirectoryName(path2)!],
+                CancellationToken.None,
+                allowRootExpansion: true);
+
+            var firstLoadJson = await WorkspaceTools.LoadWorkspace(
+                serverSession.Server,
+                gate,
+                manager,
+                warmService: null!,
+                commandRunner: null!,
+                path1,
+                prewarm: false,
+                expandSanctionedRoots: true,
+                ct: CancellationToken.None);
+            using var firstLoad = JsonDocument.Parse(firstLoadJson);
+            grantedWorkspaceId = firstLoad.RootElement.GetProperty("workspaceId").GetString();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(grantedWorkspaceId));
+            Assert.IsTrue(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                "workspace_load(expandSanctionedRoots:true) must record the session grant.");
+
+            _ = await WorkspaceTools.LoadWorkspace(
+                serverSession.Server,
+                gate,
+                manager,
+                warmService: null!,
+                commandRunner: null!,
+                path2,
+                prewarm: false,
+                evictPolicy: EvictPolicy.Lru,
+                ct: CancellationToken.None);
+
+            Assert.IsFalse(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                "WorkspaceClosed must revoke the grant when LRU eviction ends the session.");
+        }
+        finally
+        {
+            RootExpansionGrantRegistry.Revoke(grantedWorkspaceId ?? string.Empty);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+        }
+    }
+
+    /// <summary>
     /// When the cap is reached and <see cref="EvictPolicy.Strict"/> is requested (the default),
     /// an <see cref="InvalidOperationException"/> is thrown whose message includes
     /// <c>activeWorkspaces</c> and <c>lruCandidate</c> fields for one-round-trip self-recovery.
@@ -99,8 +167,8 @@ public sealed class WorkspaceCapLruEvictionTests
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
         using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -174,8 +242,8 @@ public sealed class WorkspaceCapLruEvictionTests
             new ExecutionGateOptions { RequestTimeout = TimeSpan.FromMinutes(5) },
             manager);
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -194,7 +262,7 @@ public sealed class WorkspaceCapLruEvictionTests
                     try
                     {
                         readerHoldsLock.SetResult();
-                        await readerMayRelease.Task.WaitAsync(TestTimeout);
+                        await readerMayRelease.Task.WaitAsync(_testTimeout);
 
                         // Still inside the gated read — the reader lock has NOT been released, so
                         // a gate-respecting eviction cannot have run yet.
@@ -216,7 +284,7 @@ public sealed class WorkspaceCapLruEvictionTests
                 },
                 CancellationToken.None);
 
-            await readerHoldsLock.Task.WaitAsync(TestTimeout);
+            await readerHoldsLock.Task.WaitAsync(_testTimeout);
 
             // Start (do NOT await) the eviction-triggering load: it must now block on the
             // evicted candidate's writer lock until the reader above drains.
@@ -230,8 +298,8 @@ public sealed class WorkspaceCapLruEvictionTests
 
             readerMayRelease.SetResult();
 
-            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(TestTimeout);
-            var status2 = await evictingLoad.WaitAsync(TestTimeout);
+            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(_testTimeout);
+            var status2 = await evictingLoad.WaitAsync(_testTimeout);
 
             Assert.IsNull(observed,
                 "GetProject called from inside the gated read must not observe eviction now that "
@@ -253,7 +321,7 @@ public sealed class WorkspaceCapLruEvictionTests
     }
 
     /// <summary>Fail fast rather than hang the suite if a hand-off regresses into a deadlock.</summary>
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan _testTimeout = TimeSpan.FromMinutes(2);
 
     private static WorkspaceManager CreateManager(
         int maxConcurrentWorkspaces = 4,

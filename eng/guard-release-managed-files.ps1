@@ -1,8 +1,8 @@
 # PreToolUse hook guard for release-managed files.
 #
 # Reads Claude Code's hook-input JSON from stdin. If the target path is in the
-# release-managed set (the 6 version-source files plus 4 release-critical guard
-# scripts), block the edit unless an override sentinel is present.
+# release-managed set (the 6 version-source files plus 4 release-critical
+# infrastructure files), block the edit unless an override sentinel is present.
 #
 # Override sentinel: a file at $env:CLAUDE_PROJECT_DIR/.release-managed-edit-allowed
 # whose mtime is within RELEASE_SENTINEL_TTL_SECONDS (default 1800s / 30 min).
@@ -13,7 +13,7 @@
 # override was unreliable -- prompt-based PreToolUse hooks do not consistently
 # receive assistant prose, only the tool input.
 #
-# Hook config: hooks/hooks.json -> PreToolUse -> Edit|Write|MultiEdit.
+# Hook config: .claude/settings.json -> PreToolUse -> Edit|Write|MultiEdit.
 # Exit codes:
 #   0 -- allow (path not in set, OR sentinel valid)
 #   2 -- block (path in set, no valid sentinel) -- prints denial to stderr

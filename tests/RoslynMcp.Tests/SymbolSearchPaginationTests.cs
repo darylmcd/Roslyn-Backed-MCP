@@ -38,7 +38,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 5, offset: 0,
@@ -71,7 +71,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var page0Json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 3, offset: 0,
@@ -80,7 +80,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var page1Json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 3, offset: 3,
@@ -120,7 +120,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var probeJson = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 50, offset: 0,
@@ -141,7 +141,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 1, offset: 0,
@@ -173,7 +173,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 51, offset: 0,
@@ -189,7 +189,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
             await SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 10, offset: -1,
@@ -205,7 +205,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "",
                 projectName: null, kind: null, @namespace: null,
                 limit: 50, offset: 0,
@@ -232,7 +232,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 10, offset: 0,
@@ -273,7 +273,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var jsonTrue = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 5, offset: 0,
@@ -290,7 +290,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var jsonFalse = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
                 limit: 5, offset: 0,
@@ -314,7 +314,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                requestContext: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Service",
                 projectName: null, kind: null, @namespace: null,
                 limit: 50, offset: 0,
