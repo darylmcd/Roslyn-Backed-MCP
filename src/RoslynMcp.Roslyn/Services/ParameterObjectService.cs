@@ -511,10 +511,10 @@ public sealed class ParameterObjectService : IParameterObjectService
         if (operation is not null)
         {
             var unwrapped = UnwrapTransparentOperation(operation);
-            if (unwrapped.Parent is IInvocationOperation invocation
-                && ReferenceEquals(invocation.Instance, unwrapped)
-                && invocation.TargetMethod.ContainingType?.IsValueType == true
-                && !invocation.TargetMethod.IsReadOnly)
+            if (unwrapped.Parent is IInvocationOperation directInvocation
+                && ReferenceEquals(directInvocation.Instance, unwrapped)
+                && directInvocation.TargetMethod.ContainingType?.IsValueType == true
+                && !directInvocation.TargetMethod.IsReadOnly)
             {
                 return "mutable value-type member call";
             }
@@ -546,6 +546,14 @@ public sealed class ParameterObjectService : IParameterObjectService
         }
 
         if (current == chainRoot) return null;
+
+        if (current.Parent is InvocationExpressionSyntax invocationSyntax
+            && semanticModel.GetOperation(invocationSyntax, ct) is IInvocationOperation nestedInvocation
+            && nestedInvocation.TargetMethod.ContainingType?.IsValueType == true
+            && !nestedInvocation.TargetMethod.IsReadOnly)
+        {
+            return "mutable value-type member call";
+        }
 
         if (current.Parent is AssignmentExpressionSyntax assignment && assignment.Left == current)
             return "value-type member assignment";
@@ -717,7 +725,17 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         if (string.IsNullOrWhiteSpace(request.DtoProjectName))
         {
-            var sameProjectVisibility = method.ContainingType.DeclaredAccessibility == Accessibility.Public;
+            var effectiveAccessibilityRank = AccessibilityRank(method.DeclaredAccessibility);
+            for (var containingType = method.ContainingType;
+                 containingType is not null;
+                 containingType = containingType.ContainingType)
+            {
+                effectiveAccessibilityRank = Math.Min(
+                    effectiveAccessibilityRank,
+                    AccessibilityRank(containingType.DeclaredAccessibility));
+            }
+
+            var sameProjectVisibility = effectiveAccessibilityRank > InternalAccessibilityRank;
             return (methodProject, sameProjectVisibility);
         }
 

@@ -236,6 +236,101 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    [TestMethod]
+    public async Task NestedMutableValueTypeParameterMutations_RefusePreview()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public struct POInnerMutable
+            {
+                public int State;
+                public void Mutate() => State++;
+            }
+
+            public struct POOuterMutable
+            {
+                public POInnerMutable Inner;
+            }
+
+            public class PONestedValueTypeFixture
+            {
+                public int Compute(POOuterMutable called, POOuterMutable written)
+                {
+                    called.Inner.Mutate();
+                    written.Inner.State = 1;
+                    return called.Inner.State + written.Inner.State;
+                }
+            }
+            """,
+            "PONestedValueTypeFixture.cs");
+
+        try
+        {
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 16, column: 16),
+                    new ParameterObjectPreviewRequest(["called", "written"], "ComputeArgs"),
+                    CancellationToken.None));
+
+            StringAssert.Contains(exception.Message, "'called'");
+            StringAssert.Contains(exception.Message, "(mutable value-type member call)");
+            StringAssert.Contains(exception.Message, "'written'");
+            StringAssert.Contains(exception.Message, "(value-type member assignment)");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReferenceTypedSegmentInsideValueType_KeepsPreviewEligible()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public sealed class POReferenceTarget
+            {
+                public int State;
+                public void Mutate() => State++;
+            }
+
+            public struct POOuterWithReference
+            {
+                public POReferenceTarget Target;
+            }
+
+            public class POReferenceSegmentFixture
+            {
+                internal int Compute(POOuterWithReference holder, int offset)
+                {
+                    holder.Target.Mutate();
+                    return holder.Target.State + offset;
+                }
+            }
+            """,
+            "POReferenceSegmentFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 16, column: 18),
+                new ParameterObjectPreviewRequest(["holder", "offset"], "ComputeArgs"),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     /// <summary>
     /// parameter-object-value-type-mutation-semantics, do-not-over-refuse acceptance:
     /// member mutation through a reference-type parameter, an array element write, and
@@ -728,34 +823,6 @@ public sealed class ParameterObjectPreviewTests : TestBase
         """
         namespace SampleLib;
 
-        internal sealed class POInternalThing;
-
-        public class POAccessFixture
-        {
-            internal void Use(POInternalThing secret, int a) { _ = secret; _ = a; }
-        }
-        """,
-        "POAccessFixture.cs", 7, 19, "secret,a",
-        "'SampleLib.POInternalThing'", "'secret'",
-        DisplayName = "internal type into public record")]
-    [DataRow(
-        """
-        namespace SampleLib;
-
-        internal sealed class POInternalElement;
-
-        public class POAccessListFixture
-        {
-            internal void UseAll(List<POInternalElement> items, int a) { _ = items; _ = a; }
-        }
-        """,
-        "POAccessListFixture.cs", 7, 19, "items,a",
-        "'SampleLib.POInternalElement'", "'items'",
-        DisplayName = "internal type argument inside public generic")]
-    [DataRow(
-        """
-        namespace SampleLib;
-
         public class POPrivateNestedFixture
         {
             private sealed class Secret;
@@ -788,6 +855,45 @@ public sealed class ParameterObjectPreviewTests : TestBase
             StringAssert.Contains(ex.Message, "parameter_object_preview refuses");
             StringAssert.Contains(ex.Message, expectedTypeFragment);
             StringAssert.Contains(ex.Message, expectedParameterFragment);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task InternalMethodOnPublicType_GeneratesInternalRecordForInternalParameterType()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            internal sealed class POInternalThing;
+
+            public class POInternalMethodFixture
+            {
+                internal void Use(POInternalThing secret, int count)
+                {
+                    _ = secret;
+                    _ = count;
+                }
+            }
+            """,
+            "POInternalMethodFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 7, column: 19),
+                new ParameterObjectPreviewRequest(["secret", "count"], "UseArgs"),
+                CancellationToken.None);
+            var dtoDiff = preview.Changes.FirstOrDefault(change =>
+                change.FilePath.EndsWith("UseArgs.cs", StringComparison.OrdinalIgnoreCase))?.UnifiedDiff;
+
+            Assert.IsNotNull(dtoDiff);
+            StringAssert.Contains(dtoDiff, "internal sealed record UseArgs");
         }
         finally
         {

@@ -8,7 +8,7 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Characterization tests for <see cref="CodeMetricsService"/>'s max-nesting-depth
-/// computation (<c>VisitChildForNesting</c> / <c>VisitControlFlowNesting</c>).
+/// computation (<c>VisitNodeForNesting</c> / <c>VisitControlFlowNesting</c>).
 /// Added in WS2 session 2.9 before refactoring the visitor-pattern dispatcher to
 /// lock in the observed depth semantics for every control-flow statement shape
 /// the visitor handles: deeply nested mixed-statement chains, flat method bodies
@@ -66,18 +66,31 @@ public sealed class CodeMetricsNestingTests
 
         var nesting = await GetMaxNestingDepthAsync(source, methodName: "Run");
 
-        // CHARACTERIZATION (observed pre-refactor): 5. Trace: if→1, for→2, while→3,
-        // switch section→4, using→5. The try block inside the using STATEMENT recurses
-        // at depth 5 (not 6) because VisitControlFlowNesting is entered at the using's
-        // `Statement` (not at the using itself) — so the try's VisitChildForNesting call
-        // sees depth=5 and increments its Block to depth+1=6 only if maxDepth already
-        // beat that — but the switch arm statements-list idiom means the using's
-        // depth-5 body sees the try statement at depth 5 (its block at 6 would overshoot
-        // if chained, but here the `break;` short-circuits the arm). Locked at 5 to
-        // document current semantics; refactor must preserve this number exactly.
-        Assert.AreEqual(5, nesting,
-            "Deeply nested if>for>while>switch>using>try (pre-refactor observed) = 5. " +
-            "Refactor must preserve the exact observed depth — characterization, not prediction.");
+        Assert.AreEqual(6, nesting,
+            "Every control-flow construct in if>for>while>switch>using>try must contribute one level.");
+    }
+
+    [TestMethod]
+    public async Task MaxNestingDepth_UnbracedNestedIf_CountsBothConstructs()
+    {
+        const string source = """
+            namespace Sample;
+            public class Unbraced
+            {
+                public int Run(bool outer, bool inner)
+                {
+                    if (outer)
+                        if (inner)
+                            return 1;
+                    return 0;
+                }
+            }
+            """;
+
+        var nesting = await GetMaxNestingDepthAsync(source, methodName: "Run");
+
+        Assert.AreEqual(2, nesting,
+            "An unbraced nested if is a control-flow node itself, not merely a container for its children.");
     }
 
     [TestMethod]
@@ -247,6 +260,41 @@ public sealed class CodeMetricsNestingTests
             "Paired method's if>for should resolve independently at depth 2.");
     }
 
+    [TestMethod]
+    public async Task CancellationDuringWorkspaceResolution_ThrowsInsteadOfReturningPartialSuccess()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var fixture = CreateService(
+            "namespace Sample; public class C { public void M() { } }",
+            onGetCurrentSolution: cancellation.Cancel);
+        using var workspace = fixture.Workspace;
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            fixture.Service.GetComplexityMetricsAsync(
+                WorkspaceId, null, null, null, null, 100, cancellation.Token));
+    }
+
+    [TestMethod]
+    public async Task FileFilters_UsePlatformPathIdentityForSingleAndListForms()
+    {
+        var fixture = CreateService(
+            "namespace Sample; public class C { public void M() { } }",
+            fileName: "CaseSensitive.cs");
+        using var workspace = fixture.Workspace;
+        var differentlyCasedPath = Path.Combine(
+            Path.GetDirectoryName(fixture.FilePath)!,
+            "casesensitive.cs");
+        var expectedCount = OperatingSystem.IsWindows() ? 1 : 0;
+
+        var single = await fixture.Service.GetComplexityMetricsAsync(
+            WorkspaceId, differentlyCasedPath, null, null, null, 100, CancellationToken.None);
+        var list = await fixture.Service.GetComplexityMetricsAsync(
+            WorkspaceId, null, [differentlyCasedPath], null, null, 100, CancellationToken.None);
+
+        Assert.AreEqual(expectedCount, single.Count);
+        Assert.AreEqual(expectedCount, list.Count);
+    }
+
     // ─── test infrastructure ───────────────────────────────────────────────────
 
     /// <summary>
@@ -257,32 +305,10 @@ public sealed class CodeMetricsNestingTests
     /// </summary>
     private static async Task<int> GetMaxNestingDepthAsync(string source, string methodName)
     {
-        var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId();
-        workspace.AddProject(ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            name: "NestingTestProject",
-            assemblyName: "NestingTestProject",
-            language: LanguageNames.CSharp,
-            filePath: Path.Combine(Path.GetTempPath(), "NestingTestProject.csproj")));
+        var fixture = CreateService(source);
+        using var workspace = fixture.Workspace;
 
-        var docId = DocumentId.CreateNewId(projectId);
-        var fullPath = Path.Combine(Path.GetTempPath(), "NestingSample.cs");
-        workspace.AddDocument(DocumentInfo.Create(
-            docId,
-            "NestingSample.cs",
-            filePath: fullPath,
-            loader: TextLoader.From(
-                TextAndVersion.Create(
-                    SourceText.From(source),
-                    VersionStamp.Create(),
-                    fullPath))));
-
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var service = new CodeMetricsService(wsManager);
-
-        var results = await service.GetComplexityMetricsAsync(
+        var results = await fixture.Service.GetComplexityMetricsAsync(
             WorkspaceId,
             filePath: null,
             filePaths: null,
@@ -296,6 +322,38 @@ public sealed class CodeMetricsNestingTests
         return match.MaxNestingDepth;
     }
 
+    private static (AdhocWorkspace Workspace, CodeMetricsService Service, string FilePath) CreateService(
+        string source,
+        string fileName = "NestingSample.cs",
+        Action? onGetCurrentSolution = null)
+    {
+        var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        workspace.AddProject(ProjectInfo.Create(
+            projectId,
+            VersionStamp.Create(),
+            name: "NestingTestProject",
+            assemblyName: "NestingTestProject",
+            language: LanguageNames.CSharp,
+            filePath: Path.Combine(Path.GetTempPath(), "NestingTestProject.csproj")));
+
+        var docId = DocumentId.CreateNewId(projectId);
+        var fullPath = Path.Combine(Path.GetTempPath(), fileName);
+        workspace.AddDocument(DocumentInfo.Create(
+            docId,
+            fileName,
+            filePath: fullPath,
+            loader: TextLoader.From(
+                TextAndVersion.Create(
+                    SourceText.From(source),
+                    VersionStamp.Create(),
+                    fullPath))));
+
+        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace, onGetCurrentSolution);
+        var service = new CodeMetricsService(wsManager);
+        return (workspace, service, fullPath);
+    }
+
     /// <summary>
     /// Minimal <see cref="IWorkspaceManager"/> stand-in — mirrors the pattern in
     /// DuplicateMethodDetectorTests. Only <see cref="GetCurrentSolution"/> is needed
@@ -305,14 +363,19 @@ public sealed class CodeMetricsNestingTests
     {
         private readonly string _workspaceId;
         private readonly AdhocWorkspace _workspace;
+        private readonly Action? _onGetCurrentSolution;
 
         public event Action<string>? WorkspaceClosed;
         public event Action<string>? WorkspaceReloaded;
 
-        public TestWorkspaceManager(string workspaceId, AdhocWorkspace workspace)
+        public TestWorkspaceManager(
+            string workspaceId,
+            AdhocWorkspace workspace,
+            Action? onGetCurrentSolution = null)
         {
             _workspaceId = workspaceId;
             _workspace = workspace;
+            _onGetCurrentSolution = onGetCurrentSolution;
         }
 
         public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
@@ -320,6 +383,7 @@ public sealed class CodeMetricsNestingTests
 
         public Solution GetCurrentSolution(string workspaceId)
         {
+            _onGetCurrentSolution?.Invoke();
             return workspaceId == _workspaceId
                 ? _workspace.CurrentSolution
                 : throw new InvalidOperationException($"Unknown workspace {workspaceId}");
