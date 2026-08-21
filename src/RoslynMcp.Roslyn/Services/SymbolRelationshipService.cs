@@ -263,6 +263,43 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             Documentation: dto.Documentation);
     }
 
+    public async Task<IReadOnlyList<SignatureHelpDto>?> FindOverloadsAsync(
+        string workspaceId, string typeMetadataName, string memberName,
+        bool includeInherited, string? projectName, CancellationToken ct)
+    {
+        _logger.LogDebug("SymbolRelationshipService.FindOverloadsAsync: workspaceId={WorkspaceId} typeMetadataName={TypeMetadataName} memberName={MemberName}", workspaceId, typeMetadataName, memberName);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+
+        INamedTypeSymbol? typeSymbol = null;
+        foreach (var project in solution.Projects)
+        {
+            if (projectName is not null && !string.Equals(project.Name, projectName, StringComparison.Ordinal)) continue;
+            ct.ThrowIfCancellationRequested();
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+            typeSymbol = compilation?.GetTypeByMetadataName(typeMetadataName);
+            if (typeSymbol is not null) break;
+        }
+        if (typeSymbol is null) return null;
+
+        var methods = typeSymbol.GetMembers(memberName).OfType<IMethodSymbol>().ToList();
+        if (includeInherited)
+        {
+            for (var baseType = typeSymbol.BaseType; baseType is not null; baseType = baseType.BaseType)
+            {
+                methods.AddRange(baseType.GetMembers(memberName).OfType<IMethodSymbol>());
+            }
+        }
+
+        return methods.Select(m => new SignatureHelpDto(
+            DisplaySignature: m.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            ReturnType: m.ReturnType.ToDisplayString(),
+            Parameters: m.Parameters
+                .Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {p.Name}")
+                .ToList(),
+            Documentation: m.GetDocumentationCommentXml()))
+            .ToList();
+    }
+
     public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         _logger.LogDebug("SymbolRelationshipService.GetCallersCalleesAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
