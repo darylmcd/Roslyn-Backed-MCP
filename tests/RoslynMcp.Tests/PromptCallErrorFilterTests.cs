@@ -18,10 +18,8 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Focused contract tests for the <c>prompts/get</c> error boundary
-/// (<see cref="GetPromptErrorFilter"/>) and the sanitized legacy
-/// <see cref="PromptMessageBuilder.CreateErrorMessage"/> body. Wire tests stand up a real
-/// in-proc client/server pair so the assertions run against the serialized JSON-RPC payloads a
-/// client actually receives.
+/// (<see cref="GetPromptErrorFilter"/>). Wire tests stand up a real in-proc client/server pair so
+/// the assertions run against the serialized JSON-RPC payloads a client actually receives.
 /// </summary>
 [TestClass]
 public sealed class PromptCallErrorFilterTests
@@ -31,78 +29,167 @@ public sealed class PromptCallErrorFilterTests
 
     private const int _internalErrorCode = -32603;
     private const int _invalidParamsCode = -32602;
+    private static readonly (string? RequestedVersion, string ExpectedVersion)[] _protocolEras =
+    [
+        ("2025-11-25", "2025-11-25"),
+        (null, "2026-07-28"),
+    ];
 
     [TestMethod]
     public async Task UnexpectedPromptFailure_RidesJsonRpcErrorChannelWithSanitizedPayload()
     {
-        var sink = new CapturingSink();
-        await using var harness = await CreateHarnessAsync("prompt-error-filter-wire", sink);
-
-        var priorMessageCount = harness.RawServerMessages.Count;
-        await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
-            "throwing_prompt",
-            new Dictionary<string, object?> { ["target"] = "anything" },
-            cancellationToken: CancellationToken.None));
-
-        var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
-        Assert.AreEqual(_internalErrorCode, error.GetProperty("code").GetInt32());
-        StringAssert.Contains(
-            error.GetProperty("message").GetString(),
-            "correlationId",
-            StringComparison.Ordinal);
-
-        // No successful prompts/get result may exist for this request — a "prompt message
-        // describing the failure" is indistinguishable from real prompt content.
-        foreach (var rawMessage in rawMessages)
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
         {
-            using var document = JsonDocument.Parse(rawMessage);
-            if (document.RootElement.TryGetProperty("result", out var result))
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-error-filter-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
+
+            var priorMessageCount = harness.RawServerMessages.Count;
+            await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
+                "throwing_prompt",
+                new Dictionary<string, object?> { ["target"] = "anything" },
+                cancellationToken: CancellationToken.None));
+
+            var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
+            Assert.AreEqual(_internalErrorCode, error.GetProperty("code").GetInt32());
+            StringAssert.Contains(
+                error.GetProperty("message").GetString(),
+                "correlationId",
+                StringComparison.Ordinal);
+
+            // No successful prompts/get result may exist for this request — a "prompt message
+            // describing the failure" is indistinguishable from real prompt content.
+            foreach (var rawMessage in rawMessages)
             {
-                Assert.IsFalse(
-                    result.TryGetProperty("messages", out _),
-                    "A prompt failure must not produce a successful prompts/get result.");
+                using var document = JsonDocument.Parse(rawMessage);
+                if (document.RootElement.TryGetProperty("result", out var result))
+                {
+                    Assert.IsFalse(
+                        result.TryGetProperty("messages", out _),
+                        "A prompt failure must not produce a successful prompts/get result.");
+                }
             }
+
+            // The serialized wire payload must not disclose exception internals.
+            var serializedResponses = string.Join('\n', rawMessages);
+            Assert.IsFalse(serializedResponses.Contains(_secretSentinel, StringComparison.Ordinal));
+            Assert.IsFalse(serializedResponses.Contains("InvalidOperationException", StringComparison.Ordinal));
+            Assert.IsFalse(serializedResponses.Contains("IOException", StringComparison.Ordinal));
+            Assert.IsFalse(serializedResponses.Contains("   at ", StringComparison.Ordinal));
+            Assert.IsFalse(serializedResponses.Contains("private/source.cs", StringComparison.Ordinal));
+
+            // Server-side observability retains the secret-safe structure under the GetPrompt category.
+            Assert.HasCount(1, sink.Events);
+            var diagnosticEvent = sink.Events.Single();
+            Assert.AreEqual("GetPrompt", diagnosticEvent.Category);
+            Assert.AreEqual("UnexpectedFailure", diagnosticEvent.EventName);
+            Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
+                static type => type.EndsWith(nameof(InvalidOperationException), StringComparison.Ordinal)));
+            Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
+                static type => type.EndsWith(nameof(IOException), StringComparison.Ordinal)));
+            var serializedEvent = JsonSerializer.Serialize(diagnosticEvent);
+            Assert.IsFalse(serializedEvent.Contains(_secretSentinel, StringComparison.Ordinal));
         }
-
-        // The serialized wire payload must not disclose exception internals.
-        var serializedResponses = string.Join('\n', rawMessages);
-        Assert.IsFalse(serializedResponses.Contains(_secretSentinel, StringComparison.Ordinal));
-        Assert.IsFalse(serializedResponses.Contains("InvalidOperationException", StringComparison.Ordinal));
-        Assert.IsFalse(serializedResponses.Contains("IOException", StringComparison.Ordinal));
-        Assert.IsFalse(serializedResponses.Contains("   at ", StringComparison.Ordinal));
-        Assert.IsFalse(serializedResponses.Contains("private/source.cs", StringComparison.Ordinal));
-
-        // Server-side observability retains the secret-safe structure under the GetPrompt category.
-        Assert.HasCount(1, sink.Events);
-        var diagnosticEvent = sink.Events.Single();
-        Assert.AreEqual("GetPrompt", diagnosticEvent.Category);
-        Assert.AreEqual("UnexpectedFailure", diagnosticEvent.EventName);
-        Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
-            static type => type.EndsWith(nameof(InvalidOperationException), StringComparison.Ordinal)));
-        Assert.IsTrue(diagnosticEvent.Exception.ExceptionTypes.Any(
-            static type => type.EndsWith(nameof(IOException), StringComparison.Ordinal)));
-        var serializedEvent = JsonSerializer.Serialize(diagnosticEvent);
-        Assert.IsFalse(serializedEvent.Contains(_secretSentinel, StringComparison.Ordinal));
     }
 
     [TestMethod]
     public async Task MissingRequiredParameter_KeepsInvalidParamsContract()
     {
-        var sink = new CapturingSink();
-        await using var harness = await CreateHarnessAsync("prompt-invalid-params-wire", sink);
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-invalid-params-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
 
-        var priorMessageCount = harness.RawServerMessages.Count;
-        await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
-            "throwing_prompt",
-            cancellationToken: CancellationToken.None));
+            var priorMessageCount = harness.RawServerMessages.Count;
+            await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
+                "throwing_prompt",
+                cancellationToken: CancellationToken.None));
 
-        var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
-        Assert.AreEqual(_invalidParamsCode, error.GetProperty("code").GetInt32());
-        var serializedResponses = string.Join('\n', rawMessages);
-        Assert.IsFalse(serializedResponses.Contains(_secretSentinel, StringComparison.Ordinal));
+            var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
+            Assert.AreEqual(_invalidParamsCode, error.GetProperty("code").GetInt32());
+            var serializedResponses = string.Join('\n', rawMessages);
+            Assert.IsFalse(serializedResponses.Contains(_secretSentinel, StringComparison.Ordinal));
 
-        // Parameter validation is an expected failure — never reported as unexpected.
-        Assert.IsEmpty(sink.Events);
+            // Parameter validation is an expected failure — never reported as unexpected.
+            Assert.IsEmpty(sink.Events);
+        }
+    }
+
+    [TestMethod]
+    public async Task HandlerArgumentException_UsesSanitizedInternalErrorContract()
+    {
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-handler-argument-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
+
+            var priorMessageCount = harness.RawServerMessages.Count;
+            await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
+                "argument_throwing_prompt",
+                new Dictionary<string, object?> { ["target"] = "anything" },
+                cancellationToken: CancellationToken.None));
+
+            var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
+            Assert.AreEqual(_internalErrorCode, error.GetProperty("code").GetInt32());
+            StringAssert.Contains(error.GetProperty("message").GetString(), "correlationId", StringComparison.Ordinal);
+            Assert.IsFalse(string.Join('\n', rawMessages).Contains(_secretSentinel, StringComparison.Ordinal));
+            Assert.HasCount(1, sink.Events, "Handler exceptions must be reported at the shared boundary.");
+            Assert.AreEqual("GetPrompt", sink.Events.Single().Category);
+        }
+    }
+
+    [TestMethod]
+    public async Task WrongTypedPromptArgument_UsesStableInvalidParamsWithoutReporting()
+    {
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-wrong-type-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
+
+            var priorMessageCount = harness.RawServerMessages.Count;
+            await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
+                "integer_prompt",
+                new Dictionary<string, object?> { ["count"] = _secretSentinel },
+                cancellationToken: CancellationToken.None));
+
+            var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
+            Assert.AreEqual(_invalidParamsCode, error.GetProperty("code").GetInt32());
+            StringAssert.Contains(error.GetProperty("message").GetString(), "Invalid parameters for prompt");
+            Assert.IsFalse(string.Join('\n', rawMessages).Contains(_secretSentinel, StringComparison.Ordinal));
+            Assert.IsEmpty(sink.Events);
+        }
+    }
+
+    [TestMethod]
+    public async Task HandlerJsonException_UsesSanitizedInternalErrorContract()
+    {
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-handler-json-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
+
+            var priorMessageCount = harness.RawServerMessages.Count;
+            await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
+                "json_throwing_prompt",
+                new Dictionary<string, object?> { ["target"] = "anything" },
+                cancellationToken: CancellationToken.None));
+
+            var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
+            Assert.AreEqual(_internalErrorCode, error.GetProperty("code").GetInt32());
+            StringAssert.Contains(error.GetProperty("message").GetString(), "correlationId", StringComparison.Ordinal);
+            Assert.IsFalse(string.Join('\n', rawMessages).Contains(_secretSentinel, StringComparison.Ordinal));
+            Assert.HasCount(1, sink.Events);
+            Assert.AreEqual("GetPrompt", sink.Events.Single().Category);
+        }
     }
 
     [TestMethod]
@@ -143,30 +230,23 @@ public sealed class PromptCallErrorFilterTests
     }
 
     [TestMethod]
-    public void TranslateException_ArgumentExceptionKeepsActionableInvalidParams()
+    [DataRow("argument")]
+    [DataRow("json")]
+    public void TranslateException_HandlerExceptionTypesAreSanitized(string exceptionKind)
     {
+        var sink = new CapturingSink();
+        Exception exception = exceptionKind == "argument"
+            ? new ArgumentException(_secretSentinel, "target")
+            : new JsonException(_secretSentinel);
         var translated = GetPromptErrorFilter.TranslateException(
-            new ArgumentException("Missing required parameter 'target'.", "target"),
+            exception,
             "throwing_prompt",
-            reporter: null,
+            new ServerObservabilityReporter(sink),
             logger: null);
 
-        Assert.AreEqual(McpErrorCode.InvalidParams, translated.ErrorCode);
-        StringAssert.Contains(translated.Message, "throwing_prompt", StringComparison.Ordinal);
-        StringAssert.Contains(translated.Message, "target", StringComparison.Ordinal);
-    }
-
-    [TestMethod]
-    public void TranslateException_JsonExceptionNeverEchoesRawMessage()
-    {
-        var translated = GetPromptErrorFilter.TranslateException(
-            new JsonException(_secretSentinel),
-            "throwing_prompt",
-            reporter: null,
-            logger: null);
-
-        Assert.AreEqual(McpErrorCode.InvalidParams, translated.ErrorCode);
+        Assert.AreEqual(McpErrorCode.InternalError, translated.ErrorCode);
         Assert.IsFalse(translated.Message.Contains(_secretSentinel, StringComparison.Ordinal));
+        Assert.HasCount(1, sink.Events);
     }
 
     [TestMethod]
@@ -198,32 +278,10 @@ public sealed class PromptCallErrorFilterTests
         Assert.AreEqual(correlationId, sink.Events.Single().Exception.CorrelationId);
     }
 
-    [TestMethod]
-    public void CreateErrorMessage_EmitsCorrelationAndRemediationNeverExceptionMessage()
-    {
-        string correlationId;
-        PromptMessage message;
-
-        using (RequestCorrelationContext.Begin())
-        {
-            correlationId = RequestCorrelationContext.Current!;
-            message = PromptMessageBuilder.CreateErrorMessage(
-                "explain_error",
-                new InvalidOperationException(_secretSentinel, new IOException(_secretSentinel)));
-        }
-
-        var text = Assert.IsInstanceOfType<TextContentBlock>(message.Content).Text;
-        StringAssert.Contains(text, "explain_error", StringComparison.Ordinal);
-        StringAssert.Contains(text, correlationId, StringComparison.Ordinal);
-        StringAssert.Contains(text, "Retry once", StringComparison.Ordinal);
-        Assert.IsFalse(text.Contains(_secretSentinel, StringComparison.Ordinal));
-        Assert.IsFalse(text.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
-        Assert.IsFalse(text.Contains("private/source.cs", StringComparison.Ordinal));
-    }
-
     private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(
         string transportName,
-        CapturingSink sink)
+        CapturingSink sink,
+        string? protocolVersion = null)
     {
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
         builder.Services
@@ -243,7 +301,7 @@ public sealed class PromptCallErrorFilterTests
             clientHandlers: new McpClientHandlers(),
             disposalFailureContext: transportName,
             cancellationToken: CancellationToken.None,
-            protocolVersion: null,
+            protocolVersion: protocolVersion,
             serverOptions: options,
             serverServicesFactory: () => new ServiceCollection()
                 .AddSingleton<IUnexpectedExceptionReporter>(new ServerObservabilityReporter(sink))
@@ -271,9 +329,7 @@ public sealed class PromptCallErrorFilterTests
     }
 
     /// <summary>
-    /// Test-only prompt surface. The production prompt handlers all catch their own exceptions
-    /// (until the <c>prompt-error-catch-retirement-*</c> rows land), so exercising the boundary
-    /// requires prompts whose failures actually reach the filter.
+    /// Test-only prompt surface for deterministic boundary failures.
     /// </summary>
     [McpServerPromptType]
     public sealed class FilterTestPrompts
@@ -285,6 +341,26 @@ public sealed class PromptCallErrorFilterTests
             throw new InvalidOperationException(
                 _secretSentinel,
                 new IOException(_secretSentinel));
+
+        [McpServerPrompt(Name = "argument_throwing_prompt")]
+        [Description("Test prompt whose handler throws a secret-bearing ArgumentException.")]
+        public static IEnumerable<PromptMessage> ArgumentThrowingPrompt(
+            [Description("Required parameter used to distinguish binding from handler failures.")] string target) =>
+            // Deliberately mimic the SDK binder's ParamName. Classification must use the
+            // exception's origin, not attacker-controlled type/message/parameter fields.
+            throw new ArgumentException(_secretSentinel, "arguments");
+
+        [McpServerPrompt(Name = "integer_prompt")]
+        [Description("Test prompt with an integer parameter for SDK JSON binding failures.")]
+        public static IEnumerable<PromptMessage> IntegerPrompt(
+            [Description("Required integer used to exercise SDK JSON conversion.")] int count) =>
+            [PromptMessageBuilder.CreatePromptMessage($"count={count}")];
+
+        [McpServerPrompt(Name = "json_throwing_prompt")]
+        [Description("Test prompt whose handler throws a secret-bearing JsonException.")]
+        public static IEnumerable<PromptMessage> JsonThrowingPrompt(
+            [Description("Required parameter used to reach the handler.")] string target) =>
+            throw new JsonException(_secretSentinel);
 
         [McpServerPrompt(Name = "cancelling_prompt")]
         [Description("Test prompt whose handler surfaces a cooperative cancellation signal.")]

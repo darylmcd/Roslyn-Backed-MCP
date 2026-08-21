@@ -88,21 +88,23 @@ the planning handle as delivery evidence.
 | Schema-tool `structuredContent` plus lossless text projection | Breaking stable-response correction | **Delivered:** `StructuredToolResult`, `StructuredCallContentProjector`, `StructuredCallContentProjectorTests`, and `StructuredContentWireContractTests` | Deserialize `structuredContent` according to the advertised output schema. Do not parse a JSON document from a JSON string. The text channel remains a fallback, not the typed contract. |
 | Synthetic non-object result-shape compatibility | Test-only follow-up | **Tracked:** `protocol-version-result-shape-wire-contract` | No current object-schema migration. This follow-up guards natural modern array/scalar shapes and their legacy envelope translation. |
 | Legacy cache/result-field leakage | Breaking dual-protocol correction | **Delivered:** `RequestProtocolFeatureGate`, `StaticListResultFilter`, `ResourceReadResultFilter`, and `ServerDiscoveryWireTests` | On legacy sessions, treat `resultType`, `ttlMs`, and `cacheScope` as absent. On 2026-07-28, honor the required result discriminator and cache policy. |
-| Resource failures encoded as successful bodies | Breaking stable-behavior correction | **Tracked:** `resource-read-protocol-error-semantics` | Handle `resources/read` failures through JSON-RPC errors. Expect legacy missing-resource `-32002` and modern `InvalidParams` (`-32602`) according to the negotiated protocol. |
+| Resource failures encoded as successful bodies | Breaking stable-behavior correction | **Delivered:** `ResourceReadResultFilter`, `ResourceReadErrorPolicy`, and `ResourceReadWireContractTests` cover workspace and server-catalog resources in both supported protocol eras. | Handle `resources/read` failures through JSON-RPC errors. Expect legacy missing-resource `-32002` and modern `InvalidParams` (`-32602`) according to the negotiated protocol. |
 | Protocol logging bridge and capability retirement | Breaking capability/notification correction | **Delivered:** `RequestCorrelationMessageFilter`, `ServerObservabilityReporter`, `McpLoggingLifecycleWireTests`, and `ServerObservabilitySinkTests` | Stop depending on `logging/setLevel` or `notifications/message` from RoslynMcp. Use client-side diagnostics plus operator-controlled stderr output; opt into secret-safe structured events with `ROSLYNMCP_OBSERVABILITY_SINK=stderr`. |
 | Direct Elicitation replaced by request-scoped MRTR | Breaking interaction correction | **Tracked:** `mcp-mrtr-dispatch-contract`, `workspace-path-mrtr-adoption`, `symbol-choice-mrtr-adoption` | Support input requests and retry with input responses in the request scope. Do not require the server to initiate `elicitation/create` on modern sessions. |
 | Legacy Sampling replaced by request-scoped MRTR input | Breaking interaction correction | **Tracked:** `mcp-sampling-mrtr-migration` | Supply sampling input responses when offered, or accept the documented deterministic fallback. Do not require a nested `sampling/createMessage` request on modern sessions. |
 | Tasks for slow operations | Additive, opt-in extension | **Tracked:** `tasks-extension-slow-ops` | No migration until enabled. Adoption requires the separate Tasks package and a client that negotiates the extension; existing synchronous calls remain valid. |
 | Cohesion, reflection, DI, exception-flow, NuGet, and code-fix completeness fields | Additive stable-response evolution | **Tracked:** `cohesion-scan-completeness-contract`, `reflection-usage-scan-completeness`, `di-registration-scan-completeness`, `exception-flow-scan-completeness`, `nuget-dependency-scan-completeness`, `diagnostic-codefix-enumeration-completeness` | Ignore unknown fields on older clients. New clients must inspect completeness/failure counts before treating totals as exhaustive. |
-| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Partially delivered:** the shared tool boundary plus coverage, scaffolding IO, analyzer load, bulk reference, workspace validation/readiness, composite apply, and FixAll provider failures use `IUnexpectedExceptionReporter` with focused sentinel regressions. Prompt, resource, sampling, cleanup, and newly discovered adjacent surfaces remain tracked. | Stop parsing exception text, exception types, stack traces, supplied values, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. Expected validation/not-found messages are stable guidance, not exception-text mirrors. |
+| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, validation-command execution, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Partially delivered:** the shared tool boundary plus `GetPromptErrorFilter`, retired prompt-handler catches, prompt-shim binding policy, validation/test/build command projection, coverage, scaffolding IO, analyzer load, bulk reference, workspace validation/readiness, composite apply, and FixAll provider failures have focused sentinel regressions. Sampling, cleanup, and newly discovered adjacent surfaces remain tracked. | Stop parsing exception text, exception types, stack traces, supplied values, command arguments, filters, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. Expected validation/not-found messages are stable guidance, not exception-text mirrors. |
 | Workspace lifecycle emits false resource-list changes | Non-breaking behavior correction | **Delivered:** static workspace lifecycle notification calls removed and `WorkspaceResourceListNotificationWireTests` proves byte-equivalent legacy/modern lists with no list-changed frames | Refresh `resources/list` only for an advertised list-change notification; do not rely on workspace load/reload/close to produce one. |
 
 The delivered disclosure slice is owned by `tool-error-envelope-sensitive-detail-disclosure`,
+`prompt-call-error-filter-boundary`, `prompt-error-catch-retirement-core-analysis`,
+`prompt-error-catch-retirement-refactoring-guided`, `prompt-shim-binding-error-detail-redaction`,
+`test-run-execution-dto-argv-path-disclosure`, `resource-read-protocol-error-semantics`,
 `test-coverage-unexpected-error-detail-redaction`, `scaffolding-io-warning-detail-redaction`,
 `analyzer-load-error-detail-redaction`, `bulk-reference-error-detail-redaction`,
 `workspace-validation-error-detail-redaction`, `workspace-readiness-probe-error-redaction`,
 `composite-apply-error-detail-redaction`, and `fixall-provider-error-detail-redaction`.
-`prompt-call-error-filter-boundary`, `resource-read-protocol-error-semantics`,
 `mcp-sampling-mrtr-migration`, `atomic-file-cleanup-error-detail-redaction`, and the bounded
 adjacent-review rows remain tracked; this ADR does not claim those surfaces are implemented.
 
@@ -173,6 +175,13 @@ previously extracted workspace paths, missing keys, invalid values, preview toke
 from `message` must retain that state locally and use `category`, `paramName`, stable remediation, and
 `correlationId` instead. Composite-apply recovery continues to use the exact `appliedFiles` list; its
 failing target is now a stable mutation ordinal rather than an unrestricted path.
+
+Prompt failures now use the JSON-RPC error channel rather than a successful prompt message. Clients
+must handle `prompts/get` errors and must not treat failure text as model input. Validation and build
+execution records retain their established property names, counts, statuses, and diagnostic fields,
+but absolute target/working/results paths and caller-supplied test filters are projected to stable
+public values. Clients must not depend on the prior raw `arguments`, `targetPath`, or
+`workingDirectory` values and should use the surrounding validation result for workflow decisions.
 
 ## Consequences
 

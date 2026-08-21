@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -42,9 +43,9 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 ///   <item><see cref="McpProtocolException"/> (unknown prompt name, SDK-level parameter
 ///         validation) is rethrown untouched, keeping the SDK's <c>InvalidParams</c>
 ///         contract.</item>
-///   <item>Binding-stage <see cref="ArgumentException"/> / <see cref="JsonException"/> failures
-///         are converted to <see cref="McpErrorCode.InvalidParams"/> so parameter mistakes stay
-///         actionable instead of collapsing into <c>InternalError</c>.</item>
+///   <item>SDK-origin <see cref="ArgumentException"/> and <see cref="JsonException"/> binding
+///         failures receive a fixed <see cref="McpErrorCode.InvalidParams"/> response. The same
+///         exception types from handler code use the sanitized unexpected-error path.</item>
 /// </list>
 /// </summary>
 internal static class GetPromptErrorFilter
@@ -101,8 +102,9 @@ internal static class GetPromptErrorFilter
     /// Classifies a non-cancellation, non-protocol exception thrown by prompt binding or a prompt
     /// handler into the protocol exception the boundary throws in its place. Exposed for focused
     /// unit tests; the returned exception never carries the source exception's message, type
-    /// names, inner chain, stack text, or paths except for the binding-validation shapes noted
-    /// on the class.
+    /// names, inner chain, stack text, or paths. SDK versions that already protocol-shape a
+    /// binding failure are passed through by <see cref="Create"/> before this method is called;
+    /// plain SDK binding exceptions are classified below.
     /// </summary>
     internal static McpProtocolException TranslateException(
         Exception exception,
@@ -112,27 +114,13 @@ internal static class GetPromptErrorFilter
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        switch (exception)
+        if (IsSdkParameterBindingFailure(exception))
         {
-            case ArgumentException argumentException:
-                // Binding-stage validation (missing/unknown required parameter). The binder's
-                // message names the parameter, never the supplied value — keep it actionable.
-                logger?.LogWarning(
-                    "Prompt {PromptName} failed parameter validation: {Reason}",
-                    promptName,
-                    argumentException.Message);
-                return new McpProtocolException(
-                    $"Invalid parameters for prompt '{promptName}': {argumentException.Message}",
-                    McpErrorCode.InvalidParams);
-
-            case JsonException:
-                // Argument deserialization failure. JsonException messages can echo payload
-                // fragments, so emit a fixed description instead of the raw message.
-                logger?.LogWarning(
-                    "Prompt {PromptName} failed argument deserialization", promptName);
-                return new McpProtocolException(
-                    $"Invalid parameters for prompt '{promptName}': the supplied arguments could not be deserialized.",
-                    McpErrorCode.InvalidParams);
+            logger?.LogWarning("Prompt {PromptName} failed SDK parameter binding", promptName);
+            return new McpProtocolException(
+                $"Invalid parameters for prompt '{promptName}'. " +
+                "Provide every required argument using the advertised parameter types.",
+                McpErrorCode.InvalidParams);
         }
 
         var details = UnexpectedExceptionReporting.Report(
@@ -146,5 +134,36 @@ internal static class GetPromptErrorFilter
         return new McpProtocolException(
             $"{details.Public.Summary} {details.Public.Remediation} (correlationId: {details.Public.CorrelationId})",
             McpErrorCode.InternalError);
+    }
+
+    /// <summary>
+    /// The pinned SDK performs prompt binding and handler invocation inside one dispatcher and
+    /// uses the same public exception types for both stages. Identify binding by its SDK-owned
+    /// invocation frame instead of by exception type, parameter name, or message; those latter
+    /// values are all controllable by a handler. Wire tests pin both sides of this distinction so
+    /// an SDK implementation change fails closed as <c>InternalError</c> rather than disclosing a
+    /// handler message.
+    /// </summary>
+    private static bool IsSdkParameterBindingFailure(Exception exception)
+    {
+        if (exception is not (ArgumentException or JsonException))
+            return false;
+
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            foreach (var frame in new StackTrace(current, fNeedFileInfo: false).GetFrames())
+            {
+                var declaringType = frame.GetMethod()?.DeclaringType;
+                if (declaringType?.Assembly.GetName().Name == "Microsoft.Extensions.AI.Abstractions" &&
+                    declaringType.FullName?.StartsWith(
+                        "Microsoft.Extensions.AI.AIFunctionFactory+ReflectionAIFunctionDescriptor",
+                        StringComparison.Ordinal) == true)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

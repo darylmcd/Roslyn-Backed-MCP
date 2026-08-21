@@ -92,31 +92,29 @@ public static partial class RoslynPrompts
     public static Task<IEnumerable<PromptMessage>> DiscoverCapabilities(
         [Description("Task category: refactoring, analysis, security, testing, editing, navigation, project-mutation, scaffolding, or all")] string taskCategory)
     {
-        try
-        {
-            var allTools = ServerSurfaceCatalog.Tools;
-            var allPrompts = ServerSurfaceCatalog.Prompts;
+        var allTools = ServerSurfaceCatalog.Tools;
+        var allPrompts = ServerSurfaceCatalog.Prompts;
 
-            var normalizedCategory = taskCategory.Trim().ToLowerInvariant();
-            var filteredTools = normalizedCategory == "all"
-                ? allTools
-                : allTools.Where(t => PromptMessageBuilder.MatchesCategory(t.Category, normalizedCategory)).ToList();
+        var normalizedCategory = taskCategory.Trim().ToLowerInvariant();
+        var filteredTools = normalizedCategory == "all"
+            ? allTools
+            : allTools.Where(t => PromptMessageBuilder.MatchesCategory(t.Category, normalizedCategory)).ToList();
 
-            var toolList = filteredTools.Select(t =>
-                $"- `{t.Name}` [{t.SupportTier}] {(t.Destructive ? "(destructive) " : "")}{(t.ReadOnly ? "(read-only) " : "")}— {t.Summary}").ToArray();
+        var toolList = filteredTools.Select(t =>
+            $"- `{t.Name}` [{t.SupportTier}] {(t.Destructive ? "(destructive) " : "")}{(t.ReadOnly ? "(read-only) " : "")}— {t.Summary}").ToArray();
 
-            var relevantPrompts = normalizedCategory == "all"
-                ? allPrompts
-                : allPrompts.Where(p => PromptMessageBuilder.MatchesPromptCategory(p.Name, normalizedCategory)).ToList();
+        var relevantPrompts = normalizedCategory == "all"
+            ? allPrompts
+            : allPrompts.Where(p => PromptMessageBuilder.MatchesPromptCategory(p.Name, normalizedCategory)).ToList();
 
-            var promptList = relevantPrompts.Select(p =>
-                $"- `{p.Name}` — {p.Summary}").ToArray();
+        var promptList = relevantPrompts.Select(p =>
+            $"- `{p.Name}` — {p.Summary}").ToArray();
 
-            var workflows = PromptMessageBuilder.GetWorkflowsForCategory(normalizedCategory);
+        var workflows = PromptMessageBuilder.GetWorkflowsForCategory(normalizedCategory);
 
-            IEnumerable<PromptMessage> result =
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        IEnumerable<PromptMessage> result =
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Here are the server capabilities relevant to **{taskCategory}**:
 
                     **Tools ({filteredTools.Count}):**
@@ -136,14 +134,9 @@ public static partial class RoslynPrompts
 
                     Use the `server_catalog` resource at `roslyn://server/catalog` for the complete machine-readable inventory.
                     """)
-            ];
+        ];
 
-            return Task.FromResult(result);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return Task.FromResult<IEnumerable<PromptMessage>>([PromptMessageBuilder.CreateErrorMessage("discover_capabilities", ex)]);
-        }
+        return Task.FromResult(result);
     }
 
     [McpServerPrompt(Name = "dead_code_audit")]
@@ -154,27 +147,25 @@ public static partial class RoslynPrompts
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var unused = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
-                workspaceId,
-                new UnusedSymbolsAnalysisOptions
-                {
-                    ProjectFilter = projectName,
-                    IncludePublic = false,
-                    Limit = 50,
-                    ExcludeEnums = false,
-                    ExcludeRecordProperties = false,
-                    ExcludeTestProjects = true,
-                    ExcludeTests = true
-                },
-                ct).ConfigureAwait(false);
-            var unusedSummary = unused.Take(20).Select(u =>
-                $"- `{u.SymbolName}` ({u.SymbolKind}) in {u.FilePath}:{u.Line} — {u.ContainingType ?? "top-level"}").ToArray();
+        var unused = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId,
+            new UnusedSymbolsAnalysisOptions
+            {
+                ProjectFilter = projectName,
+                IncludePublic = false,
+                Limit = 50,
+                ExcludeEnums = false,
+                ExcludeRecordProperties = false,
+                ExcludeTestProjects = true,
+                ExcludeTests = true
+            },
+            ct).ConfigureAwait(false);
+        var unusedSummary = unused.Take(20).Select(u =>
+            $"- `{u.SymbolName}` ({u.SymbolKind}) in {u.FilePath}:{u.Line} — {u.ContainingType ?? "top-level"}").ToArray();
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Perform a dead code audit for this workspace.
 
                     **Project Filter:** {projectName ?? "(entire workspace)"}
@@ -198,12 +189,7 @@ public static partial class RoslynPrompts
                     - Event handlers and interface implementations that appear unused but are wired at runtime
                     - Serialization targets that are only instantiated during deserialization
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("dead_code_audit", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "review_test_coverage")]
@@ -214,24 +200,22 @@ public static partial class RoslynPrompts
         [Description("Optional: specific test project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-            // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously
-            // applied a per-project cap of `200 / project_count` and embedded the resulting
-            // TestDiscoveryDto verbatim, so single-project solutions kept all 200 cases and
-            // pushed the JSON body past 100 KB on large test suites. Flatten the test cases
-            // into a single list, cap at 50 entries (consistent with the SerializeTruncatedList
-            // helper used elsewhere — see guided_extract_interface, analyze_dependencies), and
-            // let the helper emit the `[Showing N of M items]` footer. Callers needing the
-            // full list invoke `test_discover` directly; this section is orientation-only.
-            const int testCaseCap = 50;
-            var allTestCases = discovered.TestProjects.SelectMany(p => p.Tests).ToList();
-            var discoveredJson = PromptMessageBuilder.SerializeTruncatedList(allTestCases, testCaseCap, JsonDefaults.Indented);
+        var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
+        // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously
+        // applied a per-project cap of `200 / project_count` and embedded the resulting
+        // TestDiscoveryDto verbatim, so single-project solutions kept all 200 cases and
+        // pushed the JSON body past 100 KB on large test suites. Flatten the test cases
+        // into a single list, cap at 50 entries (consistent with the SerializeTruncatedList
+        // helper used elsewhere — see guided_extract_interface, analyze_dependencies), and
+        // let the helper emit the `[Showing N of M items]` footer. Callers needing the
+        // full list invoke `test_discover` directly; this section is orientation-only.
+        const int testCaseCap = 50;
+        var allTestCases = discovered.TestProjects.SelectMany(p => p.Tests).ToList();
+        var discoveredJson = PromptMessageBuilder.SerializeTruncatedList(allTestCases, testCaseCap, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Review test coverage for this workspace and identify gaps.
 
                     **Project Filter:** {projectName ?? "(all test projects)"}
@@ -257,12 +241,7 @@ public static partial class RoslynPrompts
 
                     Focus on meaningful coverage that validates behavior, not just line coverage.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("review_test_coverage", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "review_complexity")]
@@ -273,14 +252,12 @@ public static partial class RoslynPrompts
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, filePaths: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
-            var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
+        var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, filePaths: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
+        var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Review code complexity for this workspace and identify refactoring opportunities.
 
                     **Project Filter:** {projectName ?? "(entire workspace)"}
@@ -305,12 +282,7 @@ public static partial class RoslynPrompts
 
                     Prioritize methods that are both high-complexity AND high-reference-count, as these have the most impact on maintainability.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("review_complexity", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "cohesion_analysis")]
@@ -321,15 +293,13 @@ public static partial class RoslynPrompts
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, includeInterfaces: false, excludeTestProjects: true, ct).ConfigureAwait(false);
-            var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
+        var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
+            workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, includeInterfaces: false, excludeTestProjects: true, ct).ConfigureAwait(false);
+        var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Perform an SRP (Single Responsibility Principle) analysis using cohesion metrics.
 
                     **Project Filter:** {projectName ?? "(entire workspace)"}
@@ -358,12 +328,7 @@ public static partial class RoslynPrompts
 
                     Focus on types with the highest LCOM4 scores first — these have the most independent responsibilities.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("cohesion_analysis", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "consumer_impact")]
@@ -376,17 +341,15 @@ public static partial class RoslynPrompts
         [Description("1-based column number")] int column,
         CancellationToken ct = default)
     {
-        try
-        {
-            var locator = Core.Models.SymbolLocator.BySource(filePath, line, column);
-            var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, ct).ConfigureAwait(false);
-            if (result is null) return [PromptMessageBuilder.CreatePromptMessage("No symbol found at the specified location.")];
+        var locator = Core.Models.SymbolLocator.BySource(filePath, line, column);
+        var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, ct).ConfigureAwait(false);
+        if (result is null) return [PromptMessageBuilder.CreatePromptMessage("No symbol found at the specified location.")];
 
-            var resultJson = PromptMessageBuilder.SerializeTruncatedList(result.Consumers, 50, JsonDefaults.Indented);
+        var resultJson = PromptMessageBuilder.SerializeTruncatedList(result.Consumers, 50, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Analyze the consumer/dependency graph for this type and assess refactoring impact.
 
                     **Consumer Analysis Results:**
@@ -409,11 +372,6 @@ public static partial class RoslynPrompts
 
                     **Risk assessment:** Types with many Constructor + Field consumers are the hardest to refactor safely.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("consumer_impact", ex)];
-        }
+        ];
     }
 }

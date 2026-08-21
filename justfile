@@ -80,8 +80,13 @@ clean:
     dotnet clean {{ solution }} --nologo
 
 # Clean build outputs and artifacts directory
+[unix]
 clean-all: clean
     rm -rf artifacts
+
+[windows]
+clean-all: clean
+    if (Test-Path -LiteralPath artifacts) { Remove-Item -LiteralPath artifacts -Recurse -Force }
 
 # --- Packaging ---
 

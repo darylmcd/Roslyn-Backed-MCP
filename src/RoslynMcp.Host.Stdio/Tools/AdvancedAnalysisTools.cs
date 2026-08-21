@@ -183,9 +183,9 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(0, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(0, limit);
             var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
             return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
         }, ct);

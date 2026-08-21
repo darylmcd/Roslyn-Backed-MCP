@@ -138,10 +138,6 @@ public static partial class RoslynPrompts
             return [PromptMessageBuilder.CreatePromptMessage(
                 "refactor_and_validate: aborted because the analysis exceeded 20 s. Re-run on a narrower selection or warm the workspace first via project_diagnostics(severityFilter=\"Warning\").")];
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("refactor_and_validate", ex)];
-        }
     }
 
     [McpServerPrompt(Name = "fix_all_diagnostics")]
@@ -153,21 +149,19 @@ public static partial class RoslynPrompts
         [Description("Optional: severity filter such as error, warning, or info")] string? severityFilter = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, null, severityFilter, null, ct).ConfigureAwait(false);
-            var groupedDiagnostics = diagnostics.CompilerDiagnostics
-                .Concat(diagnostics.AnalyzerDiagnostics)
-                .GroupBy(diagnostic => diagnostic.Id, StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(group => group.Count())
-                .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
-                .Take(12)
-                .Select(group => $"- {group.Key}: {group.Count()} occurrence(s)")
-                .ToArray();
+        var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, null, severityFilter, null, ct).ConfigureAwait(false);
+        var groupedDiagnostics = diagnostics.CompilerDiagnostics
+            .Concat(diagnostics.AnalyzerDiagnostics)
+            .GroupBy(diagnostic => diagnostic.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .Select(group => $"- {group.Key}: {group.Count()} occurrence(s)")
+            .ToArray();
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Clean up diagnostics in this workspace using a preview-first loop.
 
                     **Project Filter:** {projectName ?? "(entire workspace)"}
@@ -186,12 +180,7 @@ public static partial class RoslynPrompts
 
                     Keep changes batched by diagnostic ID so validation remains attributable.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("fix_all_diagnostics", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "guided_package_migration")]
@@ -204,17 +193,15 @@ public static partial class RoslynPrompts
         [Description("Replacement package version")] string newVersion,
         CancellationToken ct = default)
     {
-        try
-        {
-            var dependencyResult = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
-            var matchingProjects = dependencyResult.Projects
-                .Where(project => project.PackageReferences.Any(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)))
-                .Select(project => $"- {project.ProjectName}: {string.Join(", ", project.PackageReferences.Where(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)).Select(reference => reference.Version))}")
-                .ToArray();
+        var dependencyResult = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+        var matchingProjects = dependencyResult.Projects
+            .Where(project => project.PackageReferences.Any(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)))
+            .Select(project => $"- {project.ProjectName}: {string.Join(", ", project.PackageReferences.Where(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)).Select(reference => reference.Version))}")
+            .ToArray();
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Migrate this solution from `{oldPackageId}` to `{newPackageId}` version `{newVersion}` using preview/apply tools.
 
                     **Projects Currently Using {oldPackageId}:**
@@ -230,12 +217,7 @@ public static partial class RoslynPrompts
 
                     Prefer migrating all project references first, then fixing source-level API fallout in a second pass.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("guided_package_migration", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "guided_extract_interface")]
@@ -249,28 +231,26 @@ public static partial class RoslynPrompts
         [Description("Optional: target project for the extracted interface")] string? targetProjectName = null,
         CancellationToken ct = default)
     {
-        try
+        var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        if (sourceText is null)
         {
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            if (sourceText is null)
-            {
-                return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
-            }
+            return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
+        }
 
-            var documentSymbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            var projectGraph = workspace.GetProjectGraph(workspaceId);
+        var documentSymbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        var projectGraph = workspace.GetProjectGraph(workspaceId);
 
-            // guided-extract-interface-prompt-payload-cap (gh #776): both lists were
-            // previously serialized in full, scaling linearly with workspace size and
-            // overflowing the MCP inline payload cap on 9+ project workspaces. Cap
-            // document symbols at 50 and project-graph nodes at 20 (mirrors
-            // analyze_dependencies's existing 50-cap on graph.Projects).
-            var documentSymbolsJson = PromptMessageBuilder.SerializeTruncatedList(documentSymbols, 50, JsonDefaults.Indented);
-            var projectGraphJson = PromptMessageBuilder.SerializeTruncatedList(projectGraph.Projects, 20, JsonDefaults.Indented);
+        // guided-extract-interface-prompt-payload-cap (gh #776): both lists were
+        // previously serialized in full, scaling linearly with workspace size and
+        // overflowing the MCP inline payload cap on 9+ project workspaces. Cap
+        // document symbols at 50 and project-graph nodes at 20 (mirrors
+        // analyze_dependencies's existing 50-cap on graph.Projects).
+        var documentSymbolsJson = PromptMessageBuilder.SerializeTruncatedList(documentSymbols, 50, JsonDefaults.Indented);
+        var projectGraphJson = PromptMessageBuilder.SerializeTruncatedList(projectGraph.Projects, 20, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Extract an interface from `{typeName}` and update downstream consumers using preview-first operations.
 
                     **File:** {filePath}
@@ -297,12 +277,7 @@ public static partial class RoslynPrompts
 
                     Prefer preserving the concrete type while introducing the interface incrementally unless a broader dependency inversion is explicitly required.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("guided_extract_interface", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "refactor_loop")]
@@ -353,4 +328,3 @@ public static partial class RoslynPrompts
         ];
     }
 }
-

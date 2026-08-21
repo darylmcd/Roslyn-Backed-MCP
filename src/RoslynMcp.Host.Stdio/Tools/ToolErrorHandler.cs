@@ -483,6 +483,11 @@ internal static class ToolErrorHandler
         var parameter = exception.ParamName ?? "<unknown>";
         var rawMessage = exception.Message;
 
+        if (exception is PromptParameterBindingException promptBinding)
+        {
+            return promptBinding.PublicMessage;
+        }
+
         if (string.Equals(exception.ParamName, "parametersJson", StringComparison.Ordinal))
         {
             return "Parameter 'parametersJson' must be a JSON object whose properties match the prompt schema. " +
