@@ -23,17 +23,15 @@ public static partial class RoslynPrompts
         [Description("Name for the new method")] string methodName,
         CancellationToken ct = default)
     {
-        try
-        {
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            if (sourceText is null)
-                return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
+        var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        if (sourceText is null)
+            return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
 
-            var context = PromptMessageBuilder.FormatSourceContext(sourceText, startLine, endLine);
+        var context = PromptMessageBuilder.FormatSourceContext(sourceText, startLine, endLine);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Extract the selected statements into a new method named `{methodName}` using the Roslyn MCP extract-method workflow.
 
                     **File:** {filePath}
@@ -54,12 +52,7 @@ public static partial class RoslynPrompts
 
                     Complete one extraction and verify compilation before starting another refactoring.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("guided_extract_method", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "msbuild_inspection")]
@@ -125,4 +118,3 @@ public static partial class RoslynPrompts
         return Task.FromResult(result);
     }
 }
-

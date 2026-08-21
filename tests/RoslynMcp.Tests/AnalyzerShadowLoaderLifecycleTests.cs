@@ -1,9 +1,9 @@
 using System.Reflection;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
-using RoslynMcp.Analyzers.ServerSurfaceCatalog;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Helpers;
@@ -31,6 +31,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class AnalyzerShadowLoaderLifecycleTests
 {
+    private const string FixtureAnalyzerAssemblyName = "LifecycleFixtureAnalyzer";
     private static readonly TimeSpan ReclamationTimeout = TimeSpan.FromSeconds(30);
 
     private static string ShadowSharedParent =>
@@ -83,12 +84,12 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         }
 
         // The fixture is deliberately SELF-CONTAINED: an isolated copy of the sample solution
-        // plus an <Analyzer/> item pointing at the analyzer assembly the TEST HOST already
-        // loaded. Depending on this repo's own build graph instead (Host.Stdio's
-        // OutputItemType="Analyzer" ProjectReference) made the fixture environment-sensitive —
-        // the analyzer's TargetPath is configuration-dependent, and
-        // AnalyzerReferenceIsolation skips any reference whose file is missing, so on a clean
-        // machine the setup collapsed before any lifetime behavior was exercised.
+        // plus an <Analyzer/> item pointing at a runtime-emitted analyzer assembly. Using a
+        // production analyzer from the test output makes the fixture environment-sensitive:
+        // Coverlet rewrites that assembly and its injected tracker pins the collectible load
+        // context, so coverage runs test the collector's lifetime instead of ours. Emitting a
+        // minimal external analyzer preserves production-analyzer coverage while isolating the
+        // ownership contract this test exercises.
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
             repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
@@ -148,20 +149,49 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     /// <summary>
     /// Makes the analyzer's presence a GUARANTEED precondition rather than an assumption:
     /// the copied <c>SampleLib</c> project gets an explicit <c>&lt;Analyzer/&gt;</c> item
-    /// pointing at <see cref="ServerSurfaceCatalogAnalyzer"/>'s own assembly — the file the
-    /// running test host loaded this very type from, so it exists on any machine that can run
-    /// this test at all (the tests project carries a plain ProjectReference to the analyzer,
-    /// so MSBuild copies it next to the test assembly in every configuration). No build-graph
-    /// probing, no configuration guessing, no dependence on prior build output.
+    /// pointing at a minimal analyzer emitted into the copied fixture itself. The emitted file
+    /// is independent of build configuration and is not rewritten by Coverlet before the test
+    /// starts, so collectible-context reclamation has no instrumentation-owned roots.
     /// </summary>
     /// <returns>The absolute path of the analyzer assembly wired into the fixture.</returns>
     private static string InjectFixtureAnalyzer(string copiedRoot)
     {
-        var analyzerAssemblyPath = typeof(ServerSurfaceCatalogAnalyzer).Assembly.Location;
-        Assert.IsFalse(string.IsNullOrEmpty(analyzerAssemblyPath),
-            "Fixture precondition: the analyzer assembly must be path-loaded so it can be wired into the sample project.");
-        Assert.IsTrue(File.Exists(analyzerAssemblyPath),
-            $"Fixture precondition: analyzer assembly '{analyzerAssemblyPath}' must exist on disk.");
+        const string analyzerSource = """
+            using System.Collections.Immutable;
+            using Microsoft.CodeAnalysis;
+            using Microsoft.CodeAnalysis.Diagnostics;
+
+            [DiagnosticAnalyzer(LanguageNames.CSharp)]
+            public sealed class LifecycleFixtureAnalyzer : DiagnosticAnalyzer
+            {
+                public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+                    ImmutableArray<DiagnosticDescriptor>.Empty;
+
+                public override void Initialize(AnalysisContext context)
+                {
+                }
+            }
+            """;
+
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var compilation = CSharpCompilation.Create(
+            FixtureAnalyzerAssemblyName,
+            [CSharpSyntaxTree.ParseText(analyzerSource)],
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(Path.Combine(runtimeDirectory, "System.Runtime.dll")),
+                MetadataReference.CreateFromFile(typeof(System.Collections.Immutable.ImmutableArray<>).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(DiagnosticAnalyzer).Assembly.Location),
+            ],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var analyzerAssemblyPath = Path.Combine(copiedRoot, $"{FixtureAnalyzerAssemblyName}.dll");
+        using (var stream = File.Create(analyzerAssemblyPath))
+        {
+            var emit = compilation.Emit(stream);
+            Assert.IsTrue(emit.Success,
+                $"Fixture analyzer compilation must succeed. Diagnostics: {string.Join("; ", emit.Diagnostics)}");
+        }
 
         var projectPath = Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj");
         Assert.IsTrue(File.Exists(projectPath),
@@ -199,7 +229,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             $"Fixture precondition failed (this is NOT a reclamation failure): the loaded SampleLib project must carry the injected analyzer reference '{analyzerFileName}'. Analyzer references seen: [{string.Join(", ", fixtureProject.AnalyzerReferences.Select(reference => reference.Display ?? reference.Id.ToString()))}].");
 
         var analyzer = analyzerReference.GetAnalyzers(fixtureProject.Language)
-            .FirstOrDefault(candidate => candidate.GetType().Name == nameof(ServerSurfaceCatalogAnalyzer));
+            .FirstOrDefault(candidate => candidate.GetType().Name == FixtureAnalyzerAssemblyName);
         Assert.IsNotNull(analyzer, "Expected the shadow-copy loader to preserve analyzer discovery.");
         Assert.IsFalse(string.IsNullOrEmpty(analyzer.GetType().Assembly.Location),
             "Shadow-copied analyzers must keep an on-disk Assembly.Location (collectible ALC must not imply stream loading).");

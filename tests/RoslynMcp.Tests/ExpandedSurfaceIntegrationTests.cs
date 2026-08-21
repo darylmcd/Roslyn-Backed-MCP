@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
@@ -371,18 +372,65 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task GetComplexityMetrics_NegativeLimit_Throws()
+    public async Task GetComplexityMetrics_InvalidLimit_WithUnknownWorkspace_ThrowsBeforeDispatch()
     {
-        await Assert.ThrowsExactlyAsync<ArgumentException>(() => AdvancedAnalysisTools.GetComplexityMetrics(
-            WorkspaceExecutionGate,
-            CodeMetricsService,
-            WorkspaceId,
+        var gate = new RecordingWorkspaceExecutionGate();
+        var service = new RecordingCodeMetricsService();
+
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() => AdvancedAnalysisTools.GetComplexityMetrics(
+            gate,
+            service,
+            workspaceId: "missing-workspace",
             filePath: null,
             filePaths: null,
             projectName: "SampleLib",
             minComplexity: 1,
             limit: -5,
             ct: CancellationToken.None));
+
+        StringAssert.Contains(exception.Message, "Invalid limit '-5'");
+        Assert.AreEqual(0, gate.ReadCallCount, "Invalid pagination must fail before workspace dispatch.");
+        Assert.AreEqual(0, service.CallCount, "Invalid pagination must fail before metrics collection.");
+    }
+
+    [TestMethod]
+    public async Task GetComplexityMetrics_ValidLimit_DispatchesAndReturnsMetrics()
+    {
+        var gate = new RecordingWorkspaceExecutionGate();
+        var service = new RecordingCodeMetricsService(
+            new ComplexityMetricsDto(
+                SymbolName: "Sample.Type.Method",
+                SymbolKind: "Method",
+                FilePath: "sample.cs",
+                Line: 10,
+                CyclomaticComplexity: 3,
+                LinesOfCode: 12,
+                MaxNestingDepth: 2,
+                ParameterCount: 1,
+                ContainingType: "Sample.Type",
+                MaintainabilityIndex: 88.5));
+
+        var json = await AdvancedAnalysisTools.GetComplexityMetrics(
+            gate,
+            service,
+            workspaceId: "workspace-valid",
+            filePath: null,
+            filePaths: null,
+            projectName: "SampleLib",
+            minComplexity: 1,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        Assert.AreEqual(1, gate.ReadCallCount);
+        Assert.AreEqual(1, service.CallCount);
+        Assert.AreEqual("workspace-valid", service.LastWorkspaceId);
+        Assert.AreEqual(1, service.LastLimit);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual(1, document.RootElement.GetProperty("count").GetInt32());
+        Assert.AreEqual(
+            "Sample.Type.Method",
+            document.RootElement.GetProperty("metrics")[0].GetProperty("symbolName").GetString());
     }
 
     [TestMethod]
@@ -993,6 +1041,56 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken ct,
             bool skipSyntaxCheck = false) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class RecordingWorkspaceExecutionGate : IWorkspaceExecutionGate
+    {
+        public int ReadCallCount { get; private set; }
+
+        public async Task<T> RunReadAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct)
+        {
+            ReadCallCount++;
+            return await action(ct).ConfigureAwait(false);
+        }
+
+        public Task<T> RunWriteAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct,
+            bool applyStalenessPolicy = true) =>
+            throw new NotSupportedException();
+
+        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public void RemoveGate(string workspaceId) => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingCodeMetricsService(params ComplexityMetricsDto[] results) : ICodeMetricsService
+    {
+        public int CallCount { get; private set; }
+
+        public string? LastWorkspaceId { get; private set; }
+
+        public int? LastLimit { get; private set; }
+
+        public Task<IReadOnlyList<ComplexityMetricsDto>> GetComplexityMetricsAsync(
+            string workspaceId,
+            string? filePath,
+            IReadOnlyList<string>? filePaths,
+            string? projectFilter,
+            int? minComplexity,
+            int limit,
+            CancellationToken ct)
+        {
+            CallCount++;
+            LastWorkspaceId = workspaceId;
+            LastLimit = limit;
+            return Task.FromResult<IReadOnlyList<ComplexityMetricsDto>>(results);
+        }
     }
 
     private static string FindDocumentPath(string name) => FindDocumentPath(WorkspaceId, name);

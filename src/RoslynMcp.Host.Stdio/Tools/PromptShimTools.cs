@@ -12,6 +12,21 @@ using RoslynMcp.Host.Stdio.Prompts;
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
+/// Carries an explicitly constructed, value-free prompt binding correction through the shared
+/// tool error boundary. Only this type is allowed to publish its message verbatim.
+/// </summary>
+internal sealed class PromptParameterBindingException : ArgumentException
+{
+    public PromptParameterBindingException(string publicMessage, Exception innerException)
+        : base(publicMessage, "parametersJson", innerException)
+    {
+        PublicMessage = publicMessage;
+    }
+
+    internal string PublicMessage { get; }
+}
+
+/// <summary>
 /// Item 4 (v1.18, <c>prompt-tools-exposable-to-agents</c>): generic dispatcher that exposes
 /// every <see cref="McpServerPromptAttribute"/>-registered prompt as a <c>call_mcp_tool</c>-invocable
 /// tool. Some MCP clients (Cursor, Claude Code in some configurations) cannot invoke prompts via
@@ -21,7 +36,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class PromptShimTools
 {
-    private static readonly Lazy<FrozenDictionary<string, PromptMethodRegistration>> PromptMethodIndex =
+    private static readonly Lazy<FrozenDictionary<string, PromptMethodRegistration>> _promptMethodIndex =
         new(BuildPromptMethodIndex, LazyThreadSafetyMode.ExecutionAndPublication);
     private static int _promptIndexBuildCount;
 
@@ -87,13 +102,13 @@ public static class PromptShimTools
     internal static (MethodInfo? Method, McpServerPromptAttribute? Attribute) ResolvePromptMethod(
         string promptName)
     {
-        return PromptMethodIndex.Value.TryGetValue(promptName, out var registration)
+        return _promptMethodIndex.Value.TryGetValue(promptName, out var registration)
             ? (registration.Method, registration.Attribute)
             : (null, null);
     }
 
     private static IEnumerable<string> EnumeratePromptNames() =>
-        PromptMethodIndex.Value.Keys.OrderBy(static name => name, StringComparer.Ordinal);
+        _promptMethodIndex.Value.Keys.OrderBy(static name => name, StringComparer.Ordinal);
 
     private static FrozenDictionary<string, PromptMethodRegistration> BuildPromptMethodIndex()
     {
@@ -140,13 +155,10 @@ public static class PromptShimTools
         return values;
     }
 
-    // dr-9-7-bug-json-parse-surfaces-stack-trace: a raw JsonException bubbling out of the binder
-    // lands in ToolErrorHandler.ClassifyError without the InvocationWrapper guard, so it falls
-    // through to "InternalError" and the client sees a stack trace. Wrap the top-level parse (and
-    // each per-parameter deserialize, in DeserializeParameterValue) and re-throw as
-    // ArgumentException — that maps to "InvalidArgument" via the exact-type handler dictionary and
-    // the message tells the agent exactly which parameter broke. Callers own disposal of the
-    // returned JsonDocument on the success path; the non-object branch disposes before throwing.
+    // Convert parser diagnostics into an explicitly safe binding exception. The shared tool error
+    // boundary publishes only PromptParameterBindingException.PublicMessage; the JsonException
+    // remains available as the inner exception for server-side diagnostics. Callers own disposal
+    // of the returned JsonDocument on success; the non-object branch disposes before throwing.
     private static JsonDocument ParseParametersDocument(string parametersJson)
     {
         JsonDocument doc;
@@ -156,9 +168,9 @@ public static class PromptShimTools
         }
         catch (JsonException ex)
         {
-            throw new ArgumentException(
-                $"parametersJson is not valid JSON: {ex.Message}. Supply a JSON object (e.g. {{\"workspaceId\":\"…\"}}); use \"{{}}\" to omit all parameters.",
-                "parametersJson",
+            throw new PromptParameterBindingException(
+                "parametersJson must contain a valid JSON object. " +
+                "Example: {\"workspaceId\":\"workspace-1\"}; use \"{}\" to omit all parameters.",
                 ex);
         }
 
@@ -214,11 +226,40 @@ public static class PromptShimTools
         }
         catch (JsonException ex)
         {
-            throw new ArgumentException(
-                $"parametersJson property '{p.Name}' could not be deserialized into {p.ParameterType.Name}: {ex.Message}.",
-                "parametersJson",
+            throw new PromptParameterBindingException(
+                $"parametersJson property '{p.Name}' must be compatible with " +
+                $"{GetExpectedJsonType(p.ParameterType)}. " +
+                $"Example: {{\"{p.Name}\":{GetExpectedJsonValue(p.ParameterType)}}}.",
                 ex);
         }
+    }
+
+    private static string GetExpectedJsonType(Type parameterType)
+    {
+        var effectiveType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        if (effectiveType == typeof(string) || effectiveType == typeof(char) || effectiveType.IsEnum)
+            return $"a JSON string ({effectiveType.Name})";
+        if (effectiveType == typeof(bool))
+            return "a JSON boolean (Boolean)";
+        if (effectiveType.IsPrimitive || effectiveType == typeof(decimal))
+            return $"a JSON number ({effectiveType.Name})";
+        if (effectiveType.IsArray || typeof(System.Collections.IEnumerable).IsAssignableFrom(effectiveType))
+            return $"a JSON array ({effectiveType.Name})";
+        return $"a JSON object ({effectiveType.Name})";
+    }
+
+    private static string GetExpectedJsonValue(Type parameterType)
+    {
+        var effectiveType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        if (effectiveType == typeof(string) || effectiveType == typeof(char) || effectiveType.IsEnum)
+            return "\"value\"";
+        if (effectiveType == typeof(bool))
+            return "true";
+        if (effectiveType.IsPrimitive || effectiveType == typeof(decimal))
+            return "1";
+        if (effectiveType.IsArray || typeof(System.Collections.IEnumerable).IsAssignableFrom(effectiveType))
+            return "[]";
+        return "{}";
     }
 
     private static bool IsServiceType(Type t) =>

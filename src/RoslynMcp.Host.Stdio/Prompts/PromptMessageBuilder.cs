@@ -3,7 +3,6 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Host.Stdio.Diagnostics;
 
 namespace RoslynMcp.Host.Stdio.Prompts;
 
@@ -34,32 +33,6 @@ internal static class PromptMessageBuilder
             Role = Role.User,
             Content = new TextContentBlock { Text = text }
         };
-
-    /// <summary>
-    /// Sanitized failure message for the legacy per-handler catch sites. The raw exception is
-    /// projected through <see cref="PublicExceptionDetailPolicy.ProjectUnexpected"/> so the
-    /// client sees only the fixed remediation text plus a correlation id — never
-    /// <c>ex.Message</c>, which can carry connection strings, tokens, or local paths from inner
-    /// exceptions. The catches themselves are slated for retirement (rows
-    /// <c>prompt-error-catch-retirement-*</c>) in favor of the <c>GetPromptErrorFilter</c>
-    /// boundary; this builder goes with them.
-    /// </summary>
-    internal static PromptMessage CreateErrorMessage(string promptName, Exception ex)
-    {
-        var details = PublicExceptionDetailPolicy.ProjectUnexpected(
-            ex,
-            RequestCorrelationContext.Current);
-        return new()
-        {
-            Role = Role.User,
-            Content = new TextContentBlock
-            {
-                Text = $"The `{promptName}` prompt failed to gather context. {details.Public.Summary} " +
-                    $"Please verify the workspace is loaded and the parameters are correct, then try again. " +
-                    $"{details.Public.Remediation} (correlationId: {details.Public.CorrelationId})"
-            }
-        };
-    }
 
     internal static string FormatSourceContext(string sourceText, int startLine, int? endLine)
     {

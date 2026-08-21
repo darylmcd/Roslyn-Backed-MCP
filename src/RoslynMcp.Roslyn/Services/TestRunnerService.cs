@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -16,12 +16,12 @@ public sealed partial class TestRunnerService : ITestRunnerService
     [GeneratedRegex(@"MSB(3027|3021)", RegexOptions.Compiled)]
     private static partial Regex FileLockFastFailRegex();
 
-    private static readonly bool FastFailFileLockEnabled = !string.Equals(
+    private static readonly bool _fastFailFileLockEnabled = !string.Equals(
         Environment.GetEnvironmentVariable("ROSLYNMCP_FAST_FAIL_FILE_LOCK"),
         "false",
         StringComparison.OrdinalIgnoreCase);
 
-    private static IReadOnlyList<EarlyKillPattern>? FastFailPatterns { get; } = FastFailFileLockEnabled
+    private static IReadOnlyList<EarlyKillPattern>? FastFailPatterns { get; } = _fastFailFileLockEnabled
         ? [new EarlyKillPattern(FileLockFastFailRegex(), "MSBuild file lock (MSB3027/MSB3021)")]
         : null;
 
@@ -47,7 +47,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
     {
-        _logger.LogDebug("TestRunnerService.RunTestsAsync: workspaceId={WorkspaceId} projectName={ProjectName} filter={Filter}", workspaceId, projectName, filter);
+        _logger.LogDebug(
+            "TestRunnerService.RunTestsAsync: workspaceId={WorkspaceId} projectName={ProjectName} hasFilter={HasFilter}",
+            workspaceId,
+            projectName,
+            !string.IsNullOrWhiteSpace(filter));
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
 
         if (projectName is not null)

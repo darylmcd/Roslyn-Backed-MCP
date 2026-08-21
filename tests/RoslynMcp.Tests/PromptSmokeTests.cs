@@ -1,16 +1,12 @@
 using System.Reflection;
-using System.Text.Json;
 using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Prompts;
-using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
-using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -151,111 +147,61 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
     }
 
-    // dr-9-7-bug-json-parse-surfaces-stack-trace: malformed parametersJson used to leak a
-    // JsonException stack trace as "InternalError"; the wrapped tool now re-throws as
-    // ArgumentException which ToolErrorHandler maps to "InvalidArgument".
     [TestMethod]
-    public async Task GetPromptText_MalformedJson_ReturnsStructuredInvalidArgument()
+    [DataRow("core")]
+    [DataRow("analysis")]
+    [DataRow("refactoring")]
+    [DataRow("guided")]
+    public async Task ContextGatheringFailure_PropagatesInsteadOfBecomingPromptContent(string handlerGroup)
     {
-        using var services = new ServiceCollection().BuildServiceProvider();
+        var missingWorkspaceId = $"missing-workspace-{Guid.NewGuid():N}";
+        var path = FindDocumentPath("AnimalService.cs");
+        Func<Task<IEnumerable<PromptMessage>>> invoke = handlerGroup switch
+        {
+            "core" => () => RoslynPrompts.SuggestRefactoring(
+                WorkspaceManager,
+                SymbolSearchService,
+                missingWorkspaceId,
+                path,
+                startLine: null,
+                endLine: null,
+                CancellationToken.None),
+            "analysis" => () => RoslynPrompts.DeadCodeAudit(
+                UnusedCodeAnalyzer,
+                missingWorkspaceId,
+                projectName: null,
+                CancellationToken.None),
+            "refactoring" => () => RoslynPrompts.FixAllDiagnostics(
+                DiagnosticService,
+                missingWorkspaceId,
+                projectName: null,
+                severityFilter: null,
+                CancellationToken.None),
+            "guided" => () => RoslynPrompts.GuidedExtractMethod(
+                WorkspaceManager,
+                missingWorkspaceId,
+                path,
+                startLine: 1,
+                startColumn: 1,
+                endLine: 1,
+                endColumn: 2,
+                methodName: "Extracted",
+                CancellationToken.None),
+            _ => throw new AssertFailedException($"Unknown handler group '{handlerGroup}'."),
+        };
 
-        var json = await ToolExecutionTestHarness.RunAsync(
-            "get_prompt_text",
-            () => PromptShimTools.GetPromptText(
-                services,
-                promptName: "discover_capabilities",
-                parametersJson: "{not valid json",
-                CancellationToken.None));
+        Exception? observed = null;
+        try
+        {
+            _ = await invoke();
+        }
+        catch (Exception ex)
+        {
+            observed = ex;
+        }
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        Assert.AreEqual("get_prompt_text", doc.RootElement.GetProperty("tool").GetString());
-
-        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        StringAssert.Contains(message, "parametersJson",
-            "Error message should name the offending parameter.");
-        StringAssert.Contains(message, "JSON object");
-        Assert.IsFalse(message.Contains("{not valid json", StringComparison.Ordinal));
-        Assert.IsFalse(message.Contains(" at System."),
-            "Envelope message must not contain raw .NET stack-trace frames.");
-    }
-
-    [TestMethod]
-    public async Task GetPromptText_NonObjectJson_ReturnsStructuredInvalidArgument()
-    {
-        using var services = new ServiceCollection().BuildServiceProvider();
-
-        var json = await ToolExecutionTestHarness.RunAsync(
-            "get_prompt_text",
-            () => PromptShimTools.GetPromptText(
-                services,
-                promptName: "discover_capabilities",
-                parametersJson: "[1, 2, 3]",
-                CancellationToken.None));
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
-            "must be a JSON object");
-    }
-
-    [TestMethod]
-    public async Task GetPromptText_ParameterTypeMismatch_ReturnsStructuredInvalidArgument()
-    {
-        using var services = new ServiceCollection().BuildServiceProvider();
-
-        // discover_capabilities takes a string parameter "taskCategory"; passing an integer forces
-        // the per-parameter JsonException path at the JsonSerializer.Deserialize call.
-        var json = await ToolExecutionTestHarness.RunAsync(
-            "get_prompt_text",
-            () => PromptShimTools.GetPromptText(
-                services,
-                promptName: "discover_capabilities",
-                parametersJson: "{\"taskCategory\": 123}",
-                CancellationToken.None));
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        StringAssert.Contains(message, "advertised types");
-        Assert.IsFalse(message.Contains("123", StringComparison.Ordinal));
-    }
-
-    [TestMethod]
-    public async Task GetPromptText_MissingRequiredParameters_ReturnsAllMissingNames()
-    {
-        using var services = new ServiceCollection()
-            .AddSingleton<IDiagnosticService>(DiagnosticService)
-            .AddSingleton<IWorkspaceManager>(WorkspaceManager)
-            .BuildServiceProvider();
-
-        var json = await ToolExecutionTestHarness.RunAsync(
-            "get_prompt_text",
-            () => PromptShimTools.GetPromptText(
-                services,
-                promptName: "explain_error",
-                parametersJson: "{}",
-                CancellationToken.None));
-
-        using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
-            $"Expected structured error envelope. Actual: {json}");
-        Assert.IsTrue(errorProp.GetBoolean());
-        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
-
-        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
-        StringAssert.Contains(message, "required prompt parameter");
-        Assert.IsFalse(message.Contains("workspaceId", StringComparison.Ordinal));
-        Assert.IsFalse(message.Contains("diagnosticId", StringComparison.Ordinal));
+        Assert.IsNotNull(observed, $"{handlerGroup} failures must reach the shared prompt boundary.");
+        Assert.IsNotInstanceOfType<OperationCanceledException>(observed);
     }
 
     // file-lock-aware-prompt-validation-guidance + get-prompt-text-side-effects-in-rendering:

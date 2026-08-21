@@ -1,13 +1,13 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
@@ -309,18 +309,18 @@ public sealed class TestRunFailureEnvelopeTests
             Assert.AreEqual(1, result.Failures.Count);
             var failure = result.Failures[0];
 
-            Assert.AreEqual(500 + TruncationMarker.Length, failure.Message.Length,
+            Assert.AreEqual(500 + _truncationMarker.Length, failure.Message.Length,
                 "A 5000+ char failure message must be head-truncated to exactly 500 chars + the marker.");
             StringAssert.StartsWith(failure.Message, "Assert.Equal() Failure: expected [A] but got [B].",
                 "Truncation must keep the HEAD (the assertion text), not the tail.");
-            StringAssert.EndsWith(failure.Message, TruncationMarker);
+            StringAssert.EndsWith(failure.Message, _truncationMarker);
 
             Assert.IsNotNull(failure.StackTrace);
-            Assert.AreEqual(1500 + TruncationMarker.Length, failure.StackTrace!.Length,
+            Assert.AreEqual(1500 + _truncationMarker.Length, failure.StackTrace!.Length,
                 "A 5000+ char stack trace must be head-truncated to exactly 1500 chars + the marker.");
             StringAssert.StartsWith(failure.StackTrace, "   at RoslynMcp.Tests.SomeFixture.TestMethod() line 1",
                 "Truncation must keep the HEAD (the throw-site frame), not the tail.");
-            StringAssert.EndsWith(failure.StackTrace, TruncationMarker);
+            StringAssert.EndsWith(failure.StackTrace, _truncationMarker);
         }
         finally
         {
@@ -575,7 +575,7 @@ public sealed class TestRunFailureEnvelopeTests
     /// marker is part of the tool's observable response contract, so the test must fail if the
     /// production constant is changed rather than silently tracking it.
     /// </summary>
-    private const string TruncationMarker = "... [truncated]";
+    private const string _truncationMarker = "... [truncated]";
 
     private static string WriteTrxFixture(IReadOnlyList<(string TestName, string Message, string? StackTrace)> failures)
     {
@@ -646,10 +646,10 @@ public sealed class TestRunFailureEnvelopeTests
                     DisplayName: $"TestMethod_Should_Do_Something_When_Given_Input_{i}",
                     FullyQualifiedName: $"RoslynMcp.Tests.SomeNamespace.SomeFixture{i}.TestMethod_{i}",
                     Message: _maxLengthDetail
-                        ? new string('m', 500) + TruncationMarker
+                        ? new string('m', 500) + _truncationMarker
                         : $"Assert.Equal() Failure: expected [ExpectedValue{i}] but got [ActualValue{i}].",
                     StackTrace: _maxLengthDetail
-                        ? new string('s', 1500) + TruncationMarker
+                        ? new string('s', 1500) + _truncationMarker
                         : string.Join("\n", Enumerable.Range(0, 10).Select(f =>
                             $"   at RoslynMcp.Tests.SomeFixture{i}.TestMethod{f}() line {100 + f}"))))
                 .ToList();
@@ -724,7 +724,7 @@ public sealed class TestRunFailureEnvelopeTests
     /// </summary>
     private sealed class SingleTestProjectWorkspaceManager : IWorkspaceManager
     {
-        private static readonly string FixturePath = OperatingSystem.IsWindows()
+        private static readonly string _fixturePath = OperatingSystem.IsWindows()
             ? "C:/ws/Sample.Tests.csproj"
             : "/ws/Sample.Tests.csproj";
 
@@ -740,7 +740,7 @@ public sealed class TestRunFailureEnvelopeTests
         public WorkspaceStatusDto GetStatus(string workspaceId) =>
             new(
                 WorkspaceId: workspaceId,
-                LoadedPath: FixturePath,
+                LoadedPath: _fixturePath,
                 WorkspaceVersion: 1,
                 SnapshotToken: "snapshot",
                 LoadedAtUtc: DateTimeOffset.UtcNow,
@@ -750,7 +750,7 @@ public sealed class TestRunFailureEnvelopeTests
                 [
                     new ProjectStatusDto(
                         Name: "Sample.Tests",
-                        FilePath: FixturePath,
+                        FilePath: _fixturePath,
                         DocumentCount: 1,
                         ProjectReferences: [],
                         TargetFrameworks: ["net10.0"],

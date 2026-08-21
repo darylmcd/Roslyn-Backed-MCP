@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -315,6 +315,12 @@ public static class ValidationTools
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.ReportStage(progress, 3, 3, "done");
 
+                // Keep the service DTO full-fidelity for TRX parsing and server-side diagnosis;
+                // project only at the MCP response boundary. The JsonDefaults converter applies
+                // the same projection when validate_workspace and workspace_fork_apply embed a
+                // TestRunResultDto instead of calling this pagination wrapper.
+                var publicResult = TestRunPublicProjection.Create(result);
+
                 // test-run-failures-pagination-truncation: Failures carries one entry per failing
                 // test, and pre-fix the whole list was serialized with no cap on COUNT (the
                 // per-entry Message/StackTrace cap lives in DotnetOutputParser). A broad or
@@ -331,7 +337,7 @@ public static class ValidationTools
 
                 return JsonSerializer.Serialize(new
                 {
-                    result.Execution,
+                    publicResult.Execution,
                     result.Total,
                     result.Passed,
                     result.Failed,
@@ -341,7 +347,7 @@ public static class ValidationTools
                     failuresLimit,
                     failuresTotal,
                     hasMoreFailures,
-                    result.FailureEnvelope,
+                    publicResult.FailureEnvelope,
                 }, JsonDefaults.Indented);
             }
             catch (OperationCanceledException)

@@ -32,44 +32,42 @@ public static partial class RoslynPrompts
         linkedCts.CancelAfter(TimeSpan.FromSeconds(20));
         var promptCt = linkedCts.Token;
 
+        // Warm the diagnostic cache with a Warning-floor scan scoped to the file. PR #150's
+        // result cache will memoize this and the detail-lookup will hit the warm path.
         try
         {
-            // Warm the diagnostic cache with a Warning-floor scan scoped to the file. PR #150's
-            // result cache will memoize this and the detail-lookup will hit the warm path.
-            try
-            {
-                await diagnosticService.GetDiagnosticsAsync(
-                    workspaceId, projectFilter: null, fileFilter: filePath,
-                    severityFilter: "Warning", diagnosticIdFilter: null, promptCt).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (promptCt.IsCancellationRequested && !ct.IsCancellationRequested)
-            {
-                return [PromptMessageBuilder.CreatePromptMessage(
+            await diagnosticService.GetDiagnosticsAsync(
+                workspaceId, projectFilter: null, fileFilter: filePath,
+                severityFilter: "Warning", diagnosticIdFilter: null, promptCt).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (promptCt.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            return [PromptMessageBuilder.CreatePromptMessage(
                     "explain_error: aborted because the diagnostics scan exceeded 20 s. Re-run with a smaller scope (file is large or the analyzer pipeline is cold).")];
-            }
+        }
 
-            var details = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, promptCt).ConfigureAwait(false);
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, promptCt).ConfigureAwait(false);
+        var details = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, promptCt).ConfigureAwait(false);
+        var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, promptCt).ConfigureAwait(false);
 
-            var contextLines = "";
-            if (sourceText is not null)
+        var contextLines = "";
+        if (sourceText is not null)
+        {
+            var lines = sourceText.Split('\n');
+            var startLine = Math.Max(0, line - 6);
+            var endLine = Math.Min(lines.Length - 1, line + 4);
+            contextLines = string.Join('\n', lines[startLine..endLine].Select((l, i) =>
             {
-                var lines = sourceText.Split('\n');
-                var startLine = Math.Max(0, line - 6);
-                var endLine = Math.Min(lines.Length - 1, line + 4);
-                contextLines = string.Join('\n', lines[startLine..endLine].Select((l, i) =>
-                {
-                    var lineNum = startLine + i + 1;
-                    var marker = lineNum == line ? " >>> " : "     ";
-                    return $"{marker}{lineNum,4}: {l.TrimEnd('\r')}";
-                }));
-            }
+                var lineNum = startLine + i + 1;
+                var marker = lineNum == line ? " >>> " : "     ";
+                return $"{marker}{lineNum,4}: {l.TrimEnd('\r')}";
+            }));
+        }
 
-            var detailsJson = JsonSerializer.Serialize(details, JsonDefaults.Indented);
+        var detailsJson = JsonSerializer.Serialize(details, JsonDefaults.Indented);
 
-            return
-            [
-                new PromptMessage
+        return
+        [
+            new PromptMessage
                 {
                     Role = Role.User,
                     Content = new TextContentBlock
@@ -99,12 +97,7 @@ public static partial class RoslynPrompts
                             """
                     }
                 }
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("explain_error", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "suggest_refactoring")]
@@ -118,31 +111,29 @@ public static partial class RoslynPrompts
         [Description("Optional: end line to focus on")] int? endLine = null,
         CancellationToken ct = default)
     {
-        try
+        var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        if (sourceText is null)
+            return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
+
+        var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
+
+        string codeSection;
+        if (startLine.HasValue && endLine.HasValue)
         {
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            if (sourceText is null)
-                return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
+            var lines = sourceText.Split('\n');
+            var start = Math.Max(0, startLine.Value - 1);
+            var end = Math.Min(lines.Length, endLine.Value);
+            codeSection = string.Join('\n', lines[start..end].Select((l, i) => $"{start + i + 1,4}: {l.TrimEnd('\r')}"));
+        }
+        else
+        {
+            codeSection = sourceText;
+        }
 
-            var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
-
-            string codeSection;
-            if (startLine.HasValue && endLine.HasValue)
-            {
-                var lines = sourceText.Split('\n');
-                var start = Math.Max(0, startLine.Value - 1);
-                var end = Math.Min(lines.Length, endLine.Value);
-                codeSection = string.Join('\n', lines[start..end].Select((l, i) => $"{start + i + 1,4}: {l.TrimEnd('\r')}"));
-            }
-            else
-            {
-                codeSection = sourceText;
-            }
-
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Analyze the following C# code and suggest refactorings to improve its quality, readability, and maintainability.
 
                     **File:** {filePath}
@@ -168,12 +159,7 @@ public static partial class RoslynPrompts
 
                     For each suggestion, provide the specific code change and explain the benefit.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("suggest_refactoring", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "review_file")]
@@ -186,21 +172,19 @@ public static partial class RoslynPrompts
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        try
-        {
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            if (sourceText is null)
-                return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
+        var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        if (sourceText is null)
+            return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
 
-            var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, null, ct).ConfigureAwait(false);
+        var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, null, ct).ConfigureAwait(false);
 
-            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
-            var diagnosticsSummary = JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
+        var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
+        var diagnosticsSummary = JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Perform a thorough code review of the following C# source file.
 
                     **File:** {filePath}
@@ -232,12 +216,7 @@ public static partial class RoslynPrompts
 
                     For each issue found, specify the line number, severity (critical/major/minor/suggestion), and proposed fix.
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("review_file", ex)];
-        }
+        ];
     }
 
     [McpServerPrompt(Name = "analyze_dependencies")]
@@ -249,42 +228,40 @@ public static partial class RoslynPrompts
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default)
     {
-        try
+        // analyze-dependencies-prompt-payload-overflow (gh #755): aggregate prompt body
+        // overflowed the MCP inline payload cap (~63 KB) on 9+ project workspaces with
+        // heavily-namespaced code. Lower namespace-node and namespace-edge caps from 100
+        // to 50, add an explicit cap on CircularDependencies (20), and emit count footers
+        // for every truncated list so callers can re-run targeted tools when they need
+        // the full picture. Mirrors the pattern from guided_extract_interface (gh #776).
+        const int NamespaceNodeCap = 50;
+        const int NamespaceEdgeCap = 50;
+        const int CircularDependencyCap = 20;
+
+        var graph = workspace.GetProjectGraph(workspaceId);
+        var graphJson = PromptMessageBuilder.SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
+
+        var namespaceDeps = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
+        var truncatedNamespaceDeps = namespaceDeps with
         {
-            // analyze-dependencies-prompt-payload-overflow (gh #755): aggregate prompt body
-            // overflowed the MCP inline payload cap (~63 KB) on 9+ project workspaces with
-            // heavily-namespaced code. Lower namespace-node and namespace-edge caps from 100
-            // to 50, add an explicit cap on CircularDependencies (20), and emit count footers
-            // for every truncated list so callers can re-run targeted tools when they need
-            // the full picture. Mirrors the pattern from guided_extract_interface (gh #776).
-            const int NamespaceNodeCap = 50;
-            const int NamespaceEdgeCap = 50;
-            const int CircularDependencyCap = 20;
+            Nodes = namespaceDeps.Nodes.Take(NamespaceNodeCap).ToList(),
+            Edges = namespaceDeps.Edges.Take(NamespaceEdgeCap).ToList(),
+            CircularDependencies = namespaceDeps.CircularDependencies.Take(CircularDependencyCap).ToList(),
+        };
+        var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonDefaults.Indented);
+        if (namespaceDeps.Nodes.Count > NamespaceNodeCap)
+            namespaceDepsJson += $"\n[Showing {NamespaceNodeCap} of {namespaceDeps.Nodes.Count} nodes]";
+        if (namespaceDeps.Edges.Count > NamespaceEdgeCap)
+            namespaceDepsJson += $"\n[Showing {NamespaceEdgeCap} of {namespaceDeps.Edges.Count} edges]";
+        if (namespaceDeps.CircularDependencies.Count > CircularDependencyCap)
+            namespaceDepsJson += $"\n[Showing {CircularDependencyCap} of {namespaceDeps.CircularDependencies.Count} circular dependencies]";
 
-            var graph = workspace.GetProjectGraph(workspaceId);
-            var graphJson = PromptMessageBuilder.SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
+        var nugetDeps = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+        var nugetDepsJson = PromptMessageBuilder.SerializeTruncatedList(nugetDeps.Packages, 50, JsonDefaults.Indented);
 
-            var namespaceDeps = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var truncatedNamespaceDeps = namespaceDeps with
-            {
-                Nodes = namespaceDeps.Nodes.Take(NamespaceNodeCap).ToList(),
-                Edges = namespaceDeps.Edges.Take(NamespaceEdgeCap).ToList(),
-                CircularDependencies = namespaceDeps.CircularDependencies.Take(CircularDependencyCap).ToList(),
-            };
-            var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonDefaults.Indented);
-            if (namespaceDeps.Nodes.Count > NamespaceNodeCap)
-                namespaceDepsJson += $"\n[Showing {NamespaceNodeCap} of {namespaceDeps.Nodes.Count} nodes]";
-            if (namespaceDeps.Edges.Count > NamespaceEdgeCap)
-                namespaceDepsJson += $"\n[Showing {NamespaceEdgeCap} of {namespaceDeps.Edges.Count} edges]";
-            if (namespaceDeps.CircularDependencies.Count > CircularDependencyCap)
-                namespaceDepsJson += $"\n[Showing {CircularDependencyCap} of {namespaceDeps.CircularDependencies.Count} circular dependencies]";
-
-            var nugetDeps = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
-            var nugetDepsJson = PromptMessageBuilder.SerializeTruncatedList(nugetDeps.Packages, 50, JsonDefaults.Indented);
-
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
                     Analyze the architecture and dependency structure of this .NET solution.
 
                     **Project Dependency Graph:**
@@ -314,11 +291,6 @@ public static partial class RoslynPrompts
                     5. **Dependency Direction**: Verify that dependencies flow in the correct direction (e.g., UI → Domain, not Domain → UI)
                     6. **Modularity**: Suggest opportunities to extract shared libraries or consolidate projects
                     """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("analyze_dependencies", ex)];
-        }
+        ];
     }
 }

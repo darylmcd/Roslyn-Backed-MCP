@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -14,7 +15,7 @@ namespace RoslynMcp.Tests;
 // CancellationToken, a DI-resolved service parameter (IUnusedCodeAnalyzer), a JSON-supplied
 // value (workspaceId), and an omitted parameter falling through to its default (projectName),
 // asserting the rendered message text. This pins the CT → DI service → supplied-JSON → default
-// precedence chain that the error-path tests do not cover.
+// precedence chain alongside the value-free binding-error regressions below.
 [DoNotParallelize]
 [TestClass]
 public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
@@ -68,6 +69,91 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
         StringAssert.Contains(text, "(entire workspace)",
             "Omitting projectName must fall through to the null default, which the template renders "
             + "as '(entire workspace)' — this pins the default-value binder branch.");
+    }
+
+    [TestMethod]
+    [DataRow("document")]
+    [DataRow("property")]
+    public async Task GetPromptText_BindingFailure_PublishesOnlyStableCorrection(string failureKind)
+    {
+        const string secretSentinel =
+            "SECRET-SENTINEL-private-payload-C:/private/source.cs";
+        var parametersJson = failureKind == "document"
+            ? $"{{\"secret\":\"{secretSentinel}\""
+            : $"{{\"taskCategory\":{{\"secret\":\"{secretSentinel}\"}}}}";
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "discover_capabilities",
+                parametersJson,
+                CancellationToken.None));
+
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        var message = document.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "Example:", StringComparison.Ordinal);
+        if (failureKind == "document")
+        {
+            StringAssert.Contains(message, "parametersJson", StringComparison.Ordinal);
+            StringAssert.Contains(message, "JSON object", StringComparison.Ordinal);
+        }
+        else
+        {
+            StringAssert.Contains(message, "taskCategory", StringComparison.Ordinal);
+            StringAssert.Contains(message, "String", StringComparison.Ordinal);
+        }
+
+        Assert.IsFalse(json.Contains(secretSentinel, StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains(nameof(JsonException), StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("private/source.cs", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task GetPromptText_NonObjectJson_ReturnsStructuredInvalidArgument()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "discover_capabilities",
+                parametersJson: "[1, 2, 3]",
+                CancellationToken.None));
+
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(
+            document.RootElement.GetProperty("message").GetString(),
+            "must be a JSON object",
+            StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task GetPromptText_MissingRequiredParameters_HidesInternalParameterInventory()
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<IDiagnosticService>(DiagnosticService)
+            .AddSingleton<IWorkspaceManager>(WorkspaceManager)
+            .BuildServiceProvider();
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "explain_error",
+                parametersJson: "{}",
+                CancellationToken.None));
+
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        var message = document.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "required prompt parameter", StringComparison.Ordinal);
+        Assert.IsFalse(message.Contains("workspaceId", StringComparison.Ordinal));
+        Assert.IsFalse(message.Contains("diagnosticId", StringComparison.Ordinal));
     }
 
     [TestMethod]

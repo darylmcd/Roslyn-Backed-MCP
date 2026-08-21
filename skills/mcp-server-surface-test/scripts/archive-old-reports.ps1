@@ -57,7 +57,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
-    # script -> skills/audit-deep/scripts/ -> skills/audit-deep/ -> skills/ -> repo root
+    # script -> skills/mcp-server-surface-test/scripts/ -> skill -> skills -> repo root
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..' '..')).ProviderPath
 }
 
