@@ -25,17 +25,13 @@ public sealed class CodeMetricsService : ICodeMetricsService
         // roslyn-mcp-complexity-subset-rerun: build a set of normalized target paths from both
         // the singular `filePath` legacy parameter and the newer `filePaths` list; union (OR)
         // them. Empty list is treated as "no filter" (same as null).
-        var targetPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(filePath))
-        {
-            targetPaths.Add(Path.GetFullPath(filePath));
-        }
+        var targetPaths = new HashSet<string>(FileSystemPath.Comparer);
+        AddTargetPath(targetPaths, filePath);
         if (filePaths is not null)
         {
             foreach (var p in filePaths)
             {
-                if (!string.IsNullOrWhiteSpace(p))
-                    targetPaths.Add(Path.GetFullPath(p));
+                AddTargetPath(targetPaths, p);
             }
         }
 
@@ -54,7 +50,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
         foreach (var doc in documents)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
 
             var tree = await doc.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
             var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
@@ -66,7 +62,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
             foreach (var decl in methodDeclarations)
             {
-                if (ct.IsCancellationRequested) break;
+                ct.ThrowIfCancellationRequested();
 
                 var symbol = semanticModel.GetDeclaredSymbol(decl, ct);
                 if (symbol is null) continue;
@@ -96,6 +92,12 @@ public sealed class CodeMetricsService : ICodeMetricsService
         }
 
         return results.OrderByDescending(r => r.CyclomaticComplexity).Take(limit).ToList();
+    }
+
+    private static void AddTargetPath(ISet<string> targetPaths, string? path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+            targetPaths.Add(Path.GetFullPath(path));
     }
 
     /// <summary>
@@ -156,25 +158,25 @@ public sealed class CodeMetricsService : ICodeMetricsService
         {
             case MethodDeclarationSyntax m:
                 if (m.Body is not null)
-                    VisitControlFlowNesting(m.Body, 0, ref maxDepth);
+                    VisitNodeForNesting(m.Body, 0, ref maxDepth);
                 else if (m.ExpressionBody is not null)
-                    VisitControlFlowNesting(m.ExpressionBody.Expression, 0, ref maxDepth);
+                    VisitNodeForNesting(m.ExpressionBody.Expression, 0, ref maxDepth);
                 break;
             case ConstructorDeclarationSyntax c:
                 if (c.Body is not null)
-                    VisitControlFlowNesting(c.Body, 0, ref maxDepth);
+                    VisitNodeForNesting(c.Body, 0, ref maxDepth);
                 break;
             case PropertyDeclarationSyntax p:
                 if (p.ExpressionBody is not null)
-                    VisitControlFlowNesting(p.ExpressionBody.Expression, 0, ref maxDepth);
+                    VisitNodeForNesting(p.ExpressionBody.Expression, 0, ref maxDepth);
                 else if (p.AccessorList is not null)
                 {
                     foreach (var accessor in p.AccessorList.Accessors)
                     {
                         if (accessor.Body is not null)
-                            VisitControlFlowNesting(accessor.Body, 0, ref maxDepth);
+                            VisitNodeForNesting(accessor.Body, 0, ref maxDepth);
                         else if (accessor.ExpressionBody is not null)
-                            VisitControlFlowNesting(accessor.ExpressionBody.Expression, 0, ref maxDepth);
+                            VisitNodeForNesting(accessor.ExpressionBody.Expression, 0, ref maxDepth);
                     }
                 }
 
@@ -193,7 +195,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
         foreach (var child in node.ChildNodes())
         {
-            VisitChildForNesting(child, depth, ref maxDepth);
+            VisitNodeForNesting(child, depth, ref maxDepth);
         }
     }
 
@@ -202,11 +204,11 @@ public sealed class CodeMetricsService : ICodeMetricsService
     // reads as a small, obvious kind→helper table instead of a 68-line wall. Helpers
     // are grouped by structural shape (single-body-at-depth+1, single-block-at-depth+1,
     // and the special-cased kinds If/Switch/SwitchExpression/Try/LocalFunction/For).
-    // Recursion semantics unchanged — every depth increment and recursion call is
-    // byte-identical to the pre-refactor dispatcher.
-    private static void VisitChildForNesting(SyntaxNode child, int depth, ref int maxDepth)
+    // Route every visited node through this dispatcher so an unbraced nested construct
+    // is classified as a control-flow node before its children are traversed.
+    private static void VisitNodeForNesting(SyntaxNode node, int depth, ref int maxDepth)
     {
-        switch (child)
+        switch (node)
         {
             case IfStatementSyntax ifs:
                 VisitIfStatement(ifs, depth, ref maxDepth);
@@ -231,35 +233,35 @@ public sealed class CodeMetricsService : ICodeMetricsService
         // Statements that nest a single body at depth+1 (while/do/foreach/lock/using/fixed)
         // or a single block at depth+1 (checked/unsafe) are structurally uniform — handle
         // them in two small helpers instead of eight inline switch arms.
-        if (TryVisitSingleBodyAtDepthPlusOne(child, depth, ref maxDepth))
+        if (TryVisitSingleBodyAtDepthPlusOne(node, depth, ref maxDepth))
             return;
-        if (TryVisitSingleBlockAtDepthPlusOne(child, depth, ref maxDepth))
+        if (TryVisitSingleBlockAtDepthPlusOne(node, depth, ref maxDepth))
             return;
 
         // Default fallthrough: not a control-flow statement — recurse into its children
         // at the same depth so nested control flow further down is still discovered.
-        VisitControlFlowNesting(child, depth, ref maxDepth);
+        VisitControlFlowNesting(node, depth, ref maxDepth);
     }
 
     private static void VisitIfStatement(IfStatementSyntax ifs, int depth, ref int maxDepth)
     {
-        VisitControlFlowNesting(ifs.Condition, depth, ref maxDepth);
-        VisitControlFlowNesting(ifs.Statement, depth + 1, ref maxDepth);
+        VisitNodeForNesting(ifs.Condition, depth, ref maxDepth);
+        VisitNodeForNesting(ifs.Statement, depth + 1, ref maxDepth);
         if (ifs.Else is not null)
-            VisitControlFlowNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
+            VisitNodeForNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
     }
 
     private static void VisitSwitchStatement(SwitchStatementSyntax sw, int depth, ref int maxDepth)
     {
         foreach (var section in sw.Sections)
             foreach (var stmt in section.Statements)
-                VisitControlFlowNesting(stmt, depth + 1, ref maxDepth);
+                VisitNodeForNesting(stmt, depth + 1, ref maxDepth);
     }
 
     private static void VisitSwitchExpression(SwitchExpressionSyntax se, int depth, ref int maxDepth)
     {
         foreach (var arm in se.Arms)
-            VisitControlFlowNesting(arm.Expression, depth + 1, ref maxDepth);
+            VisitNodeForNesting(arm.Expression, depth + 1, ref maxDepth);
     }
 
     private static void VisitLocalFunction(LocalFunctionStatementSyntax lf, int depth, ref int maxDepth)
@@ -268,9 +270,9 @@ public sealed class CodeMetricsService : ICodeMetricsService
         // same depth as the declaration site. This is the distinguishing contract vs
         // other block-bearing statements (while/for/using etc).
         if (lf.Body is not null)
-            VisitControlFlowNesting(lf.Body, depth, ref maxDepth);
+            VisitNodeForNesting(lf.Body, depth, ref maxDepth);
         else if (lf.ExpressionBody is not null)
-            VisitControlFlowNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
+            VisitNodeForNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
     }
 
     /// <summary>
@@ -294,7 +296,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
         };
 
         if (body is null) return false;
-        VisitControlFlowNesting(body, depth + 1, ref maxDepth);
+        VisitNodeForNesting(body, depth + 1, ref maxDepth);
         return true;
     }
 
@@ -313,32 +315,32 @@ public sealed class CodeMetricsService : ICodeMetricsService
         };
 
         if (block is null) return false;
-        VisitControlFlowNesting(block, depth + 1, ref maxDepth);
+        VisitNodeForNesting(block, depth + 1, ref maxDepth);
         return true;
     }
 
     private static void VisitForLoop(ForStatementSyntax fs, int depth, ref int maxDepth)
     {
         if (fs.Declaration is not null)
-            VisitControlFlowNesting(fs.Declaration, depth, ref maxDepth);
+            VisitNodeForNesting(fs.Declaration, depth, ref maxDepth);
 
         foreach (var init in fs.Initializers)
-            VisitControlFlowNesting(init, depth, ref maxDepth);
+            VisitNodeForNesting(init, depth, ref maxDepth);
 
         if (fs.Condition is not null)
-            VisitControlFlowNesting(fs.Condition, depth, ref maxDepth);
+            VisitNodeForNesting(fs.Condition, depth, ref maxDepth);
 
-        VisitControlFlowNesting(fs.Statement, depth + 1, ref maxDepth);
+        VisitNodeForNesting(fs.Statement, depth + 1, ref maxDepth);
     }
 
     private static void VisitTryStatement(TryStatementSyntax tr, int depth, ref int maxDepth)
     {
-        VisitControlFlowNesting(tr.Block, depth + 1, ref maxDepth);
+        VisitNodeForNesting(tr.Block, depth + 1, ref maxDepth);
 
         foreach (var c in tr.Catches)
-            VisitControlFlowNesting(c.Block, depth + 1, ref maxDepth);
+            VisitNodeForNesting(c.Block, depth + 1, ref maxDepth);
 
         if (tr.Finally is not null)
-            VisitControlFlowNesting(tr.Finally.Block, depth + 1, ref maxDepth);
+            VisitNodeForNesting(tr.Finally.Block, depth + 1, ref maxDepth);
     }
 }

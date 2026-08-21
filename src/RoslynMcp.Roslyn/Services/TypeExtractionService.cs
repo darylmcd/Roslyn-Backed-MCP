@@ -24,6 +24,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         IReadOnlyList<string> memberNames, string newTypeName, string? newFilePath,
         CancellationToken ct)
     {
+        ValidateNewTypeName(newTypeName);
         if (memberNames.Count == 0)
             throw new ArgumentException("At least one member name must be specified.", nameof(memberNames));
 
@@ -43,6 +44,14 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol
             ?? throw new InvalidOperationException($"Could not resolve type '{sourceTypeName}'.");
+
+        if (typeSymbol.DeclaringSyntaxReferences.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the source type has multiple " +
+                "partial declarations, and the extraction cannot wire the composition field through constructors " +
+                "declared in other parts. Consolidate the constructors into one declaration first, then retry.");
+        }
 
         var (membersToExtract, membersToKeep, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
@@ -96,7 +105,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var newFileRoot = BuildNewFileRoot(sourceRoot, typeDecl, membersToExtract, newTypeName);
 
         // Remove extracted members from source type and inject field + ctor parameter
-        var fieldName = "_" + char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
+        var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
+        var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var updatedTypeDecl = InjectFieldAndCtorParameter(
             typeDecl.WithMembers(SyntaxFactory.List(membersToKeep)),
             typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
@@ -123,7 +133,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         return new RefactoringPreviewDto(
             token, description, changes,
-            warnings.Count > 0 ? warnings.Select(w => w.Reason).ToList() : null);
+            Warnings: null);
+    }
+
+    private static void ValidateNewTypeName(string newTypeName)
+    {
+        try
+        {
+            IdentifierValidation.ThrowIfInvalidIdentifier(newTypeName, "newTypeName");
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new ArgumentException(exception.Message, nameof(newTypeName), exception);
+        }
     }
 
     /// <summary>
@@ -496,7 +518,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
                 SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
 
-        var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
+        var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
+        var camelCaseCore = char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
+        var paramName = newTypeName[0] == '@' ? "@" + camelCaseCore : camelCaseCore;
         var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
             .WithType(SyntaxFactory.ParseTypeName(newTypeName));
         var assignment = SyntaxFactory.ExpressionStatement(
@@ -525,14 +549,16 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         // BUG-005 (#1), preserved per constructor: insert the new required parameter BEFORE any
-        // optional parameters. Appending produced CS1737 ("required after optional") whenever a
-        // constructor ended with an ILogger? logger = null or similar default. C# requires all
-        // optional parameters to trail the required ones, so this index is also the count of
-        // required parameters — the ordinal a forwarded this(...) argument must be inserted at.
+        // optional or params parameters. Appending produced CS1737 ("required after optional") or
+        // CS0231 ("params must be last"). This index is also the ordinal at which a chained
+        // this(...) initializer must forward the new argument to its delegation target.
         static int ParameterInsertIndex(ConstructorDeclarationSyntax ctor)
         {
-            var firstOptionalIndex = ctor.ParameterList.Parameters.IndexOf(p => p.Default is not null);
-            return firstOptionalIndex < 0 ? ctor.ParameterList.Parameters.Count : firstOptionalIndex;
+            var firstTrailingParameterIndex = ctor.ParameterList.Parameters.IndexOf(p =>
+                p.Default is not null || p.Modifiers.Any(SyntaxKind.ParamsKeyword));
+            return firstTrailingParameterIndex < 0
+                ? ctor.ParameterList.Parameters.Count
+                : firstTrailingParameterIndex;
         }
 
         var replacements = new Dictionary<ConstructorDeclarationSyntax, ConstructorDeclarationSyntax>();

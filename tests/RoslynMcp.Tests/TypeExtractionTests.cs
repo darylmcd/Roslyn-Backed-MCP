@@ -1018,6 +1018,220 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("2Invalid")]
+    [DataRow("class")]
+    public async Task ExtractType_InvalidNewTypeName_ThrowsNamedArgument(string? newTypeName)
+    {
+        var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+            TypeExtractionService.PreviewExtractTypeAsync(
+                "unused-workspace",
+                "unused.cs",
+                "Unused",
+                ["Member"],
+                newTypeName!,
+                null,
+                CancellationToken.None));
+
+        Assert.AreEqual("newTypeName", exception.ParamName);
+    }
+
+    [TestMethod]
+    public async Task ExtractType_UnicodeNewTypeName_ProducesCompilingPreview()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "UnicodeTypeNameFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class UnicodeTypeNameFixture
+            {
+                public int InternalUser() => 42;
+                private int Compute(int value) => value * 2;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "UnicodeTypeNameFixture",
+                ["Compute"],
+                "CaféHelper",
+                null,
+                CancellationToken.None);
+
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            TryDeleteDirectory(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_ParamsConstructorAndChain_InsertBeforeParamsAndCompile()
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "ParamsCtorFixture.cs",
+            """
+            namespace SampleLib;
+
+            public class ParamsCtorFixture
+            {
+                private readonly int _seed;
+                public ParamsCtorFixture(int seed, params string[] labels) { _seed = seed + labels.Length; }
+                public ParamsCtorFixture(params string[] labels) : this(0, labels) { }
+                public int InternalUser() => _seed;
+                private int Compute(int value) => value * 2;
+            }
+            """);
+
+        try
+        {
+            var preview = await TypeExtractionService.PreviewExtractTypeAsync(
+                fixture.WorkspaceId,
+                fixture.FilePath,
+                "ParamsCtorFixture",
+                ["Compute"],
+                "ComputeHelper",
+                null,
+                CancellationToken.None);
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+
+            StringAssert.Contains(updatedSource,
+                "ParamsCtorFixture(int seed, ComputeHelper computeHelper, params string[] labels)");
+            StringAssert.Contains(updatedSource,
+                "ParamsCtorFixture(ComputeHelper computeHelper, params string[] labels)");
+            StringAssert.Contains(updatedSource, "this(0, computeHelper, labels)");
+            await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            TryDeleteDirectory(fixture.SolutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractType_MultipartPartialType_RefusesBeforeCompositionRewrite()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDirectory = Path.Combine(solutionDirectory, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDirectory, "PartialFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            """
+            namespace SampleLib;
+
+            public partial class PartialFixture
+            {
+                public int InternalUser() => Compute(21);
+                private int Compute(int value) => value * 2;
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(sampleLibDirectory, "PartialFixture.Constructor.cs"),
+            """
+            namespace SampleLib;
+
+            public partial class PartialFixture
+            {
+                public PartialFixture() { }
+            }
+            """);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+
+        try
+        {
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    loadResult.WorkspaceId,
+                    fixturePath,
+                    "PartialFixture",
+                    ["Compute"],
+                    "ComputeHelper",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(exception.Message, "multiple partial declarations");
+            StringAssert.Contains(exception.Message, "constructors declared in other parts");
+        }
+        finally
+        {
+            WorkspaceManager.Close(loadResult.WorkspaceId);
+            TryDeleteDirectory(solutionDirectory);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(
+        "public extern TopologyFixture();",
+        "has no body",
+        DisplayName = "bodyless constructor")]
+    [DataRow(
+        "public TopologyFixture(int seed) { } public TopologyFixture() : this(seed: 1) { }",
+        "uses named arguments",
+        DisplayName = "named this initializer")]
+    [DataRow(
+        "public TopologyFixture(int seed) { } public TopologyFixture() : this(\"unresolved\") { }",
+        "delegation target",
+        DisplayName = "unresolved this target")]
+    public async Task ExtractType_UnsupportedConstructorTopology_RefusesWithSpecificMessage(
+        string constructors,
+        string expectedMessage)
+    {
+        var fixture = await CreateExtractionFixtureAsync(
+            "TopologyFixture.cs",
+            $$"""
+            namespace SampleLib;
+
+            public class TopologyFixture
+            {
+                {{constructors}}
+                public int InternalUser() => Compute(21);
+                private int Compute(int value) => value * 2;
+            }
+            """);
+
+        try
+        {
+            var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    fixture.WorkspaceId,
+                    fixture.FilePath,
+                    "TopologyFixture",
+                    ["Compute"],
+                    "ComputeHelper",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(exception.Message, expectedMessage);
+        }
+        finally
+        {
+            WorkspaceManager.Close(fixture.WorkspaceId);
+            TryDeleteDirectory(fixture.SolutionDirectory);
+        }
+    }
+
+    private static async Task<(string WorkspaceId, string FilePath, string SolutionDirectory)> CreateExtractionFixtureAsync(
+        string fileName,
+        string source)
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
+        var filePath = Path.Combine(solutionDirectory, "SampleLib", fileName);
+        await File.WriteAllTextAsync(filePath, source);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        return (loadResult.WorkspaceId, filePath, solutionDirectory);
+    }
+
     /// <summary>
     /// Fetches the post-extraction text of <paramref name="filePath"/> from the preview's stored
     /// modified solution — the exact content an apply would write to disk.
