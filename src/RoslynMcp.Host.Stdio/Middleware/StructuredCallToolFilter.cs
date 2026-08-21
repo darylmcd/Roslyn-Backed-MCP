@@ -2,12 +2,15 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Elicitation;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -49,25 +52,17 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// envelope via <see cref="ToolErrorHandler.InjectMetaIfPossible"/>.
 /// </para>
 ///
-/// <para><b>Elicitation fallback (MCP 2025-06-18 <c>elicitation/create</c>):</b></para>
+/// <para><b>Request-scoped input recovery:</b></para>
 /// <para>
-/// When a tool call fails with <c>InvalidArgument: missing &lt;param&gt;</c> AND the
-/// missing parameter is on the strict elicitation allowlist (currently
-/// <c>workspace_load.path</c>, plus required <c>workspaceId</c> parameters on registered
-/// read-only, non-destructive workspace-scoped tools) AND the client declares the
-/// <c>elicitation</c> capability, the filter calls
-/// <see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/> to ask the
-/// user for the missing value. For <c>workspace_load.path</c> the value is patched into
-/// the original call. For missing <c>workspaceId</c>, the filter elicits a workspace path,
-/// calls <c>workspace_load</c>, extracts the returned <c>workspaceId</c>, then retries the
-/// original call with that id. Clients without elicitation capability (or users who
-/// decline / cancel) fall through to the existing <c>schemaHint</c>-augmented envelope
-/// (<see cref="ToolErrorHandler.ClassifyAndFormat"/>) so the existing recovery path is
-/// preserved exactly. Sensitive parameters (credentials, tokens, secrets, passwords,
-/// API keys, auth headers) are explicitly NOT on the allowlist — per MCP spec §
-/// Elicitation security, "Servers MUST NOT request sensitive information" via
-/// <c>elicitation/create</c>. See <see cref="ElicitationAllowlistPolicy.IsSensitiveFieldName"/>
-/// and <see cref="ElicitationAllowlistPolicy"/> for the defense layers.
+/// Before binding, the filter detects an omitted allowlisted field (currently
+/// <c>workspace_load.path</c>, plus <c>workspaceId</c> on registered read-only,
+/// non-destructive tools). <see cref="RequestScopedInputAdapter"/> then emits an MRTR
+/// <see cref="InputRequiredResult"/> on 2026-07-28 sessions or uses the legacy nested
+/// <c>elicitation/create</c> continuation on older stateful sessions. Accepted path input is
+/// patched into <c>workspace_load</c>; workspaceId recovery loads the path and retries with the
+/// returned id. Declined, malformed, or unsupported input falls through to the existing
+/// schema-hint error envelope. Sensitive field names remain fail-closed in
+/// <see cref="ElicitationAllowlistPolicy"/>.
 /// </para>
 ///
 /// <para><b>MRTR passthrough (SEP-2322, protocol 2026-07-28):</b></para>
@@ -88,18 +83,13 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class StructuredCallToolFilter
 {
-    // Shared with ElicitationAllowlistPolicy (which duplicates these consts — a private const
-    // does not cross the class boundary). Retained here because the filter's dispatch/recovery
-    // body still references all three (workspace_load dispatch, workspaceId patching, path elicit).
-    private const string WorkspaceLoadToolName = "workspace_load";
-    private const string WorkspaceIdParameterName = "workspaceId";
-    private const string PathParameterName = "path";
-
     /// <summary>
     /// Decorator factory matching the SDK's <c>McpRequestFilter&lt;TParams, TResult&gt;</c>
-    /// contract: receive <paramref name="next"/> (the dispatcher handler produced by
-    /// <c>WithToolsFromAssembly</c>) and return a handler that wraps it with structured
-    /// error classification and <c>_meta</c> observability.
+    /// contract: receive <paramref name="next"/> (the handler already bound to the selected
+    /// tool) and return a handler that wraps it with structured error classification and
+    /// <c>_meta</c> observability. Cross-tool recovery resolves a separate registered
+    /// <see cref="McpServerTool"/> explicitly; changing <c>context.Params.Name</c> does not reroute
+    /// this bound delegate.
     /// </summary>
     public static McpRequestHandler<CallToolRequestParams, CallToolResult> Create(
         McpRequestHandler<CallToolRequestParams, CallToolResult> next)
@@ -118,6 +108,25 @@ internal static class StructuredCallToolFilter
 
             try
             {
+                // workspace-path-mrtr-adoption: inspect the raw arguments before the SDK binder.
+                // A missing required parameter is otherwise surfaced as ParamName="arguments",
+                // which cannot be safely mapped back to the allowlisted path field.
+                var workspacePathRecovery = await StructuredCallElicitationCoordinator
+                    .TryRecoverMissingWorkspacePathAsync(
+                        context,
+                        next,
+                        logger,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (workspacePathRecovery is not null)
+                {
+                    stopwatch.Stop();
+                    CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+                    return InjectMetaIntoContent(
+                        ApplyProtocolResultShape(context, workspacePathRecovery),
+                        toolName);
+                }
+
                 // workspace-id-omitted-single-resolve: pre-dispatch workspaceId auto-resolution.
                 // For read-only, non-destructive tools that declare a workspaceId parameter, a
                 // call with workspaceId omitted/empty is resolved here — at the chokepoint —
@@ -128,13 +137,61 @@ internal static class StructuredCallToolFilter
                 // Required-independent) so it keeps working after read-only tools flip
                 // workspaceId to optional.
                 var workspaceManager = context.Services?.GetService<IWorkspaceManager>();
-                if (workspaceManager is not null && IsWorkspaceIdAutoResolveAllowedFor(toolName))
+                if (workspaceManager is not null &&
+                    ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor(toolName))
                 {
-                    if (HasNonEmptyWorkspaceId(context.Params?.Arguments))
+                    var workspaceIdMissingOrBlank =
+                        IsWorkspaceIdMissingOrBlank(context.Params?.Arguments);
+                    var hasAuthoritativeWorkspacePathResponse =
+                        workspaceIdMissingOrBlank && HasAuthoritativeWorkspacePathResponse(context);
+                    var restoredWorkspaceFromRequestState = false;
+                    if (!hasAuthoritativeWorkspacePathResponse &&
+                        workspaceIdMissingOrBlank &&
+                        RequestProtocolFeatureGate.SupportsJuly2026Features(context) &&
+                        RequestStateCodec.TryRestoreWorkspaceId(
+                            context.Params?.RequestState,
+                            out var requestStateWorkspaceId))
+                    {
+                        context.Params!.Arguments = WithWorkspaceId(
+                            context.Params.Arguments,
+                            requestStateWorkspaceId);
+                        CallMetricsRecorder.RecordAutoResolution("request-state");
+                        restoredWorkspaceFromRequestState = true;
+                    }
+
+                    if (hasAuthoritativeWorkspacePathResponse)
+                    {
+                        // A modern MRTR path response belongs to this logical request and wins
+                        // over both echoed state and ambient workspace state. Genuine path
+                        // recovery emits no state, but fail closed if a client combines them
+                        // rather than silently discarding the operator's accepted path.
+                        var recovered = await TryRecoverMissingWorkspaceIdFromPathAsync(
+                            context,
+                            next,
+                            toolName,
+                            logger,
+                            cancellationToken).ConfigureAwait(false);
+                        if (recovered is not null)
+                        {
+                            stopwatch.Stop();
+                            CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+                            return InjectMetaIntoContent(
+                                ApplyProtocolResultShape(context, recovered),
+                                toolName);
+                        }
+
+                        // Declined or malformed request-scoped input is authoritative too: do
+                        // not silently replace it with a concurrently loaded workspace. Leave
+                        // workspaceId absent so the normal binder emits InvalidArgument.
+                    }
+                    else if (!IsWorkspaceIdMissingOrBlank(context.Params?.Arguments))
                     {
                         // Explicit id supplied — record it and skip the loaded-workspace
                         // enumeration entirely (the common path; avoids per-call DTO projection).
-                        CallMetricsRecorder.RecordAutoResolution("explicit");
+                        if (!restoredWorkspaceFromRequestState)
+                        {
+                            CallMetricsRecorder.RecordAutoResolution("explicit");
+                        }
                     }
                     else
                     {
@@ -170,7 +227,9 @@ internal static class StructuredCallToolFilter
                                     context,
                                     BuildErrorResult(
                                         toolName,
-                                        new ArgumentException(fastFailMessage, WorkspaceIdParameterName)));
+                                        new ArgumentException(
+                                            fastFailMessage,
+                                            ElicitationAllowlistPolicy.WorkspaceIdParameterName)));
 
                             case WorkspaceIdAutoResolution.NotApplicable:
                                 {
@@ -178,14 +237,33 @@ internal static class StructuredCallToolFilter
                                     // discover the implied solution and load it on demand before
                                     // dispatch. A unique discovery patches the id and falls through to
                                     // next(); an ambiguous one returns a structured fast-fail; nothing
-                                    // discovered falls through to the binder/elicitation path.
+                                    // discovered falls through to request-scoped path recovery.
                                     var autoLoadFastFail = await TryAutoLoadWorkspaceAsync(
-                                        context, next, toolName, logger, cancellationToken).ConfigureAwait(false);
+                                        context, toolName, logger, cancellationToken).ConfigureAwait(false);
                                     if (autoLoadFastFail is not null)
                                     {
                                         stopwatch.Stop();
                                         CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                                         return ApplyProtocolResultShape(context, autoLoadFastFail);
+                                    }
+
+                                    if (IsWorkspaceIdMissingOrBlank(context.Params?.Arguments) &&
+                                        ElicitationChoicePrompt.SupportsElicitation(context))
+                                    {
+                                        var recovered = await TryRecoverMissingWorkspaceIdFromPathAsync(
+                                            context,
+                                            next,
+                                            toolName,
+                                            logger,
+                                            cancellationToken).ConfigureAwait(false);
+                                        if (recovered is not null)
+                                        {
+                                            stopwatch.Stop();
+                                            CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                            return InjectMetaIntoContent(
+                                                ApplyProtocolResultShape(context, recovered),
+                                                toolName);
+                                        }
                                     }
 
                                     break;
@@ -214,35 +292,25 @@ internal static class StructuredCallToolFilter
                 logger?.LogWarning("Tool {ToolName} was cancelled", toolName);
                 throw;
             }
-            catch (InputRequiredException)
+            catch (InputRequiredException inputRequired)
             {
                 // MRTR (SEP-2322): an input-required signal is a protocol result, not a tool
                 // error. Rethrow so the SDK converts it into an InputRequiredResult; converting
                 // it into an isError CallToolResult here would make server-driven input
                 // structurally impossible on MRTR sessions. MUST stay above the general
                 // catch (Exception) below — C# picks the first matching clause.
+                // Preserve a workspace identity that this filter resolved before the tool asked
+                // for another input. The client echoes this non-secret, client-visible state on
+                // retry so ambient workspace changes cannot rebind the logical call.
+                RequestStateCodec.PreserveWorkspaceId(
+                    inputRequired,
+                    context.Params?.Arguments,
+                    ElicitationAllowlistPolicy.WorkspaceIdParameterName);
                 logger?.LogInformation("Tool {ToolName} returned an input-required signal", toolName);
                 throw;
             }
             catch (Exception ex)
             {
-                // elicit-workspace-path-on-missing-required-arg: try the elicitation
-                // recovery path FIRST so a successful retry produces a normal success
-                // envelope (with _meta still injected). Falls through to the existing
-                // ClassifyAndFormat → schemaHint envelope when not applicable.
-                var elicitResult = await TryElicitAndRetryAsync(
-                    context, ex, next, logger, cancellationToken).ConfigureAwait(false);
-                if (elicitResult is not null)
-                {
-                    stopwatch.Stop();
-                    CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
-                    logger?.LogInformation(
-                        "Tool {ToolName} succeeded on retry after elicitation", toolName);
-                    return InjectMetaIntoContent(
-                        ApplyProtocolResultShape(context, elicitResult),
-                        toolName);
-                }
-
                 stopwatch.Stop();
                 CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
 
@@ -272,47 +340,6 @@ internal static class StructuredCallToolFilter
             }
         };
     }
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface. See
-    /// <see cref="ElicitationAllowlistPolicy.IsSensitiveFieldName"/>.
-    /// </summary>
-    public static bool IsSensitiveFieldName(string? paramName) =>
-        ElicitationAllowlistPolicy.IsSensitiveFieldName(paramName);
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface. See
-    /// <see cref="ElicitationAllowlistPolicy.IsElicitationAllowedFor"/>.
-    /// </summary>
-    public static bool IsElicitationAllowedFor(string? toolName, string? paramName) =>
-        ElicitationAllowlistPolicy.IsElicitationAllowedFor(toolName, paramName);
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface. The elicitation/retry
-    /// orchestration lives in <see cref="StructuredCallElicitationCoordinator.TryElicitAndRetryAsync"/>;
-    /// kept here so <see cref="Create"/> and the existing filter test suites compile unchanged.
-    /// </summary>
-    internal static Task<CallToolResult?> TryElicitAndRetryAsync(
-        RequestContext<CallToolRequestParams> context,
-        Exception ex,
-        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
-        ILogger? logger,
-        CancellationToken cancellationToken) =>
-        StructuredCallElicitationCoordinator.TryElicitAndRetryAsync(context, ex, next, logger, cancellationToken);
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface. See
-    /// <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor"/>.
-    /// </summary>
-    internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName) =>
-        ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor(toolName, paramName);
-
-    /// <summary>
-    /// Thin delegate preserving the historical static call surface. See
-    /// <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor"/>.
-    /// </summary>
-    public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName) =>
-        ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor(toolName);
 
     /// <summary>
     /// The outcome of pre-dispatch <c>workspaceId</c> resolution for an auto-resolve-eligible
@@ -356,7 +383,7 @@ internal static class StructuredCallToolFilter
         resolvedWorkspaceId = null;
         fastFailMessage = null;
 
-        if (HasNonEmptyWorkspaceId(arguments))
+        if (!IsWorkspaceIdMissingOrBlank(arguments))
         {
             return WorkspaceIdAutoResolution.Explicit;
         }
@@ -380,16 +407,63 @@ internal static class StructuredCallToolFilter
         return WorkspaceIdAutoResolution.NotApplicable;
     }
 
-    private static bool HasNonEmptyWorkspaceId(IDictionary<string, JsonElement>? arguments)
+    /// <summary>
+    /// Returns whether <c>workspaceId</c> is genuinely absent or blank and therefore eligible
+    /// for resolution/recovery. A present value of any other JSON kind is caller input, even
+    /// though invalid for the string parameter; preserving it lets the binder produce the
+    /// canonical <c>InvalidArgument</c> envelope instead of silently overwriting it.
+    /// </summary>
+    private static bool IsWorkspaceIdMissingOrBlank(IDictionary<string, JsonElement>? arguments)
     {
-        if (arguments is null || !arguments.TryGetValue(WorkspaceIdParameterName, out var value))
+        if (arguments is null ||
+            !arguments.TryGetValue(ElicitationAllowlistPolicy.WorkspaceIdParameterName, out var value))
         {
-            return false;
+            return true;
         }
 
-        return value.ValueKind == JsonValueKind.String
-               && !string.IsNullOrWhiteSpace(value.GetString());
+        return value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ||
+               (value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(value.GetString()));
     }
+
+    private static bool HasAuthoritativeWorkspacePathResponse(
+        RequestContext<CallToolRequestParams> context) =>
+        RequestProtocolFeatureGate.SupportsJuly2026Features(context) &&
+        ElicitationChoicePrompt.SupportsElicitation(context) &&
+        context.Params?.InputResponses?.ContainsKey(
+            RequestScopedInputAdapter.WorkspacePathInputRequestKey) is true;
+
+    private static Task<CallToolResult?> TryRecoverMissingWorkspaceIdFromPathAsync(
+        RequestContext<CallToolRequestParams> context,
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        string toolName,
+        ILogger? logger,
+        CancellationToken cancellationToken) =>
+        StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
+            toolName,
+            context.Params?.Arguments is null
+                ? null
+                : new Dictionary<string, JsonElement>(context.Params.Arguments, StringComparer.Ordinal),
+            request => RequestScopedInputAdapter.RequestElicitationAsResultAsync(
+                context,
+                RequestScopedInputAdapter.WorkspacePathInputRequestKey,
+                request,
+                logger,
+                cancellationToken),
+            (dispatchToolName, arguments) =>
+                string.Equals(dispatchToolName, toolName, StringComparison.Ordinal)
+                    ? StructuredCallElicitationCoordinator.DispatchWithTemporaryArgumentsAsync(
+                        context,
+                        next,
+                        dispatchToolName,
+                        arguments,
+                        cancellationToken)
+                    : InvokeRegisteredToolWithTemporaryArgumentsAsync(
+                        context,
+                        dispatchToolName,
+                        arguments,
+                        cancellationToken),
+            logger,
+            cancellationToken);
 
     private static IDictionary<string, JsonElement> WithWorkspaceId(
         IDictionary<string, JsonElement>? existing, string workspaceId)
@@ -397,7 +471,8 @@ internal static class StructuredCallToolFilter
         var newArgs = existing is null
             ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             : new Dictionary<string, JsonElement>(existing, StringComparer.Ordinal);
-        newArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId);
+        newArgs[ElicitationAllowlistPolicy.WorkspaceIdParameterName] =
+            JsonSerializer.SerializeToElement(workspaceId);
         return newArgs;
     }
 
@@ -413,24 +488,24 @@ internal static class StructuredCallToolFilter
     ///   <see langword="null"/> to fall back to the existing recovery path.</item>
     ///   <item><b>Ambiguous</b> → return a structured fast-fail listing the candidate solutions
     ///   with a ready-to-run <c>workspace_load(path=…)</c> hint (records <c>fast-fail</c>).</item>
-    ///   <item><b>None</b> → return <see langword="null"/> to fall through to <c>next()</c>; the
-    ///   downstream tool then either binds the supplied <c>workspaceId</c> or, when it is omitted on
-    ///   an auto-resolve-eligible read-only tool, throws and triggers the exception-path elicitation
-    ///   recovery gated by <see cref="IsWorkspaceIdRecoveryAllowedFor"/> (which is Required-independent,
-    ///   so it stays live for tools that flipped <c>workspaceId</c> to optional).</item>
+    ///   <item><b>None</b> → return <see langword="null"/> so the caller can attempt request-scoped
+    ///   path recovery before the original bound handler receives the still-missing id.</item>
     /// </list>
-    /// A non-null return is a terminal fast-fail; <see langword="null"/> means "fall through to
-    /// <c>next()</c>" (whether or not the arguments were patched).
+    /// A non-null return is a terminal fast-fail; <see langword="null"/> means the caller
+    /// continues its recovery/dispatch pipeline (whether or not the arguments were patched).
     /// </summary>
     private static async Task<CallToolResult?> TryAutoLoadWorkspaceAsync(
         RequestContext<CallToolRequestParams> context,
-        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
         string toolName,
         ILogger? logger,
         CancellationToken cancellationToken)
     {
-        var discovery = await SolutionDiscoveryHelper.TryDiscoverAsync(
-            context.Params?.Arguments, context.Server, cancellationToken).ConfigureAwait(false);
+        var discovery = await AwaitRecoveryStageAsync(
+            SolutionDiscoveryHelper.TryDiscoverAsync(
+                context.Params?.Arguments,
+                context.Server,
+                cancellationToken),
+            cancellationToken).ConfigureAwait(false);
 
         switch (discovery.Status)
         {
@@ -439,10 +514,16 @@ internal static class StructuredCallToolFilter
                     var stopwatch = Stopwatch.StartNew();
                     var loadArguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                     {
-                        [PathParameterName] = JsonSerializer.SerializeToElement(discovery.UniquePath!),
+                        [ElicitationAllowlistPolicy.PathParameterName] =
+                            JsonSerializer.SerializeToElement(discovery.UniquePath!),
                     };
-                    var loadResult = await StructuredCallElicitationCoordinator.DispatchWithTemporaryArgumentsAsync(
-                        context, next, WorkspaceLoadToolName, loadArguments, cancellationToken).ConfigureAwait(false);
+                    var loadResult = await AwaitRecoveryStageAsync(
+                        InvokeRegisteredToolWithTemporaryArgumentsAsync(
+                            context,
+                            ElicitationAllowlistPolicy.WorkspaceLoadToolName,
+                            loadArguments,
+                            cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
                     var workspaceId = StructuredCallElicitationCoordinator.TryExtractWorkspaceId(loadResult);
                     stopwatch.Stop();
 
@@ -475,7 +556,7 @@ internal static class StructuredCallToolFilter
                         $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
                         $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
                         "one of them, then retry — or pass workspaceId explicitly.",
-                        WorkspaceIdParameterName));
+                        ElicitationAllowlistPolicy.WorkspaceIdParameterName));
                 }
 
             case SolutionDiscoveryHelper.DiscoveryStatus.None:
@@ -485,20 +566,66 @@ internal static class StructuredCallToolFilter
     }
 
     /// <summary>
-    /// Thin delegate preserving the historical static call surface. The recover-load-retry
-    /// loop lives in
-    /// <see cref="StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync"/>;
-    /// kept here so the existing filter test suites compile unchanged.
+    /// Awaits one multi-stage recovery operation and rechecks cancellation before its nominal
+    /// result can drive the next stage or mutate request arguments. This closes the race where a
+    /// collaborator cancels while returning a value rather than throwing.
     /// </summary>
-    internal static Task<CallToolResult?> TryRecoverMissingWorkspaceIdAsync(
+    internal static async Task<T> AwaitRecoveryStageAsync<T>(
+        Task<T> stage,
+        CancellationToken cancellationToken)
+    {
+        var result = await stage.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    /// <summary>
+    /// Invokes a named SDK tool primitive from the registered collection while preserving the
+    /// current request context. Request-filter <c>next</c> delegates are already bound to their
+    /// original tool, so mutating <c>Params.Name</c> and calling <c>next</c> cannot perform a
+    /// cross-tool dispatch. The primitive is invoked directly to avoid recursively applying the
+    /// outer filter; its exception remains owned by the recovery caller.
+    /// </summary>
+    internal static async Task<CallToolResult> InvokeRegisteredToolWithTemporaryArgumentsAsync(
+        RequestContext<CallToolRequestParams> context,
         string toolName,
-        IReadOnlyDictionary<string, JsonElement>? originalArguments,
-        Func<ElicitRequestParams, ValueTask<ElicitResult>> elicitAsync,
-        Func<string, IReadOnlyDictionary<string, JsonElement>, Task<CallToolResult>> dispatchAsync,
-        ILogger? logger,
-        CancellationToken cancellationToken) =>
-        StructuredCallElicitationCoordinator.TryRecoverMissingWorkspaceIdAsync(
-            toolName, originalArguments, elicitAsync, dispatchAsync, logger, cancellationToken);
+        IReadOnlyDictionary<string, JsonElement> arguments,
+        CancellationToken cancellationToken)
+    {
+        var tool = context.Services?
+            .GetService<IOptions<McpServerOptions>>()?
+            .Value
+            .ToolCollection?
+            .SingleOrDefault(candidate =>
+                string.Equals(candidate.ProtocolTool.Name, toolName, StringComparison.Ordinal));
+        if (tool is null)
+        {
+            throw new InvalidOperationException(
+                $"Registered MCP tool '{toolName}' is unavailable for internal recovery dispatch.");
+        }
+
+        var originalToolName = context.Params!.Name;
+        var originalArgs = context.Params.Arguments;
+        try
+        {
+            context.Params.Name = toolName;
+            context.Params.Arguments = new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
+            return await tool.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (InputRequiredException inputRequired)
+        {
+            RequestStateCodec.PreserveWorkspaceId(
+                inputRequired,
+                context.Params.Arguments,
+                ElicitationAllowlistPolicy.WorkspaceIdParameterName);
+            throw;
+        }
+        finally
+        {
+            context.Params.Name = originalToolName;
+            context.Params.Arguments = originalArgs;
+        }
+    }
 
     /// <summary>
     /// Produces the <see cref="CallToolResult"/> envelope the filter emits when a tool call

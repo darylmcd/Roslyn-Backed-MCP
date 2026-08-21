@@ -37,7 +37,10 @@ internal static class RootExpansionGrantRegistry
         }
     }
 
-    /// <summary>Drops the grant for <paramref name="workspaceId"/>; called when the session closes.</summary>
+    /// <summary>
+    /// Drops the grant for <paramref name="workspaceId"/>. Host composition registers this as a
+    /// <c>WorkspaceClosed</c> handler so explicit close, LRU eviction, and disposal share one path.
+    /// </summary>
     public static void Revoke(string workspaceId)
     {
         if (!string.IsNullOrEmpty(workspaceId))

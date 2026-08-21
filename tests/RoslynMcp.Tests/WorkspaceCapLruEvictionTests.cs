@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Security;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests;
@@ -19,6 +22,10 @@ namespace RoslynMcp.Tests;
 /// wired, eviction runs under <see cref="WorkspaceExecutionGate"/>'s per-workspace writer lock, so
 /// a workspace with a gated read in flight is NOT evicted underneath that reader — the eviction
 /// blocks until the reader drains.
+/// </para>
+/// <para>
+/// The <c>root-expansion-grant-revoke-on-lifecycle-event</c> guard verifies that the same LRU
+/// event revokes session-scoped authorization state without requiring a close-tool call.
 /// </para>
 /// </summary>
 [DoNotParallelize]
@@ -84,6 +91,67 @@ public sealed class WorkspaceCapLruEvictionTests
         }
         finally
         {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
+        }
+    }
+
+    /// <summary>
+    /// The host composition subscribes the root-expansion grant registry to
+    /// <see cref="IWorkspaceManager.WorkspaceClosed"/>. Cap-pressure eviction must therefore
+    /// revoke the evicted session's grant even though no <c>workspace_close</c> tool call occurs.
+    /// </summary>
+    [TestMethod]
+    public async Task LruEviction_RevokesRootExpansionGrantThroughWorkspaceClosed()
+    {
+        using var manager = CreateManager(maxConcurrentWorkspaces: 1);
+        using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+        manager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
+
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        string? grantedWorkspaceId = null;
+
+        try
+        {
+            await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
+                [Path.GetDirectoryName(path1)!, Path.GetDirectoryName(path2)!],
+                CancellationToken.None,
+                allowRootExpansion: true);
+
+            var firstLoadJson = await WorkspaceTools.LoadWorkspace(
+                serverSession.Server,
+                gate,
+                manager,
+                warmService: null!,
+                commandRunner: null!,
+                path1,
+                prewarm: false,
+                expandSanctionedRoots: true,
+                ct: CancellationToken.None);
+            using var firstLoad = JsonDocument.Parse(firstLoadJson);
+            grantedWorkspaceId = firstLoad.RootElement.GetProperty("workspaceId").GetString();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(grantedWorkspaceId));
+            Assert.IsTrue(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                "workspace_load(expandSanctionedRoots:true) must record the session grant.");
+
+            _ = await WorkspaceTools.LoadWorkspace(
+                serverSession.Server,
+                gate,
+                manager,
+                warmService: null!,
+                commandRunner: null!,
+                path2,
+                prewarm: false,
+                evictPolicy: EvictPolicy.Lru,
+                ct: CancellationToken.None);
+
+            Assert.IsFalse(RootExpansionGrantRegistry.IsGranted(grantedWorkspaceId),
+                "WorkspaceClosed must revoke the grant when LRU eviction ends the session.");
+        }
+        finally
+        {
+            RootExpansionGrantRegistry.Revoke(grantedWorkspaceId ?? string.Empty);
             TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
             TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path2)!);
         }

@@ -18,16 +18,17 @@ internal static class MetaSerializer
 internal static class ToolErrorHandler
 {
     /// <summary>
-    /// The COMPLETE set of error categories this classifier can emit. Every category the
+    /// The canonical set of error-category strings this classifier emits. Every category the
     /// classification tables (and <see cref="ClassifyError"/>'s post-classification hooks)
     /// produce is declared here, and <c>ResourceReadResultFilter.MapErrorCode</c> gives each
-    /// one an explicit switch arm. Two consequences, both deliberate:
+    /// current category an explicit switch arm. Keep both surfaces synchronized when changing
+    /// this set; the resource mapper retains an <c>InternalError</c> fallback for defensive
+    /// handling of an unknown runtime value.
     /// <list type="bullet">
-    ///   <item><description>A renamed or typo'd category breaks the compile instead of
-    ///         silently falling through to the <c>InternalError</c> wire code.</description></item>
-    ///   <item><description>A NEWLY ADDED category must be declared here and given an explicit
-    ///         wire-code arm, so "is this a caller fault (-32602) or a server fault (-32603)?"
-    ///         is a compile-visible decision rather than a silent default.</description></item>
+    ///   <item><description>Call sites reuse these constants instead of duplicating wire-visible
+    ///         string literals.</description></item>
+    ///   <item><description>A newly added category needs an explicit mapper decision: caller
+    ///         fault (-32602) or server fault (-32603).</description></item>
     /// </list>
     /// </summary>
     internal static class ErrorCategories
@@ -35,6 +36,7 @@ internal static class ToolErrorHandler
         public const string NotFound = "NotFound";
         public const string FileNotFound = "FileNotFound";
         public const string DirectoryNotFound = "DirectoryNotFound";
+        public const string PermissionDenied = "PermissionDenied";
         public const string WorkspaceEvicted = "WorkspaceEvicted";
         public const string InvalidArgument = "InvalidArgument";
         public const string InternalError = "InternalError";
@@ -71,6 +73,9 @@ internal static class ToolErrorHandler
             "If the workspace was recently reloaded, the file may have been removed."),
         [typeof(DirectoryNotFoundException)] = (_, _) => new(ErrorCategories.DirectoryNotFound,
             "The requested directory was not found. Verify the directory path is absolute and exists on disk."),
+        [typeof(UnauthorizedAccessException)] = (_, _) => new(ErrorCategories.PermissionDenied,
+            "The operation was denied by the configured access policy or operating-system permissions. " +
+            "Verify the requested path is within an allowed root and that the server account has access."),
         [typeof(KeyNotFoundException)] = (ex, _) => new(ErrorCategories.NotFound, BuildSafeNotFoundMessage(ex.Message)),
         [typeof(ArgumentException)] = (ex, _) =>
         {

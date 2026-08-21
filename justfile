@@ -42,19 +42,19 @@ test-release:
 
 # Validate AI documentation structure
 verify-docs:
-    ./eng/verify-ai-docs.ps1
+    pwsh -NoProfile -File ./eng/verify-ai-docs.ps1
 
 # Check version-string drift across all six version files
 verify-version-drift:
-    ./eng/verify-version-drift.ps1
+    pwsh -NoProfile -File ./eng/verify-version-drift.ps1
 
 # Check shipped skills (./skills/) have no repo-specific references
 verify-skills:
-    ./eng/verify-skills-are-generic.ps1
+    pwsh -NoProfile -File ./eng/verify-skills-are-generic.ps1
 
 # MCP registry install-readiness scorecard (writes artifacts/registry-readiness.json)
 verify-registry-readiness:
-    ./eng/verify-registry-readiness.ps1
+    pwsh -NoProfile -File ./eng/verify-registry-readiness.ps1
 
 # --- Run ---
 
@@ -67,10 +67,10 @@ run:
 # Fast local sanity check before pushing (build + test)
 validate: build test
 
-# Local equivalent of the CI pipeline (docs + skills + release validation + vuln audit)
-ci: verify-docs verify-skills verify-release vuln-audit
+# Local equivalent of the required pull-request pipeline (no coverage/live-network canary)
+ci: verify-docs verify-skills verify-release-pr vuln-audit
 
-# Everything including full release validation
+# Everything including coverage and the live-network canary
 full: verify-docs verify-skills verify-release vuln-audit
 
 # --- Clean ---
@@ -116,7 +116,7 @@ tool-install-local: pack
 
 # Reload the Claude Code plugin from the local repo (Layer 2)
 plugin-reload:
-    pwsh ./eng/update-claude-plugin.ps1
+    pwsh -NoProfile -File ./eng/update-claude-plugin.ps1
 
 # Full reinstall: Layer 1 (global tool) + Layer 2 (Claude Code plugin)
 reinstall: tool-install-local plugin-reload
@@ -139,4 +139,8 @@ vuln-audit:
 
 # Run the full release verification pipeline (restore, build, test with coverage, publish, hash manifest)
 verify-release:
-    ./eng/verify-release.ps1
+    pwsh -NoProfile -File ./eng/verify-release.ps1
+
+# Run the pull-request release lane (coverage and live-network tests are informational)
+verify-release-pr:
+    pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests

@@ -119,4 +119,4 @@ canonical trigger and runner contract.
 - test
 - publish host executable
 - upload publish artifacts and hash manifest
-- run `dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive`
+- run `pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1` (fail-closed restore audit for top-level and transitive advisories)

@@ -75,6 +75,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         [
             new FileNotFoundException(sentinel, sentinel),
             new DirectoryNotFoundException(sentinel),
+            new UnauthorizedAccessException(sentinel),
             new KeyNotFoundException(sentinel),
             new ArgumentException(sentinel, "workspaceId"),
             new TimeoutException(sentinel),
@@ -94,6 +95,21 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
                 envelope.Contains("C:/private", StringComparison.Ordinal),
                 $"{exception.GetType().Name} exposed a full path in the public envelope: {envelope}");
         }
+    }
+
+    [TestMethod]
+    public void ToolErrorHandler_UnauthorizedAccess_ClassifiesWithoutDisclosingPath()
+    {
+        const string secretPath = "C:/private/tenant/solution.slnx";
+        var envelope = ToolErrorHandler.ClassifyAndFormat(
+            new UnauthorizedAccessException(secretPath),
+            "workspace_load");
+        using var json = JsonDocument.Parse(envelope);
+
+        Assert.AreEqual(
+            ToolErrorHandler.ErrorCategories.PermissionDenied,
+            json.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(envelope.Contains(secretPath, StringComparison.OrdinalIgnoreCase));
     }
 
     // ── CODE-04: InvalidOperationException is handled via dictionary ──

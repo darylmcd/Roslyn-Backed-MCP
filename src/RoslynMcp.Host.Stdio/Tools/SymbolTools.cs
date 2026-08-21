@@ -1,6 +1,9 @@
 using System.ComponentModel;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -17,11 +20,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SymbolTools
 {
 
-    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace. Matching is substring (case-insensitive) — pass a bare fragment like 'Animal' to find 'AnimalService', 'IAnimal', 'CatAnimal', etc. Wildcards (*, ?) and regex metacharacters are NOT interpreted; they are matched literally. Pass `summary=true` to drop expensive per-symbol fields (documentation, parameters, baseTypes, interfaces, modifiers, returnType) for broad queries — useful when the default payload exceeds the MCP cap (~171 KB observed at limit=100 without summary). When a query matches more than one symbol the calling agent receives the full paginated candidate list directly by default; pass `allowElicitation=true` to instead open a blocking MCP operator picker on elicitation-capable clients. Response shape: { count, totalCount, hasMore, offset, limit, summary, symbols }.")]
+    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace. Matching is substring (case-insensitive) — pass a bare fragment like 'Animal' to find 'AnimalService', 'IAnimal', 'CatAnimal', etc. Wildcards (*, ?) and regex metacharacters are NOT interpreted; they are matched literally. Pass `summary=true` to drop expensive per-symbol fields (documentation, parameters, baseTypes, interfaces, modifiers, returnType) for broad queries — useful when the default payload exceeds the MCP cap (~171 KB observed at limit=100 without summary). When a query matches more than one symbol the calling agent receives the full paginated candidate list directly by default; pass `allowElicitation=true` to instead ask for a request-scoped operator choice on form-capable clients. Response shape: { count, totalCount, hasMore, offset, limit, summary, symbols }.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Search symbols by name across the workspace.")]
     public static Task<string> SearchSymbols(
-        McpServer server,
+        RequestContext<CallToolRequestParams>? requestContext,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -32,7 +35,7 @@ public static class SymbolTools
         [Description("Maximum number of results to return (default: 50, max: 50)")] int limit = 50,
         [Description("Number of results to skip before returning (default: 0)")] int offset = 0,
         [Description("When true, drops expensive per-symbol fields (documentation, parameters, baseTypes, interfaces, modifiers, returnType) to keep the response small for broad queries. Locator-essential fields (name, fullyQualifiedName, symbolHandle, kind, filePath, startLine, startColumn) remain populated. Default false preserves the full SymbolDto shape.")] bool summary = false,
-        [Description("Default false (agent-first). When false, a query matching more than one symbol returns the full paginated candidate list to the calling agent. When true AND the client supports MCP elicitation, a >1-candidate result instead opens a blocking operator picker and returns only the chosen symbol (with chosenViaElicitation:true); elicitation-unsupported clients still receive the candidate list.")] bool allowElicitation = false,
+        [Description("Default false (agent-first). When false, a query matching more than one symbol returns the full paginated candidate list to the calling agent. When true AND the client supports form elicitation, a >1-candidate result instead asks for a request-scoped operator choice and returns only the chosen symbol (with chosenViaElicitation:true); unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -87,32 +90,41 @@ public static class SymbolTools
             // elicit-disambiguation-on-multi-symbol-resolve / symbol-disambiguation-agent-first-default:
             // agent-first by default — a >1-candidate search returns the paginated candidate list to
             // the calling agent. Only when the caller explicitly opts in via allowElicitation AND the
-            // client supports MCP elicitation do we open the blocking operator picker and return ONLY
+            // client supports form elicitation do we request an operator choice and return ONLY
             // the chosen symbol with a chosenViaElicitation marker. If elicitation is unsupported OR
             // the user declines, fall through to the existing list shape.
-            if (allowElicitation && paged.Count > 1 && ElicitationChoicePrompt.HasElicitation(server?.ClientCapabilities))
+            if (allowElicitation &&
+                paged.Count > 1 &&
+                requestContext is not null &&
+                ElicitationChoicePrompt.SupportsElicitation(requestContext))
             {
                 var options = new List<(string Key, string Label)>(paged.Count);
+                var choiceTokens = new List<string>(paged.Count);
                 for (var i = 0; i < paged.Count; i++)
                 {
                     var r = paged[i];
                     var label = string.IsNullOrEmpty(r.FilePath)
                         ? $"{r.Kind} {r.FullyQualifiedName}"
                         : $"{r.Kind} {r.FullyQualifiedName} — {Path.GetFileName(r.FilePath)}:{r.StartLine}";
-                    options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), label));
+                    var choiceToken = CreateSymbolChoiceToken(r);
+                    choiceTokens.Add(choiceToken);
+                    options.Add((choiceToken, label));
                 }
 
                 var chosenKey = await ElicitationChoicePrompt.TryElicitChoiceAsync(
-                    server,
+                    requestContext,
                     paramName: "choice",
                     title: "Pick a symbol",
                     description: $"symbol_search returned {allResults.Count} candidates for '{query}'. Pick one to focus on.",
                     options,
                     c).ConfigureAwait(false);
 
-                if (chosenKey is not null
-                    && int.TryParse(chosenKey, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var idx)
-                    && idx >= 0 && idx < paged.Count)
+                var chosenIndex = chosenKey is null
+                    ? -1
+                    : choiceTokens.FindIndex(token =>
+                        string.Equals(token, chosenKey, StringComparison.Ordinal));
+                var chosen = chosenIndex >= 0 ? paged[chosenIndex] : null;
+                if (chosen is not null)
                 {
                     return JsonSerializer.Serialize(new
                     {
@@ -122,7 +134,7 @@ public static class SymbolTools
                         offset,
                         limit,
                         summary,
-                        symbols = new[] { ProjectSymbol(paged[idx]) },
+                        symbols = new[] { ProjectSymbol(chosen) },
                         chosenViaElicitation = true,
                     }, JsonDefaults.Indented);
                 }
@@ -171,11 +183,11 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position. When a metadataName resolves to multiple candidates the calling agent receives the structured candidate list directly by default; pass allowElicitation=true to instead open a blocking MCP operator picker on elicitation-capable clients.")]
+    [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position. When a metadataName resolves to multiple candidates the calling agent receives the structured candidate list directly by default; pass allowElicitation=true to instead ask for a request-scoped operator choice on form-capable clients.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Navigate to the symbol definition.")]
     public static Task<string> GoToDefinition(
-        McpServer server,
+        RequestContext<CallToolRequestParams>? requestContext,
         IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
@@ -185,7 +197,7 @@ public static class SymbolTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
-        [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports MCP elicitation, a multi-candidate resolve instead opens a blocking operator picker; elicitation-unsupported clients still receive the candidate list.")] bool allowElicitation = false,
+        [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports form elicitation, a multi-candidate resolve instead asks for a request-scoped operator choice; unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
@@ -195,7 +207,7 @@ public static class SymbolTools
 
             // elicit-disambiguation-on-multi-symbol-resolve: see find_references for rationale.
             var disambiguation = await TryDisambiguateMetadataNameAsync(
-                server, workspaceManager, workspaceId, locator, "go_to_definition", allowElicitation, c).ConfigureAwait(false);
+                requestContext, workspaceManager, workspaceId, locator, "go_to_definition", allowElicitation, c).ConfigureAwait(false);
             if (disambiguation.ListEnvelope is not null)
             {
                 return disambiguation.ListEnvelope;
@@ -239,11 +251,11 @@ public static class SymbolTools
         return "No definition found for the symbol at the specified location";
     }
 
-    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the result to references hosted in the listed project(s) — matches semantic_grep's filter semantics. When a metadataName resolves to multiple candidates the calling agent receives the structured candidate list directly by default; pass allowElicitation=true to instead open a blocking MCP operator picker on elicitation-capable clients.")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the result to references hosted in the listed project(s) — matches semantic_grep's filter semantics. When a metadataName resolves to multiple candidates the calling agent receives the structured candidate list directly by default; pass allowElicitation=true to instead ask for a request-scoped operator choice on form-capable clients.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).")]
     public static Task<string> FindReferences(
-        McpServer server,
+        RequestContext<CallToolRequestParams>? requestContext,
         IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -257,7 +269,7 @@ public static class SymbolTools
         [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
         [Description("When true, drops per-ref preview text to keep the response small for high-fan-out symbols. File path + line + column + classification still populated. Default false preserves the v1.18.2 shape.")] bool summary = false,
         [Description("Optional: case-sensitive Project.Name filter to scope the result; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
-        [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports MCP elicitation, a multi-candidate resolve instead opens a blocking operator picker; elicitation-unsupported clients still receive the candidate list.")] bool allowElicitation = false,
+        [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports form elicitation, a multi-candidate resolve instead asks for a request-scoped operator choice; unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
@@ -273,7 +285,7 @@ public static class SymbolTools
             // disambiguation list response (additive). Position-based locators already pin a
             // single symbol, so this branch is metadata-name-only.
             var disambiguation = await TryDisambiguateMetadataNameAsync(
-                server, workspaceManager, workspaceId, locator, "find_references", allowElicitation, c).ConfigureAwait(false);
+                requestContext, workspaceManager, workspaceId, locator, "find_references", allowElicitation, c).ConfigureAwait(false);
             if (disambiguation.ListEnvelope is not null)
             {
                 return disambiguation.ListEnvelope;
@@ -866,6 +878,48 @@ public static class SymbolTools
     }
 
     /// <summary>
+    /// Creates the opaque identifier carried by a request-scoped symbol-choice prompt. Symbol
+    /// handles are intentionally excluded from the prompt because their reversible payload can
+    /// contain an absolute source path. The full SHA-256 digest remains deterministic across an
+    /// MRTR retry while revealing neither the handle nor its path-bearing payload.
+    /// </summary>
+    internal static string CreateSymbolChoiceToken(string? symbolHandle)
+    {
+        if (string.IsNullOrWhiteSpace(symbolHandle))
+        {
+            return string.Empty;
+        }
+
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(symbolHandle));
+        return $"roslyn-symbol-choice:v1:{Convert.ToHexString(digest)}";
+    }
+
+    /// <summary>
+    /// Creates a stable opaque choice token for a search result. Source symbols and named types
+    /// use their stable handle. Metadata members can legitimately lack a handle, so those use a
+    /// deterministic kind/FQN/project/location projection before hashing rather than disabling
+    /// the entire multi-candidate prompt with an empty option key.
+    /// </summary>
+    internal static string CreateSymbolChoiceToken(Core.Models.SymbolDto candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (!string.IsNullOrWhiteSpace(candidate.SymbolHandle))
+        {
+            return CreateSymbolChoiceToken(candidate.SymbolHandle);
+        }
+
+        var identity = string.Join(
+            "\u001f",
+            candidate.Kind,
+            candidate.FullyQualifiedName,
+            candidate.Project ?? string.Empty,
+            candidate.FilePath ?? string.Empty,
+            candidate.StartLine?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+            candidate.StartColumn?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+        return CreateSymbolChoiceToken(identity);
+    }
+
+    /// <summary>
     /// elicit-disambiguation-on-multi-symbol-resolve: outcome of the disambiguation gate.
     /// At most one of <see cref="ChosenLocator"/> / <see cref="ListEnvelope"/> is non-null;
     /// both null means "no disambiguation needed — caller proceeds with the original locator".
@@ -881,8 +935,8 @@ public static class SymbolTools
     /// when <paramref name="locator"/> is a metadata-name locator that resolves to multiple symbols
     /// (overloads, partial-class siblings, member-vs-type collisions), decide how to disambiguate.
     /// Agent-first by default: unless <paramref name="allowElicitation"/> is true, the caller
-    /// receives the additive disambiguation-list JSON directly. MCP elicitation (a blocking operator
-    /// picker) is only attempted when <paramref name="allowElicitation"/> is true AND the client
+    /// receives the additive disambiguation-list JSON directly. A request-scoped operator choice
+    /// is only attempted when <paramref name="allowElicitation"/> is true AND the client
     /// declares the capability. Returns:
     /// <list type="bullet">
     ///   <item><b>ChosenLocator</b> set: elicitation was opted into and the user picked one — caller swaps the locator and continues.</item>
@@ -891,9 +945,9 @@ public static class SymbolTools
     /// </list>
     /// Position-based and handle-based locators are not disambiguated here — they already pin one symbol.
     /// </summary>
-    /// <param name="allowElicitation">When false (default), the multi-candidate result is returned to the calling agent as a list envelope without any operator prompt. When true, an elicitation-capable client is prompted with a blocking picker before falling back to the list envelope.</param>
+    /// <param name="allowElicitation">When false (default), the multi-candidate result is returned to the calling agent as a list envelope without any operator prompt. When true, a form-capable client receives a request-scoped choice prompt before the method falls back to the list envelope.</param>
     internal static async Task<DisambiguationOutcome> TryDisambiguateMetadataNameAsync(
-        McpServer? server,
+        RequestContext<CallToolRequestParams>? requestContext,
         IWorkspaceManager workspaceManager,
         string workspaceId,
         SymbolLocator locator,
@@ -918,28 +972,33 @@ public static class SymbolTools
             return default;
         }
 
-        // Build candidate display payloads ONCE — reused for the elicit prompt and the
+        // Build candidate display payloads ONCE — reused for the request-scoped choice prompt and the
         // fallback list response so the labels the user sees are byte-identical to the
         // labels a non-elicit client would receive.
         var labels = new List<string>(candidates.Count);
         var handles = new List<string>(candidates.Count);
+        var choiceTokens = new List<string>(candidates.Count);
         for (var i = 0; i < candidates.Count; i++)
         {
             labels.Add(SymbolHandleSerializer.BuildDisplayLabel(candidates[i]));
-            handles.Add(SymbolHandleSerializer.CreateHandle(candidates[i]));
+            var handle = SymbolHandleSerializer.CreateHandle(candidates[i]);
+            handles.Add(handle);
+            choiceTokens.Add(CreateSymbolChoiceToken(handle));
         }
 
         // Try elicitation only when the caller explicitly opted in AND the client supports it.
-        if (allowElicitation && ElicitationChoicePrompt.HasElicitation(server?.ClientCapabilities))
+        if (allowElicitation &&
+            requestContext is not null &&
+            ElicitationChoicePrompt.SupportsElicitation(requestContext))
         {
             var options = new List<(string Key, string Label)>(candidates.Count);
             for (var i = 0; i < candidates.Count; i++)
             {
-                options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), labels[i]));
+                options.Add((choiceTokens[i], labels[i]));
             }
 
             var chosenKey = await ElicitationChoicePrompt.TryElicitChoiceAsync(
-                server,
+                requestContext,
                 paramName: "choice",
                 title: "Pick a symbol",
                 description:
@@ -948,9 +1007,10 @@ public static class SymbolTools
                 options,
                 ct).ConfigureAwait(false);
 
-            if (chosenKey is not null
-                && int.TryParse(chosenKey, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var idx)
-                && idx >= 0 && idx < candidates.Count)
+            var idx = chosenKey is null
+                ? -1
+                : choiceTokens.FindIndex(token => string.Equals(token, chosenKey, StringComparison.Ordinal));
+            if (idx >= 0)
             {
                 var chosenLocator = SymbolLocatorFactory.Create(
                     filePath: null, line: null, column: null,

@@ -127,9 +127,12 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             var newLeaseDirs = leaseDirsAfterReload.Except(leaseDirsAfterLoad, StringComparer.OrdinalIgnoreCase).ToList();
             Assert.AreEqual(1, newLeaseDirs.Count,
                 $"Reload must materialize exactly one NEW shadow root; saw [{string.Join(", ", newLeaseDirs)}].");
+            var (reloadReclaimed, reloadError) = await WaitForReclamationWithErrorOnCleanStackAsync(
+                workspaceDirectory,
+                surviving: newLeaseDirs[0]);
             Assert.IsTrue(
-                await WaitForReclamationOnCleanStackAsync(workspaceDirectory, surviving: newLeaseDirs[0]),
-                "The pre-reload lease's shadow root was still locked after the bounded wait — the old load context did not unload.");
+                reloadReclaimed,
+                $"The pre-reload lease's shadow root was still locked after the bounded wait — the old load context did not unload. Last error: {reloadError}; firstContextAlive={firstContextRef.IsAlive}.");
             Assert.IsTrue(Directory.Exists(newLeaseDirs[0]),
                 "The reloaded workspace's own shadow root must survive old-lease reclamation.");
 
@@ -143,6 +146,49 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         finally
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReclamationTimeout_PreservesLastDeletionError()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var workspaceDirectory = Path.Combine(
+            TestTempRoot.Current,
+            "analyzer-shadow-reclamation-timeout-" + Guid.NewGuid().ToString("N"));
+        var leaseDirectory = Path.Combine(workspaceDirectory, "locked-lease");
+        var lockedFilePath = Path.Combine(leaseDirectory, "locked.dll");
+        Directory.CreateDirectory(leaseDirectory);
+
+        FileStream? lockedFile = null;
+        try
+        {
+            lockedFile = new FileStream(
+                lockedFilePath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None);
+
+            var (reclaimed, lastError) = await WaitForReclamationWithErrorOnCleanStackAsync(
+                workspaceDirectory,
+                surviving: null,
+                timeout: TimeSpan.FromMilliseconds(75),
+                retryDelay: TimeSpan.FromMilliseconds(10));
+
+            Assert.IsFalse(reclaimed, "The locked fixture must force the bounded reclamation timeout.");
+            Assert.IsTrue(
+                lastError.StartsWith("IOException: ", StringComparison.Ordinal) ||
+                lastError.StartsWith("UnauthorizedAccessException: ", StringComparison.Ordinal),
+                $"The timeout must retain the final deletion failure type and message. Actual: {lastError}");
+        }
+        finally
+        {
+            lockedFile?.Dispose();
+            TestFixtureFileSystem.DeleteDirectoryIfExists(workspaceDirectory);
         }
     }
 
@@ -259,24 +305,31 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     /// thread's own <c>OpenSolutionAsync.MoveNext</c> continuation frames).
     /// </para>
     /// </summary>
-    private static async Task<bool> WaitForReclamationOnCleanStackAsync(string workspaceDirectory, string? surviving)
-    {
-        var (reclaimed, _) = await WaitForReclamationWithErrorOnCleanStackAsync(workspaceDirectory, surviving).ConfigureAwait(false);
-        return reclaimed;
-    }
-
     private static Task<(bool Reclaimed, string LastError)> WaitForReclamationWithErrorOnCleanStackAsync(
-        string workspaceDirectory, string? surviving) =>
+        string workspaceDirectory,
+        string? surviving,
+        TimeSpan? timeout = null,
+        TimeSpan? retryDelay = null) =>
         Task.Run(() =>
         {
-            var reclaimed = WaitForReclamation(workspaceDirectory, surviving, out var lastError);
+            var reclaimed = WaitForReclamation(
+                workspaceDirectory,
+                surviving,
+                timeout ?? ReclamationTimeout,
+                retryDelay ?? TimeSpan.FromMilliseconds(250),
+                out var lastError);
             return (reclaimed, lastError);
         });
 
-    private static bool WaitForReclamation(string workspaceDirectory, string? surviving, out string lastError)
+    private static bool WaitForReclamation(
+        string workspaceDirectory,
+        string? surviving,
+        TimeSpan timeout,
+        TimeSpan retryDelay,
+        out string lastError)
     {
         lastError = "(none)";
-        var deadline = DateTime.UtcNow + ReclamationTimeout;
+        var deadline = DateTime.UtcNow + timeout;
         while (true)
         {
             var remaining = ListLeaseDirectories(workspaceDirectory)
@@ -287,7 +340,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                 return true;
             }
 
-            if (DateTime.UtcNow > deadline)
+            if (DateTime.UtcNow >= deadline)
             {
                 return false;
             }
@@ -309,7 +362,11 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
                 }
             }
 
-            Thread.Sleep(250);
+            var remainingWait = deadline - DateTime.UtcNow;
+            if (remainingWait > TimeSpan.Zero)
+            {
+                Thread.Sleep(remainingWait < retryDelay ? remainingWait : retryDelay);
+            }
         }
     }
 

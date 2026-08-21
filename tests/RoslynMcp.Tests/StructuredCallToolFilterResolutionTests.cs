@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 
 namespace RoslynMcp.Tests;
 
@@ -11,13 +12,13 @@ namespace RoslynMcp.Tests;
 /// <see cref="StructuredCallToolFilter"/> pre-dispatch path that resolves an omitted/empty
 /// <c>workspaceId</c> on read-only, non-destructive tools before the SDK binder runs. Pins:
 /// <list type="bullet">
-///   <item><b>eligibility</b> — <see cref="StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor"/>
+///   <item><b>eligibility</b> — <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor"/>
 ///         fires for read-only workspace-scoped tools <i>regardless of the schema Required flag</i>,
 ///         which is the property that keeps the feature alive after a tool flips
 ///         <c>workspaceId</c> to optional (the surface-flip initiative). Its sibling
-///         <see cref="StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor"/> is now also
-///         Required-independent; it differs only in covering the exception-path elicitation
-///         recovery rather than the pre-dispatch auto-resolution path.</item>
+///         <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor"/> is now also
+///         Required-independent; it differs only in covering the path prompt and
+///         recover-load-retry flow rather than the earlier auto-resolution path.</item>
 ///   <item><b>classification</b> — omit + 1 loaded resolves to that workspace; omit + ≥2 loaded
 ///         fast-fails listing the candidates; omit + 0 loaded is left for on-demand discovery;
 ///         an explicit id passes through untouched.</item>
@@ -36,9 +37,9 @@ public sealed class StructuredCallToolFilterResolutionTests
     [TestMethod]
     public void IsWorkspaceIdAutoResolveAllowedFor_RequiredReadOnlyTool_ReturnsTrue()
     {
-        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("symbol_search"));
-        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("find_references"));
-        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("compile_check"));
+        Assert.IsTrue(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("symbol_search"));
+        Assert.IsTrue(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("find_references"));
+        Assert.IsTrue(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("compile_check"));
     }
 
     [TestMethod]
@@ -48,37 +49,37 @@ public sealed class StructuredCallToolFilterResolutionTests
         // Auto-resolution MUST still apply — this is the exact post-surface-flip shape, and the
         // whole point of decoupling auto-resolution from the Required flag.
         Assert.IsTrue(
-            StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("workspace_readiness_report"),
+            ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("workspace_readiness_report"),
             "Auto-resolution must fire for read-only tools whose workspaceId is optional; " +
             "otherwise the feature dies the moment a tool flips workspaceId to a default.");
 
-        // Coherence witness: the exception-path recovery predicate is now ALSO Required-independent
+        // Coherence witness: the path-recovery predicate is also Required-independent
         // (decoupled to match auto-resolve), so it fires for the same optional read-only tool. The
         // two predicates differ in WHICH path they gate (pre-dispatch auto-resolution vs the
-        // exception-path elicitation recovery), not in Required-gating.
+        // prompt-and-retry recovery), not in Required-gating.
         Assert.IsTrue(
-            StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("workspace_readiness_report", "workspaceId"),
-            "The exception-path recovery predicate is Required-independent and must fire for an " +
+            ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor("workspace_readiness_report", "workspaceId"),
+            "The path-recovery predicate is Required-independent and must fire for an " +
             "optional-workspaceId read-only tool, mirroring the auto-resolve predicate.");
     }
 
     [TestMethod]
     public void IsWorkspaceIdAutoResolveAllowedFor_WriteOrDestructiveTool_ReturnsFalse()
     {
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("apply_text_edit"),
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("apply_text_edit"),
             "Mutating tools must never have workspaceId auto-resolved at the chokepoint.");
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("revert_last_apply"),
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("revert_last_apply"),
             "Destructive tools must never have workspaceId auto-resolved.");
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("workspace_close"),
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("workspace_close"),
             "Destructive workspace-lifecycle tools must never auto-resolve workspaceId.");
     }
 
     [TestMethod]
     public void IsWorkspaceIdAutoResolveAllowedFor_UnknownOrEmpty_ReturnsFalse()
     {
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor("not_a_real_tool"));
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor(""));
-        Assert.IsFalse(StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor(null));
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor("not_a_real_tool"));
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor(""));
+        Assert.IsFalse(ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor(null));
     }
 
     [TestMethod]
@@ -89,7 +90,7 @@ public sealed class StructuredCallToolFilterResolutionTests
         // unknown tool name must still short-circuit to false (TryGetTool miss ⇒ no eligible tool),
         // preserving the pre-switch behavior.
         Assert.IsFalse(
-            StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("not_a_real_tool", "workspaceId"));
+            ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor("not_a_real_tool", "workspaceId"));
     }
 
     // ── classification ──────────────────────────────────────────────────────
@@ -162,6 +163,38 @@ public sealed class StructuredCallToolFilterResolutionTests
         Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.NotApplicable, result);
         Assert.IsNull(resolvedId);
         Assert.IsNull(failMessage);
+    }
+
+    [TestMethod]
+    public void RequestStateCodec_ValidWorkspaceId_RoundTripsCanonicalParameter()
+    {
+        var workspaceId = Guid.NewGuid().ToString("N");
+        var arguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+        {
+            [ElicitationAllowlistPolicy.WorkspaceIdParameterName] =
+                JsonSerializer.SerializeToElement(workspaceId),
+        };
+
+        var state = RequestStateCodec.CaptureWorkspaceId(
+            arguments,
+            ElicitationAllowlistPolicy.WorkspaceIdParameterName);
+
+        Assert.IsNotNull(state);
+        Assert.IsTrue(RequestStateCodec.TryRestoreWorkspaceId(state, out var restored));
+        Assert.AreEqual(workspaceId, restored);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("roslynmcp.workspace.v1:not-a-guid")]
+    [DataRow("roslynmcp.workspace.v1:gggggggggggggggggggggggggggggggg")]
+    [DataRow("roslynmcp.workspace.v2:0123456789abcdef0123456789abcdef")]
+    [DataRow("roslynmcp.workspace.v1:0123456789abcdef0123456789abcdef-extra")]
+    public void RequestStateCodec_MalformedOrUnknownState_FailsClosed(string? state)
+    {
+        Assert.IsFalse(RequestStateCodec.TryRestoreWorkspaceId(state, out var restored));
+        Assert.AreEqual(string.Empty, restored);
     }
 
     // ── observability (_meta.autoResolution) ────────────────────────────────

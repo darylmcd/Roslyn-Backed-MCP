@@ -1,11 +1,11 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace RoslynMcp.Host.Stdio.Middleware;
+namespace RoslynMcp.Host.Stdio.ProtocolCompatibility;
 
 /// <summary>
-/// Resolves protocol feature support for the current request. Per-request metadata takes
-/// precedence so stateless transports do not accidentally inherit connection-scoped behavior.
+/// Resolves protocol-era and client-capability state for the current request. This neutral host
+/// boundary is shared by result shaping and request-scoped input; neither layer owns it.
 /// </summary>
 internal static class RequestProtocolFeatureGate
 {
@@ -21,6 +21,20 @@ internal static class RequestProtocolFeatureGate
         // McpProtocolVersions helper is internal and therefore unavailable to server filters.
         return !string.IsNullOrEmpty(protocolVersion)
             && StringComparer.Ordinal.Compare(protocolVersion, July2026ProtocolVersion) >= 0;
+    }
+
+    /// <summary>
+    /// Resolves the authoritative client capabilities for this request. SEP-2575 revisions carry
+    /// capabilities in request metadata and prohibit inference from server/session state; older
+    /// initialize-handshake revisions expose the session-scoped snapshot on the server.
+    /// </summary>
+    public static ClientCapabilities? ResolveClientCapabilities<TParams>(RequestContext<TParams> context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return SupportsJuly2026Features(context)
+            ? context.JsonRpcRequest.Context?.ClientCapabilities
+            : context.Server.ClientCapabilities;
     }
 
     /// <summary>

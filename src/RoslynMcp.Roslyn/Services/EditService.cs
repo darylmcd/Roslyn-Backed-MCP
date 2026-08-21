@@ -87,11 +87,16 @@ public sealed class EditService : IEditService
         // pass BOTH the solution (for the legacy path) AND an explicit file snapshot
         // (for the authoritative file-based restore path — see FLAG-9A in UndoService).
         // Syntax check runs before capture so a rejected edit does not leave a no-op undo entry.
+        // When path validation pinned a physical target, snapshot that SAME path used by the
+        // write; storing the client path would let revert re-walk a subsequently swapped link.
         var normalizedFilePath = Path.GetFullPath(filePath);
+        var pinnedWritePath = canonicalWritePath is null
+            ? null
+            : Path.GetFullPath(canonicalWritePath);
         var fileSnapshots = new[]
         {
             await FileSnapshotCapture.CaptureAsync(
-                normalizedFilePath,
+                pinnedWritePath ?? normalizedFilePath,
                 () => sourceText.ToString(),
                 ct).ConfigureAwait(false),
         };
@@ -101,7 +106,7 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots);
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct, canonicalWritePath: canonicalWritePath).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct, canonicalWritePath: pinnedWritePath).ConfigureAwait(false);
 
         // Only wire up verify when the core apply actually wrote the edit. When the
         // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges

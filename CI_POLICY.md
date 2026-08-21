@@ -16,9 +16,11 @@ This document is the single canonical source for validation requirements and mer
 
 ## Local Validation
 
-- For AI-doc changes, run `./eng/verify-ai-docs.ps1`.
-- For release-impacting or code changes, run `./eng/verify-release.ps1`.
+- For AI-doc changes, run `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1`.
+- For release-impacting or code changes, run the required PR-equivalent `just ci` gate.
 - `eng/verify-release.ps1` performs restore, build, test (with Cobertura coverage under `artifacts/coverage`), publish, and hash-manifest generation. Pass `-NoCoverage` to skip the `--collect:"XPlat Code Coverage"` IL-rewrite step for faster iteration when you don't need the coverage artifact (matches the CI pull-request path).
+- `just ci` is the required pull-request-equivalent local gate: docs, shipped skills, `verify-release.ps1 -NoCoverage -ExcludeNetworkTests`, and the fail-closed vulnerability audit. Coverage and live network tests are informational in this lane, matching pull-request CI.
+- `just full` retains the explicit full local lane: coverage, live network tests, publish/hash verification, docs, shipped skills, and the vulnerability audit.
 
 ### Test Category Lanes
 
@@ -38,7 +40,7 @@ Combine filters with `&` (AND) or `\|` (OR) per `dotnet test --filter` syntax â€
 
 - Treat the documented CI workflow as the required merge gate.
 - `validate` is the required status check in the default-branch ruleset, and it is reported by the `validate-gate` aggregator job (whose `name:` is `validate`): it aggregates every matrix leg and fails unless all legs succeeded. The per-leg check names (`validate-leg (windows)`, `validate-leg (linux)`) vary with the routing decision and must not be pinned. Renaming the aggregator would leave the required context unreported and make every PR permanently unmergeable â€” change the ruleset in the same edit or not at all.
-- Merge and publish now share Linux coverage: the pre-merge gate runs the full `eng/verify-release.ps1` suite on `ubuntu-latest` (alongside the routed self-hosted Windows leg when applicable), the same OS `publish-nuget.yml` validates on at tag time. An OS-sensitive test failure surfaces pre-merge, not at publish.
+- Merge and publish now share Linux test-surface coverage: the pre-merge gate runs `eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests` on `ubuntu-latest` (alongside the routed self-hosted Windows leg when applicable), the same OS `publish-nuget.yml` validates on at tag time. Coverage collection and live-network tests remain documented informational lanes; an OS-sensitive product-test failure surfaces pre-merge, not at publish.
 - Do not declare work merge-ready while required CI is failing.
 - If branch synchronization is required by repository protection settings, synchronize before merge.
 

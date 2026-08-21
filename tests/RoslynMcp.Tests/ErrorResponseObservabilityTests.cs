@@ -46,7 +46,7 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () => SymbolTools.FindReferences(
-                server: null!,
+                requestContext: null!,
                 WorkspaceManager,
                 WorkspaceExecutionGate,
                 ReferenceService,

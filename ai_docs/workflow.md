@@ -56,25 +56,28 @@ See `~/.claude/prompts/backlog-sweep-execute.md` § Step 8 for the subagent-flow
 
 ## Release-managed file guard
 
-A PreToolUse hook in `hooks/hooks.json` (matcher `Edit|Write|MultiEdit`) blocks
-edits to release-managed files unless the agent explicitly acknowledges the
-policy. The guarded set:
+A repo-local PreToolUse hook in `.claude/settings.json` (matcher
+`Edit|Write|MultiEdit`) runs the canonical guard script and blocks edits to
+release-managed files unless the agent explicitly acknowledges the policy. The
+guarded set:
 
 | # | Path | Why guarded |
 |---|------|-------------|
 | 1 | `Directory.Build.props` | Canonical `<Version>` source. |
 | 2 | `BannedSymbols.txt` | Repo-wide banned-API list (release-critical analyzer input). |
-| 3 | `manifest.json` (repo root) | Version mirror — one of 5 enumerated by `eng/verify-version-drift.ps1`. |
+| 3 | `manifest.json` (repo root) | Version mirror — one of 6 enumerated by `eng/verify-version-drift.ps1`. |
 | 4 | `.claude-plugin/plugin.json` | Plugin manifest version. |
 | 5 | `.claude-plugin/marketplace.json` | Marketplace manifest version (`plugins[0].version`). |
-| 6 | `CHANGELOG.md` (repo root) | Top `## [X.Y.Z]` header is part of the version-drift check. |
-| 7 | `eng/verify-version-drift.ps1` | The drift-detector script itself. |
-| 8 | `hooks/hooks.json` | The hook config — editing it accidentally would silently disarm guards. |
-| 9 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
+| 6 | `.claude-plugin/server.json` | MCP Registry manifest version (`version` and `packages[0].version`). |
+| 7 | `CHANGELOG.md` (repo root) | Top `## [X.Y.Z]` header is part of the version-drift check. |
+| 8 | `eng/verify-version-drift.ps1` | The drift-detector script itself. |
+| 9 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
+| 10 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
 
-Files 1, 3, 4, 5, and 6 are the five version-source locations enumerated by
-`eng/verify-version-drift.ps1`. Files 2, 7, 8, and 9 are additional
-release-critical infrastructure.
+Files 1 and 3 through 7 are the six version-source locations enumerated by
+`eng/verify-version-drift.ps1`. Files 2 and 8 through 10 are additional
+release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1`
+as the canonical path list; this table documents that executable contract.
 
 **Bypass mechanism.** The guard is command-based — `eng/guard-release-managed-files.ps1`
 inspects only `tool_input.file_path` (deterministic) and looks for an override
@@ -102,10 +105,11 @@ CHANGELOG).
 **Canonical workflows that don't need to touch the sentinel manually:**
 
 - Bumping the version: use `/bump <major|minor|patch>` — the bump skill edits
-  files 1, 3, 4, 5, 6 atomically and manages the sentinel for you.
+  the six version sources (files 1 and 3 through 7) atomically and manages the
+  sentinel for you.
 - Cutting a release: use `/release-cut` — wraps `/bump` end-to-end.
-- Changelog fragments: write to `changelog.d/<row-id>.md` (NOT to file 6
-  directly). `/bump` consumes the fragments at release time.
+- Changelog fragments: write to `changelog.d/<row-id>.md` (NOT to
+  `CHANGELOG.md` directly). `/bump` consumes the fragments at release time.
 
 **False-positive note.** Test fixtures named `manifest.json` under
 `tests/**/Fixtures/` are not the version source and are not blocked. The guard

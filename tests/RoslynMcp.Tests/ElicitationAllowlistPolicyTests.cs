@@ -1,5 +1,3 @@
-using ModelContextProtocol.Protocol;
-using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
 
 namespace RoslynMcp.Tests;
@@ -8,52 +6,30 @@ namespace RoslynMcp.Tests;
 /// Coverage for <see cref="ElicitationAllowlistPolicy"/> — the elicitation-allowlist policy layer
 /// extracted from <see cref="StructuredCallToolFilter"/> in the
 /// <c>structuredcalltoolfilter-god-class-decompose</c> initiative. These assertions exercise the
-/// policy members <b>directly</b> (not through the filter's thin delegates), pinning the
-/// decomposed unit on its own so the policy contract is guarded even if the filter's forwarding
-/// surface changes. The pre-existing <c>StructuredCallToolFilterElicitationTests</c> continue to
-/// assert the same guarantees through the filter's remaining delegates
-/// (<c>IsSensitiveFieldName</c>, <c>IsElicitationAllowedFor</c>,
-/// <c>IsWorkspaceIdRecoveryAllowedFor</c>), proving those delegates are behavior-preserving.
-///
-/// <para>
-/// The <c>HasElicitation</c> assertions below target
-/// <see cref="ElicitationChoicePrompt.HasElicitation"/> — its sole definition since the
-/// <c>elicitation-forwarder-collapse-haselicitation</c> initiative deleted the
-/// <see cref="ElicitationAllowlistPolicy"/> and <see cref="StructuredCallToolFilter"/> forwarders.
-/// </para>
+/// policy members directly. Production filtering and coordination consume this policy rather
+/// than retaining test-only forwarding APIs; the live filter/coordinator suites pin those
+/// behavioral paths independently.
 /// </summary>
 [TestClass]
 public sealed class ElicitationAllowlistPolicyTests
 {
-    // ── HasElicitation ────────────────────────────────────────────────────────
-
     [TestMethod]
-    public void HasElicitation_WhenCapabilityNonNull_ReturnsTrue()
+    [DataRow("workspace_load", "path", true)]
+    [DataRow("workspace_status", "workspaceId", true)]
+    [DataRow("compile_check", "workspaceId", true)]
+    [DataRow("apply_text_edit", "workspaceId", false)]
+    [DataRow("workspace_load", "token", false)]
+    [DataRow("workspace_load", "verbose", false)]
+    [DataRow("unknown_tool", "workspaceId", false)]
+    public void ElicitationContract_CanonicalPolicy_ReturnsExpectedDecision(
+        string toolName,
+        string parameterName,
+        bool expected)
     {
-        var capabilities = new ClientCapabilities
-        {
-            Elicitation = new ElicitationCapability(),
-        };
-
-        Assert.IsTrue(ElicitationChoicePrompt.HasElicitation(capabilities),
-            "An ElicitationCapability instance present on ClientCapabilities means the client " +
-            "supports elicitation/create — the elicit recovery path is permitted.");
-    }
-
-    [TestMethod]
-    public void HasElicitation_WhenCapabilitiesNull_ReturnsFalse()
-    {
-        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(null),
-            "Null ClientCapabilities means no handshake-established capability set; refuse to elicit.");
-    }
-
-    [TestMethod]
-    public void HasElicitation_WhenElicitationOmitted_ReturnsFalse()
-    {
-        var capabilities = new ClientCapabilities();
-
-        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(capabilities),
-            "Client must explicitly advertise the elicitation capability; absence means refuse.");
+        Assert.AreEqual(
+            expected,
+            ElicitationAllowlistPolicy.IsElicitationAllowedFor(toolName, parameterName),
+            "The canonical policy returned an unexpected decision.");
     }
 
     // ── IsSensitiveFieldName ──────────────────────────────────────────────────
@@ -108,7 +84,7 @@ public sealed class ElicitationAllowlistPolicyTests
     public void IsElicitationAllowedFor_RequiredWorkspaceId_ReturnsTrue()
     {
         Assert.IsFalse(ElicitationAllowlistPolicy.IsSensitiveFieldName("workspaceId"),
-            "Security review: workspaceId is a non-secret session token derived from the loaded path.");
+            "Security review: workspaceId is a freshly minted opaque session identifier, not a credential.");
         Assert.IsTrue(ElicitationAllowlistPolicy.IsElicitationAllowedFor("workspace_status", "workspaceId"));
         Assert.IsTrue(ElicitationAllowlistPolicy.IsElicitationAllowedFor("compile_check", "workspaceId"));
     }
@@ -161,7 +137,7 @@ public sealed class ElicitationAllowlistPolicyTests
     public void IsWorkspaceIdRecoveryAllowedFor_OptionalWorkspaceIdReadOnlyTool_ReturnsTrue()
     {
         // The recovery gate is decoupled from the Required flag, so read-only tools that flipped
-        // workspaceId to Required:false keep a live exception-path elicitation recovery.
+        // workspaceId to Required:false keep live pre-dispatch path elicitation recovery.
         Assert.IsTrue(ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor("go_to_definition", "workspaceId"),
             "Recovery must stay eligible for go_to_definition after workspaceId flipped to optional.");
         Assert.IsTrue(ElicitationAllowlistPolicy.IsWorkspaceIdRecoveryAllowedFor("find_references", "workspaceId"));

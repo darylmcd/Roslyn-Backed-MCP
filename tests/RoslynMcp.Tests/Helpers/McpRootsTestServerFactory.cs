@@ -62,12 +62,14 @@ internal static class McpRootsTestServerFactory
         string sanctionedRootPath,
         CancellationToken cancellationToken,
         bool useLatestProtocol = false,
-        IReadOnlyList<string>? clientRootPaths = null) =>
+        IReadOnlyList<string>? clientRootPaths = null,
+        bool allowRootExpansion = false) =>
         CreateWithSanctionedRootsAsync(
             [sanctionedRootPath],
             cancellationToken,
             useLatestProtocol,
-            clientRootPaths);
+            clientRootPaths,
+            allowRootExpansion);
 
     /// <summary>
     /// Creates a connected client/server pair with an explicit server-owned root boundary.
@@ -78,7 +80,8 @@ internal static class McpRootsTestServerFactory
         IReadOnlyList<string> sanctionedRootPaths,
         CancellationToken cancellationToken,
         bool useLatestProtocol = false,
-        IReadOnlyList<string>? clientRootPaths = null)
+        IReadOnlyList<string>? clientRootPaths = null,
+        bool allowRootExpansion = false)
     {
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
@@ -88,6 +91,7 @@ internal static class McpRootsTestServerFactory
         hostBuilder.Services.AddSingleton(new SecurityOptions
         {
             SanctionedRoots = sanctionedRootPaths,
+            AllowRootExpansion = allowRootExpansion,
         });
         hostBuilder.Services
             .AddMcpServer()

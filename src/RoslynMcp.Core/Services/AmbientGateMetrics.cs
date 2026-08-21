@@ -59,9 +59,9 @@ public sealed class GateMetricsBuilder
     public int? HeartbeatCount { get; set; }
 
     /// <summary>
-    /// Wall-clock milliseconds for the entire tool action. Captured by the tool error handler
-    /// at the start/end of <c>ExecuteAsync</c> so every tool — reader or writer — surfaces
-    /// the same per-request timing without each service having to add its own Stopwatch.
+    /// Wall-clock milliseconds for the entire tool action. Captured by
+    /// <c>StructuredCallToolFilter</c> through <c>CallMetricsRecorder</c> so every tool — reader
+    /// or writer — surfaces the same per-request timing without each service adding a Stopwatch.
     /// </summary>
     public long ElapsedMs { get; set; }
 
@@ -111,7 +111,9 @@ public sealed class GateMetricsBuilder
     /// workspace-id-omitted-single-resolve: set by <c>StructuredCallToolFilter</c> when a
     /// read-only, non-destructive tool is dispatched with <c>workspaceId</c> omitted/empty.
     /// <c>explicit</c> (caller supplied an id), <c>single-workspace</c> (resolved to the one
-    /// loaded workspace), or <c>fast-fail</c> (≥2 loaded — structured error returned).
+    /// loaded workspace), <c>fast-fail</c> (≥2 loaded — structured error returned),
+    /// <c>auto-loaded</c> (one discovered solution was loaded), or <c>request-state</c> (a modern
+    /// MRTR retry restored the workspace selected on an earlier round trip).
     /// <see langword="null"/> when the request did not pass through the auto-resolution path.
     /// </summary>
     public string? AutoResolution { get; set; }

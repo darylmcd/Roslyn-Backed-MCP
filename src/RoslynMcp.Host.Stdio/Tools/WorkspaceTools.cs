@@ -157,9 +157,6 @@ public static class WorkspaceTools
                     }
 
                     var closed = workspace.Close(workspaceId);
-                    // The expansion grant is scoped to the session it was recorded for; drop it
-                    // with the session so a later workspace id reuse cannot inherit it.
-                    RootExpansionGrantRegistry.Revoke(workspaceId);
                     return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
                 },
                 outerCt,

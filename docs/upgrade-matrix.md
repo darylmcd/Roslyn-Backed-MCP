@@ -122,8 +122,8 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 # Outdated NuGet packages (informational; does not replace coordinated bumps above)
 dotnet list RoslynMcp.slnx package --outdated
 
-# Vulnerable packages (also run in CI)
-dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive
+# Vulnerable packages (same fail-closed verifier used by CI and `just vuln-audit`)
+pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1
 ```
 
 When this matrix and the repo drift, update **this file** in the same change set as the version pins so the table stays trustworthy.

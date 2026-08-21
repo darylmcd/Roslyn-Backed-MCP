@@ -347,7 +347,7 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
             "go_to_definition",
             () =>
             SymbolTools.GoToDefinition(
-                server: server,
+                requestContext: null!,
                 workspaceManager: WorkspaceManager,
                 gate: WorkspaceExecutionGate,
                 symbolNavigationService: SymbolNavigationService,

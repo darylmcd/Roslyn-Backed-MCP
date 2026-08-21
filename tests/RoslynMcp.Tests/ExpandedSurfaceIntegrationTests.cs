@@ -192,7 +192,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
         var refsJson = await SymbolTools.FindReferences(
-            server: await GetPathAuthorizedServerAsync(),
+            requestContext: null!,
             WorkspaceManager,
             WorkspaceExecutionGate,
             ReferenceService,
@@ -796,8 +796,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
-    /// path-boundary-link-swap-toctou: the physical write must land on the canonical target that
-    /// path validation approved, not on a re-walk of the client-supplied path.
+    /// path-boundary-link-swap-toctou: the physical write and its undo snapshot must stay pinned
+    /// to the canonical target that path validation approved, not re-walk the client-supplied path.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -813,8 +813,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     /// the same un-canonicalized <c>Document.FilePath</c>, so the swapped target still receives that
     /// earlier Roslyn-level write. Closing it needs canonicalization at workspace-load time (so
     /// document paths never carry a swappable link component) — a different seam from this row's
-    /// validation-to-write pinning, and out of its scope. Asserting "swapped target untouched" here
-    /// would be a false claim.
+    /// validation-to-write pinning, and out of its scope. The regression therefore records the
+    /// swapped target AFTER apply and asserts that the subsequent revert leaves those bytes alone.
     /// </para>
     /// </remarks>
     [TestMethod]
@@ -891,6 +891,9 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                     harness.Server, linkedProgramFile, CancellationToken.None));
 
+            var realBytesBeforePinnedApply = await File.ReadAllBytesAsync(
+                realProgramFile, CancellationToken.None);
+
             // The write pinned to the pre-swap canonical target still lands in-boundary.
             var pinnedResult = await EditService.ApplyTextEditsAsync(
                 tempWorkspaceId,
@@ -904,6 +907,23 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             StringAssert.Contains(await File.ReadAllTextAsync(realProgramFile), "// pinned edit",
                 "The write must follow the canonical target validation approved. Re-walking the " +
                 "request path at write time would have sent these bytes to the swapped location.");
+
+            // Roslyn's earlier workspace-level apply can still write through the swapped document
+            // path (the residual gap documented above). Revert must not touch that target again:
+            // its authoritative snapshot path is the same canonical target used for persistence.
+            var swappedBytesBeforeRevert = await File.ReadAllBytesAsync(
+                swappedProgramFile, CancellationToken.None);
+            var reverted = await UndoService.RevertAsync(tempWorkspaceId, CancellationToken.None);
+
+            Assert.IsTrue(reverted, "Revert should restore the pinned pre-apply snapshot.");
+            CollectionAssert.AreEqual(
+                realBytesBeforePinnedApply,
+                await File.ReadAllBytesAsync(realProgramFile, CancellationToken.None),
+                "Revert must restore the exact bytes captured from the validated in-boundary target.");
+            CollectionAssert.AreEqual(
+                swappedBytesBeforeRevert,
+                await File.ReadAllBytesAsync(swappedProgramFile, CancellationToken.None),
+                "Revert must not re-walk the client path and overwrite its swapped target.");
         }
         finally
         {

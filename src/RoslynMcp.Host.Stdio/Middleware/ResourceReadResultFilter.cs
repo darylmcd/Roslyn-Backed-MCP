@@ -2,6 +2,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
@@ -78,13 +79,10 @@ internal static class ResourceReadResultFilter
     }
 
     /// <summary>
-    /// Maps EVERY category <see cref="ToolErrorHandler.ClassifyError"/> can emit onto a wire
-    /// code. Each category gets an explicit arm — including the ones that resolve to
-    /// <see cref="McpErrorCode.InternalError"/> — so adding a new category to
-    /// <see cref="ToolErrorHandler.ErrorCategories"/> without deciding its wire code is a
-    /// compile-visible gap rather than a silent server-fault default. The trailing discard arm
-    /// exists only because <c>string</c> switches cannot be exhaustive; it is unreachable for
-    /// any declared category.
+    /// Maps every currently declared <see cref="ToolErrorHandler.ClassifyError"/> category onto
+    /// a wire code. Each known category gets an explicit arm, including those that resolve to
+    /// <see cref="McpErrorCode.InternalError"/>. The trailing discard arm is a fail-safe because
+    /// string switches are not exhaustive; category additions must still update this mapping.
     /// </summary>
     private static McpErrorCode MapErrorCode(string category, bool useInvalidParamsForMissingResource) =>
         category switch
@@ -107,6 +105,7 @@ internal static class ResourceReadResultFilter
             ToolErrorHandler.ErrorCategories.Disconnected or
             ToolErrorHandler.ErrorCategories.RateLimited or
             ToolErrorHandler.ErrorCategories.InvalidOperation or
+            ToolErrorHandler.ErrorCategories.PermissionDenied or
             ToolErrorHandler.ErrorCategories.InternalError => McpErrorCode.InternalError,
             _ => McpErrorCode.InternalError,
         };

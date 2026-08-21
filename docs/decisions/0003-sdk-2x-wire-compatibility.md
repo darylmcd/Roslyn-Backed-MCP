@@ -64,9 +64,10 @@ portable.
    Public responses must contain stable, secret-safe summaries, while server diagnostics retain only
    correlation and benign diagnostic structure. Raw user-derived or secret-bearing values must never
    be persisted or sent on the MCP wire.
-5. **Target requirement (tracked below):** modern input recovery must use request-scoped MRTR.
-   Direct nested Elicitation and Sampling remain only as temporary down-level compatibility behavior.
-   Tasks are not part of the base SDK adoption and require an explicit dependency on
+5. Modern input recovery uses request-scoped MRTR. Direct nested Elicitation remains only for the
+   stateful 2025-11-25 compatibility leg. Sampling is MRTR-only; legacy or sampling-incapable
+   requests receive the deterministic product fallback instead of a nested sampling request. Tasks
+   are not part of the base SDK adoption and require an explicit dependency on
    `ModelContextProtocol.Extensions.Tasks` plus a separate product decision.
 6. No SDK-current compatibility claim is accepted from source inspection, an installed older binary,
    or test counts alone. Raw-wire tests must exercise every affected endpoint under both supported
@@ -90,11 +91,12 @@ the planning handle as delivery evidence.
 | Legacy cache/result-field leakage | Breaking dual-protocol correction | **Delivered:** `RequestProtocolFeatureGate`, `StaticListResultFilter`, `ResourceReadResultFilter`, and `ServerDiscoveryWireTests` | On legacy sessions, treat `resultType`, `ttlMs`, and `cacheScope` as absent. On 2026-07-28, honor the required result discriminator and cache policy. |
 | Resource failures encoded as successful bodies | Breaking stable-behavior correction | **Delivered:** `ResourceReadResultFilter`, `ResourceReadErrorPolicy`, and `ResourceReadWireContractTests` cover workspace and server-catalog resources in both supported protocol eras. | Handle `resources/read` failures through JSON-RPC errors. Expect legacy missing-resource `-32002` and modern `InvalidParams` (`-32602`) according to the negotiated protocol. |
 | Protocol logging bridge and capability retirement | Breaking capability/notification correction | **Delivered:** `RequestCorrelationMessageFilter`, `ServerObservabilityReporter`, `McpLoggingLifecycleWireTests`, and `ServerObservabilitySinkTests` | Stop depending on `logging/setLevel` or `notifications/message` from RoslynMcp. Use client-side diagnostics plus operator-controlled stderr output; opt into secret-safe structured events with `ROSLYNMCP_OBSERVABILITY_SINK=stderr`. |
-| Direct Elicitation replaced by request-scoped MRTR | Breaking interaction correction | **Tracked:** `mcp-mrtr-dispatch-contract`, `workspace-path-mrtr-adoption`, `symbol-choice-mrtr-adoption` | Support input requests and retry with input responses in the request scope. Do not require the server to initiate `elicitation/create` on modern sessions. |
-| Legacy Sampling replaced by request-scoped MRTR input | Breaking interaction correction | **Tracked:** `mcp-sampling-mrtr-migration` | Supply sampling input responses when offered, or accept the documented deterministic fallback. Do not require a nested `sampling/createMessage` request on modern sessions. |
+| Direct Elicitation replaced by request-scoped MRTR | Breaking interaction correction | **Delivered:** `RequestScopedInputAdapter`, `RequestStateCodec`, `StructuredCallElicitationCoordinator`, `ElicitationChoicePrompt`, `WorkspacePathMrtrWireTests`, `SymbolDisambiguationMrtrWireTests`, and the real-handle `SymbolDisambiguationElicitationTests` retry regression | Support input requests and retry with input responses in the request scope. Treat server-provided `requestState` as opaque and echo it byte-for-byte unchanged so multi-stage retries stay bound to the selected workspace. Do not require the server to initiate `elicitation/create` on modern sessions. The stateful 2025-11-25 leg retains direct form elicitation. |
+| Legacy Sampling replaced by request-scoped MRTR input | Breaking interaction correction | **Delivered:** `RequestScopedInputAdapter`, `McpSamplingTestNameSuggestionProvider`, and `SamplingMrtrWireTests` cover modern round trips, malformed/cancelled responses, capability refusal, and secret-safe fallback | Supply sampling input responses when offered on 2026-07-28 requests. Legacy or sampling-incapable requests deterministically use the placeholder; no nested `sampling/createMessage` compatibility leg remains. |
 | Tasks for slow operations | Additive, opt-in extension | **Tracked:** `tasks-extension-slow-ops` | No migration until enabled. Adoption requires the separate Tasks package and a client that negotiates the extension; existing synchronous calls remain valid. |
 | Cohesion, reflection, DI, exception-flow, NuGet, and code-fix completeness fields | Additive stable-response evolution | **Tracked:** `cohesion-scan-completeness-contract`, `reflection-usage-scan-completeness`, `di-registration-scan-completeness`, `exception-flow-scan-completeness`, `nuget-dependency-scan-completeness`, `diagnostic-codefix-enumeration-completeness` | Ignore unknown fields on older clients. New clients must inspect completeness/failure counts before treating totals as exhaustive. |
-| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, validation-command execution, composite-apply, FixAll, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Partially delivered:** the shared tool boundary plus `GetPromptErrorFilter`, retired prompt-handler catches, prompt-shim binding policy, validation/test/build command projection, coverage, scaffolding IO, analyzer load, bulk reference, workspace validation/readiness, composite apply, and FixAll provider failures have focused sentinel regressions. Sampling, cleanup, and newly discovered adjacent surfaces remain tracked. | Stop parsing exception text, exception types, stack traces, supplied values, command arguments, filters, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. Expected validation/not-found messages are stable guidance, not exception-text mirrors. |
+| Raw exception detail in tool, prompt, coverage, scaffolding, analyzer, reference, workspace-readiness, workspace-validation, validation-command execution, composite-apply, FixAll, sampling, and cleanup responses | Breaking security correction; no deprecation window for secrets | **Partially delivered:** the shared tool boundary plus `GetPromptErrorFilter`, retired prompt-handler catches, prompt-shim binding policy, validation/test/build command projection, coverage, scaffolding IO, analyzer load, bulk reference, workspace validation/readiness, composite apply, FixAll provider failures, and request-scoped sampling have focused sentinel regressions. Cleanup and newly discovered adjacent surfaces remain tracked. | Stop parsing exception text, exception types, stack traces, supplied values, command arguments, filters, or paths. Branch only on documented categories/statuses and use a correlation identifier for operator-side diagnosis. Expected validation/not-found messages are stable guidance, not exception-text mirrors. |
+| Unauthorized access classified as an internal failure | Breaking stable-error correction | **Delivered:** `ToolErrorHandler` maps `UnauthorizedAccessException` to secret-safe `PermissionDenied`; `BacklogFixTests` and `WorkspacePathMrtrWireTests` distinguish it from production sanctioned-root `InvalidArgument` refusal | Branch on `PermissionDenied` for access-policy or operating-system denial. Treat sanctioned-root parameter refusal as `InvalidArgument`; do not infer either category from free-form text. |
 | Workspace lifecycle emits false resource-list changes | Non-breaking behavior correction | **Delivered:** static workspace lifecycle notification calls removed and `WorkspaceResourceListNotificationWireTests` proves byte-equivalent legacy/modern lists with no list-changed frames | Refresh `resources/list` only for an advertised list-change notification; do not rely on workspace load/reload/close to produce one. |
 
 The delivered disclosure slice is owned by `tool-error-envelope-sensitive-detail-disclosure`,
@@ -105,8 +107,9 @@ The delivered disclosure slice is owned by `tool-error-envelope-sensitive-detail
 `analyzer-load-error-detail-redaction`, `bulk-reference-error-detail-redaction`,
 `workspace-validation-error-detail-redaction`, `workspace-readiness-probe-error-redaction`,
 `composite-apply-error-detail-redaction`, and `fixall-provider-error-detail-redaction`.
-`mcp-sampling-mrtr-migration`, `atomic-file-cleanup-error-detail-redaction`, and the bounded
-adjacent-review rows remain tracked; this ADR does not claim those surfaces are implemented.
+`mcp-sampling-mrtr-migration` adds the delivered sampling evidence above.
+`atomic-file-cleanup-error-detail-redaction` and the bounded adjacent-review rows remain tracked;
+this ADR does not claim those surfaces are implemented.
 
 ## Migration examples for breaking corrections
 
@@ -159,16 +162,22 @@ when secret-safe structured unexpected-failure events are desired.
 ### Elicitation and sampling
 
 Before, server code could initiate nested `elicitation/create` or `sampling/createMessage` requests.
-After the tracked corrections, a call declares request-scoped input needs and the client retries or
-updates the operation with the corresponding input responses. Clients must preserve the request/task
-association and must not assume a server-initiated nested request exists in 2026-07-28 sessions.
+On 2026-07-28, a call declares request-scoped input needs and the client retries with the matching
+input responses. When an input-required result includes `requestState`, the client must neither
+inspect nor modify it: echo the exact opaque string on the retry. RoslynMcp uses that state only to
+preserve the already client-visible workspace id across stateless or concurrent retries; malformed
+or foreign state is ignored, is never authorization, and the normal workspace lookup remains
+authoritative. Stateful 2025-11-25 sessions retain direct form elicitation, but sampling no longer
+uses a nested compatibility request: legacy or sampling-incapable calls receive the deterministic
+placeholder. Clients that want sampled suggestions must support the 2026-07-28 MRTR input flow.
 
 ### Public error detail
 
 Before, clients could observe implementation exception messages, paths, or stacks. After the tracked
 security corrections, clients receive a stable category/summary and, where available, a correlation
 identifier. Treat free-form message text as non-contractual and use the identifier for server-side
-diagnosis.
+diagnosis. `UnauthorizedAccessException` now maps to `PermissionDenied`; sanctioned-root parameter
+refusal remains `InvalidArgument`.
 
 The delivered tool-boundary correction also stops echoing expected exception messages. Clients that
 previously extracted workspace paths, missing keys, invalid values, preview tokens, or transport text

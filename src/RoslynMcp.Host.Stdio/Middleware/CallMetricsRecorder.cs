@@ -11,7 +11,10 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class CallMetricsRecorder
 {
-    /// <summary>Records the workspaceId auto-resolution outcome (<c>explicit</c>, <c>single-workspace</c>, <c>fast-fail</c>, <c>auto-loaded</c>).</summary>
+    /// <summary>
+    /// Records the workspaceId auto-resolution outcome (<c>explicit</c>, <c>single-workspace</c>,
+    /// <c>fast-fail</c>, <c>auto-loaded</c>, or <c>request-state</c>).
+    /// </summary>
     public static void RecordAutoResolution(string value)
     {
         if (AmbientGateMetrics.Current is { } metrics)

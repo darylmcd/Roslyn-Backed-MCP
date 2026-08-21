@@ -62,7 +62,9 @@ namespace RoslynMcp.Core.Models;
 /// <c>fast-fail</c> (id omitted and two-or-more workspaces — or two-or-more discoverable
 /// candidate solutions — so the middleware returned a structured error listing them instead
 /// of guessing), or <c>auto-loaded</c> (id omitted, zero workspaces loaded, and a single
-/// solution was discovered from the call context and loaded on demand before dispatch).
+/// solution was discovered from the call context and loaded on demand before dispatch), or
+/// <c>request-state</c> (a modern MRTR retry restored the workspace selected on an earlier
+/// round trip instead of consulting mutable ambient workspace state).
 /// <see langword="null"/> when the call did not go through the auto-resolution path (a
 /// write/destructive tool, a tool with no <c>workspaceId</c> parameter, or zero workspaces
 /// loaded with no discoverable solution — that last case is left for the binder/elicitation).

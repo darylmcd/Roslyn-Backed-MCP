@@ -7,13 +7,9 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Coverage for the <c>workspace-auto-load-on-demand</c> initiative's observability + guided
-/// fast-fail surface in <see cref="StructuredCallToolFilter"/>. The end-to-end auto-load branch in
-/// the <c>Create</c> delegate drives the <c>workspace_load</c> tool over a live dispatcher, so (as
-/// with the sibling resolution/elicitation tests) the contract pinned here is: (a) the new
-/// <c>_meta.autoResolution=auto-loaded</c> + <c>_meta.autoLoadElapsedMs</c> fields round-trip from
-/// the metrics builder onto a real response envelope, and (b) an ambiguous discovery yields the
-/// structured fast-fail envelope that lists candidate solutions.
+/// Focused coverage for the <c>workspace-auto-load-on-demand</c> metrics, cancellation boundary,
+/// discovery classification, and guided fast-fail envelope. Registered-tool dispatch is exercised
+/// by the wire-level workspace recovery suite; these tests keep the pure helper contracts small.
 /// </summary>
 [TestClass]
 public sealed class StructuredCallToolFilterAutoLoadTests
@@ -30,8 +26,10 @@ public sealed class StructuredCallToolFilterAutoLoadTests
     [TestCleanup]
     public void Cleanup()
     {
-        try { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
-        catch (IOException) { /* best-effort temp cleanup */ }
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
     }
 
     [TestMethod]
@@ -41,6 +39,31 @@ public sealed class StructuredCallToolFilterAutoLoadTests
         var dto = builder.ToDto();
         Assert.AreEqual("auto-loaded", dto.AutoResolution);
         Assert.AreEqual(123L, dto.AutoLoadElapsedMs);
+    }
+
+    [TestMethod]
+    public async Task AwaitRecoveryStageAsync_CancelledWithNominalResult_StopsBeforeContinuation()
+    {
+        using var cts = new CancellationTokenSource();
+        var continued = false;
+
+        async Task<string> CancelAsStageReturnsAsync()
+        {
+            await Task.Yield();
+            cts.Cancel();
+            return "nominal-result";
+        }
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        {
+            _ = await StructuredCallToolFilter.AwaitRecoveryStageAsync(
+                CancelAsStageReturnsAsync(),
+                cts.Token);
+            continued = true;
+        });
+
+        Assert.IsFalse(continued,
+            "A recovery result delivered with cancellation must not drive load parsing, argument mutation, or original dispatch.");
     }
 
     [TestMethod]

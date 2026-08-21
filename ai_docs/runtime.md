@@ -19,7 +19,8 @@ Use `just --list` for the full recipe menu. `just ci` is the canonical local CI 
 | `just build` | Debug build |
 | `just test` | Full test suite |
 | `just validate` | Fast local check (build + test) |
-| `just ci` | Docs check + skills-generic check + release validation + vulnerability audit |
+| `just ci` | Required PR-equivalent gate: docs + shipped skills + release validation without coverage/network tests + vulnerability audit |
+| `just full` | Informational full lane: coverage + live network tests + publish/hash checks + docs/skills + vulnerability audit |
 | `just run` | Start the stdio host process |
 | `just reinstall` | Reinstall the global tool and Claude Code plugin from this repo |
 | `just tool-install-local` | Pack and install the global tool from the local build |
@@ -32,7 +33,7 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
 
 - .NET SDK: `10.0.100` (`rollForward: latestFeature`) — see `global.json`
 - Primary v1 OS target: Windows. macOS and Linux are supported wherever the .NET 10 SDK is available.
-- Main local validation entry point: `just ci` (or `./eng/verify-release.ps1` directly)
+- Main local validation entry point: `just ci` (the PR-equivalent `verify-release.ps1 -NoCoverage -ExcludeNetworkTests` lane plus docs/skills and vulnerability audit). Use `just full` only when the informational coverage/live-network lane is required.
 - Test framework: MSTest (`[TestClass]`, `[TestMethod]`)
 - Fast raw commands:
   - `dotnet build RoslynMcp.slnx --nologo`

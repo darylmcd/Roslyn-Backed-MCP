@@ -15,11 +15,7 @@ namespace RoslynMcp.Tests;
 public sealed class CiRunnerParityContractTests
 {
     private static string LoadCiWorkflow()
-    {
-        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var workflowPath = Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml");
-        return File.ReadAllText(workflowPath).Replace("\r\n", "\n", StringComparison.Ordinal);
-    }
+        => LoadRepositoryFile(".github", "workflows", "ci.yml");
 
     [TestMethod]
     public void Validate_FansOutOverRouteRunnerMatrix()
@@ -85,9 +81,10 @@ public sealed class CiRunnerParityContractTests
     }
 
     [TestMethod]
-    public void PullRequestVerifyRelease_IsNotNarrowedBeyondDocumentedFlags()
+    public void PullRequestAndLocalCi_UseTheSameDocumentedReleaseLane()
     {
         var workflow = LoadCiWorkflow();
+        var justfile = LoadRepositoryFile("justfile");
 
         // Both matrix legs run this identical entry point — the same script the
         // publish gate runs on ubuntu-latest. The ONLY permitted narrowing on
@@ -105,6 +102,55 @@ public sealed class CiRunnerParityContractTests
             prRunLine,
             "the pull_request verify-release invocation must carry exactly the documented flags — no --filter or other test narrowing");
         Assert.IsFalse(workflow.Contains("verify-release.ps1 --filter", StringComparison.Ordinal));
+
+        StringAssert.Contains(
+            justfile,
+            "ci: verify-docs verify-skills verify-release-pr vuln-audit",
+            "just ci must compose the same required validation concerns as pull-request CI.");
+        StringAssert.Contains(
+            justfile,
+            "verify-release-pr:\n" +
+            "    pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests",
+            "the local pull-request recipe must carry exactly the documented release-validation flags.");
+        StringAssert.Contains(
+            justfile,
+            "full: verify-docs verify-skills verify-release vuln-audit",
+            "just full must retain the explicit coverage and live-network validation lane.");
+    }
+
+    [TestMethod]
+    public void ReleasePolicy_StatesTheCanonicalCiTriggerContract()
+    {
+        var policy = LoadRepositoryFile("docs", "release-policy.md");
+        var normalizedPolicy = policy.Replace('\n', ' ');
+
+        StringAssert.Contains(
+            normalizedPolicy,
+            "CI runs on pull requests, manual dispatch, and the weekly schedule.");
+        StringAssert.Contains(
+            normalizedPolicy,
+            "Push-to-`main` is intentionally omitted because protected-branch changes arrive through a validated PR;");
+        StringAssert.Contains(
+            normalizedPolicy,
+            "see `CI_POLICY.md` for the canonical trigger and runner contract.");
+        Assert.IsFalse(
+            policy.Contains("CI runs on every PR and `main`", StringComparison.Ordinal),
+            "The retired push-to-main trigger claim must not return.");
+    }
+
+    [TestMethod]
+    public void PublicReleaseDocs_UseCanonicalVulnerabilityAuditVerifier()
+    {
+        var releasePolicy = LoadRepositoryFile("docs", "release-policy.md");
+        var upgradeMatrix = LoadRepositoryFile("docs", "upgrade-matrix.md");
+
+        foreach (var document in new[] { releasePolicy, upgradeMatrix })
+        {
+            StringAssert.Contains(document, "eng/verify-nuget-audit.ps1");
+            Assert.IsFalse(
+                document.Contains("dotnet package list", StringComparison.OrdinalIgnoreCase),
+                "Public release guidance must not bypass the fail-closed audit verifier with the crash-prone package-list walk.");
+        }
     }
 
     [TestMethod]
@@ -153,5 +199,12 @@ public sealed class CiRunnerParityContractTests
         }
 
         return count;
+    }
+
+    private static string LoadRepositoryFile(params string[] relativePathSegments)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var path = Path.Combine([repositoryRoot, .. relativePathSegments]);
+        return File.ReadAllText(path).ReplaceLineEndings("\n");
     }
 }

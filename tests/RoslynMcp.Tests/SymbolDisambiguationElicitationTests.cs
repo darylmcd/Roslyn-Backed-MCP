@@ -6,8 +6,10 @@ using Microsoft.CodeAnalysis.Text;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Elicitation;
-using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Tests.Helpers;
@@ -22,21 +24,17 @@ namespace RoslynMcp.Tests;
 /// candidates (overloads, partial classes, member-vs-type collisions), <see cref="SymbolTools"/>
 /// is now <b>agent-first by default</b>: the calling agent receives the structured
 /// disambiguation-list response directly, with the stable <c>symbolHandle</c> per candidate.
-/// The blocking MCP <c>elicitation/create</c> operator picker is opt-in only — reached solely
-/// when the caller passes <c>allowElicitation=true</c> AND the client declares the capability;
-/// otherwise the code falls through to the same additive list envelope.
+/// The request-scoped operator picker is opt-in only — reached solely when the caller passes
+/// <c>allowElicitation=true</c> AND the client declares elicitation; otherwise the code falls
+/// through to the same additive list envelope.
 ///
 /// <para>
 /// Pins:
 /// <list type="bullet">
-///   <item><b>(a) elicit-supported preconditions</b> — the
-///         <see cref="ElicitationChoicePrompt.HasElicitation"/> capability check returns
-///         true for a properly handshaken client AND the candidate-discovery helper finds
-///         the multiple-overload set; the gate logic is therefore wired correctly. The
-///         end-to-end <c>ElicitAsync</c> cancellation paths use a real SDK client/server pair
-///         over the shared in-memory transport harness — both pre-cancelled and genuinely
-///         in-flight (the latter previously believed untestable; see
-///         <see cref="ControllableElicitationHarness"/> for why it now is).</item>
+///   <item><b>(a) request-scoped selection</b> — production <see cref="SymbolTools"/> entry
+///         points discover real ambiguous candidate sets and consume modern MRTR responses from
+///         the request context. Transport-era capability and cancellation behavior is owned by
+///         <c>SymbolDisambiguationMrtrWireTests</c> and <c>ElicitationChoicePromptTests</c>.</item>
 ///   <item><b>(b) fallback</b> — when the caller does not opt in, or the client lacks the
 ///         elicitation capability (or the user declines), the tool returns a structured
 ///         <c>{ ambiguous: true, count, candidates }</c> envelope with a stable
@@ -67,25 +65,6 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     // ── (a) elicit-supported preconditions ───────────────────────────────────
 
     [TestMethod]
-    public void HasElicitation_PinsTheCapabilityCheckUsedByDisambiguation()
-    {
-        // The disambiguation gate inside SymbolTools.TryDisambiguateMetadataNameAsync
-        // calls the same ElicitationChoicePrompt.HasElicitation predicate the
-        // workspace-path initiative pinned. This regression test pins that we still rely
-        // on the same predicate (so a future refactor of either site can't drift).
-        var capabilities = new ClientCapabilities
-        {
-            Elicitation = new ElicitationCapability(),
-        };
-        Assert.IsTrue(ElicitationChoicePrompt.HasElicitation(capabilities),
-            "An ElicitationCapability instance present on ClientCapabilities means the " +
-            "client supports elicitation/create — the disambiguation gate is permitted.");
-
-        Assert.IsFalse(ElicitationChoicePrompt.HasElicitation(null),
-            "Null capabilities (pre-handshake) MUST NOT permit elicitation.");
-    }
-
-    [TestMethod]
     [DataRow(nameof(SymbolTools.SearchSymbols))]
     [DataRow(nameof(SymbolTools.GoToDefinition))]
     [DataRow(nameof(SymbolTools.FindReferences))]
@@ -107,36 +86,17 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
     }
 
     [TestMethod]
-    public void AllowElicitationGate_OptIn_RequiresBothFlagAndCapability()
-    {
-        // The elicit branch is reachable ONLY when the caller opts in (allowElicitation=true)
-        // AND the client declares the capability. Opt-in against a non-capable client still
-        // falls back to the candidate-list envelope; a capable client without opt-in also
-        // falls back (pinned above). Both conjuncts are load-bearing.
-        var capable = new ClientCapabilities { Elicitation = new ElicitationCapability() };
-        const bool optIn = true;
-
-        Assert.IsTrue(
-            optIn && ElicitationChoicePrompt.HasElicitation(capable),
-            "Opt-in + capable client is the only combination that reaches the elicit branch.");
-        Assert.IsFalse(
-            optIn && ElicitationChoicePrompt.HasElicitation(null),
-            "Opt-in against a non-capable (null-capabilities) client must still fall back " +
-            "to the candidate list.");
-    }
-
-    [TestMethod]
     public async Task FindReferences_AmbiguousMetadataName_OptInButNonCapableClient_ReturnsListEnvelope()
     {
         // Opt-in alone does not change behavior for a client that cannot elicit: with
-        // allowElicitation=true but a null server (server?.ClientCapabilities => null,
-        // HasElicitation false), FindReferences must still return the additive
+        // allowElicitation=true but a null request context (therefore no negotiated client
+        // capability), FindReferences must still return the additive
         // disambiguation-list envelope — proving the flag only *enables* the prompt on a
         // capable client and never breaks the non-capable fallback path.
         var json = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () => SymbolTools.FindReferences(
-                server: null!,
+                requestContext: null!,
                 WorkspaceManager,
                 WorkspaceExecutionGate,
                 ReferenceService,
@@ -209,6 +169,192 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "FindAllByMetadataNameAsync must return >= 2 candidates for at least one " +
             "of the standard overloaded shapes (System.String.Format, etc.); otherwise " +
             "the disambiguation gate has nothing to disambiguate.");
+    }
+
+    [TestMethod]
+    public async Task FindReferences_MrtrChoice_UsesOpaqueToken_AndDispatchesChosenHandleExactlyOnce()
+    {
+        const string metadataName = "SampleLib.AnimalService.CountAnimals";
+        var solution = WorkspaceManager.GetCurrentSolution(_workspaceId);
+        var candidates = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+            solution,
+            metadataName,
+            CancellationToken.None);
+        Assert.IsTrue(
+            candidates.Count is >= 2 and <= ElicitationChoicePrompt.MaxOptions,
+            $"Fixture must expose a prompt-sized overload set for {metadataName}; found {candidates.Count}.");
+
+        var handles = candidates.Select(SymbolHandleSerializer.CreateHandle).ToArray();
+        var expectedTokens = handles.Select(SymbolTools.CreateSymbolChoiceToken).ToArray();
+        var sourcePaths = handles
+            .Select(SymbolHandleSerializer.ParseHandlePayload)
+            .Select(static payload => payload.FilePath)
+            .OfType<string>()
+            .Where(Path.IsPathRooted)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        Assert.IsNotEmpty(sourcePaths,
+            "The real-handle privacy regression requires source candidates with absolute paths.");
+        Assert.IsTrue(expectedTokens.All(static token =>
+            token.StartsWith("roslyn-symbol-choice:v1:", StringComparison.Ordinal)));
+        Assert.AreEqual(expectedTokens.Length, expectedTokens.Distinct(StringComparer.Ordinal).Count());
+
+        var referenceService = new RecordingReferenceService();
+        var server = await GetPathAuthorizedServerAsync();
+        var initialContext = CreateModernFormRequestContext(server);
+        InputRequiredException? inputRequired = null;
+        try
+        {
+            await SymbolTools.FindReferences(
+                initialContext,
+                WorkspaceManager,
+                WorkspaceExecutionGate,
+                referenceService,
+                _workspaceId,
+                metadataName: metadataName,
+                allowElicitation: true,
+                ct: CancellationToken.None);
+            Assert.Fail("The initial modern request must terminate with input_required.");
+        }
+        catch (InputRequiredException ex)
+        {
+            inputRequired = ex;
+        }
+
+        Assert.IsNotNull(inputRequired);
+        Assert.AreEqual(0, referenceService.FindReferencesCallCount,
+            "No downstream reference lookup may run before the operator chooses a candidate.");
+        Assert.IsNotNull(inputRequired.Result.InputRequests);
+        Assert.IsTrue(inputRequired.Result.InputRequests.TryGetValue(
+            RequestScopedInputAdapter.SymbolChoiceInputRequestKey,
+            out var inputRequest));
+        Assert.IsNotNull(inputRequest);
+        var elicitation = inputRequest.ElicitationParams;
+        Assert.IsNotNull(elicitation?.RequestedSchema);
+        Assert.IsTrue(elicitation.RequestedSchema.Properties.TryGetValue("choice", out var choiceProperty));
+        var choiceSchema = choiceProperty as ElicitRequestParams.TitledSingleSelectEnumSchema;
+        Assert.IsNotNull(choiceSchema);
+        Assert.AreEqual("Pick a symbol", choiceSchema.Title);
+        CollectionAssert.AreEqual(
+            expectedTokens,
+            choiceSchema.OneOf.Select(static option => option.Const).ToArray(),
+            "The request must carry deterministic opaque tokens in candidate order.");
+
+        var rawRequest = inputRequest.Params?.GetRawText() ?? string.Empty;
+        var unescapedRequest = rawRequest.Replace("\\\\", "\\", StringComparison.Ordinal);
+        foreach (var handle in handles)
+        {
+            Assert.IsFalse(rawRequest.Contains(handle, StringComparison.Ordinal),
+                "A reversible symbol handle must never be emitted in an MRTR choice request.");
+        }
+        foreach (var sourcePath in sourcePaths)
+        {
+            Assert.IsFalse(unescapedRequest.Contains(sourcePath, StringComparison.OrdinalIgnoreCase),
+                $"MRTR choice request leaked an absolute source path: {sourcePath}");
+        }
+
+        var chosenIndex = 1;
+        var retryContext = CreateModernFormRequestContext(
+            server,
+            new Dictionary<string, InputResponse>(StringComparer.Ordinal)
+            {
+                [RequestScopedInputAdapter.SymbolChoiceInputRequestKey] =
+                    InputResponse.FromElicitResult(new ElicitResult
+                    {
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
+                        {
+                            ["choice"] = JsonSerializer.SerializeToElement(expectedTokens[chosenIndex]),
+                        },
+                    }),
+            });
+
+        await SymbolTools.FindReferences(
+            retryContext,
+            WorkspaceManager,
+            WorkspaceExecutionGate,
+            referenceService,
+            _workspaceId,
+            metadataName: metadataName,
+            allowElicitation: true,
+            ct: CancellationToken.None);
+
+        Assert.AreEqual(1, referenceService.FindReferencesCallCount,
+            "An accepted retry must dispatch the downstream reference lookup exactly once.");
+        Assert.AreEqual(handles[chosenIndex], referenceService.LastLocator?.SymbolHandle,
+            "The opaque choice token must map back to the intended stable symbol handle.");
+    }
+
+    [TestMethod]
+    public async Task SearchSymbols_MrtrChoice_NullHandleCandidate_UsesOpaqueProjectionToken()
+    {
+        var candidates = new[]
+        {
+            CreateSearchCandidate("First", "Metadata.Widget.First(int)"),
+            CreateSearchCandidate("Second", "Metadata.Widget.Second(string)"),
+        };
+        var searchService = new StaticSymbolSearchService(candidates);
+        var server = await GetPathAuthorizedServerAsync();
+        var initialContext = CreateModernFormRequestContext(server, toolName: "symbol_search");
+
+        InputRequiredException? inputRequired = null;
+        try
+        {
+            await SymbolTools.SearchSymbols(
+                initialContext,
+                WorkspaceExecutionGate,
+                searchService,
+                _workspaceId,
+                query: "Widget",
+                allowElicitation: true,
+                ct: CancellationToken.None);
+            Assert.Fail("A modern multi-result symbol search must terminate with input_required.");
+        }
+        catch (InputRequiredException ex)
+        {
+            inputRequired = ex;
+        }
+
+        Assert.IsNotNull(inputRequired?.Result.InputRequests);
+        var inputRequest = inputRequired.Result.InputRequests[
+            RequestScopedInputAdapter.SymbolChoiceInputRequestKey];
+        var choiceSchema = inputRequest.ElicitationParams?
+            .RequestedSchema?
+            .Properties["choice"] as ElicitRequestParams.TitledSingleSelectEnumSchema;
+        Assert.IsNotNull(choiceSchema);
+        var expectedTokens = candidates.Select(SymbolTools.CreateSymbolChoiceToken).ToArray();
+        CollectionAssert.AreEqual(
+            expectedTokens,
+            choiceSchema.OneOf.Select(static option => option.Const).ToArray());
+        Assert.IsTrue(expectedTokens.All(static token => !string.IsNullOrWhiteSpace(token)));
+
+        var retryContext = CreateModernFormRequestContext(
+            server,
+            new Dictionary<string, InputResponse>(StringComparer.Ordinal)
+            {
+                [RequestScopedInputAdapter.SymbolChoiceInputRequestKey] =
+                    InputResponse.FromElicitResult(new ElicitResult
+                    {
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
+                        {
+                            ["choice"] = JsonSerializer.SerializeToElement(expectedTokens[1]),
+                        },
+                    }),
+            },
+            toolName: "symbol_search");
+
+        var json = await SymbolTools.SearchSymbols(
+            retryContext,
+            WorkspaceExecutionGate,
+            searchService,
+            _workspaceId,
+            query: "Widget",
+            allowElicitation: true,
+            ct: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        Assert.IsTrue(document.RootElement.GetProperty("chosenViaElicitation").GetBoolean());
+        Assert.AreEqual("Second", document.RootElement.GetProperty("symbols")[0].GetProperty("name").GetString());
     }
 
     [TestMethod]
@@ -305,206 +451,13 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "Metadata-name candidates must be deduped by symbolHandle before returning an ambiguity envelope.");
     }
 
-    // ── cancellation must propagate, not be reported as decline ─────────────
-    // elicitation-trychoice-cancellation-swallow: TryElicitChoiceAsync's try/catch around
-    // server.ElicitAsync used to be a bare `catch { return null; }`, which absorbed
-    // OperationCanceledException alongside the two expected SDK failure shapes
-    // (InvalidOperationException, McpException). Callers (SymbolTools.GoToDefinition /
-    // FindReferences / SearchSymbols) treat a null return as "user declined" and answer
-    // with the additive candidate-list response — so a cancelled request looked
-    // indistinguishable from a deliberate decline. Two tests pin it: a pre-cancelled token
-    // (below) and cancellation arriving while the request is genuinely in flight against an
-    // unresponsive client (further below).
-    //
-    // elicitation-inflight-cancellation-test-harness-deadlock: the in-flight variant was
-    // believed untestable — three prior attempts hung the test process and needed taskkill.
-    // The blocking point was never TryElicitChoiceAsync or server.ElicitAsync; it was the old
-    // never-completing ElicitationHandler wedging McpClient.DisposeAsync during `await using`
-    // teardown, AFTER the assertions had already passed. ControllableElicitationHarness fixes
-    // that by owning a completable handler; see its remarks and those on
-    // InMemoryMcpClientServerHarness for the full ruled-in/ruled-out evidence.
-
-    [TestMethod]
-    [Timeout(15_000, CooperativeCancellation = true)]
-    public async Task TryElicitChoiceAsync_PreCancelledToken_PropagatesCancellation_NotAdditiveListFallback()
-    {
-        // A real McpServer/McpClient pair over the shared in-memory duplex harness is required
-        // to reach the try body at all: HasElicitation must return true, which needs a
-        // genuine post-handshake ClientCapabilities.Elicitation, not a null/fake server.
-        // The token below is cancelled BEFORE the call, so the request never reaches the
-        // client's handler at all; the in-flight variant is the next test.
-        await using var harness = await CreateServerWithControllableElicitationAsync(CancellationToken.None);
-
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        OperationCanceledException? caught = null;
-        try
-        {
-            var result = await ElicitationChoicePrompt.TryElicitChoiceAsync(
-                harness.Server,
-                paramName: "choice",
-                title: "Pick a symbol",
-                description: "symbol_search returned candidates. Pick one to focus on.",
-                options: [("0", "Candidate A"), ("1", "Candidate B")],
-                cancellationToken: cts.Token);
-
-            Assert.Fail(
-                "Expected TryElicitChoiceAsync to throw for a pre-cancelled token, but it " +
-                $"returned {(result is null ? "null" : $"\"{result}\"")} instead — a cancelled " +
-                "request must never be reported as a user decline.");
-        }
-        catch (OperationCanceledException ex)
-        {
-            // ThrowsExactlyAsync<OperationCanceledException> would reject the SDK's actual
-            // TaskCanceledException subclass (same reasoning as
-            // WorkspaceValidationTimeoutTests), so catch the base class manually.
-            caught = ex;
-        }
-
-        Assert.IsNotNull(caught,
-            "A pre-cancelled CancellationToken must surface as OperationCanceledException out " +
-            "of TryElicitChoiceAsync, not be swallowed by the InvalidOperationException/" +
-            "McpException catch and converted to the additive-list null fallback.");
-    }
-
-    [TestMethod]
-    [Timeout(15_000, CooperativeCancellation = true)]
-    public async Task TryElicitChoiceAsync_CancelledWhileRequestInFlight_PropagatesCancellation()
-    {
-        // The non-vacuous variant of the test above: the elicitation/create request genuinely
-        // reaches the client (RequestReceived below only completes from inside the client's own
-        // handler), the client then never answers, and only THEN is the caller's token cancelled.
-        // This pins that a real MCP client going unresponsive mid-elicitation cannot wedge the
-        // server: the await unblocks and the caller's WorkspaceExecutionGate slot is released.
-        await using var harness = await CreateServerWithControllableElicitationAsync(CancellationToken.None);
-
-        using var cts = new CancellationTokenSource();
-
-        var call = ElicitationChoicePrompt.TryElicitChoiceAsync(
-            harness.Server,
-            paramName: "choice",
-            title: "Pick a symbol",
-            description: "symbol_search returned candidates. Pick one to focus on.",
-            options: [("0", "Candidate A"), ("1", "Candidate B")],
-            cancellationToken: cts.Token);
-
-        // Cancelling only after this completes is what makes the test non-vacuous — before it,
-        // the request may still be sitting in the transport rather than truly in flight. Bounded
-        // well inside the [Timeout] above so a regression here fails fast instead of hanging.
-        await harness.RequestReceived.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.IsFalse(call.IsCompleted,
-            "The client's elicitation handler is deliberately unanswered, so TryElicitChoiceAsync " +
-            "must still be pending at the moment cancellation is requested — otherwise this test " +
-            "would be vacuously asserting the pre-cancelled path again.");
-
-        await cts.CancelAsync();
-
-        OperationCanceledException? caught = null;
-        try
-        {
-            var result = await call;
-            Assert.Fail(
-                "Expected TryElicitChoiceAsync to throw when its token was cancelled with the " +
-                $"request in flight, but it returned {(result is null ? "null" : $"\"{result}\"")} " +
-                "instead — an unresponsive client plus a cancelled caller must never be reported " +
-                "as a user decline.");
-        }
-        catch (OperationCanceledException ex)
-        {
-            // The SDK surfaces TaskCanceledException here, so catch the base class manually
-            // (ThrowsExactlyAsync<OperationCanceledException> would reject the subclass).
-            caught = ex;
-        }
-
-        Assert.IsNotNull(caught,
-            "Cancelling while an elicitation/create request is genuinely in flight must surface " +
-            "as OperationCanceledException out of TryElicitChoiceAsync, so the caller unwinds and " +
-            "releases its WorkspaceExecutionGate slot instead of hanging until process restart.");
-    }
-
-    /// <summary>
-    /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
-    /// duplex pipe supplied by <see cref="InMemoryMcpClientServerHarness"/> so
-    /// <c>server.ClientCapabilities.Elicitation</c> is genuinely populated via the MCP initialize
-    /// handshake and <c>server.ElicitAsync</c> genuinely round-trips to a client that never
-    /// volunteers an answer.
-    /// </summary>
-    private static async Task<ControllableElicitationHarness> CreateServerWithControllableElicitationAsync(
-        CancellationToken ct)
-    {
-        var requestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pendingElicitation =
-            new TaskCompletionSource<ElicitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var harness = await InMemoryMcpClientServerHarness.CreateAsync(
-            transportName: "test-server-elicitation-cancellation",
-            clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
-            clientHandlers: new McpClientHandlers
-            {
-                // Answers only when the test says so, so the server must observe its own token's
-                // cancellation rather than waiting for a reply. Deliberately NOT a task that can
-                // never complete — see ControllableElicitationHarness.DisposeAsync.
-                ElicitationHandler = (_, _) =>
-                {
-                    requestReceived.TrySetResult();
-                    return new ValueTask<ElicitResult>(pendingElicitation.Task);
-                },
-            },
-            disposalFailureContext: "elicitation-cancellation",
-            ct).ConfigureAwait(false);
-
-        return new ControllableElicitationHarness(harness, requestReceived.Task, pendingElicitation);
-    }
-
-    /// <summary>
-    /// Owns an <see cref="InMemoryMcpClientServerHarness"/> whose client answers
-    /// <c>elicitation/create</c> only when the test releases it, and — critically — releases any
-    /// still-pending answer <b>before</b> disposing the harness.
-    /// </summary>
-    /// <remarks>
-    /// That ordering is the whole point of this type
-    /// (elicitation-inflight-cancellation-test-harness-deadlock). <c>McpClient.DisposeAsync</c>
-    /// waits for outstanding inbound request handlers, so leaving the handler unanswered wedges
-    /// teardown forever — in <c>await using</c>, i.e. after the test body has already passed,
-    /// where a non-cooperative <c>[Timeout]</c> cannot rescue it and the process must be killed.
-    /// Three earlier attempts at an in-flight-cancellation test hit exactly this and were
-    /// misattributed to the awaited <c>server.ElicitAsync</c> call, to ThreadPool starvation, or
-    /// to duplex-<c>Pipe</c> backpressure; a standalone out-of-process repro ruled all three out
-    /// (details in the <see cref="InMemoryMcpClientServerHarness"/> remarks). Encoding the release
-    /// in disposal — rather than relying on each test to remember a <c>finally</c> — is what keeps
-    /// the dead end from being re-discovered.
-    /// </remarks>
-    private sealed class ControllableElicitationHarness(
-        InMemoryMcpClientServerHarness harness,
-        Task requestReceived,
-        TaskCompletionSource<ElicitResult> pendingElicitation) : IAsyncDisposable
-    {
-        /// <summary>The live server, for tests that call server-side elicitation directly.</summary>
-        public McpServer Server => harness.Server;
-
-        /// <summary>
-        /// Completes from inside the client's elicitation handler, proving the
-        /// <c>elicitation/create</c> request genuinely arrived rather than still being in transit.
-        /// </summary>
-        public Task RequestReceived => requestReceived;
-
-        public async ValueTask DisposeAsync()
-        {
-            // Must precede harness disposal — see the remarks above.
-            pendingElicitation.TrySetResult(new ElicitResult { Action = "decline" });
-            await harness.DisposeAsync().ConfigureAwait(false);
-        }
-    }
-
     // ── (b) fallback when client lacks elicitation capability ───────────────
 
     [TestMethod]
     public async Task FindReferences_AmbiguousMetadataName_NullServer_ReturnsListEnvelope()
     {
-        // The contract: when the client doesn't support elicitation (server == null in
-        // the test harness, which makes server?.ClientCapabilities null and HasElicitation
-        // false), the tool returns the additive disambiguation-list envelope:
+        // The contract: when the client doesn't support elicitation (requestContext == null in
+        // the direct-call harness), the tool returns the additive disambiguation-list envelope:
         //   { ambiguous: true, metadataName, count, candidates: [{ label, symbolHandle, kind }, ...], note }
         // This is the byte-identical fallback shape — clients that don't support
         // elicitation see this regardless of whether the server attempted to elicit.
@@ -514,7 +467,7 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         var json = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () => SymbolTools.FindReferences(
-                server: null!,
+                requestContext: null!,
                 WorkspaceManager,
                 WorkspaceExecutionGate,
                 ReferenceService,
@@ -561,6 +514,54 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "Note must direct clients to re-call with the chosen symbolHandle.");
     }
 
+    private static RequestContext<CallToolRequestParams> CreateModernFormRequestContext(
+        McpServer server,
+        IDictionary<string, InputResponse>? inputResponses = null,
+        string toolName = "find_references") =>
+        new(
+            server,
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Context = new JsonRpcMessageContext
+                {
+                    ProtocolVersion = RequestProtocolFeatureGate.July2026ProtocolVersion,
+                    ClientCapabilities = new ClientCapabilities
+                    {
+                        Elicitation = new ElicitationCapability
+                        {
+                            Form = new FormElicitationCapability(),
+                        },
+                    },
+                },
+            },
+            new CallToolRequestParams
+            {
+                Name = toolName,
+                InputResponses = inputResponses,
+            });
+
+    private static SymbolDto CreateSearchCandidate(string name, string fullyQualifiedName) =>
+        new(
+            Name: name,
+            FullyQualifiedName: fullyQualifiedName,
+            SymbolHandle: null,
+            Kind: "Method",
+            ContainingType: "Metadata.Widget",
+            Namespace: "Metadata",
+            Project: "MetadataProject",
+            FilePath: null,
+            StartLine: null,
+            StartColumn: null,
+            EndLine: null,
+            EndColumn: null,
+            ReturnType: "void",
+            Parameters: null,
+            Modifiers: null,
+            BaseTypes: null,
+            Interfaces: null,
+            Documentation: null);
+
     private static MetadataReference CreateXmlExceptionMetadataReference(
         string assemblyName,
         IReadOnlyList<MetadataReference> references)
@@ -605,5 +606,92 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 xmlExceptionReference,
             ]));
+    }
+
+    private sealed class RecordingReferenceService : IReferenceService
+    {
+        public int FindReferencesCallCount { get; private set; }
+
+        public SymbolLocator? LastLocator { get; private set; }
+
+        public Task<IReadOnlyList<LocationDto>> FindReferencesAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct,
+            bool summary = false,
+            IReadOnlyCollection<string>? projectFilter = null)
+        {
+            ct.ThrowIfCancellationRequested();
+            FindReferencesCallCount++;
+            LastLocator = locator;
+            return Task.FromResult<IReadOnlyList<LocationDto>>(Array.Empty<LocationDto>());
+        }
+
+        public Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct,
+            bool includeGeneratedPartials = false) =>
+            throw new InvalidOperationException("Unexpected implementation lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<SymbolDto>> FindOverridesAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected override lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<SymbolDto>> FindSiblingInterfaceImplementationsAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected sibling lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected base-member lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(
+            string workspaceId,
+            IReadOnlyList<BulkSymbolLocator> symbols,
+            bool includeDefinition,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected bulk lookup in symbol-choice test.");
+    }
+
+    private sealed class StaticSymbolSearchService(IReadOnlyList<SymbolDto> candidates) : ISymbolSearchService
+    {
+        public Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
+            string workspaceId,
+            string query,
+            string? projectFilter,
+            string? kindFilter,
+            string? namespaceFilter,
+            int maxResults,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(candidates);
+        }
+
+        public Task<SymbolDto?> GetSymbolInfoAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct,
+            bool allowAdjacent = false) =>
+            throw new InvalidOperationException("Unexpected symbol-info lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(
+            string workspaceId,
+            string filePath,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected document-symbol lookup in symbol-choice test.");
+
+        public Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("Unexpected document-symbol lookup in symbol-choice test.");
     }
 }

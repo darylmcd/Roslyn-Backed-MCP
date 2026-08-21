@@ -1,7 +1,10 @@
 using System.ComponentModel;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Elicitation;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -99,11 +102,11 @@ public static class ScaffoldingTools
         [Description("Optional: target method name for the generated test stub")] string? targetMethodName = null,
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         [Description("Optional: absolute path to an existing sibling test file whose scaffolding (class attributes, base class, IClassFixture<T> constructor) should be replicated. When omitted, the most-recently-modified *Tests.cs in the target project is used. Pass an empty string to opt out of inference.")] string? referenceTestFile = null,
-        [Description("When true, request a sampled Given/When/Then test method name from the MCP client if it supports sampling. Defaults false to preserve deterministic placeholder output.")] bool useSampling = false,
+        [Description("When true on a 2026-07-28 request with MRTR sampling input support, request a sampled Given/When/Then test method name from the MCP client. Legacy and sampling-unsupported requests use the deterministic placeholder. Defaults false.")] bool useSampling = false,
         CancellationToken ct = default)
     {
-        var testNameSuggestionProvider = useSampling && requestContext.Server is { } server
-            ? new McpSamplingTestNameSuggestionProvider(server)
+        var testNameSuggestionProvider = useSampling
+            ? new McpSamplingTestNameSuggestionProvider(requestContext)
             : null;
 
         return ToolDispatch.ReadByWorkspaceIdAsync(
@@ -117,75 +120,91 @@ public static class ScaffoldingTools
             ct);
     }
 
-#pragma warning disable MCP9005 // Optional stdio compatibility until mcp-sampling-mrtr-migration adopts request-scoped MRTR.
-    private sealed class McpSamplingTestNameSuggestionProvider(McpServer server) : ITestNameSuggestionProvider
+    internal sealed class McpSamplingTestNameSuggestionProvider : ITestNameSuggestionProvider
     {
-        public async Task<TestNameSuggestionResult> SuggestTestNameAsync(ScaffoldTestNameSuggestionContext context, CancellationToken ct)
+        private readonly RequestContext<CallToolRequestParams> _requestContext;
+        private readonly Func<
+            RequestContext<CallToolRequestParams>,
+            string,
+            ILogger?,
+            (RequestScopedInputOutcome Outcome, string? Text)> _requestSampling;
+
+        internal McpSamplingTestNameSuggestionProvider(
+            RequestContext<CallToolRequestParams> requestContext)
+            : this(requestContext, RequestScopedInputAdapter.RequestSampling)
         {
-            if (server.ClientCapabilities?.Sampling is null)
-            {
-                return new TestNameSuggestionResult(
-                    null,
-                    "useSampling was true but the MCP client did not advertise sampling support; emitted the deterministic placeholder test name.");
-            }
+        }
+
+        internal McpSamplingTestNameSuggestionProvider(
+            RequestContext<CallToolRequestParams> requestContext,
+            Func<
+                RequestContext<CallToolRequestParams>,
+                string,
+                ILogger?,
+                (RequestScopedInputOutcome Outcome, string? Text)> requestSampling)
+        {
+            _requestContext = requestContext ?? throw new ArgumentNullException(nameof(requestContext));
+            _requestSampling = requestSampling ?? throw new ArgumentNullException(nameof(requestSampling));
+        }
+
+        public Task<TestNameSuggestionResult> SuggestTestNameAsync(
+            ScaffoldTestNameSuggestionContext context,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
 
             try
             {
-                var result = await server.SampleAsync(BuildRequest(context), ct).ConfigureAwait(false);
-                var text = result.Content
-                    .OfType<TextContentBlock>()
-                    .Select(static block => block.Text)
-                    .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
-                return new TestNameSuggestionResult(text);
+                var (outcome, text) = _requestSampling(
+                    _requestContext,
+                    BuildSamplingPrompt(context),
+                    _requestContext.Services?
+                        .GetService<ILoggerFactory>()?
+                        .CreateLogger(typeof(McpSamplingTestNameSuggestionProvider).FullName ??
+                                      nameof(McpSamplingTestNameSuggestionProvider)));
+                ct.ThrowIfCancellationRequested();
+                if (outcome == RequestScopedInputOutcome.Unsupported)
+                {
+                    return Task.FromResult(new TestNameSuggestionResult(
+                        null,
+                        "useSampling was true but request-scoped sampling was unavailable; emitted the deterministic placeholder test name."));
+                }
+
+                if (outcome != RequestScopedInputOutcome.Accepted)
+                {
+                    return Task.FromResult(new TestNameSuggestionResult(
+                        null,
+                        "The request-scoped sampling response was malformed; emitted the deterministic placeholder test name."));
+                }
+
+                return Task.FromResult(new TestNameSuggestionResult(text));
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
             {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                return new TestNameSuggestionResult(
+                var diagnostic = UnexpectedExceptionReporting.Report(
+                    _requestContext.Services?.GetService<IUnexpectedExceptionReporter>(),
+                    ex,
+                    UnexpectedExceptionCategory.Scaffolding);
+                return Task.FromResult(new TestNameSuggestionResult(
                     null,
-                    $"Sampling test-name suggestion failed ({ex.GetType().Name}: {ex.Message}); emitted the deterministic placeholder test name.");
+                    $"Sampling test-name suggestion failed (correlationId={diagnostic.Public.CorrelationId}); emitted the deterministic placeholder test name."));
             }
         }
-
-        private static CreateMessageRequestParams BuildRequest(ScaffoldTestNameSuggestionContext context)
-            => new()
-            {
-                MaxTokens = 48,
-                Temperature = 0,
-                StopSequences = ["\n"],
-                SystemPrompt = "Return exactly one valid C# test method identifier. No markdown, no punctuation, no explanation.",
-                Messages =
-                [
-                    new SamplingMessage
-                    {
-                        Role = Role.User,
-                        Content =
-                        [
-                            new TextContentBlock
-                            {
-                                Text =
-                                    "Suggest a Given/When/Then test method name.\n" +
-                                    $"Target type: {context.TargetTypeName}\n" +
-                                    $"Target namespace: {context.TargetNamespace ?? "(global)"}\n" +
-                                    $"Target method: {context.TargetMethodName}\n" +
-                                    $"Signature: {context.TargetMethodSignature ?? context.TargetMethodName}\n" +
-                                    $"Sibling examples: {FormatSiblingExamples(context.SiblingTestMethodNames)}\n" +
-                                    "Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad"
-                            }
-                        ]
-                    }
-                ]
-            };
 
         private static string FormatSiblingExamples(IReadOnlyList<string> siblingTestMethodNames)
             => siblingTestMethodNames.Count == 0
                 ? "(none)"
                 : string.Join(", ", siblingTestMethodNames.Take(6));
+
+        private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context) =>
+            "Suggest a Given/When/Then test method name.\n" +
+            $"Target type: {context.TargetTypeName}\n" +
+            $"Target namespace: {context.TargetNamespace ?? "(global)"}\n" +
+            $"Target method: {context.TargetMethodName}\n" +
+            $"Signature: {context.TargetMethodSignature ?? context.TargetMethodName}\n" +
+            $"Sibling examples: {FormatSiblingExamples(context.SiblingTestMethodNames)}\n" +
+            "Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad";
     }
-#pragma warning restore MCP9005
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", false, true,
