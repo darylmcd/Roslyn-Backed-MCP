@@ -28,4 +28,13 @@ public interface ISymbolRelationshipService
     Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct);
 
     Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
+
+    /// <summary>
+    /// Enumerates every overload of <paramref name="memberName"/> declared on
+    /// <paramref name="typeMetadataName"/>. Returns null when the type does not resolve;
+    /// an empty list when the type resolves but no method matches the member name.
+    /// </summary>
+    Task<IReadOnlyList<SignatureHelpDto>?> FindOverloadsAsync(
+        string workspaceId, string typeMetadataName, string memberName,
+        bool includeInherited, string? projectName, CancellationToken ct);
 }

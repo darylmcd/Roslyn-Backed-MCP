@@ -576,6 +576,27 @@ public static class SymbolTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_overloads", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Enumerate every overload of a member declared on a type, via GetTypeByMetadataName + GetMembers — works both for methods authored in the workspace's own source and for methods only reachable via a referenced BCL/NuGet assembly (e.g. System.Math.Max), which symbol_search cannot find since it only searches workspace source. Response shape: { count, items }; each item is the same SignatureHelpDto shape symbol_signature_help returns (displaySignature, returnType, parameters, documentation). `documentation` is empty when the referenced assembly ships no sibling .xml doc file — expected, not a bug. Extension methods are OUT OF SCOPE (v1): Enumerable.Select does not appear when querying IEnumerable<T>, since extension methods live on the extending static class, not the extended type — query the static class directly instead (typeMetadataName: 'System.Linq.Enumerable', memberName: 'Select'). includeInherited=false (default) returns only members declared directly on typeMetadataName. includeInherited=true also walks the base-class chain and may list a base declaration and its override side by side (no override-chain dedup here — use member_hierarchy for that).")]
+    [McpToolMetadata("symbols", "experimental", true, false,
+        "Enumerate all overloads of a member by type + name.")]
+    public static Task<string> FindOverloads(
+        IWorkspaceExecutionGate gate,
+        ISymbolRelationshipService symbolRelationshipService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Fully qualified metadata name of the containing type, e.g. 'System.Math' or 'System.Collections.Generic.List`1' (backtick arity for generics).")] string typeMetadataName,
+        [Description("Bare member name to enumerate overloads of, e.g. 'Max'. No signature needed — this resolves ALL overloads of that name.")] string memberName,
+        [Description("Optional: when true, also walk the base-class chain for additional overloads. Default false (direct-declared members only) to avoid pulling in object.ToString/Equals/GetHashCode noise unasked.")] bool includeInherited = false,
+        [Description("Optional: restrict type resolution to one project by name (case-sensitive), for multi-targeted solutions where the same type could differ across TFMs.")] string? projectName = null,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await symbolRelationshipService.FindOverloadsAsync(workspaceId, typeMetadataName, memberName, includeInherited, projectName, c);
+            if (results is null) throw new KeyNotFoundException($"Type not found: '{typeMetadataName}' (workspace '{workspaceId}').");
+            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a combined summary of definitions, references, implementations, base members, and overrides. Auto-promotes a caret on a member's type token to the enclosing member by default (see preferDeclaringMember).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Combine definition, reference, base, and implementation relationships.")]

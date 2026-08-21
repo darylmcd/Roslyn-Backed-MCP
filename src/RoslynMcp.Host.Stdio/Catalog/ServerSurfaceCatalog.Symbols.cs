@@ -14,6 +14,7 @@ public static partial class ServerSurfaceCatalog
         Tool("find_base_members", "symbols", "stable", true, false, "Find base or implemented members."),
         Tool("member_hierarchy", "symbols", "stable", true, false, "Summarize base, override, and sibling interface implementation relationships for a member."),
         Tool("symbol_signature_help", "symbols", "stable", true, false, "Return symbol signature and documentation."),
+        Tool("find_overloads", "symbols", "experimental", true, false, "Enumerate all overloads of a member by type + name."),
         Tool("symbol_relationships", "symbols", "stable", true, false, "Combine definition, reference, base, and implementation relationships."),
         Tool("find_references_bulk", "symbols", "stable", true, false, "Resolve references for multiple symbols in one request."),
         Tool("find_property_writes", "symbols", "stable", true, false, "Find property write sites and classify object-initializer writes."),
