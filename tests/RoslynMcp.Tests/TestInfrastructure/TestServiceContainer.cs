@@ -74,12 +74,17 @@ internal sealed class TestServiceContainer
     {
         var previewStore = new PreviewStore();
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        WorkspaceExecutionGate? workspaceExecutionGate = null;
         var workspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             previewStore,
             fileWatcher,
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
-        var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 },
+            cacheStore: null,
+            evictionGate: new Lazy<IWorkspaceExecutionGate>(() =>
+                workspaceExecutionGate ?? throw new InvalidOperationException(
+                    "The test workspace execution gate was resolved before initialization.")));
+        workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
         var compilationCache = new CompilationCache(workspaceManager);
         var dotnetCommandRunner = new DotnetCommandRunner();
         var gatedCommandExecutor = new GatedCommandExecutor(

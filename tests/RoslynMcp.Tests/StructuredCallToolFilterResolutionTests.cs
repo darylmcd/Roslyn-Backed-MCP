@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.ProtocolCompatibility;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -32,6 +33,73 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class StructuredCallToolFilterResolutionTests
 {
+    [TestMethod]
+    public void NormalizeSourceLocationArguments_CharacterOnly_ConvertsToOneBasedColumn()
+    {
+        var args = Arguments(("filePath", "C:/repo/Test.cs"), ("line", 4), ("character", 8));
+
+        var normalized = LspSourceLocationArgumentNormalizer.Normalize("symbol_info", args)!;
+
+        Assert.IsFalse(normalized.ContainsKey("character"));
+        Assert.AreEqual(9, normalized["column"].GetInt32());
+    }
+
+    [TestMethod]
+    public void NormalizeSourceLocationArguments_ExistingColumn_IsUnchanged()
+    {
+        var args = Arguments(("column", 9));
+
+        Assert.AreSame(
+            args,
+            LspSourceLocationArgumentNormalizer.Normalize("symbol_info", args));
+    }
+
+    [TestMethod]
+    public void NormalizeSourceLocationArguments_AgreeingAliases_KeepCanonicalColumn()
+    {
+        var args = Arguments(("column", 9), ("character", 8));
+
+        var normalized = LspSourceLocationArgumentNormalizer.Normalize("symbol_info", args)!;
+
+        Assert.AreEqual(9, normalized["column"].GetInt32());
+        Assert.IsFalse(normalized.ContainsKey("character"));
+    }
+
+    [TestMethod]
+    public void NormalizeSourceLocationArguments_ConflictingAliases_FailDeterministically()
+    {
+        var args = Arguments(("column", 9), ("character", 9));
+
+        var error = Assert.ThrowsExactly<PublicArgumentException>(() =>
+            LspSourceLocationArgumentNormalizer.Normalize("symbol_info", args));
+
+        Assert.AreEqual("character", error.ParamName);
+        StringAssert.Contains(error.Message, "column must equal character + 1 (10)");
+    }
+
+    [TestMethod]
+    public void NormalizeSourceLocationArguments_NonSourceLocationTool_LeavesCharacterForBinder()
+    {
+        var args = Arguments(("character", 8));
+
+        Assert.AreSame(
+            args,
+            LspSourceLocationArgumentNormalizer.Normalize("workspace_list", args));
+    }
+
+    [TestMethod]
+    [DataRow(-1)]
+    [DataRow(int.MaxValue)]
+    public void NormalizeSourceLocationArguments_InvalidCharacter_FailsClosed(int character)
+    {
+        var error = Assert.ThrowsExactly<PublicArgumentException>(() =>
+            LspSourceLocationArgumentNormalizer.Normalize(
+                "symbol_info",
+                Arguments(("character", character))));
+
+        Assert.AreEqual("character", error.ParamName);
+    }
+
     // ── eligibility (Required-independent) ──────────────────────────────────
 
     [TestMethod]
@@ -155,6 +223,46 @@ public sealed class StructuredCallToolFilterResolutionTests
     }
 
     [TestMethod]
+    public void ClassifyWorkspaceIdResolution_UniqueFileOwner_ResolvesOwner()
+    {
+        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+            arguments: null,
+            new[] { Summary("ws-alpha", "C:/repos/a/A.sln"), Summary("ws-beta", "C:/repos/b/B.sln") },
+            new[] { "ws-beta" },
+            out var resolvedId,
+            out var failMessage);
+
+        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.FilePathWorkspace, result);
+        Assert.AreEqual("ws-beta", resolvedId);
+        Assert.IsNull(failMessage);
+    }
+
+    [TestMethod]
+    public void ClassifyWorkspaceIdResolution_AmbiguousOwners_ListsOnlyOwnersInPathOrder()
+    {
+        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+            arguments: null,
+            new[]
+            {
+                Summary("ws-z", "C:/repos/z/Z.sln"),
+                Summary("ws-b", "C:/repos/b/B.sln"),
+                Summary("ws-a", "C:/repos/a/A.sln"),
+            },
+            new[] { "ws-z", "ws-a" },
+            out _,
+            out var failMessage);
+
+        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.FastFail, result);
+        Assert.IsNotNull(failMessage);
+        Assert.IsFalse(failMessage.Contains("ws-b", StringComparison.Ordinal), failMessage);
+        Assert.IsTrue(
+            failMessage.IndexOf("ws-a", StringComparison.Ordinal) <
+            failMessage.IndexOf("ws-z", StringComparison.Ordinal),
+            failMessage);
+        StringAssert.Contains(failMessage, "loadedPath");
+    }
+
+    [TestMethod]
     public void ClassifyWorkspaceIdResolution_OmittedWithZeroLoaded_NotApplicable()
     {
         var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
@@ -226,9 +334,9 @@ public sealed class StructuredCallToolFilterResolutionTests
             "structured 'pick a workspace' error from an ordinary InvalidArgument.");
     }
 
-    private static WorkspaceStatusSummaryDto Summary(string workspaceId) => new(
+    private static WorkspaceStatusSummaryDto Summary(string workspaceId, string? loadedPath = null) => new(
         WorkspaceId: workspaceId,
-        LoadedPath: null,
+        LoadedPath: loadedPath,
         WorkspaceVersion: 0,
         SnapshotToken: string.Empty,
         LoadedAtUtc: default,
@@ -245,4 +353,10 @@ public sealed class StructuredCallToolFilterResolutionTests
         BuildRequired: false,
         RestoreHint: null,
         SolutionFileName: null);
+
+    private static Dictionary<string, JsonElement> Arguments(params (string Name, object Value)[] values) =>
+        values.ToDictionary(
+            value => value.Name,
+            value => JsonSerializer.SerializeToElement(value.Value),
+            StringComparer.Ordinal);
 }

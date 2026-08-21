@@ -39,7 +39,7 @@ Run via Bash:
 pwsh -NoProfile -File eng/verify-version-drift.ps1
 ```
 
-**Pass** if exit code 0. **Fail** if any of the six version files disagree — report which ones.
+**Pass** if exit code 0. **Fail** if any of the seven version files disagree — report which ones.
 
 ### Step 2: AI Documentation Validation
 

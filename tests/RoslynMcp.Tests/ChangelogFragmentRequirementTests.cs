@@ -12,6 +12,7 @@ public sealed class ChangelogFragmentRequirementTests
         ".claude-plugin/plugin.json",
         ".claude-plugin/marketplace.json",
         "manifest.json",
+        ".claude-plugin/mcp.json",
         ".claude-plugin/server.json",
         "CHANGELOG.md",
     };

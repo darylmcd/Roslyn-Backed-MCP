@@ -7,7 +7,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | File | Purpose |
 |------|---------|
 | `setup.md` | Prerequisites, build/test/run, global tool and Docker, CI artifacts |
-| `reinstall.md` | Step-by-step Layer 1 (global tool) + Layer 2 (Claude Code plugin) reinstall workflow after a code change |
+| `reinstall.md` | Plugin refresh workflow plus the separate optional global-tool reinstall path |
 | `stdio-client-integration.md` | NDJSON framing, handshake order, and minimal Python/C# examples for custom MCP clients |
 | `compatibility.md` | MCP client compatibility matrix — tested/likely clients, install-path × client table, known gotchas |
 | `product-contract.md` | Session operating contract, stable vs experimental surface tiers, supported tool families |

@@ -1,7 +1,7 @@
 ---
 name: update
 installed_as: update
-description: "Maintainer-local override of the shipped /roslyn-mcp:update skill. Use when: updating Layer 2 (Claude Code plugin cache) from this repo checkout and the user's client does not support /plugin slash-commands. Adds an agent-executable PowerShell fallback that the shipped generic skill cannot mention."
+description: "Maintainer-local override of the shipped /roslyn-mcp:update skill. Refreshes the complete plugin cache, including its release-pinned dnx server launch, from this checkout."
 user-invocable: true
 argument-hint: ""
 ---
@@ -10,21 +10,13 @@ argument-hint: ""
 
 This `.claude/skills/update/` override is auto-discovered **only inside the Roslyn-Backed-MCP repo checkout** and takes precedence over the shipped `skills/update/SKILL.md` when present. It exists because shipped skills are scanned for repo-specific paths (`eng/...`) by `eng/verify-skills-are-generic.ps1` — so the shipped skill has to stay on the `/plugin` slash-command path, but maintainers in-repo have a PowerShell updater that works when the client refuses `/plugin`.
 
-## Workflow (Layer 1 unchanged, Layer 2 replaced)
+## Workflow
 
 ### Step 1: Check Current Version
 
 Call `server_info`. Report current version, latest NuGet version, `updateAvailable`.
 
-### Step 2: Update Layer 1 — Global Tool
-
-```bash
-dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
-```
-
-In-repo alternatives: `just tool-update` (NuGet.org) or `just tool-install-local` after `just pack`.
-
-### Step 3: Update Layer 2 — Claude Code Plugin
+### Step 2: Update Claude Code Plugin
 
 **Preferred (agent-executable, works even when `/plugin` slash-commands are unavailable):**
 
@@ -50,10 +42,14 @@ Requires the plugin to have been installed through Claude Code at least once (so
 
 If the client responds with `/plugin isn't available in this environment`, use the PowerShell path above.
 
+### Step 3: Optional standalone global tool
+
+Only when the maintainer also uses the separate global-tool install, run `just tool-update` (NuGet.org) or `just tool-install-local` after `just pack`. The plugin launches its own release-pinned package through `dnx` and does not depend on this shim.
+
 ### Step 4: Report
 
-Same as the shipped skill — previous version, new version, layers updated, **reminder to restart Claude Code**.
+Same as the shipped skill — previous version, new version, optional global-tool result when requested, **reminder to restart Claude Code**.
 
 ## Why this override exists
 
-During the v1.29.0 release-cut (PR #377), the Claude Code client refused `/plugin` slash-commands with `/plugin isn't available in this environment`. Layer 1 was updated via `just tool-install-local` but Layer 2 sat at 1.28.1 in the plugin cache. The repo already shipped `eng/update-claude-plugin.ps1` (a maintainer-only script, agent-executable, idempotent) that does exactly what the two slash-commands do — it just wasn't the documented primary path because the shipped skill isn't allowed to reference repo-specific `eng/` paths under `verify-skills-are-generic.ps1`. This override closes that gap for anyone running `/roslyn-mcp:update` from inside the Roslyn-Backed-MCP repo.
+During the v1.29.0 release-cut (PR #377), the Claude Code client refused `/plugin` slash-commands and the plugin cache remained stale. The repo already shipped `eng/update-claude-plugin.ps1` (maintainer-only, agent-executable, idempotent); this override makes that cache refresh the primary in-repo path. The separate global-tool install is optional and no longer part of the plugin contract.

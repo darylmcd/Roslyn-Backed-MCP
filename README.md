@@ -17,7 +17,7 @@ Local-first MCP (Model Context Protocol) server for semantic C# analysis, naviga
 ## Why Roslyn-Backed MCP
 
 - **No Visual Studio dependency** — runs anywhere the .NET SDK runs (Windows, macOS, Linux, containers, CI).
-- **Production ops discipline** — repeatable CI mirror (`just ci`), release verification scripts, and a documented two-layer update story for the global tool *and* the Claude Code plugin.
+- **Production ops discipline** — repeatable CI mirror (`just ci`), release verification scripts, and documented update paths for the global tool and release-pinned Claude Code plugin.
 - **Safe install defaults** — no `${user_config.*}` placeholder substitution that breaks prompt-skipping install flows; the server starts with compiled-in defaults and accepts literal overrides via project-scope `.mcp.json`.
 - **Authoritative live surface** — every release publishes `server_info` + `roslyn://server/catalog` so clients can discover the exact tool/resource/prompt set and support tier (stable vs experimental) without guessing.
 - **Preview → apply discipline** — refactoring tools issue preview tokens with TTLs and a verify step before mutating the workspace, so agents can dry-run multi-file edits.
@@ -63,15 +63,15 @@ dotnet tool install -g Darylmcd.RoslynMcp
 
 ### Option B — Zero-Install Via `dnx` (.NET 10)
 
-`dnx` is the .NET SDK's `npx`-equivalent: it resolves a tool package from NuGet on demand, without installing a global shim. Requires **.NET 10 SDK Preview 6 or later** (`dnx` ships with the SDK).
+`dnx` is the .NET SDK's `npx`-equivalent: it resolves a tool package from NuGet on demand, without installing a global shim. Requires **.NET 10 SDK 10.0.100 or later** (`dnx` ships with the SDK).
 
 One-shot smoke test:
 
 ```bash
-dnx Darylmcd.RoslynMcp --yes
+dnx Darylmcd.RoslynMcp
 ```
 
-The process should start and then appear to hang — that's expected; it's an MCP server waiting for protocol messages on stdin. The `--yes` flag is **mandatory** under MCP hosts because there is no TTY for the interactive install-consent prompt.
+The process should start and then appear to hang — that's expected; it's an MCP server waiting for protocol messages on stdin. `dnx` is noninteractive unless `--interactive` is explicitly requested, so MCP hosts need no consent flag.
 
 `.mcp.json` snippet:
 
@@ -84,8 +84,7 @@ The process should start and then appear to hang — that's expected; it's an MC
       "args": [
         "Darylmcd.RoslynMcp",
         "--source",
-        "https://api.nuget.org/v3/index.json",
-        "--yes"
+        "https://api.nuget.org/v3/index.json"
       ]
     }
   }
@@ -97,7 +96,7 @@ Trade-offs vs. the global tool:
 - ✅ No PATH pollution; no manual install step.
 - ✅ Each cold start resolves to the latest version unless pinned (no `dotnet tool update` step).
 - ⚠️ Cold-start cost on first invocation while the package downloads.
-- ⚠️ For reproducible setups, pin the version: add `"--version", "1.35.0"` to `args`.
+- ⚠️ For reproducible setups, pin the version in the package token: `Darylmcd.RoslynMcp@<version>`.
 
 A copy-paste config also lives at [`docs/mcp-json-examples/dnx.mcp.json`](docs/mcp-json-examples/dnx.mcp.json).
 
@@ -108,7 +107,7 @@ A copy-paste config also lives at [`docs/mcp-json-examples/dnx.mcp.json`](docs/m
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-The plugin bundles the MCP server, 32 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
+The plugin bundles 32 skills and safety hooks, then launches the exact release-matched `Darylmcd.RoslynMcp` package through `dnx`; it does not require a global `roslynmcp` shim. The first launch requires NuGet access unless the package is already cached. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
 
 ### Build And Run From Source
 

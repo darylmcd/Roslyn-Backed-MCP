@@ -5,7 +5,7 @@
     matches the canonical package version before the publish job builds or packs.
 
 .DESCRIPTION
-    verify-version-drift.ps1 proves the six in-repo version files agree with the
+    verify-version-drift.ps1 proves the seven in-repo version files agree with the
     canonical Directory.Build.props <Version>. Nothing proved that the *tag* that
     triggered the publish agrees with it. A mistag is silently survivable today:
     `dotnet nuget push --skip-duplicate` no-ops when the canonical version was

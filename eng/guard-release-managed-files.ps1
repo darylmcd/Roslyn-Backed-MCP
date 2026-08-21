@@ -1,7 +1,7 @@
 # PreToolUse hook guard for release-managed files.
 #
 # Reads Claude Code's hook-input JSON from stdin. If the target path is in the
-# release-managed set (the 6 version-source files plus 4 release-critical
+# release-managed set (the 7 version-source files plus 4 release-critical
 # infrastructure files), block the edit unless an override sentinel is present.
 #
 # Override sentinel: a file at $env:CLAUDE_PROJECT_DIR/.release-managed-edit-allowed
@@ -56,6 +56,7 @@ $managedExact = @(
     'manifest.json',
     '.claude-plugin/plugin.json',
     '.claude-plugin/marketplace.json',
+    '.claude-plugin/mcp.json',
     '.claude-plugin/server.json',
     'changelog.md',
     'eng/verify-version-drift.ps1',

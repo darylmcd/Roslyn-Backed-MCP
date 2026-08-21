@@ -65,17 +65,18 @@ guarded set:
 |---|------|-------------|
 | 1 | `Directory.Build.props` | Canonical `<Version>` source. |
 | 2 | `BannedSymbols.txt` | Repo-wide banned-API list (release-critical analyzer input). |
-| 3 | `manifest.json` (repo root) | Version mirror — one of 6 enumerated by `eng/verify-version-drift.ps1`. |
+| 3 | `manifest.json` (repo root) | Version mirror — one of 7 enumerated by `eng/verify-version-drift.ps1`. |
 | 4 | `.claude-plugin/plugin.json` | Plugin manifest version. |
 | 5 | `.claude-plugin/marketplace.json` | Marketplace manifest version (`plugins[0].version`). |
-| 6 | `.claude-plugin/server.json` | MCP Registry manifest version (`version` and `packages[0].version`). |
-| 7 | `CHANGELOG.md` (repo root) | Top `## [X.Y.Z]` header is part of the version-drift check. |
-| 8 | `eng/verify-version-drift.ps1` | The drift-detector script itself. |
-| 9 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
-| 10 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
+| 6 | `.claude-plugin/mcp.json` | Exact `Darylmcd.RoslynMcp@<version>` plugin launch pin. |
+| 7 | `.claude-plugin/server.json` | MCP Registry manifest version (`version` and `packages[0].version`). |
+| 8 | `CHANGELOG.md` (repo root) | Top `## [X.Y.Z]` header is part of the version-drift check. |
+| 9 | `eng/verify-version-drift.ps1` | The drift-detector script itself. |
+| 10 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
+| 11 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
 
-Files 1 and 3 through 7 are the six version-source locations enumerated by
-`eng/verify-version-drift.ps1`. Files 2 and 8 through 10 are additional
+Files 1 and 3 through 8 are the seven version-source locations enumerated by
+`eng/verify-version-drift.ps1`. Files 2 and 9 through 11 are additional
 release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1`
 as the canonical path list; this table documents that executable contract.
 
@@ -105,7 +106,7 @@ CHANGELOG).
 **Canonical workflows that don't need to touch the sentinel manually:**
 
 - Bumping the version: use `/bump <major|minor|patch>` — the bump skill edits
-  the six version sources (files 1 and 3 through 7) atomically and manages the
+  the seven version sources (files 1 and 3 through 8) atomically and manages the
   sentinel for you.
 - Cutting a release: use `/release-cut` — wraps `/bump` end-to-end.
 - Changelog fragments: write to `changelog.d/<row-id>.md` (NOT to

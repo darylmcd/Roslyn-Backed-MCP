@@ -1,7 +1,12 @@
 {
   "roslyn": {
     "type": "stdio",
-    "command": "roslynmcp",
+    "command": "dnx",
+    "args": [
+      "Darylmcd.RoslynMcp@3.0.2",
+      "--source",
+      "https://api.nuget.org/v3/index.json"
+    ],
     "env": {
       "ROSLYNMCP_SANCTIONED_ROOTS": "."
     }

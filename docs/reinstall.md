@@ -1,14 +1,14 @@
 # Reinstalling the roslyn-mcp Claude Code plugin
 
-There are **two layers** that need to be reinstalled when you change this
-codebase, and they run in different places. Both layers are required — Layer 1
-gives you the new server binary, Layer 2 gives Claude Code the new skills,
-hooks, and marketplace metadata.
+The marketplace plugin carries skills, hooks, metadata, and an exact-version
+`dnx` launcher. Updating the plugin updates that complete Claude Code contract;
+a global `roslynmcp` tool is optional and is only needed for the standalone
+Option A install path or local maintainer testing.
 
-After both layers are updated, **restart Claude Code** so the new server
-binary, skills, and hooks are loaded.
+After the plugin is updated, **restart Claude Code** so the new launch pin,
+skills, and hooks are loaded.
 
-## Layer 1 — `roslynmcp` global .NET tool (the MCP server binary)
+## Optional standalone layer — `roslynmcp` global .NET tool
 
 **Where to run:** any OS terminal (Git Bash, PowerShell, cmd) at the repo root
 `C:\Code-Repo\Roslyn-Backed-MCP`. **Not** inside the Claude Code chat input.
@@ -34,7 +34,7 @@ After it finishes, `roslynmcp` on your `PATH` points at the new build.
 > `MSB1008: Only one project can be specified.` Use `-p:ReinstallTool=true`
 > instead. PowerShell and cmd accept either form.
 
-## Layer 2 — Claude Code plugin (skills, hooks, marketplace metadata)
+## Claude Code plugin (pinned server launch, skills, hooks, metadata)
 
 There are two ways to do this. **Pick the one that matches your Claude Code
 client.**
@@ -106,10 +106,10 @@ doesn't have the plugin slash-command parser. Use **Option A** instead.
 
 ## Full sequence after a code change
 
-1. **Push your change to GitHub `main`.** Layer 2 only sees commits that are
+1. **Push your change to GitHub `main`.** The plugin marketplace only sees commits that are
    on `main` of `darylmcd/Roslyn-Backed-MCP` — local-only changes are invisible
    to the marketplace. Use `/ship` (or your normal PR + merge flow) first.
-2. **Rebuild the global tool** in a terminal at the repo root:
+2. **Optional: rebuild the standalone global tool** when you use Option A:
 
    ```bash
    dotnet publish src/RoslynMcp.Host.Stdio -c Release -p:ReinstallTool=true
@@ -126,16 +126,17 @@ doesn't have the plugin slash-command parser. Use **Option A** instead.
 
 4. **Restart Claude Code.**
 
-## Why both layers are needed
+## Which layer to update
 
 | Layer | Provides | Updated by |
 |---|---|---|
-| 1 — global tool | The `roslynmcp` MCP server executable (C# tools, services, transports) | `dotnet publish ... -p:ReinstallTool=true` |
-| 2 — Claude Code plugin | Skill definitions (`/roslyn-mcp:*`), pre/post-apply hooks, marketplace manifest | `eng/update-claude-plugin.ps1` (or `/plugin` slash commands) |
+| Standalone global tool | Optional `roslynmcp` executable for Option A and local testing | `dotnet publish ... -p:ReinstallTool=true` |
+| Claude Code plugin | Exact-version `dnx` launch config, skill definitions, hooks, marketplace manifest | `eng/update-claude-plugin.ps1` (or `/plugin` slash commands) |
 
-If you only do Layer 1, your skills and hooks stay on the old commit. If you
-only do Layer 2, the slash commands launch the old `roslynmcp` binary. Always
-do both after a substantive change.
+Plugin users need only update the plugin; its release pin selects the matching
+NuGet server. Update the optional global tool too only when you use that separate
+installation path. A just-published package may take a few minutes to appear on
+NuGet; retry the first plugin launch after indexing completes.
 
 ## Troubleshooting
 
@@ -143,7 +144,7 @@ do both after a substantive change.
   used `/p:ReinstallTool=true`. Switch to `-p:ReinstallTool=true`.
 - **Slash commands like `/plugin install` come back as a normal chat reply.**
   Your Claude Code client doesn't intercept the `/plugin` slash command. Use
-  `eng/update-claude-plugin.ps1` instead (Layer 2 → Option A).
+  `eng/update-claude-plugin.ps1` instead (plugin Option A).
 - **`update-claude-plugin.ps1` fails with "Marketplace clone not found".**
   The plugin has never been installed on this machine. Install it once via a
   client that supports the slash commands, then use the script for updates.
@@ -153,7 +154,7 @@ do both after a substantive change.
 - **`/plugin install` reports the same version as before** (Option B). The
   marketplace cache is stale. Run `/plugin marketplace update
   roslyn-mcp-marketplace` first, then re-run `/plugin install`.
-- **`roslynmcp` command not found after Layer 1.** Confirm
+- **`roslynmcp` command not found after the optional global-tool reinstall.** Confirm
   `%USERPROFILE%\.dotnet\tools` is on your `PATH`. Reinstall with
   `dotnet tool install -g Darylmcd.RoslynMcp` if the publish step skipped install.
   (The unprefixed `RoslynMcp` package id is owned by another publisher on

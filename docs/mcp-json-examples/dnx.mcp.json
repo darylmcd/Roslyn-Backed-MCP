@@ -6,8 +6,7 @@
       "args": [
         "Darylmcd.RoslynMcp",
         "--source",
-        "https://api.nuget.org/v3/index.json",
-        "--yes"
+        "https://api.nuget.org/v3/index.json"
       ],
       "env": {
         "ROSLYNMCP_SANCTIONED_ROOTS": "."
