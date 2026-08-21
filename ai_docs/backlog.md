@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-21T05:25:37Z
+**updated_at:** 2026-08-21T05:55:12Z
 
 ## Agent contract
 
@@ -210,6 +210,7 @@
 | `expanded-surface-integration-test-concern-split` | Low | — | **Split expanded-surface integration tests by tool concern** — separate analysis and edit/path-boundary coverage from the 1,100-line mixed suite. [type: refactor] [source: 2026-08-20 adjacent review] | S | items/expanded-surface-integration-test-concern-split.md |
 | `backlog-size-anchor-lint-reconciliation` | Low | — | **Reconcile global backlog anchor and metadata lint** — split or resize six errors and synchronize eight warning-level row/item contracts. [type: docs] [source: 2026-08-20 backlog audit] | S | items/backlog-size-anchor-lint-reconciliation.md |
 | `analyzer-shadow-reclamation-diagnostics-preservation` | Low | — | Preserve analyzer-shadow reclamation errors and context liveness in the reload regression; remove its dead wrapper. [type: quality] [source: 2026-08-21 adjacent review] | S | items/analyzer-shadow-reclamation-diagnostics-preservation.md |
+| `justfile-clean-all-configuration-parity` | Low | justfile-powershell-recipe-portability,local-ci-informational-coverage-separation | Clean Debug and Release outputs in clean-all, retaining idempotent Windows and POSIX behavior. [type: build] [source: 2026-08-21 post-ship cleanup] | S | items/justfile-clean-all-configuration-parity.md |
 
 ## Defer
 
