@@ -10,7 +10,7 @@
     work. Internal ai_docs planning/provenance is exempt.
 
     A release bump may consume all fragments without creating a replacement
-    only when the change set is confined to consumed fragments and all six
+    only when the change set is confined to consumed fragments and all seven
     canonical version files. Called from verify-release.ps1.
 #>
 
@@ -30,6 +30,7 @@ $releaseVersionPaths = @(
     '.claude-plugin/plugin.json',
     '.claude-plugin/marketplace.json',
     'manifest.json',
+    '.claude-plugin/mcp.json',
     '.claude-plugin/server.json',
     'CHANGELOG.md'
 )

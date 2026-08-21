@@ -108,6 +108,13 @@ internal static class StructuredCallToolFilter
 
             try
             {
+                if (context.Params is not null)
+                {
+                    context.Params.Arguments = LspSourceLocationArgumentNormalizer.Normalize(
+                        toolName,
+                        context.Params.Arguments);
+                }
+
                 // workspace-path-mrtr-adoption: inspect the raw arguments before the SDK binder.
                 // A missing required parameter is otherwise surfaced as ParamName="arguments",
                 // which cannot be safely mapped back to the allowlisted path field.
@@ -198,9 +205,15 @@ internal static class StructuredCallToolFilter
                         var loadedWorkspaces = workspaceManager.ListWorkspaces()
                             .Select(WorkspaceStatusSummaryDto.From)
                             .ToArray();
+                        var filePathOwnerIds = TryGetStringArgument(
+                            context.Params?.Arguments,
+                            "filePath") is { } filePath
+                            ? workspaceManager.FindWorkspaceIdsContainingFile(filePath)
+                            : [];
                         var resolution = ClassifyWorkspaceIdResolution(
                             context.Params?.Arguments,
                             loadedWorkspaces,
+                            filePathOwnerIds,
                             out var resolvedWorkspaceId,
                             out var fastFailMessage);
 
@@ -215,6 +228,15 @@ internal static class StructuredCallToolFilter
                                     "loaded workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
                                 break;
 
+                            case WorkspaceIdAutoResolution.FilePathWorkspace:
+                                context.Params!.Arguments =
+                                    WithWorkspaceId(context.Params.Arguments, resolvedWorkspaceId!);
+                                CallMetricsRecorder.RecordAutoResolution("file-path");
+                                logger?.LogInformation(
+                                    "Tool {ToolName} called without workspaceId; resolved filePath to " +
+                                    "workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
+                                break;
+
                             case WorkspaceIdAutoResolution.FastFail:
                                 CallMetricsRecorder.RecordAutoResolution("fast-fail");
                                 stopwatch.Stop();
@@ -227,8 +249,8 @@ internal static class StructuredCallToolFilter
                                     context,
                                     BuildErrorResult(
                                         toolName,
-                                        new ArgumentException(
-                                            fastFailMessage,
+                                        new PublicArgumentException(
+                                            fastFailMessage!,
                                             ElicitationAllowlistPolicy.WorkspaceIdParameterName)));
 
                             case WorkspaceIdAutoResolution.NotApplicable:
@@ -354,6 +376,8 @@ internal static class StructuredCallToolFilter
         Explicit,
         /// <summary>workspaceId omitted and exactly one workspace loaded — patch it in.</summary>
         SingleWorkspace,
+        /// <summary>workspaceId omitted and filePath belongs to exactly one loaded workspace.</summary>
+        FilePathWorkspace,
         /// <summary>workspaceId omitted and ≥2 workspaces loaded — structured fast-fail.</summary>
         FastFail,
     }
@@ -378,6 +402,19 @@ internal static class StructuredCallToolFilter
         IDictionary<string, JsonElement>? arguments,
         IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
         out string? resolvedWorkspaceId,
+        out string? fastFailMessage) =>
+        ClassifyWorkspaceIdResolution(
+            arguments,
+            loadedWorkspaces,
+            filePathOwnerIds: [],
+            out resolvedWorkspaceId,
+            out fastFailMessage);
+
+    public static WorkspaceIdAutoResolution ClassifyWorkspaceIdResolution(
+        IDictionary<string, JsonElement>? arguments,
+        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
+        IReadOnlyList<string> filePathOwnerIds,
+        out string? resolvedWorkspaceId,
         out string? fastFailMessage)
     {
         resolvedWorkspaceId = null;
@@ -397,15 +434,57 @@ internal static class StructuredCallToolFilter
 
         if (loadedWorkspaces.Count >= 2)
         {
-            var ids = string.Join(", ", loadedWorkspaces.Select(workspace => workspace.WorkspaceId));
+            var ownerIds = filePathOwnerIds.ToHashSet(StringComparer.Ordinal);
+            if (ownerIds.Count == 1)
+            {
+                resolvedWorkspaceId = ownerIds.Single();
+                return WorkspaceIdAutoResolution.FilePathWorkspace;
+            }
+
+            var candidates = ownerIds.Count > 1
+                ? loadedWorkspaces.Where(workspace => ownerIds.Contains(workspace.WorkspaceId)).ToArray()
+                : loadedWorkspaces;
+            var choices = FormatWorkspaceChoices(candidates);
             fastFailMessage =
-                $"workspaceId was omitted but {loadedWorkspaces.Count} workspaces are loaded ({ids}). " +
-                "Pass workspaceId explicitly to choose one.";
+                $"workspaceId was omitted and filePath did not identify one loaded workspace. " +
+                $"Candidates: {choices}. Pass workspaceId explicitly; call workspace_list to refresh choices.";
             return WorkspaceIdAutoResolution.FastFail;
         }
 
         return WorkspaceIdAutoResolution.NotApplicable;
     }
+
+    private static string FormatWorkspaceChoices(
+        IEnumerable<WorkspaceStatusSummaryDto> workspaces)
+    {
+        const int maxChoices = 8;
+        const int maxPathLength = 512;
+        var ordered = workspaces
+            .OrderBy(workspace => workspace.LoadedPath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(workspace => workspace.WorkspaceId, StringComparer.Ordinal)
+            .ToArray();
+        var formatted = ordered.Take(maxChoices).Select(workspace => JsonSerializer.Serialize(new
+        {
+            workspaceId = workspace.WorkspaceId,
+            loadedPath = workspace.LoadedPath is { Length: > maxPathLength } path
+                ? path[..maxPathLength] + "…"
+                : workspace.LoadedPath,
+        }));
+        var suffix = ordered.Length > maxChoices
+            ? $", {ordered.Length - maxChoices} more omitted"
+            : string.Empty;
+        return string.Join(", ", formatted) + suffix;
+    }
+
+    private static string? TryGetStringArgument(
+        IDictionary<string, JsonElement>? arguments,
+        string name) =>
+        arguments is not null &&
+        arguments.TryGetValue(name, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()
+            : null;
 
     /// <summary>
     /// Returns whether <c>workspaceId</c> is genuinely absent or blank and therefore eligible
@@ -552,7 +631,7 @@ internal static class StructuredCallToolFilter
                     logger?.LogWarning(
                         "Tool {ToolName} called without workspaceId and none loaded; {Count} candidate " +
                         "solutions discovered ({Candidates}).", toolName, discovery.Candidates.Count, candidates);
-                    return BuildErrorResult(toolName, new ArgumentException(
+                    return BuildErrorResult(toolName, new PublicArgumentException(
                         $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
                         $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
                         "one of them, then retry — or pass workspaceId explicitly.",

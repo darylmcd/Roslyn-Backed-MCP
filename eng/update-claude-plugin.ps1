@@ -226,4 +226,4 @@ $installEntry.gitCommitSha = $headSha
 
 Write-Host ""
 Write-Host "Plugin '$PluginName' updated to version $PluginVersion (commit $headSha)." -ForegroundColor Green
-Write-Host "Restart Claude Code to pick up the new skills, hooks, and MCP server binary." -ForegroundColor Yellow
+Write-Host "Restart Claude Code to pick up the new skills, hooks, and release-pinned MCP launch config." -ForegroundColor Yellow

@@ -38,6 +38,8 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 {
     private readonly ConcurrentDictionary<string, WatcherEntry> _watchers = new(StringComparer.Ordinal);
 
+    public event Action<string>? WorkspaceRootMissing;
+
     public void Watch(string workspaceId, string workspacePath)
     {
         Unwatch(workspaceId);
@@ -58,6 +60,42 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         {
             var projWatcher = CreateWatcher(directory, filter, entry);
             entry.AddWatcher(projWatcher);
+        }
+
+        // A workspace is anchored to the exact solution/project path that was loaded, not just
+        // its containing directory. Keep a non-recursive identity watcher so deleting or
+        // renaming that file retires the session even when sibling files keep the directory alive.
+        var workspaceFileName = Path.GetFileName(workspacePath);
+        if (!string.IsNullOrWhiteSpace(workspaceFileName))
+        {
+            var workspaceFileWatcher = new FileSystemWatcher(directory)
+            {
+                Filter = workspaceFileName,
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.FileName,
+            };
+            workspaceFileWatcher.Deleted += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
+            workspaceFileWatcher.Renamed += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
+            workspaceFileWatcher.EnableRaisingEvents = true;
+            entry.AddWatcher(workspaceFileWatcher);
+        }
+
+        var parentDirectory = Path.GetDirectoryName(directory);
+        var rootName = Path.GetFileName(directory);
+        if (!string.IsNullOrWhiteSpace(parentDirectory) &&
+            !string.IsNullOrWhiteSpace(rootName) &&
+            Directory.Exists(parentDirectory))
+        {
+            var rootWatcher = new FileSystemWatcher(parentDirectory)
+            {
+                Filter = rootName,
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.DirectoryName,
+            };
+            rootWatcher.Deleted += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
+            rootWatcher.Renamed += (_, _) => RaiseWorkspaceRootMissing(workspaceId);
+            rootWatcher.EnableRaisingEvents = true;
+            entry.AddWatcher(rootWatcher);
         }
 
         logger.LogInformation("Started file watcher for workspace {WorkspaceId} at {Directory}", workspaceId, directory);
@@ -140,6 +178,30 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
 
         return watcher;
+    }
+
+    private void RaiseWorkspaceRootMissing(string workspaceId)
+    {
+        var handlers = WorkspaceRootMissing;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (Action<string> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(workspaceId);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Workspace-root-missing subscriber failed for workspace {WorkspaceId}",
+                    workspaceId);
+            }
+        }
     }
 
     private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath)

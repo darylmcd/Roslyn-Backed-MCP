@@ -14,7 +14,7 @@ The Roslyn-Backed MCP server uses the standard MCP stdio transport and explicitl
 
 | Client | Config file | Status | Notes |
 |--------|-------------|--------|-------|
-| Claude Code (CLI + IDE extensions) | `.mcp.json` (project root) or `~/.claude/mcp.json` (global) | **Tested** | Primary development client. Both global-tool and `dnx` install paths exercised. The Claude Code Plugin path ([`/plugin install roslyn-mcp@roslyn-mcp-marketplace`](../README.md#option-c--claude-code-plugin)) is the highest-fidelity install — bundles the server, 32 skills, and safety hooks. |
+| Claude Code (CLI + IDE extensions) | `.mcp.json` (project root) or `~/.claude/mcp.json` (global) | **Tested** | Primary development client. Both global-tool and `dnx` install paths exercised. The Claude Code Plugin path ([`/plugin install roslyn-mcp@roslyn-mcp-marketplace`](../README.md#option-c--claude-code-plugin)) bundles 32 skills and safety hooks and launches the release-matched NuGet package through `dnx`. |
 | Cursor | `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) | **Likely** | Standard stdio MCP host; uses the same JSON shape as Claude Code. Project-scope wins over global. |
 | VS Code (MCP-aware extensions) | `.vscode/mcp.json` (workspace) | **Likely** | Visual Studio Code's first-party MCP support and several MCP-host extensions consume the same stdio config shape. Restart the MCP host after editing. |
 | Claude Desktop | `claude_desktop_config.json` (per-OS app-data dir) | **Likely** | macOS path: `~/Library/Application Support/Claude/`. Windows path: `%APPDATA%\Claude\`. Global only — no project-scope config. |
@@ -27,14 +27,14 @@ The three install paths from the [README Quick Start](../README.md#quick-start) 
 | Install path | Works with | Cold-start cost | Update story |
 |--------------|------------|-----------------|--------------|
 | **Option A** — `dotnet tool install -g Darylmcd.RoslynMcp` | All clients in the matrix above | Lowest (already on disk) | Manual: `dotnet tool update -g Darylmcd.RoslynMcp` |
-| **Option B** — `dnx Darylmcd.RoslynMcp --yes` (.NET 10 SDK Preview 6+) | All clients in the matrix above | Higher on first launch (NuGet resolve) | Implicit: each cold start resolves to latest unless `--version` pinned |
-| **Option C** — Claude Code plugin (`/plugin install ...`) | Claude Code only | Lowest (bundled) | `/plugin update` from the Claude Code prompt |
+| **Option B** — `dnx Darylmcd.RoslynMcp` (.NET 10 SDK 10.0.100+) | All clients in the matrix above | Higher on first launch (NuGet resolve) | Implicit: each cold start resolves to latest unless the package token uses `@<version>` |
+| **Option C** — Claude Code plugin (`/plugin install ...`) | Claude Code only | Higher on first launch (pinned NuGet resolve; cached afterward) | `/plugin update` advances the release-matched pin |
 
 ## Known issues
 
 - **Plugin install on Windows**: the `/plugin install` UI can silently fail on the rename step (EPERM in the Node installer). Workaround: drop to CLI (`claude plugin install roslyn-mcp@roslyn-mcp-marketplace`), which surfaces the actual error. See [docs/setup.md](setup.md) and [docs/reinstall.md](reinstall.md) for the manual rename + re-register dance.
-- **`dnx` requires .NET 10 SDK Preview 6 or later**. Older SDKs do not ship the `dnx` command. Run `dotnet --list-sdks` to confirm.
-- **`--yes` is mandatory under MCP hosts**. Without it, `dnx` prompts for install consent on stdin, which the host cannot answer; the process appears to hang and never produces an MCP `initialize` response.
+- **`dnx` requires .NET 10 SDK 10.0.100 or later**. Older SDKs do not ship the `dnx` command. Run `dotnet --list-sdks` to confirm.
+- **The plugin's first launch requires NuGet access unless its exact package version is already cached.** Package publication/indexing can briefly lag a new plugin release; retry after NuGet exposes the version.
 
 ## First Workspace Check
 

@@ -6,6 +6,16 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 public interface IFileWatcherService : IDisposable
 {
+    /// <summary>
+    /// Raised when the directory containing a watched workspace disappears. Implementations
+    /// that do not support root lifecycle signals may retain the default no-op accessors.
+    /// </summary>
+    event Action<string>? WorkspaceRootMissing
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Start watching for changes in the directory containing the loaded workspace.</summary>
     void Watch(string workspaceId, string workspacePath);
 

@@ -78,7 +78,7 @@ Decision: ship as a Claude Code plugin alongside the existing dotnet global tool
 
 Reason:
 
-- plugin bundles MCP server + curated skills + safety hooks into a single installable unit
+- plugin bundles curated skills + safety hooks and launches the release-matched NuGet server through `dnx`
 - lowers barrier to entry for Claude Code users (two-command install)
 - skills compose the current MCP surface into guided workflows for common tasks
 - hooks enforce safety patterns (preview-before-apply, post-refactoring compile-check)

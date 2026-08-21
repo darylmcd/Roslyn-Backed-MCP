@@ -8,7 +8,7 @@ project-scope config.
 |------|----------------|
 | [`minimal.mcp.json`](minimal.mcp.json) | You want defaults and have the global tool installed. Most repos. |
 | [`with-overrides.mcp.json`](with-overrides.mcp.json) | You need to tune `ROSLYNMCP_*` values for this repo (slow builds, resource limits, etc.). |
-| [`dnx.mcp.json`](dnx.mcp.json) | Zero-install path — resolves the package from NuGet on each cold start. Requires .NET 10 SDK Preview 6+ (`dnx` ships with the SDK). |
+| [`dnx.mcp.json`](dnx.mcp.json) | Zero-install path — resolves the package from NuGet on each cold start. Requires .NET 10 SDK 10.0.100+ (`dnx` ships with the SDK). |
 
 All examples set `ROSLYNMCP_SANCTIONED_ROOTS=.` so the launched server is authorized only for the
 project working directory. Replace `.` with a platform-delimited root list when the client launches

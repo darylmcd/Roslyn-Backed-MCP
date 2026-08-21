@@ -1,11 +1,12 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Validates that all six version-string locations in the repo agree.
+  Validates that all seven version-string locations in the repo agree.
 
 .DESCRIPTION
   Reads the canonical version from Directory.Build.props <Version> and asserts
-  that manifest.json, .claude-plugin/plugin.json, .claude-plugin/marketplace.json
+  that manifest.json, .claude-plugin/plugin.json, .claude-plugin/marketplace.json,
+  .claude-plugin/mcp.json (the exact dnx package pin),
   (plugins[].version), the top CHANGELOG.md [X.Y.Z] header, and
   .claude-plugin/server.json (both top-level `version` and `packages[0].version`)
   all carry the same value.
@@ -13,7 +14,7 @@
   Called by verify-release.ps1 as a merge-gate check. Can also be run standalone.
 
   Exit codes:
-    0  All six files agree.
+    0  All seven files agree.
     1  At least one file disagrees or is missing.
 #>
 [CmdletBinding()]
@@ -57,7 +58,32 @@ if ($pluginEntry.version -ne $canonical) {
     $errors += ".claude-plugin/marketplace.json plugins[0].version: expected '$canonical', got '$($pluginEntry.version)'"
 }
 
-# 5. CHANGELOG.md — top ## [X.Y.Z] header
+# 5. .claude-plugin/mcp.json — exact dnx package pin
+$mcpJsonPath = Join-Path $repoRoot '.claude-plugin' 'mcp.json'
+$mcpJson = Get-Content $mcpJsonPath -Raw | ConvertFrom-Json
+$mcpServer = $mcpJson.roslyn
+$expectedPackagePin = "Darylmcd.RoslynMcp@$canonical"
+if ($mcpServer.command -ne 'dnx') {
+    $errors += ".claude-plugin/mcp.json command: expected 'dnx', got '$($mcpServer.command)'"
+}
+$expectedMcpArgs = @($expectedPackagePin, '--source', 'https://api.nuget.org/v3/index.json')
+$actualMcpArgs = @($mcpServer.args)
+$actualPins = @($actualMcpArgs | Where-Object { $_ -like 'Darylmcd.RoslynMcp@*' })
+$argumentShapeMatches = $actualMcpArgs.Count -eq $expectedMcpArgs.Count
+if ($argumentShapeMatches) {
+    for ($i = 0; $i -lt $expectedMcpArgs.Count; $i++) {
+        if ($actualMcpArgs[$i] -ne $expectedMcpArgs[$i]) {
+            $argumentShapeMatches = $false
+            break
+        }
+    }
+}
+if ($actualPins.Count -ne 1 -or $actualPins[0] -ne $expectedPackagePin -or -not $argumentShapeMatches) {
+    $actualArgsText = $actualMcpArgs -join ', '
+    $errors += ".claude-plugin/mcp.json package pin/args: expected '$($expectedMcpArgs -join ', ')', got '$actualArgsText'"
+}
+
+# 6. CHANGELOG.md — top ## [X.Y.Z] header
 $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 $changelogLines = Get-Content $changelogPath
 $topHeader = $changelogLines | Where-Object { $_ -match '^\#\# \[(\d+\.\d+\.\d+)\]' } | Select-Object -First 1
@@ -70,7 +96,7 @@ if ($topHeader -match '^\#\# \[(\d+\.\d+\.\d+)\]') {
     $errors += "CHANGELOG.md: no ## [X.Y.Z] header found"
 }
 
-# 6. .claude-plugin/server.json — top-level version AND packages[0].version
+# 7. .claude-plugin/server.json — top-level version AND packages[0].version
 #    (MCP Registry manifest; both fields must track Directory.Build.props)
 $serverJsonPath = Join-Path $repoRoot '.claude-plugin' 'server.json'
 $serverJson = Get-Content $serverJsonPath -Raw | ConvertFrom-Json
@@ -91,9 +117,9 @@ if ($errors.Count -gt 0) {
         Write-Host "  - $e" -ForegroundColor Red
     }
     Write-Host ''
-    Write-Host "All six files must carry version '$canonical'. See docs/release-policy.md § Where To Bump The Version String." -ForegroundColor Yellow
+    Write-Host "All seven files must carry version '$canonical'. See docs/release-policy.md § Where To Bump The Version String." -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "All 6 version files agree on $canonical" -ForegroundColor Green
+Write-Host "All 7 version files agree on $canonical" -ForegroundColor Green
 exit 0

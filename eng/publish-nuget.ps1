@@ -9,7 +9,7 @@ param(
 # provenance guarantees as the publish-nuget workflow
 # (.github/workflows/publish-nuget.yml):
 #   1. The full publish-mode release gate runs first (verify-release.ps1:
-#      version drift across the six canonical version files, build, tests,
+#      version drift across the seven canonical version files, build, tests,
 #      publish smoke, consumed changelog fragments, breaking-version bump).
 #      Expect ~10-15 minutes locally — the same cost the CI path pays.
 #   2. The version is derived from the canonical Directory.Build.props.

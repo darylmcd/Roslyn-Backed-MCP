@@ -61,7 +61,8 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
                 "All 10 repeat loads of the same path should collapse to one WorkspaceId — no extra slot consumption.");
 
             var matchingCount = WorkspaceManager.ListWorkspaces()
-                .Count(w => string.Equals(w.LoadedPath, copiedSolutionPath, StringComparison.OrdinalIgnoreCase));
+                .Count(w => string.Equals(w.LoadedPath, copiedSolutionPath,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
             Assert.AreEqual(1, matchingCount,
                 "workspace_list should show exactly one entry for the isolated copy path.");
 
@@ -97,6 +98,97 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
                 "Path dedup must be case-insensitive on Windows.");
 
             WorkspaceManager.Close(first.WorkspaceId);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_CaseDistinctSolutionPaths_OnUnixRemainDistinct()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Case-distinct path identity applies to Unix filesystems.");
+            return;
+        }
+
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var originalName = Path.GetFileName(copiedSolutionPath);
+        var alternateName = originalName.ToUpperInvariant();
+        if (alternateName == originalName)
+        {
+            alternateName = originalName.ToLowerInvariant();
+        }
+        Assert.AreNotEqual(originalName, alternateName);
+        Assert.IsTrue(string.Equals(originalName, alternateName, StringComparison.OrdinalIgnoreCase));
+        var alternatePath = Path.Combine(copiedRoot, alternateName);
+        File.Copy(copiedSolutionPath, alternatePath);
+
+        try
+        {
+            var first = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var second = await WorkspaceManager.LoadAsync(alternatePath, CancellationToken.None);
+
+            Assert.AreNotEqual(first.WorkspaceId, second.WorkspaceId,
+                "Unix path identity must not collapse solution files that differ only by case.");
+            WorkspaceManager.Close(first.WorkspaceId);
+            WorkspaceManager.Close(second.WorkspaceId);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task FindWorkspaceIdsContainingFile_UsesLoadedDocumentMembership()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        try
+        {
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var documentPath = Directory.EnumerateFiles(copiedRoot, "*.cs", SearchOption.AllDirectories)
+                .First();
+
+            var owners = WorkspaceManager.FindWorkspaceIdsContainingFile(documentPath);
+
+            CollectionAssert.AreEqual(new[] { status.WorkspaceId }, owners.ToArray());
+            WorkspaceManager.Close(status.WorkspaceId);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task FindWorkspaceIdsContainingFile_RefreshesAfterAppliedDocumentAddition()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        try
+        {
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var solution = WorkspaceManager.GetCurrentSolution(status.WorkspaceId);
+            var project = solution.Projects.First();
+            var documentId = Microsoft.CodeAnalysis.DocumentId.CreateNewId(project.Id);
+            var addedPath = Path.Combine(Path.GetDirectoryName(project.FilePath!)!, "OwnershipProbe.cs");
+            var withDocument = solution.AddDocument(
+                documentId,
+                "OwnershipProbe.cs",
+                Microsoft.CodeAnalysis.Text.SourceText.From("internal sealed class OwnershipProbe { }"),
+                filePath: addedPath);
+
+            Assert.IsTrue(WorkspaceManager.TryApplyChanges(status.WorkspaceId, withDocument));
+            CollectionAssert.AreEqual(
+                new[] { status.WorkspaceId },
+                WorkspaceManager.FindWorkspaceIdsContainingFile(addedPath).ToArray());
+
+            WorkspaceManager.Close(status.WorkspaceId);
         }
         finally
         {

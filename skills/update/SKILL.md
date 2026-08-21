@@ -1,24 +1,23 @@
 ---
 name: update
 installed_as: roslyn-mcp:update
-description: "Update the Roslyn MCP plugin. Use when: server_info shows an update is available, the user wants to update to the latest version, or the plugin reports an older version than NuGet. Handles both the global tool binary (Layer 1) and the Claude Code plugin metadata (Layer 2)."
+description: "Update the Roslyn MCP Claude Code plugin and its release-pinned server launch. Also explains the separate optional global-tool update path."
 user-invocable: true
 argument-hint: ""
 ---
 
 # Update Roslyn MCP Plugin
 
-You are an update assistant. Your job is to update both layers of the Roslyn MCP plugin to the latest version.
+You are an update assistant. Your job is to update the Claude Code plugin to the latest version.
 
 ## Background
 
-The plugin has two layers that must be updated together:
+The plugin launch is self-contained; a global tool is a separate install option:
 
 | Layer | Provides | Update command |
 |-------|----------|----------------|
-| 1 — Global tool | The `roslynmcp` MCP server binary | `dotnet tool update -g Darylmcd.RoslynMcp` (or `dotnet tool install -g Darylmcd.RoslynMcp` if not installed) |
-| 1b — Repo checkout (maintainers) | Same binary, from local `nupkg` | `just tool-update` (NuGet.org) or `just tool-install-local` after `just pack` |
-| 2 — Claude Code plugin | Skills, hooks, marketplace metadata | `/plugin marketplace update` + `/plugin install` |
+| Claude Code plugin | Release-pinned `dnx` server launch, skills, hooks, marketplace metadata | `/plugin marketplace update` + `/plugin install` |
+| Optional global tool | Standalone `roslynmcp` command for non-plugin clients | `dotnet tool update -g Darylmcd.RoslynMcp` |
 
 **Important:** The NuGet package ID is `Darylmcd.RoslynMcp` (NOT `RoslynMcp` — that is a different publisher's package).
 
@@ -37,19 +36,7 @@ Call `server_info` to get the current running version and check for updates. Rep
 
 If `update` is `null`, the NuGet check hasn't completed yet. Tell the user the check is still pending and proceed to update anyway if they want the latest.
 
-### Step 2: Update Layer 1 — Global Tool
-
-**Preferred (any shell):**
-
-```bash
-dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
-```
-
-**If the user is developing in this repository and has [just](https://github.com/casey/just):** run `just tool-update` (updates or installs, then lists global tools). To install the **locally built** package after `just pack`, use `just tool-install-local` (Windows ends `roslynmcp.exe` first to avoid file locks).
-
-Report the result. If the tool reports "already up to date", note that and continue to Layer 2.
-
-### Step 3: Update Layer 2 — Claude Code Plugin
+### Step 2: Update Claude Code Plugin
 
 Tell the user to run these two commands in the Claude Code chat input (they are slash commands handled by the Claude Code client, not by the agent):
 
@@ -60,10 +47,15 @@ Tell the user to run these two commands in the Claude Code chat input (they are 
 
 **Note:** If the user's Claude Code client does not support `/plugin` slash commands (i.e., they get `/plugin isn't available in this environment`), tell them to update via their client's plugin/marketplace UI, or to uninstall and reinstall the plugin from the marketplace. Maintainers with the Roslyn-Backed-MCP source tree checked out have an agent-executable PowerShell fallback — see the repo-local override in `.claude/skills/update/` if present.
 
+### Step 3: Optional Global Tool
+
+Only when the user also uses the standalone global-tool install, run `dotnet tool update -g Darylmcd.RoslynMcp`. The plugin itself does not require that shim.
+
 ### Step 4: Report
 
 Display a summary:
 - Previous version
 - New version (or "already up to date")
-- Layers updated
-- **Reminder: "Restart Claude Code to load the updated binary, skills, and hooks."**
+- Plugin version updated
+- Optional global-tool result, when requested
+- **Reminder: "Restart Claude Code to load the updated server pin, skills, and hooks."**

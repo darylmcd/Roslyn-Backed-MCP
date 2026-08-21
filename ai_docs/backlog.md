@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-21T19:32:43Z
+**updated_at:** 2026-08-21T21:38:22Z
 
 ## Agent contract
 
@@ -96,6 +96,8 @@
 | `scaffold-sampling-mrtr-replay-cost` | Medium | — | Split scaffold sampling preparation from completion so MRTR replay does not repeat compilation and sibling discovery; keep request state bounded and secret-safe and prove one expensive preparation. | M | items/scaffold-sampling-mrtr-replay-cost.md |
 | `release-managed-guard-malformed-input-fail-closed` | Medium | — | Make the release-managed-file hook reject malformed or shape-invalid input with a sanitized blocking result, while preserving explicitly supported empty-input behavior and valid unmanaged edits. | S | items/release-managed-guard-malformed-input-fail-closed.md |
 | `type-extraction-same-file-consumer-rewrite` | Medium | — | **Preserve same-file extraction consumers** — semantically rewrite retained source members through the injected composition field or refuse before storing an uncompilable preview. [type: bug] [source: 2026-08-21 current-session regression] | S | items/type-extraction-same-file-consumer-rewrite.md |
+| `filewatcher-worktree-root-relative-ignore` | Medium | — | Evaluate FileWatcher worktree exclusions relative to the loaded root so a workspace located below `.worktrees/<id>` still observes its own external edits. [type: bug] [source: adjacent review] | S | items/filewatcher-worktree-root-relative-ignore.md |
+| `workspace-document-filepath-platform-identity` | Medium | — | Centralize document and generated-document file-path matching on platform-aware filesystem identity semantics. [type: bug] [source: adjacent review] | M | items/workspace-document-filepath-platform-identity.md |
 
 ## Low
 

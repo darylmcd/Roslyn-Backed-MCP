@@ -106,6 +106,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly record struct EvictedSessionRecord(DateTimeOffset LoadedAtUtc, string LoadedPath);
     /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
     private readonly SemaphoreSlim _workspaceSlots;
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly object _rootRetirementSync = new();
+    private readonly Dictionary<string, Task> _rootRetirementTasks = new(StringComparer.Ordinal);
+    private bool _disposing;
 
     /// <inheritdoc />
     public event Action<string>? WorkspaceClosed;
@@ -153,6 +157,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _evictionGate = evictionGate;
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
+        _fileWatcher.WorkspaceRootMissing += OnWorkspaceRootMissing;
     }
 
     public bool ContainsWorkspace(string workspaceId) =>
@@ -204,7 +209,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         foreach (var candidate in _sessions.Values)
         {
             if (!string.IsNullOrWhiteSpace(candidate.LoadedPath)
-                && string.Equals(candidate.LoadedPath, fullPath, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(candidate.LoadedPath, fullPath, FileSystemPath.Comparison))
             {
                 return candidate;
             }
@@ -477,7 +482,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return BuildStatus(session);
     }
 
-    public bool Close(string workspaceId)
+    public bool Close(string workspaceId) => CloseCore(workspaceId, recordEviction: true);
+
+    private bool CloseCore(string workspaceId, bool recordEviction)
     {
         if (!_sessions.TryRemove(workspaceId, out var session))
         {
@@ -488,7 +495,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // record the original loadedAt and loadedPath before the session is disposed so a
         // subsequent lookup against this id can surface the structured
         // WorkspaceEvictedException with the timestamp AND the rehydration path populated.
-        RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
+        if (recordEviction)
+        {
+            RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
+        }
 
         _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
@@ -497,6 +507,138 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         RaiseWorkspaceClosed(workspaceId);
         LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
+    }
+
+    private void OnWorkspaceRootMissing(string workspaceId)
+    {
+        lock (_rootRetirementSync)
+        {
+            if (_disposing || _rootRetirementTasks.ContainsKey(workspaceId))
+            {
+                return;
+            }
+
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var task = Task.Run(async () =>
+            {
+                await start.Task.ConfigureAwait(false);
+                await RetireMissingWorkspaceAsync(workspaceId).ConfigureAwait(false);
+            });
+            _rootRetirementTasks.Add(workspaceId, task);
+            start.SetResult();
+        }
+    }
+
+    private async Task RetireMissingWorkspaceAsync(string workspaceId)
+    {
+        try
+        {
+            var retryDelay = TimeSpan.FromMilliseconds(300);
+            while (!_lifetimeCancellation.IsCancellationRequested)
+            {
+                await Task.Delay(retryDelay, _lifetimeCancellation.Token).ConfigureAwait(false);
+                if (!IsWorkspaceBackingPathConfirmedMissing(workspaceId))
+                {
+                    return;
+                }
+
+                if (_evictionGate is null)
+                {
+                    CloseCore(workspaceId, recordEviction: false);
+                    return;
+                }
+
+                var gate = _evictionGate.Value;
+                var retired = false;
+                try
+                {
+                    await gate.RunWriteAsync(
+                        workspaceId,
+                        _ =>
+                        {
+                            retired = IsWorkspaceBackingPathConfirmedMissing(workspaceId) &&
+                                      CloseCore(workspaceId, recordEviction: false);
+                            return Task.FromResult(retired);
+                        },
+                        _lifetimeCancellation.Token,
+                        applyStalenessPolicy: false).ConfigureAwait(false);
+                }
+                catch (KeyNotFoundException)
+                {
+                    return;
+                }
+                catch (Exception exception) when (!_lifetimeCancellation.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "Failed to retire missing workspace backing path for {WorkspaceId}; retrying",
+                        workspaceId);
+                    retryDelay = TimeSpan.FromMilliseconds(Math.Min(retryDelay.TotalMilliseconds * 2, 2000));
+                    continue;
+                }
+
+                if (retired)
+                {
+                    try
+                    {
+                        gate.RemoveGate(workspaceId);
+                    }
+                    catch (Exception exception)
+                    {
+                        // The session is already retired. A gate-registry cleanup failure must
+                        // not fault this manager-owned task (or make Dispose throw while joining
+                        // it), but it remains operationally visible for diagnosis.
+                        _logger.LogWarning(
+                            exception,
+                            "Retired workspace {WorkspaceId}, but failed to remove its execution gate",
+                            workspaceId);
+                    }
+                }
+
+                return;
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            lock (_rootRetirementSync)
+            {
+                _rootRetirementTasks.Remove(workspaceId);
+            }
+        }
+    }
+
+    private bool IsWorkspaceBackingPathConfirmedMissing(string workspaceId)
+    {
+        if (!_sessions.TryGetValue(workspaceId, out var session) ||
+            string.IsNullOrWhiteSpace(session.LoadedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = File.GetAttributes(session.LoadedPath);
+            return false;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -567,6 +709,30 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces()
     {
         return _sessions.Values.Select(BuildStatus).ToList();
+    }
+
+    public IReadOnlyList<string> FindWorkspaceIdsContainingFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return [];
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(filePath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return [];
+        }
+
+        return _sessions.Values
+            .Where(session => session.DocumentPaths.Contains(fullPath))
+            .Select(session => session.WorkspaceId)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
     }
 
     public WorkspaceStatusDto GetStatus(string workspaceId)
@@ -832,6 +998,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var result = session.Workspace.TryApplyChanges(newSolution);
         if (result)
         {
+            session.DocumentPaths = BuildDocumentPathIndex(session.Workspace.CurrentSolution);
             session.IncrementVersion();
             // workspace-stale-after-external-edit-feedback: attribute the pending watcher fire
             // (MSBuildWorkspace.TryApplyChanges writes .cs/.csproj files to disk on its way
@@ -865,6 +1032,24 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     public void Dispose()
     {
+        Task[] retirementTasks;
+        lock (_rootRetirementSync)
+        {
+            if (_disposing)
+            {
+                return;
+            }
+
+            _disposing = true;
+            _fileWatcher.WorkspaceRootMissing -= OnWorkspaceRootMissing;
+            _lifetimeCancellation.Cancel();
+            retirementTasks = _rootRetirementTasks.Values.ToArray();
+        }
+
+        // IDisposable is synchronous, so join lifecycle-owned background work before touching
+        // sessions or the slot semaphore. Retirement tasks never capture a synchronization
+        // context and observe the lifetime token, making this join bounded and deadlock-free.
+        Task.WhenAll(retirementTasks).GetAwaiter().GetResult();
         _fileWatcher.Dispose();
 
         // Capture session ids before dispose so we can raise WorkspaceClosed for each one.
@@ -895,6 +1080,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
 
         _workspaceSlots.Dispose();
+        _lifetimeCancellation.Dispose();
     }
 
     private static void StampCacheHitMetric(WorkspaceCacheWriteResult? result)
@@ -1002,6 +1188,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // and (b) metadata-reference timestamps still match disk. Either mismatch downgrades
             // the result to a cache miss and writes a fresh entry.
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
+            var documentPaths = BuildDocumentPathIndex(newWorkspace.CurrentSolution);
             var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, _logger) ||
                                   RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
             // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
@@ -1030,6 +1217,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.AnalyzerLease = newLease;
             session.WorkspaceDiagnostics = diagnosticsSink.Queue;
             session.ProjectStatuses = projectStatuses;
+            session.DocumentPaths = documentPaths;
             session.LoadedPath = path;
             session.RestoreRequired = restoreRequired;
             session.BuildRequired = buildRequired;
@@ -1223,6 +1411,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return fullPath;
     }
 
+    private static ImmutableHashSet<string> BuildDocumentPathIndex(Solution solution) =>
+        solution.Projects
+            .SelectMany(project => project.Documents)
+            .Select(document => document.FilePath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => Path.GetFullPath(path!))
+            .ToImmutableHashSet(FileSystemPath.Comparer);
+
     private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
     {
         return solution.Projects.Select(project =>
@@ -1259,6 +1455,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public SemaphoreSlim LoadLock { get; } = new(1, 1);
         public ConcurrentQueue<DiagnosticDto> WorkspaceDiagnostics { get; set; } = new();
         public ImmutableArray<ProjectStatusDto> ProjectStatuses { get; set; } = ImmutableArray<ProjectStatusDto>.Empty;
+        public ImmutableHashSet<string> DocumentPaths { get; set; } = ImmutableHashSet.Create<string>(FileSystemPath.Comparer);
         public MSBuildWorkspace? Workspace { get; set; }
 
         /// <summary>

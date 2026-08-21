@@ -89,12 +89,12 @@ the negotiated MCP protocol revision.
 
 ## 6. Product version (ship line)
 
-Not NuGet: the **application and plugin version** must match across six files. See [Release policy — Where to bump the version string](release-policy.md#where-to-bump-the-version-string).
+Not NuGet: the **application and plugin version** must match across seven files. See [Release policy — Where to bump the version string](release-policy.md#where-to-bump-the-version-string).
 
 | Source of truth | Field |
 |-----------------|--------|
 | `Directory.Build.props` | `<Version>` (also drives assembly / `server_info`) |
-| `manifest.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.claude-plugin/server.json`, `CHANGELOG.md` | Per release policy; both version fields in `server.json` move together |
+| `manifest.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.claude-plugin/mcp.json`, `.claude-plugin/server.json`, `CHANGELOG.md` | Per release policy; the `dnx` package pin and both version fields in `server.json` move together |
 
 Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-release.ps1`).
 
@@ -109,7 +109,7 @@ Automated check: `eng/verify-version-drift.ps1` (invoked from `eng/verify-releas
 | `Microsoft.Build.*` or `Microsoft.Build.Locator` | Full `verify-release.ps1`; exercise solution load + `build_workspace` / `test_run` paths. |
 | `ModelContextProtocol` | Review every official release since the pin; update/supersede ADR 0003; run raw-wire matrices for every supported protocol era; check tool/prompt/resource registration and schemas. |
 | `Microsoft.Extensions.*` | Host startup, logging, and shutdown; no special Roslyn coupling. |
-| Product version only | All six version files + `eng/verify-version-drift.ps1`. |
+| Product version only | All seven version files + `eng/verify-version-drift.ps1`. |
 
 ---
 

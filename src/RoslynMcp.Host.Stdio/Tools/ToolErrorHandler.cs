@@ -6,6 +6,22 @@ using RoslynMcp.Host.Stdio.Diagnostics;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// Carries a bounded, server-authored argument diagnostic through the shared error boundary.
+/// Unlike arbitrary <see cref="ArgumentException.Message"/> values, <see cref="PublicMessage"/>
+/// is deliberately safe to return verbatim to the caller.
+/// </summary>
+internal sealed class PublicArgumentException : ArgumentException
+{
+    public PublicArgumentException(string publicMessage, string parameterName)
+        : base(publicMessage, parameterName)
+    {
+        PublicMessage = publicMessage;
+    }
+
+    internal string PublicMessage { get; }
+}
+
 internal static class MetaSerializer
 {
     public static readonly JsonSerializerOptions CamelCase = new()
@@ -487,6 +503,11 @@ internal static class ToolErrorHandler
     {
         var parameter = exception.ParamName ?? "<unknown>";
         var rawMessage = exception.Message;
+
+        if (exception is PublicArgumentException publicArgument)
+        {
+            return publicArgument.PublicMessage;
+        }
 
         if (exception is PromptParameterBindingException promptBinding)
         {

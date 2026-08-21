@@ -81,6 +81,13 @@ public interface IWorkspaceManager
     IReadOnlyList<WorkspaceStatusDto> ListWorkspaces();
 
     /// <summary>
+    /// Returns active workspace identifiers whose loaded Roslyn document set contains the
+    /// supplied absolute file path. Implementations that do not maintain an ownership index
+    /// may return an empty collection.
+    /// </summary>
+    IReadOnlyList<string> FindWorkspaceIdsContainingFile(string filePath) => [];
+
+    /// <summary>
     /// Returns the current status for the specified workspace session.
     /// </summary>
     /// <remarks>
