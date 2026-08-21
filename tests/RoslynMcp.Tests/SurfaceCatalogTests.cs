@@ -154,7 +154,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual("e147875", diff.SnapshotSources.From.SourceCommit);
 
         CollectionAssert.AreEquivalent(
-            new[] { "workspace_readiness_report", "workspace_support_bundle" },
+            new[] { "workspace_readiness_report", "workspace_support_bundle", "find_overloads" },
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
@@ -181,7 +181,7 @@ public sealed class SurfaceCatalogTests
                 $"{workspaceToolName} changed only its outputSchema (buildRequired added to WorkspaceStatusSummaryDto).");
         }
 
-        Assert.AreEqual(3, diff.Summary.Added);
+        Assert.AreEqual(4, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
         Assert.AreEqual(5, diff.Summary.Changed);
@@ -196,7 +196,7 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(document.RootElement.TryGetProperty("fromVersion", out var fromVersion));
         Assert.AreEqual("2.3.1", fromVersion.GetString());
         Assert.IsTrue(document.RootElement.TryGetProperty("summary", out var summary));
-        Assert.AreEqual(3, summary.GetProperty("added").GetInt32());
+        Assert.AreEqual(4, summary.GetProperty("added").GetInt32());
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
         CollectionAssert.AreEquivalent(
