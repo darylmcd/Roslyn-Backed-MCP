@@ -25,7 +25,7 @@ namespace RoslynMcp.Host.Stdio.Security;
 /// </remarks>
 internal static class RootExpansionGrantRegistry
 {
-    private static readonly ConcurrentDictionary<string, byte> s_grants =
+    private static readonly ConcurrentDictionary<string, byte> _grants =
         new(StringComparer.Ordinal);
 
     /// <summary>Records that <paramref name="workspaceId"/> was loaded with root expansion requested.</summary>
@@ -33,7 +33,7 @@ internal static class RootExpansionGrantRegistry
     {
         if (!string.IsNullOrEmpty(workspaceId))
         {
-            s_grants[workspaceId] = 0;
+            _grants[workspaceId] = 0;
         }
     }
 
@@ -45,7 +45,7 @@ internal static class RootExpansionGrantRegistry
     {
         if (!string.IsNullOrEmpty(workspaceId))
         {
-            s_grants.TryRemove(workspaceId, out _);
+            _grants.TryRemove(workspaceId, out _);
         }
     }
 
@@ -53,5 +53,5 @@ internal static class RootExpansionGrantRegistry
     /// True when <paramref name="workspaceId"/> was admitted under a requested root expansion.
     /// </summary>
     public static bool IsGranted(string? workspaceId)
-        => !string.IsNullOrEmpty(workspaceId) && s_grants.ContainsKey(workspaceId);
+        => !string.IsNullOrEmpty(workspaceId) && _grants.ContainsKey(workspaceId);
 }

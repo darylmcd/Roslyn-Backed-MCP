@@ -1,12 +1,12 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Elicitation;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 

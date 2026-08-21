@@ -1,11 +1,11 @@
 using System.Text;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -17,7 +17,7 @@ public sealed class EditService : IEditService
     /// keeps reporting the caller-visible <c>edits</c> parameter it was extracted from
     /// (<c>edit-preview-validation-decomposition</c>).
     /// </summary>
-    private const string EditsParamName = "edits";
+    private const string _editsParamName = "edits";
 
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<EditService> _logger;
@@ -442,7 +442,7 @@ public sealed class EditService : IEditService
     {
         if (edits.Count == 0)
         {
-            throw new ArgumentException($"At least one text edit is required for '{filePath}'.", EditsParamName);
+            throw new ArgumentException($"At least one text edit is required for '{filePath}'.", _editsParamName);
         }
 
         var lineCount = sourceText.Lines.Count;
@@ -470,7 +470,7 @@ public sealed class EditService : IEditService
         {
             throw new ArgumentException(
                 $"Edit #{index} for '{filePath}' has a null NewText. Use an empty string for deletions.",
-                EditsParamName);
+                _editsParamName);
         }
 
         if (edit.StartLine < 1 || edit.StartColumn < 1 || edit.EndLine < 1 || edit.EndColumn < 1)
@@ -479,7 +479,7 @@ public sealed class EditService : IEditService
                 $"Edit #{index} for '{filePath}' has non-positive line/column: " +
                 $"({edit.StartLine},{edit.StartColumn})-({edit.EndLine},{edit.EndColumn}). " +
                 "Line and column are 1-based.",
-                EditsParamName);
+                _editsParamName);
         }
     }
 
@@ -504,7 +504,7 @@ public sealed class EditService : IEditService
             throw new ArgumentException(
                 $"Edit #{index} for '{filePath}' references line {Math.Max(edit.StartLine, edit.EndLine)} " +
                 $"but the file only has {lineCount} line(s).",
-                EditsParamName);
+                _editsParamName);
         }
 
         var startLineLength = sourceText.Lines[edit.StartLine - 1].SpanIncludingLineBreak.Length;
@@ -513,7 +513,7 @@ public sealed class EditService : IEditService
             throw new ArgumentException(
                 $"Edit #{index} for '{filePath}' has StartColumn {edit.StartColumn} but line {edit.StartLine} " +
                 $"only has {startLineLength} character(s). Columns are 1-based and may be one past the end.",
-                EditsParamName);
+                _editsParamName);
         }
 
         var endLineLength = sourceText.Lines[edit.EndLine - 1].SpanIncludingLineBreak.Length;
@@ -522,7 +522,7 @@ public sealed class EditService : IEditService
             throw new ArgumentException(
                 $"Edit #{index} for '{filePath}' has EndColumn {edit.EndColumn} but line {edit.EndLine} " +
                 $"only has {endLineLength} character(s).",
-                EditsParamName);
+                _editsParamName);
         }
 
         if (edit.StartLine > edit.EndLine
@@ -532,7 +532,7 @@ public sealed class EditService : IEditService
                 $"Edit #{index} for '{filePath}' has a reversed range: " +
                 $"start ({edit.StartLine},{edit.StartColumn}) is after end ({edit.EndLine},{edit.EndColumn}). " +
                 "Zero-width ranges are allowed (inserts) but the end position must not precede the start.",
-                EditsParamName);
+                _editsParamName);
         }
     }
 

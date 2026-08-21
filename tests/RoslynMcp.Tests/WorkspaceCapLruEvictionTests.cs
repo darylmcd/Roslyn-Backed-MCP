@@ -32,15 +32,15 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceCapLruEvictionTests
 {
-    private static string s_repositoryRootPath = null!;
-    private static string s_sampleSolutionPath = null!;
+    private static string _repositoryRootPath = null!;
+    private static string _sampleSolutionPath = null!;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _)
     {
-        s_repositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
-        s_sampleSolutionPath = TestFixtureFileSystem.FindFixturePath(
-            s_repositoryRootPath,
+        _repositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
+        _sampleSolutionPath = TestFixtureFileSystem.FindFixturePath(
+            _repositoryRootPath,
             "SampleSolution",
             "SampleSolution.slnx",
             "SampleSolution.sln");
@@ -70,8 +70,8 @@ public sealed class WorkspaceCapLruEvictionTests
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
         using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -108,8 +108,8 @@ public sealed class WorkspaceCapLruEvictionTests
         using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
         manager.WorkspaceClosed += RootExpansionGrantRegistry.Revoke;
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
         string? grantedWorkspaceId = null;
 
         try
@@ -167,8 +167,8 @@ public sealed class WorkspaceCapLruEvictionTests
     {
         // Use a cap of 1 so a single loaded workspace saturates the semaphore.
         using var manager = CreateManager(maxConcurrentWorkspaces: 1);
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -242,8 +242,8 @@ public sealed class WorkspaceCapLruEvictionTests
             new ExecutionGateOptions { RequestTimeout = TimeSpan.FromMinutes(5) },
             manager);
 
-        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
-        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(s_repositoryRootPath, s_sampleSolutionPath);
+        var path1 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
+        var path2 = TestFixtureFileSystem.CreateSampleSolutionCopy(_repositoryRootPath, _sampleSolutionPath);
 
         try
         {
@@ -262,7 +262,7 @@ public sealed class WorkspaceCapLruEvictionTests
                     try
                     {
                         readerHoldsLock.SetResult();
-                        await readerMayRelease.Task.WaitAsync(TestTimeout);
+                        await readerMayRelease.Task.WaitAsync(_testTimeout);
 
                         // Still inside the gated read — the reader lock has NOT been released, so
                         // a gate-respecting eviction cannot have run yet.
@@ -284,7 +284,7 @@ public sealed class WorkspaceCapLruEvictionTests
                 },
                 CancellationToken.None);
 
-            await readerHoldsLock.Task.WaitAsync(TestTimeout);
+            await readerHoldsLock.Task.WaitAsync(_testTimeout);
 
             // Start (do NOT await) the eviction-triggering load: it must now block on the
             // evicted candidate's writer lock until the reader above drains.
@@ -298,8 +298,8 @@ public sealed class WorkspaceCapLruEvictionTests
 
             readerMayRelease.SetResult();
 
-            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(TestTimeout);
-            var status2 = await evictingLoad.WaitAsync(TestTimeout);
+            var (observed, stillTrackedDuringRead) = await readerTask.WaitAsync(_testTimeout);
+            var status2 = await evictingLoad.WaitAsync(_testTimeout);
 
             Assert.IsNull(observed,
                 "GetProject called from inside the gated read must not observe eviction now that "
@@ -321,7 +321,7 @@ public sealed class WorkspaceCapLruEvictionTests
     }
 
     /// <summary>Fail fast rather than hang the suite if a hand-off regresses into a deadlock.</summary>
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan _testTimeout = TimeSpan.FromMinutes(2);
 
     private static WorkspaceManager CreateManager(
         int maxConcurrentWorkspaces = 4,

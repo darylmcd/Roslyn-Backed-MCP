@@ -26,7 +26,7 @@ internal sealed class SingleTestScaffolder
 {
     // Sampled content is untrusted client input. Bound it before parsing so a crafted MRTR retry
     // cannot amplify an arbitrarily large legal identifier into generated source or preview output.
-    private const int MaxSuggestedTestMethodNameLength = 256;
+    private const int _maxSuggestedTestMethodNameLength = 256;
 
     private readonly IWorkspaceManager _workspace;
     private readonly IFileOperationService _fileOperationService;
@@ -410,7 +410,7 @@ internal sealed class SingleTestScaffolder
 
     private static string? NormalizeSuggestedTestMethodName(string? rawName)
     {
-        if (string.IsNullOrWhiteSpace(rawName) || rawName.Length > MaxSuggestedTestMethodNameLength)
+        if (string.IsNullOrWhiteSpace(rawName) || rawName.Length > _maxSuggestedTestMethodNameLength)
         {
             return null;
         }

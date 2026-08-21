@@ -40,7 +40,7 @@ internal static class ElicitationAllowlistPolicy
     /// identifier, not a credential, and is pinned non-sensitive by tests.
     /// </para>
     /// </summary>
-    private static readonly HashSet<(string Tool, string Param)> AllowedElicitationParameters =
+    private static readonly HashSet<(string Tool, string Param)> _allowedElicitationParameters =
         new()
         {
             (WorkspaceLoadToolName, PathParameterName),
@@ -49,7 +49,7 @@ internal static class ElicitationAllowlistPolicy
     /// <summary>
     /// Defense-in-depth predicate: returns <see langword="true"/> when the parameter name
     /// suggests credential / secret / token / password / API-key / authorization material.
-    /// The primary defense is the strict <see cref="AllowedElicitationParameters"/>
+    /// The primary defense is the strict <see cref="_allowedElicitationParameters"/>
     /// allowlist; this helper exists so tests can pin the policy and so any future allowlist
     /// addition is double-checked before being merged. Per MCP spec § Elicitation security,
     /// "Servers MUST NOT request sensitive information" via <c>elicitation/create</c>.
@@ -91,7 +91,7 @@ internal static class ElicitationAllowlistPolicy
     {
         if (string.IsNullOrEmpty(toolName) || string.IsNullOrEmpty(paramName)) return false;
         if (IsSensitiveFieldName(paramName)) return false;
-        return AllowedElicitationParameters.Contains((toolName, paramName))
+        return _allowedElicitationParameters.Contains((toolName, paramName))
                || IsWorkspaceIdRecoveryAllowedFor(toolName, paramName);
     }
 

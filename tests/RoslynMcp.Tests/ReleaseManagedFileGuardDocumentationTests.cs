@@ -5,7 +5,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ReleaseManagedFileGuardDocumentationTests
 {
-    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan _regexTimeout = TimeSpan.FromSeconds(1);
 
     [TestMethod]
     public void WorkflowTable_MatchesCanonicalGuardSet()
@@ -20,14 +20,14 @@ public sealed class ReleaseManagedFileGuardDocumentationTests
             guardScript,
             @"\$managedExact\s*=\s*@\((?<entries>.*?)\)",
             RegexOptions.Singleline,
-            RegexTimeout);
+            _regexTimeout);
         Assert.IsTrue(managedBlock.Success, "Could not locate the guard script's $managedExact array.");
 
         var guardedPaths = Regex.Matches(
                 managedBlock.Groups["entries"].Value,
                 @"'(?<path>[^']+)'",
                 RegexOptions.None,
-                RegexTimeout)
+                _regexTimeout)
             .Select(match => match.Groups["path"].Value.ToLowerInvariant())
             .ToHashSet(StringComparer.Ordinal);
 
@@ -35,7 +35,7 @@ public sealed class ReleaseManagedFileGuardDocumentationTests
             guardScript,
             @"\$basenameLower\s+-eq\s+'(?<path>[^']+)'",
             RegexOptions.None,
-            RegexTimeout);
+            _regexTimeout);
         Assert.IsTrue(basenameRule.Success, "Could not locate the guard script's basename rule.");
         guardedPaths.Add(basenameRule.Groups["path"].Value);
 
@@ -43,7 +43,7 @@ public sealed class ReleaseManagedFileGuardDocumentationTests
             workflow,
             @"## Release-managed file guard(?<section>.*?)\*\*Bypass mechanism\.\*\*",
             RegexOptions.Singleline,
-            RegexTimeout);
+            _regexTimeout);
         Assert.IsTrue(documentedSection.Success, "Could not locate the workflow's release-managed guard section.");
         var documentedSectionText = documentedSection.Groups["section"].Value;
 
@@ -51,7 +51,7 @@ public sealed class ReleaseManagedFileGuardDocumentationTests
                 documentedSectionText,
                 @"^\|\s*\d+\s*\|\s*`(?<path>[^`]+)`",
                 RegexOptions.Multiline,
-                RegexTimeout)
+                _regexTimeout)
             .Select(match => match.Groups["path"].Value.ToLowerInvariant())
             .ToList();
 

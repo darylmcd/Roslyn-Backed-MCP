@@ -11,7 +11,7 @@ namespace RoslynMcp.Host.Stdio.ProtocolCompatibility;
 /// </summary>
 internal static class RequestStateCodec
 {
-    private const string WorkspacePrefix = "roslynmcp.workspace.v1:";
+    private const string _workspacePrefix = "roslynmcp.workspace.v1:";
 
     internal static string? CaptureWorkspaceId(
         IDictionary<string, JsonElement>? arguments,
@@ -26,16 +26,16 @@ internal static class RequestStateCodec
             return null;
         }
 
-        return WorkspacePrefix + workspaceId.ToString("N");
+        return _workspacePrefix + workspaceId.ToString("N");
     }
 
     internal static bool TryRestoreWorkspaceId(string? requestState, out string workspaceId)
     {
         workspaceId = string.Empty;
         if (requestState is null ||
-            !requestState.StartsWith(WorkspacePrefix, StringComparison.Ordinal) ||
-            requestState.Length != WorkspacePrefix.Length + 32 ||
-            !Guid.TryParseExact(requestState.AsSpan(WorkspacePrefix.Length), "N", out var parsed))
+            !requestState.StartsWith(_workspacePrefix, StringComparison.Ordinal) ||
+            requestState.Length != _workspacePrefix.Length + 32 ||
+            !Guid.TryParseExact(requestState.AsSpan(_workspacePrefix.Length), "N", out var parsed))
         {
             return false;
         }

@@ -44,10 +44,10 @@ public sealed class WorkspacePathMrtrWireTests
 {
     // The fake tool deliberately reuses the workspace_load name so the recovery pipeline's
     // strict allowlist (workspace_load.path) permits elicitation for the missing parameter.
-    private const string ToolName = "workspace_load";
-    private const string WorkspaceStatusToolName = "workspace_status";
-    private const string ElicitedPath = "C:/synthetic/solution.slnx";
-    private const string SyntheticWorkspaceId = "11111111111111111111111111111111";
+    private const string _toolName = "workspace_load";
+    private const string _workspaceStatusToolName = "workspace_status";
+    private const string _elicitedPath = "C:/synthetic/solution.slnx";
+    private const string _syntheticWorkspaceId = "11111111111111111111111111111111";
 
     // ── (1) MRTR round trip under 2026-07-28 ─────────────────────────────────
 
@@ -67,7 +67,7 @@ public sealed class WorkspacePathMrtrWireTests
 
         var prior = harness.RawServerMessages.Count;
         var clientResult = await harness.Client.CallToolAsync(
-            ToolName,
+            _toolName,
             cancellationToken: CancellationToken.None);
 
         Assert.AreEqual(1, elicitationsHandled,
@@ -95,7 +95,7 @@ public sealed class WorkspacePathMrtrWireTests
         // Retry: success envelope carrying the elicited value.
         var final = results[1];
         Assert.IsFalse(final.TryGetProperty("isError", out var finalIsError) && finalIsError.GetBoolean());
-        StringAssert.Contains(final.GetProperty("content")[0].GetProperty("text").GetString(), ElicitedPath);
+        StringAssert.Contains(final.GetProperty("content")[0].GetProperty("text").GetString(), _elicitedPath);
 
         // The MRTR leg must not also send the legacy nested server-to-client request.
         Assert.IsFalse(
@@ -117,7 +117,7 @@ public sealed class WorkspacePathMrtrWireTests
 
         var prior = harness.RawServerMessages.Count;
         var clientResult = await harness.Client.CallToolAsync(
-            ToolName,
+            _toolName,
             cancellationToken: CancellationToken.None);
 
         Assert.IsFalse(clientResult.IsError is true);
@@ -133,7 +133,7 @@ public sealed class WorkspacePathMrtrWireTests
         Assert.IsFalse(final.TryGetProperty("resultType", out _),
             "ApplyProtocolResultShape strips the July 2026 discriminator for legacy sessions.");
         Assert.IsFalse(final.TryGetProperty("isError", out var isError) && isError.GetBoolean());
-        StringAssert.Contains(final.GetProperty("content")[0].GetProperty("text").GetString(), ElicitedPath);
+        StringAssert.Contains(final.GetProperty("content")[0].GetProperty("text").GetString(), _elicitedPath);
     }
 
     // ── (3) sanitized non-accept outcomes ────────────────────────────────────
@@ -149,7 +149,7 @@ public sealed class WorkspacePathMrtrWireTests
 
         var prior = harness.RawServerMessages.Count;
         var clientResult = await harness.Client.CallToolAsync(
-            ToolName,
+            _toolName,
             cancellationToken: CancellationToken.None);
 
         Assert.IsTrue(clientResult.IsError is true,
@@ -188,7 +188,7 @@ public sealed class WorkspacePathMrtrWireTests
                 Method = RequestMethods.ToolsCall,
                 Params = new JsonObject
                 {
-                    ["name"] = ToolName,
+                    ["name"] = _toolName,
                     ["arguments"] = new JsonObject(),
                     ["inputResponses"] = new JsonObject
                     {
@@ -226,13 +226,13 @@ public sealed class WorkspacePathMrtrWireTests
                 Action = "accept",
                 Content = new Dictionary<string, JsonElement>
                 {
-                    ["path"] = JsonSerializer.SerializeToElement(ElicitedPath),
+                    ["path"] = JsonSerializer.SerializeToElement(_elicitedPath),
                     ["token"] = JsonSerializer.SerializeToElement("must-not-be-consumed"),
                 },
             }));
 
         var result = await harness.Client.CallToolAsync(
-            ToolName,
+            _toolName,
             cancellationToken: CancellationToken.None);
 
         Assert.IsTrue(result.IsError is true);
@@ -251,7 +251,7 @@ public sealed class WorkspacePathMrtrWireTests
             elicitationHandler: (_, _) => ValueTask.FromResult(AcceptedPathResult(outsidePath)));
 
         var result = await harness.Client.CallToolAsync(
-            ToolName,
+            _toolName,
             cancellationToken: CancellationToken.None);
 
         Assert.IsTrue(result.IsError is true);
@@ -287,7 +287,7 @@ public sealed class WorkspacePathMrtrWireTests
         }
 
         Assert.IsNotNull(validationError);
-        var envelope = ToolErrorHandler.ClassifyAndFormat(validationError, ToolName);
+        var envelope = ToolErrorHandler.ClassifyAndFormat(validationError, _toolName);
         using var document = JsonDocument.Parse(envelope);
         Assert.AreEqual(
             ToolErrorHandler.ErrorCategories.InvalidArgument,
@@ -312,7 +312,7 @@ public sealed class WorkspacePathMrtrWireTests
 
             var prior = harness.RawServerMessages.Count;
             var result = await harness.Client.CallToolAsync(
-                WorkspaceStatusToolName,
+                _workspaceStatusToolName,
                 cancellationToken: CancellationToken.None);
 
             Assert.IsTrue(result.IsError is true,
@@ -326,7 +326,7 @@ public sealed class WorkspacePathMrtrWireTests
             var payload = JsonDocument.Parse(text).RootElement;
             Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidOperation,
                 payload.GetProperty("category").GetString());
-            Assert.AreEqual(WorkspaceStatusToolName, payload.GetProperty("tool").GetString());
+            Assert.AreEqual(_workspaceStatusToolName, payload.GetProperty("tool").GetString());
             Assert.IsFalse(text.Contains(privateFailureDetail, StringComparison.Ordinal),
                 "The classified envelope must not echo raw retry exception detail.");
             var results = FindNewResults(harness.RawServerMessages, prior);
@@ -358,7 +358,7 @@ public sealed class WorkspacePathMrtrWireTests
 
             var prior = harness.RawServerMessages.Count;
             var result = await harness.Client.CallToolAsync(
-                WorkspaceStatusToolName,
+                _workspaceStatusToolName,
                 new Dictionary<string, object?> { ["workspaceId"] = 42 },
                 cancellationToken: CancellationToken.None);
 
@@ -391,7 +391,7 @@ public sealed class WorkspacePathMrtrWireTests
         var elicitationCount = 0;
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
-            expectedWorkspaceId: SyntheticWorkspaceId);
+            expectedWorkspaceId: _syntheticWorkspaceId);
         try
         {
             await using var harness = await CreateHarnessAsync(
@@ -417,7 +417,7 @@ public sealed class WorkspacePathMrtrWireTests
                     Method = RequestMethods.ToolsCall,
                     Params = new JsonObject
                     {
-                        ["name"] = WorkspaceStatusToolName,
+                        ["name"] = _workspaceStatusToolName,
                         ["arguments"] = new JsonObject(),
                         ["requestState"] = unrelatedState,
                         ["inputResponses"] = new JsonObject
@@ -437,7 +437,7 @@ public sealed class WorkspacePathMrtrWireTests
                 "The accepted path must be loaded even when another workspace appeared before retry.");
             Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount);
             StringAssert.Contains(result.GetProperty("content")[0].GetProperty("text").GetString(),
-                SyntheticWorkspaceId);
+                _syntheticWorkspaceId);
         }
         finally
         {
@@ -471,7 +471,7 @@ public sealed class WorkspacePathMrtrWireTests
                     Method = RequestMethods.ToolsCall,
                     Params = new JsonObject
                     {
-                        ["name"] = WorkspaceStatusToolName,
+                        ["name"] = _workspaceStatusToolName,
                         ["arguments"] = new JsonObject
                         {
                             [ElicitationAllowlistPolicy.WorkspaceIdParameterName] = explicitWorkspaceId,
@@ -540,7 +540,7 @@ public sealed class WorkspacePathMrtrWireTests
                     Method = RequestMethods.ToolsCall,
                     Params = new JsonObject
                     {
-                        ["name"] = WorkspaceStatusToolName,
+                        ["name"] = _workspaceStatusToolName,
                         ["arguments"] = new JsonObject(),
                         ["requestState"] = state,
                         ["inputResponses"] = new JsonObject
@@ -591,7 +591,7 @@ public sealed class WorkspacePathMrtrWireTests
             var prior = harness.RawServerMessages.Count;
 
             var result = await harness.Client.CallToolAsync(
-                WorkspaceStatusToolName,
+                _workspaceStatusToolName,
                 new Dictionary<string, object?> { ["requestChoice"] = true },
                 cancellationToken: CancellationToken.None);
 
@@ -630,7 +630,7 @@ public sealed class WorkspacePathMrtrWireTests
         var promptCount = 0;
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
-            expectedWorkspaceId: SyntheticWorkspaceId);
+            expectedWorkspaceId: _syntheticWorkspaceId);
         try
         {
             await using var harness = await CreateHarnessAsync(
@@ -650,7 +650,7 @@ public sealed class WorkspacePathMrtrWireTests
             var prior = harness.RawServerMessages.Count;
 
             var result = await harness.Client.CallToolAsync(
-                WorkspaceStatusToolName,
+                _workspaceStatusToolName,
                 new Dictionary<string, object?> { ["requestChoice"] = true },
                 cancellationToken: CancellationToken.None);
 
@@ -661,7 +661,7 @@ public sealed class WorkspacePathMrtrWireTests
             Assert.AreEqual(2, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount,
                 "MRTR re-enters the original tool once for the second input request and once to complete.");
             var text = ((TextContentBlock)result.Content![0]).Text;
-            StringAssert.Contains(text, SyntheticWorkspaceId);
+            StringAssert.Contains(text, _syntheticWorkspaceId);
             Assert.IsFalse(text.Contains(concurrentWorkspaceId, StringComparison.Ordinal),
                 "The second MRTR retry must remain pinned to the path-recovered workspace.");
 
@@ -675,7 +675,7 @@ public sealed class WorkspacePathMrtrWireTests
                 out _));
             var state = results[1].GetProperty("requestState").GetString();
             Assert.IsTrue(RequestStateCodec.TryRestoreWorkspaceId(state, out var restored));
-            Assert.AreEqual(SyntheticWorkspaceId, restored,
+            Assert.AreEqual(_syntheticWorkspaceId, restored,
                 "Temporary retry arguments must be captured before the coordinator restores them.");
             Assert.AreEqual(concurrentWorkspaceId, manager.ListWorkspaces().Single().WorkspaceId,
                 "The fixture must genuinely change ambient state before the final retry.");
@@ -716,7 +716,7 @@ public sealed class WorkspacePathMrtrWireTests
                     Method = RequestMethods.ToolsCall,
                     Params = new JsonObject
                     {
-                        ["name"] = WorkspaceStatusToolName,
+                        ["name"] = _workspaceStatusToolName,
                         ["arguments"] = new JsonObject(),
                         ["requestState"] = encodedState,
                     },
@@ -757,7 +757,7 @@ public sealed class WorkspacePathMrtrWireTests
         {
             var prior = harness.RawServerMessages.Count;
             using var cts = new CancellationTokenSource();
-            var call = harness.Client.CallToolAsync(ToolName, cancellationToken: cts.Token);
+            var call = harness.Client.CallToolAsync(_toolName, cancellationToken: cts.Token);
 
             // Only cancel once the elicitation genuinely reached the client, so the adapter's
             // legacy ElicitAsync await is the thing observing cancellation (non-vacuous; same
@@ -786,7 +786,7 @@ public sealed class WorkspacePathMrtrWireTests
             // round trip; this also gives a deterministic wire boundary for the assertion below.
             pendingElicitation.TrySetResult(AcceptedPathResult());
             var followUp = await harness.Client.CallToolAsync(
-                ToolName,
+                _toolName,
                 cancellationToken: CancellationToken.None);
             Assert.IsFalse(followUp.IsError is true,
                 "The server must stay healthy after a cancelled elicitation round trip.");
@@ -809,7 +809,7 @@ public sealed class WorkspacePathMrtrWireTests
 
     // ── plumbing ─────────────────────────────────────────────────────────────
 
-    private static ElicitResult AcceptedPathResult(string path = ElicitedPath) => new()
+    private static ElicitResult AcceptedPathResult(string path = _elicitedPath) => new()
     {
         Action = "accept",
         Content = new Dictionary<string, JsonElement>
@@ -901,43 +901,43 @@ public sealed class WorkspacePathMrtrWireTests
     [McpServerToolType]
     private sealed class SyntheticWorkspaceLoadTools
     {
-        private static int s_workspaceStatusDispatchCount;
-        private static int s_workspaceLoadDispatchCount;
-        private static string? s_workspaceStatusFailureDetail;
-        private static string s_expectedWorkspaceId = SyntheticWorkspaceId;
+        private static int _workspaceStatusDispatchCount;
+        private static int _workspaceLoadDispatchCount;
+        private static string? _workspaceStatusFailureDetail;
+        private static string _expectedWorkspaceId = _syntheticWorkspaceId;
 
         public static int WorkspaceStatusDispatchCount =>
-            Volatile.Read(ref s_workspaceStatusDispatchCount);
+            Volatile.Read(ref _workspaceStatusDispatchCount);
         public static int WorkspaceLoadDispatchCount =>
-            Volatile.Read(ref s_workspaceLoadDispatchCount);
+            Volatile.Read(ref _workspaceLoadDispatchCount);
 
         public static void ResetWorkspaceStatusProbe(
             string? failureDetail,
-            string expectedWorkspaceId = SyntheticWorkspaceId)
+            string expectedWorkspaceId = _syntheticWorkspaceId)
         {
-            Volatile.Write(ref s_workspaceStatusFailureDetail, failureDetail);
-            Volatile.Write(ref s_expectedWorkspaceId, expectedWorkspaceId);
-            Interlocked.Exchange(ref s_workspaceStatusDispatchCount, 0);
-            Interlocked.Exchange(ref s_workspaceLoadDispatchCount, 0);
+            Volatile.Write(ref _workspaceStatusFailureDetail, failureDetail);
+            Volatile.Write(ref _expectedWorkspaceId, expectedWorkspaceId);
+            Interlocked.Exchange(ref _workspaceStatusDispatchCount, 0);
+            Interlocked.Exchange(ref _workspaceLoadDispatchCount, 0);
         }
 
-        [McpServerTool(Name = ToolName)]
+        [McpServerTool(Name = _toolName)]
         public static string Load(string path)
         {
-            Interlocked.Increment(ref s_workspaceLoadDispatchCount);
-            if (!string.Equals(path, ElicitedPath, StringComparison.Ordinal))
+            Interlocked.Increment(ref _workspaceLoadDispatchCount);
+            if (!string.Equals(path, _elicitedPath, StringComparison.Ordinal))
             {
                 throw new UnauthorizedAccessException("The requested path is outside the sanctioned roots.");
             }
 
             return JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["workspaceId"] = SyntheticWorkspaceId,
+                ["workspaceId"] = _syntheticWorkspaceId,
                 ["loadedPath"] = path,
             });
         }
 
-        [McpServerTool(Name = WorkspaceStatusToolName)]
+        [McpServerTool(Name = _workspaceStatusToolName)]
         public static async Task<string> Status(
             RequestContext<CallToolRequestParams> requestContext,
             string workspaceId,
@@ -945,10 +945,10 @@ public sealed class WorkspacePathMrtrWireTests
             bool requestChoice = false,
             CancellationToken cancellationToken = default)
         {
-            Assert.AreEqual(Volatile.Read(ref s_expectedWorkspaceId), workspaceId,
+            Assert.AreEqual(Volatile.Read(ref _expectedWorkspaceId), workspaceId,
                 "The filter must preserve the request's intended workspace identity.");
-            Interlocked.Increment(ref s_workspaceStatusDispatchCount);
-            var failureDetail = Volatile.Read(ref s_workspaceStatusFailureDetail);
+            Interlocked.Increment(ref _workspaceStatusDispatchCount);
+            var failureDetail = Volatile.Read(ref _workspaceStatusFailureDetail);
             if (failureDetail is not null)
             {
                 throw new InvalidOperationException(failureDetail);

@@ -31,8 +31,8 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class AnalyzerShadowLoaderLifecycleTests
 {
-    private const string FixtureAnalyzerAssemblyName = "LifecycleFixtureAnalyzer";
-    private static readonly TimeSpan ReclamationTimeout = TimeSpan.FromSeconds(30);
+    private const string _fixtureAnalyzerAssemblyName = "LifecycleFixtureAnalyzer";
+    private static readonly TimeSpan _reclamationTimeout = TimeSpan.FromSeconds(30);
 
     private static string ShadowSharedParent =>
         Path.Combine(Path.GetTempPath(), AnalyzerReferenceIsolation.ShadowRootDirectoryName);
@@ -221,7 +221,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 
         var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
         var compilation = CSharpCompilation.Create(
-            FixtureAnalyzerAssemblyName,
+            _fixtureAnalyzerAssemblyName,
             [CSharpSyntaxTree.ParseText(analyzerSource)],
             [
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
@@ -231,7 +231,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             ],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        var analyzerAssemblyPath = Path.Combine(copiedRoot, $"{FixtureAnalyzerAssemblyName}.dll");
+        var analyzerAssemblyPath = Path.Combine(copiedRoot, $"{_fixtureAnalyzerAssemblyName}.dll");
         using (var stream = File.Create(analyzerAssemblyPath))
         {
             var emit = compilation.Emit(stream);
@@ -275,7 +275,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             $"Fixture precondition failed (this is NOT a reclamation failure): the loaded SampleLib project must carry the injected analyzer reference '{analyzerFileName}'. Analyzer references seen: [{string.Join(", ", fixtureProject.AnalyzerReferences.Select(reference => reference.Display ?? reference.Id.ToString()))}].");
 
         var analyzer = analyzerReference.GetAnalyzers(fixtureProject.Language)
-            .FirstOrDefault(candidate => candidate.GetType().Name == FixtureAnalyzerAssemblyName);
+            .FirstOrDefault(candidate => candidate.GetType().Name == _fixtureAnalyzerAssemblyName);
         Assert.IsNotNull(analyzer, "Expected the shadow-copy loader to preserve analyzer discovery.");
         Assert.IsFalse(string.IsNullOrEmpty(analyzer.GetType().Assembly.Location),
             "Shadow-copied analyzers must keep an on-disk Assembly.Location (collectible ALC must not imply stream loading).");
@@ -315,7 +315,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             var reclaimed = WaitForReclamation(
                 workspaceDirectory,
                 surviving,
-                timeout ?? ReclamationTimeout,
+                timeout ?? _reclamationTimeout,
                 retryDelay ?? TimeSpan.FromMilliseconds(250),
                 out var lastError);
             return (reclaimed, lastError);

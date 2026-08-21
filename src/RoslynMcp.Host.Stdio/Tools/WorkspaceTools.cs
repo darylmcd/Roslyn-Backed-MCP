@@ -18,11 +18,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class WorkspaceTools
 {
-    private const int AutoPrewarmProjectThreshold = 50;
-    private const int DefaultSupportBundleChangeCap = 20;
-    private const int MaxSupportBundleChangeCap = 50;
-    private const int DefaultSupportBundleDriftCap = 25;
-    private const int MaxSupportBundleDriftCap = 100;
+    private const int _autoPrewarmProjectThreshold = 50;
+    private const int _defaultSupportBundleChangeCap = 20;
+    private const int _maxSupportBundleChangeCap = 50;
+    private const int _defaultSupportBundleDriftCap = 25;
+    private const int _maxSupportBundleDriftCap = 100;
 
     [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error. Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.")]
     [McpToolMetadata("workspace", "stable", false, false,
@@ -463,8 +463,8 @@ public static class WorkspaceTools
         IChangeTracker changeTracker,
         IDiagnosticService diagnosticService,
         [Description("Optional workspace session identifier returned by workspace_load. Omit only when zero or one workspace is loaded; pass explicitly when multiple workspaces are active.")] string? workspaceId = null,
-        [Description("Maximum number of recent change-ledger entries to include. Clamped to 0..50. Default 20.")] int maxChangeEntries = DefaultSupportBundleChangeCap,
-        [Description("Maximum number of drifted file paths to include. Clamped to 0..100. Default 25.")] int maxDriftedFiles = DefaultSupportBundleDriftCap,
+        [Description("Maximum number of recent change-ledger entries to include. Clamped to 0..50. Default 20.")] int maxChangeEntries = _defaultSupportBundleChangeCap,
+        [Description("Maximum number of drifted file paths to include. Clamped to 0..100. Default 25.")] int maxDriftedFiles = _defaultSupportBundleDriftCap,
         CancellationToken ct = default)
     {
         var loadedSummaries = workspace.ListWorkspaces()
@@ -480,8 +480,8 @@ public static class WorkspaceTools
                 status,
                 workspaceId,
                 loadedSummaries,
-                NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
-                NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
+                NormalizeCap(maxChangeEntries, _maxSupportBundleChangeCap),
+                NormalizeCap(maxDriftedFiles, _maxSupportBundleDriftCap));
             return Task.FromResult(StructuredToolResult.Create(bundle));
         }
 
@@ -491,13 +491,13 @@ public static class WorkspaceTools
                 "workspace-not-found",
                 resolvedWorkspaceId,
                 loadedSummaries,
-                NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
-                NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
+                NormalizeCap(maxChangeEntries, _maxSupportBundleChangeCap),
+                NormalizeCap(maxDriftedFiles, _maxSupportBundleDriftCap));
             return Task.FromResult(StructuredToolResult.Create(bundle));
         }
 
-        var changeCap = NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap);
-        var driftCap = NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap);
+        var changeCap = NormalizeCap(maxChangeEntries, _maxSupportBundleChangeCap);
+        var driftCap = NormalizeCap(maxDriftedFiles, _maxSupportBundleDriftCap);
         return gate.RunReadAsync(resolvedWorkspaceId, async c =>
         {
             var status = await workspace.GetStatusAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
@@ -679,7 +679,7 @@ public static class WorkspaceTools
     }
 
     private static bool ShouldPrewarmAfterLoad(bool? prewarm, WorkspaceStatusDto status) =>
-        prewarm ?? status.ProjectCount > AutoPrewarmProjectThreshold;
+        prewarm ?? status.ProjectCount > _autoPrewarmProjectThreshold;
 
     /// <summary>
     /// workspace-id-omitted-single-resolve: canonical single-workspace resolution shared by the

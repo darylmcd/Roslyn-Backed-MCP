@@ -18,7 +18,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class SymbolDisambiguationMrtrWireTests
 {
-    private const string ChosenHandle = "roslyn-symbol:v1:chosen";
+    private const string _chosenHandle = "roslyn-symbol:v1:chosen";
 
     [TestMethod]
     [DataRow("symbol_search", null, "2026-07-28", true)]
@@ -41,7 +41,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
             (_, _) =>
             {
                 Interlocked.Increment(ref promptCount);
-                return ValueTask.FromResult(AcceptedChoice(ChosenHandle));
+                return ValueTask.FromResult(AcceptedChoice(_chosenHandle));
             });
         Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
 
@@ -54,7 +54,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
         Assert.AreEqual(1, promptCount);
         Assert.IsFalse(result.IsError is true);
         var text = ((TextContentBlock)result.Content![0]).Text;
-        StringAssert.Contains(text, ChosenHandle);
+        StringAssert.Contains(text, _chosenHandle);
         StringAssert.Contains(text, "chosenViaElicitation");
 
         var results = FindNewResults(harness.RawServerMessages, prior);
@@ -69,7 +69,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
             Assert.AreEqual(RequestMethods.ElicitationCreate, inputRequest.GetProperty("method").GetString());
             var rawRequest = inputRequest.GetRawText();
             StringAssert.Contains(rawRequest, "roslyn-symbol:v1:first");
-            StringAssert.Contains(rawRequest, ChosenHandle);
+            StringAssert.Contains(rawRequest, _chosenHandle);
             Assert.IsFalse(AnyServerRequest(
                 harness.RawServerMessages,
                 prior,
@@ -106,7 +106,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
         var text = ((TextContentBlock)result.Content![0]).Text;
         StringAssert.Contains(text, "additiveListFallback");
         StringAssert.Contains(text, "roslyn-symbol:v1:first");
-        StringAssert.Contains(text, ChosenHandle);
+        StringAssert.Contains(text, _chosenHandle);
     }
 
     [TestMethod]
@@ -123,7 +123,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
             (_, _) =>
             {
                 Interlocked.Increment(ref promptCount);
-                return ValueTask.FromResult(AcceptedChoice(ChosenHandle));
+                return ValueTask.FromResult(AcceptedChoice(_chosenHandle));
             });
         var prior = harness.RawServerMessages.Count;
 
@@ -204,7 +204,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
         await using var harness = await CreateHarnessAsync(
             protocolVersion: null,
             new ClientCapabilities { Elicitation = new ElicitationCapability() },
-            (_, _) => ValueTask.FromResult(AcceptedChoice(ChosenHandle)));
+            (_, _) => ValueTask.FromResult(AcceptedChoice(_chosenHandle)));
 
         var result = await SendHandCraftedRetryAsync(harness, JsonNode.Parse(responseJson));
 
@@ -222,7 +222,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
         await using var harness = await CreateHarnessAsync(
             protocolVersion: null,
             new ClientCapabilities { Elicitation = new ElicitationCapability() },
-            (_, _) => ValueTask.FromResult(AcceptedChoice(ChosenHandle)));
+            (_, _) => ValueTask.FromResult(AcceptedChoice(_chosenHandle)));
 
         var result = await SendHandCraftedRetryAsync(harness, inputResponse: null);
 
@@ -372,7 +372,7 @@ public sealed class SymbolDisambiguationMrtrWireTests
             var options = new[]
             {
                 ("roslyn-symbol:v1:first", "First candidate"),
-                (ChosenHandle, "Chosen candidate"),
+                (_chosenHandle, "Chosen candidate"),
             };
             var chosen = allowElicitation
                 ? await ElicitationChoicePrompt.TryElicitChoiceAsync(

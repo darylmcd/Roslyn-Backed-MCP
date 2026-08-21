@@ -1,10 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
-using Microsoft.Extensions.Logging.Abstractions;
-using System.Text.Json;
 
 namespace RoslynMcp.Tests;
 
