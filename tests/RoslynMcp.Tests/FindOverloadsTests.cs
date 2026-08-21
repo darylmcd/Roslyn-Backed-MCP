@@ -145,4 +145,75 @@ public sealed class FindOverloadsTests : SharedWorkspaceTestBase
         Assert.AreEqual(0, doc.RootElement.GetProperty("count").GetInt32());
         Assert.AreEqual(0, doc.RootElement.GetProperty("items").GetArrayLength());
     }
+
+    [TestMethod]
+    public async Task FindOverloads_IncludeInherited_Excludes_Inaccessible_Private_Base_Member()
+    {
+        // SampleLib.OverloadAccessibilityProbeBase declares a private Probe() and a protected
+        // Probe(int). GetMembers on the base type returns both regardless of accessibility, but
+        // the private overload is not actually inherited/visible from the derived type — only the
+        // protected one should be advertised.
+        var json = await SymbolTools.FindOverloads(
+            WorkspaceExecutionGate,
+            SymbolRelationshipService,
+            WorkspaceId,
+            typeMetadataName: "SampleLib.OverloadAccessibilityProbeDerived",
+            memberName: "Probe",
+            includeInherited: true,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(1, doc.RootElement.GetProperty("count").GetInt32(),
+            $"Only the protected Probe(int) overload should be inherited-visible; the private parameterless one must be excluded. Got: {json}");
+
+        var onlyItem = doc.RootElement.GetProperty("items")[0];
+        var parameters = onlyItem.GetProperty("parameters");
+        Assert.AreEqual(1, parameters.GetArrayLength(), "The surviving overload must be the one-parameter protected Probe(int), not the private parameterless one.");
+    }
+
+    [TestMethod]
+    public async Task FindOverloads_ProjectName_Scopes_Successful_Lookup()
+    {
+        // A valid projectName should behave identically to the unscoped lookup for a type that
+        // genuinely lives in that project, proving the scoping path resolves rather than
+        // accidentally excluding everything.
+        var json = await SymbolTools.FindOverloads(
+            WorkspaceExecutionGate,
+            SymbolRelationshipService,
+            WorkspaceId,
+            typeMetadataName: "SampleLib.AnimalService",
+            memberName: "CountAnimals",
+            projectName: "SampleLib",
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(
+            doc.RootElement.TryGetProperty("error", out _),
+            $"A valid projectName scoping the type's own project should succeed. Got: {json}");
+        Assert.AreEqual(2, doc.RootElement.GetProperty("count").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task FindOverloads_ProjectName_UnknownProject_Throws_Distinct_From_TypeNotFound()
+    {
+        // An unresolvable projectName must surface as its own clear failure (mirrors the
+        // "projectName '{0}' matched 0 projects" convention already used by compile_check), not
+        // collapse into the generic "type not found" KeyNotFoundException path — those two
+        // failure causes are not the same thing and callers need to be able to tell them apart.
+        const string bogusProject = "DefinitelyNotAProject__Bogus";
+
+        var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+            await SymbolTools.FindOverloads(
+                WorkspaceExecutionGate,
+                SymbolRelationshipService,
+                WorkspaceId,
+                typeMetadataName: "SampleLib.AnimalService",
+                memberName: "CountAnimals",
+                projectName: bogusProject,
+                ct: CancellationToken.None));
+
+        Assert.AreEqual("projectName", ex.ParamName);
+        StringAssert.Contains(ex.Message, bogusProject,
+            $"Error must echo the offending project name so the caller can correlate. Got: {ex.Message}");
+    }
 }

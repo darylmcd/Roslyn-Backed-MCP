@@ -270,23 +270,42 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         _logger.LogDebug("SymbolRelationshipService.FindOverloadsAsync: workspaceId={WorkspaceId} typeMetadataName={TypeMetadataName} memberName={MemberName}", workspaceId, typeMetadataName, memberName);
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
+        if (projectName is not null && !solution.Projects.Any(p => string.Equals(p.Name, projectName, StringComparison.Ordinal)))
+        {
+            throw new ArgumentException(
+                $"projectName '{projectName}' matched 0 projects. Omit projectName or use workspace_status to inspect available project names.",
+                nameof(projectName));
+        }
+
         INamedTypeSymbol? typeSymbol = null;
+        Compilation? resolvedCompilation = null;
         foreach (var project in solution.Projects)
         {
             if (projectName is not null && !string.Equals(project.Name, projectName, StringComparison.Ordinal)) continue;
             ct.ThrowIfCancellationRequested();
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            typeSymbol = compilation?.GetTypeByMetadataName(typeMetadataName);
-            if (typeSymbol is not null) break;
+            var candidate = compilation?.GetTypeByMetadataName(typeMetadataName);
+            if (candidate is not null)
+            {
+                typeSymbol = candidate;
+                resolvedCompilation = compilation;
+                break;
+            }
         }
         if (typeSymbol is null) return null;
 
         var methods = typeSymbol.GetMembers(memberName).OfType<IMethodSymbol>().ToList();
         if (includeInherited)
         {
+            // Base-class GetMembers returns every declared member, including private ones that
+            // are not actually inherited/visible to the derived type — filter through Roslyn's own
+            // accessibility rules (evaluated FROM typeSymbol) instead of advertising overloads the
+            // caller could never actually invoke on this type.
             for (var baseType = typeSymbol.BaseType; baseType is not null; baseType = baseType.BaseType)
             {
-                methods.AddRange(baseType.GetMembers(memberName).OfType<IMethodSymbol>());
+                methods.AddRange(baseType.GetMembers(memberName)
+                    .OfType<IMethodSymbol>()
+                    .Where(m => resolvedCompilation!.IsSymbolAccessibleWithin(m, typeSymbol)));
             }
         }
 
