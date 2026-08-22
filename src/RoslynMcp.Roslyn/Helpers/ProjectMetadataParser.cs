@@ -1,5 +1,6 @@
 using Microsoft.Build.Evaluation;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using System.Xml.Linq;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
@@ -7,6 +8,61 @@ namespace RoslynMcp.Roslyn.Helpers;
 
 internal static class ProjectMetadataParser
 {
+    /// <summary>
+    /// Reads the NuGet-resolved version of <paramref name="packageId"/> from the project's
+    /// restored <c>obj/project.assets.json</c> — the authoritative record of what actually got
+    /// restored, cheaper and simpler than an MSBuild evaluation for this one fact. Returns
+    /// <see langword="null"/> when the project hasn't been restored, the assets file can't be
+    /// read, the package isn't referenced (directly or transitively), or its version string
+    /// doesn't parse as a <see cref="Version"/>.
+    /// </summary>
+    public static Version? TryGetResolvedPackageVersion(string? projectFilePath, string packageId, ILogger? logger = null)
+    {
+        var projectDirectory = string.IsNullOrWhiteSpace(projectFilePath) ? null : Path.GetDirectoryName(projectFilePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            return null;
+        }
+
+        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
+        if (!File.Exists(assetsPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(assetsPath);
+            using var document = JsonDocument.Parse(stream);
+            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            {
+                return null;
+            }
+
+            var prefix = packageId + "/";
+            foreach (var library in libraries.EnumerateObject())
+            {
+                if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var versionText = library.Name[prefix.Length..];
+                if (Version.TryParse(versionText, out var version))
+                {
+                    return version;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            logger?.LogDebug(ex, "Failed to read resolved version of {PackageId} from {Path}", packageId, assetsPath);
+            return null;
+        }
+    }
+
     public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)
     {
         var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath, logger);

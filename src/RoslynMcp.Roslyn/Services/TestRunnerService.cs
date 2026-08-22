@@ -178,9 +178,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:
     /// the target repo's <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP
     /// <c>dotnet test</c> mode, or a supplied <paramref name="filter"/> doesn't translate to
-    /// MTP's <c>--treenode-filter</c> syntax (see <see cref="TreeNodeFilterTranslator"/>).
-    /// Verified against a real TUnit project: on the .NET 10 SDK, the legacy VSTest-mode MTP
-    /// bridge (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
+    /// MTP's <c>--treenode-filter</c> syntax — including a multi-test filter when the project's
+    /// resolved <c>TUnit.Engine</c> version isn't known to include the OR pre-filter fix (see
+    /// <see cref="TreeNodeFilterTranslator"/>). Verified against a real TUnit project: on the
+    /// .NET 10 SDK, the legacy VSTest-mode MTP bridge
+    /// (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
     /// <c>"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
     /// .NET 10 SDK and later"</c> — so there is no fallback to attempt without the opt-in.
     /// </exception>
@@ -203,7 +205,14 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 "experience, then retry.");
         }
 
-        var treeNodeFilter = string.IsNullOrWhiteSpace(filter) ? null : TreeNodeFilterTranslator.Translate(filter);
+        string? treeNodeFilter = null;
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            var resolvedTUnitEngineVersion = ProjectMetadataParser.TryGetResolvedPackageVersion(
+                resolvedProject.FilePath, "TUnit.Engine", _logger);
+            treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion);
+        }
+
         return new MtpNativeExecutionPlan(true, treeNodeFilter);
     }
 
