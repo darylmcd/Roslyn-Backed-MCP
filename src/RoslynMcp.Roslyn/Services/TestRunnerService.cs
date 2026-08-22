@@ -54,10 +54,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
             !string.IsNullOrWhiteSpace(filter));
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
 
+        ProjectStatusDto? resolvedProject = null;
         if (projectName is not null)
         {
-            var resolved = _executor.ResolveProject(workspaceId, projectName);
-            if (!resolved.IsTestProject)
+            resolvedProject = _executor.ResolveProject(workspaceId, projectName);
+            if (!resolvedProject.IsTestProject)
             {
                 throw new InvalidOperationException(
                     $"Project '{projectName}' is not a test project. " +
@@ -71,37 +72,31 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 "Ensure the workspace contains projects with a test SDK reference (e.g., MSTest, xUnit, NUnit).");
         }
 
-        var targetPath = projectName is null
-            ? status.LoadedPath
-            : _executor.ResolveProject(workspaceId, projectName).FilePath;
+        var targetPath = projectName is null ? status.LoadedPath : resolvedProject!.FilePath;
 
         if (string.IsNullOrWhiteSpace(targetPath))
         {
             throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         }
 
+        // tunit-mtp-native-test-run: TUnit is MTP-only and never registers with the classic
+        // VSTest adapter, so dotnet test's default VSTest mode silently ignores --logger/
+        // --filter for it — it needs a different, MTP-native argument shape. Solution-level
+        // runs (projectName is null) stay on the classic path: Microsoft documents mixing
+        // VSTest and MTP projects in one dotnet test invocation as unsupported, so only a
+        // single resolved project can safely take the MTP branch.
+        var requiresMtpNative = resolvedProject is not null && ResolveRequiresMtpNativeExecution(resolvedProject, filter);
+
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(resultsDirectory);
 
         try
         {
-            // Do not set LogFileName: solution-level runs emit one TRX per test project; a fixed name would overwrite.
-            var arguments = new List<string>
-            {
-                "test",
-                targetPath,
-                "--nologo",
-                "--logger",
-                "trx",
-                "--results-directory",
-                resultsDirectory
-            };
-
-            if (!string.IsNullOrWhiteSpace(filter))
-            {
-                arguments.Add("--filter");
-                arguments.Add(filter);
-            }
+            // Do not set a fixed TRX/results file name: solution-level runs emit one TRX per
+            // test project; a fixed name would overwrite.
+            var arguments = requiresMtpNative
+                ? BuildMtpNativeArguments(targetPath, resultsDirectory)
+                : BuildVsTestArguments(targetPath, resultsDirectory, filter);
 
             CommandExecutionDto execution;
             try
@@ -166,6 +161,83 @@ public sealed partial class TestRunnerService : ITestRunnerService
             }
         }
     }
+
+    /// <summary>
+    /// True when <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
+    /// argument shape rather than today's classic VSTest-style invocation.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:
+    /// a <paramref name="filter"/> was supplied (MTP's <c>--treenode-filter</c> syntax isn't
+    /// translated from <c>test_run</c>'s VSTest-style filter yet), or the target repo's
+    /// <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP <c>dotnet test</c> mode.
+    /// Verified against a real TUnit project: on the .NET 10 SDK, the legacy VSTest-mode MTP
+    /// bridge (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
+    /// <c>"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
+    /// .NET 10 SDK and later"</c> — so there is no fallback to attempt without the opt-in.
+    /// </exception>
+    private bool ResolveRequiresMtpNativeExecution(ProjectStatusDto resolvedProject, string? filter)
+    {
+        var projectDocument = ProjectMetadataParser.LoadProjectDocument(resolvedProject.FilePath, _logger);
+        if (!ProjectMetadataParser.RequiresMtpNativeExecution(projectDocument))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            throw new InvalidOperationException(
+                $"Project '{resolvedProject.Name}' only supports Microsoft.Testing.Platform (MTP) — TUnit never " +
+                "registers with the classic VSTest adapter. test_run's filter is not yet translated to MTP's " +
+                "--treenode-filter syntax; call test_run without a filter for this project.");
+        }
+
+        var projectDirectory = GatedCommandExecutor.GetWorkingDirectory(resolvedProject.FilePath);
+        if (!DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDirectory, _logger))
+        {
+            throw new InvalidOperationException(
+                $"Project '{resolvedProject.Name}' only supports Microsoft.Testing.Platform (MTP) — TUnit never " +
+                "registers with the classic VSTest adapter, and the legacy VSTest-mode MTP bridge is removed on " +
+                "the .NET 10 SDK. Add a global.json at or above the project with " +
+                "{\"test\": {\"runner\": \"Microsoft.Testing.Platform\"}} to opt into the native dotnet test " +
+                "experience, then retry.");
+        }
+
+        return true;
+    }
+
+    private static List<string> BuildVsTestArguments(string targetPath, string resultsDirectory, string? filter)
+    {
+        var arguments = new List<string>
+        {
+            "test",
+            targetPath,
+            "--nologo",
+            "--logger",
+            "trx",
+            "--results-directory",
+            resultsDirectory
+        };
+
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            arguments.Add("--filter");
+            arguments.Add(filter);
+        }
+
+        return arguments;
+    }
+
+    /// <summary>
+    /// Verified against a real TUnit project run under the .NET 10 SDK's native MTP
+    /// <c>dotnet test</c> mode (<c>global.json</c>'s <c>test.runner</c> opt-in). No <c>--nologo</c>:
+    /// unlike VSTest mode's build-target dispatch, native MTP mode forwards any argument it
+    /// doesn't recognize straight to the test host, and the host rejects <c>--nologo</c>
+    /// outright ("Unknown option '--nologo'"), producing a false "zero tests ran" — confirmed
+    /// by direct repro, not by reading the docs.
+    /// </summary>
+    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory) =>
+        ["test", targetPath, "--report-trx", "--results-directory", resultsDirectory];
 
     /// <summary>
     /// Some vstest versions ignore <c>--results-directory</c> for the TRX logger and emit under

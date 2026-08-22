@@ -125,6 +125,44 @@ internal static class ProjectMetadataParser
     }
 
     /// <summary>
+    /// Test frameworks that are built entirely on Microsoft.Testing.Platform (MTP) and never
+    /// register with the classic VSTest adapter — currently just TUnit
+    /// (https://learn.microsoft.com/dotnet/core/testing/#testing-tools: "TUnit is entirely
+    /// built on top of MTP and doesn't support VSTest"). Unlike MSTest/NUnit/xUnit, which stay
+    /// VSTest-compatible via Microsoft.Testing.Extensions.VSTestBridge, a project referencing
+    /// one of these packages requires the MTP-native <c>dotnet test</c> argument shape —
+    /// <c>--logger</c>/<c>--filter</c> are silently ignored for it.
+    /// </summary>
+    private static readonly HashSet<string> MtpOnlyTestFrameworkPackageNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TUnit",
+    };
+
+    /// <summary>
+    /// True when <paramref name="document"/> references a test framework that only supports
+    /// Microsoft.Testing.Platform (MTP), never the classic VSTest adapter. Callers that shell
+    /// out to <c>dotnet test</c> must use the MTP-native argument shape for such a project.
+    /// </summary>
+    public static bool RequiresMtpNativeExecution(XDocument? document)
+    {
+        if (document is null)
+        {
+            return false;
+        }
+
+        foreach (var pkgRef in document.Descendants("PackageReference"))
+        {
+            var include = pkgRef.Attribute("Include")?.Value;
+            if (include is not null && MtpOnlyTestFrameworkPackageNames.Contains(include))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// project-graph-output-type-misreports-sdk-defaulted-exe: SDK-defaulted OutputType
     /// resolution. The raw-XML overload below sees no <c>&lt;OutputType&gt;</c> element for
     /// <c>Microsoft.NET.Sdk.Web</c> and <c>Microsoft.NET.Sdk.Worker</c> projects that omit
