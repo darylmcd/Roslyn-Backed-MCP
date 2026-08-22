@@ -796,29 +796,25 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
-    /// path-boundary-link-swap-toctou: the physical write and its undo snapshot must stay pinned
-    /// to the canonical target that path validation approved, not re-walk the client-supplied path.
+    /// path-boundary-link-swap-toctou: workspace document selection must stay pinned to the physical
+    /// identity loaded by Roslyn and reject a client path whose link target changes after validation.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Deterministic stand-in for the race: the workspace is loaded THROUGH a directory link that
-    /// lives inside the sanctioned root, validation pins the link-resolved target, and only then is
-    /// the link re-pointed outside the boundary. Before the fix, <c>PersistDocumentTextToDiskAsync</c>
-    /// re-derived its target from the (un-canonicalized) document path, so the post-swap write missed
-    /// the validated file entirely and landed out of boundary — the final assertion inverts.
+    /// Deterministic stand-in for the race: the workspace is requested THROUGH a directory link that
+    /// lives inside the sanctioned root, load pins Roslyn's document identity to the physical target,
+    /// validation pins the link-resolved request target, and only then is the link re-pointed outside
+    /// the boundary. Before the fixes, either Roslyn or <c>PersistDocumentTextToDiskAsync</c> could
+    /// re-walk the logical request path and land a post-swap write out of boundary.
     /// </para>
     /// <para>
-    /// KNOWN RESIDUAL GAP — deliberately NOT asserted here: <c>MSBuildWorkspace.TryApplyChanges</c>
-    /// (see <c>WorkspaceManager.TryApplyChanges</c>) flushes changed documents to disk itself, using
-    /// the same un-canonicalized <c>Document.FilePath</c>, so the swapped target still receives that
-    /// earlier Roslyn-level write. Closing it needs canonicalization at workspace-load time (so
-    /// document paths never carry a swappable link component) — a different seam from this row's
-    /// validation-to-write pinning, and out of its scope. The regression therefore records the
-    /// swapped target AFTER apply and asserts that the subsequent revert leaves those bytes alone.
+    /// The regression also proves the former Roslyn-level residual gap is closed: after load,
+    /// <c>Document.FilePath</c> is physical, so <c>MSBuildWorkspace.TryApplyChanges</c> cannot follow
+    /// the swapped logical link. The decoy must remain byte-identical through the rejected apply.
     /// </para>
     /// </remarks>
     [TestMethod]
-    public async Task ApplyTextEdit_PinnedCanonicalTarget_Survives_LinkSwap_After_Validation()
+    public async Task ApplyTextEdit_PhysicallyPinnedWorkspace_Rejects_LinkSwap_After_Validation()
     {
         var workspacePath = CreateSampleSolutionCopy();
         var copyRoot = Path.GetDirectoryName(workspacePath)!;
@@ -842,13 +838,12 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
             tempWorkspaceId = await LoadWorkspaceCopyAsync(
                 Path.Combine(linkRoot, Path.GetFileName(workspacePath)));
-            var linkedProgramFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
-            StringAssert.StartsWith(linkedProgramFile, linkRoot,
-                "Test premise: the workspace must be loaded through the link so the document path " +
-                "carries the swappable link component.");
+            var realProgramFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
+            StringAssert.StartsWith(realProgramFile, realRoot,
+                "Workspace load must pin Roslyn document paths to the physical tree.");
 
-            var relativeProgramPath = Path.GetRelativePath(linkRoot, linkedProgramFile);
-            var realProgramFile = Path.GetFullPath(Path.Combine(realRoot, relativeProgramPath));
+            var relativeProgramPath = Path.GetRelativePath(realRoot, realProgramFile);
+            var linkedProgramFile = Path.GetFullPath(Path.Combine(linkRoot, relativeProgramPath));
             var swappedProgramFile = Path.Combine(outsideRoot, relativeProgramPath);
 
             await using var harness = await CreateServerWithSanctionedRootAsync(
@@ -891,39 +886,31 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                     harness.Server, linkedProgramFile, CancellationToken.None));
 
-            var realBytesBeforePinnedApply = await File.ReadAllBytesAsync(
+            var realBytesBeforeRejectedApply = await File.ReadAllBytesAsync(
                 realProgramFile, CancellationToken.None);
-
-            // The write pinned to the pre-swap canonical target still lands in-boundary.
-            var pinnedResult = await EditService.ApplyTextEditsAsync(
-                tempWorkspaceId,
-                linkedProgramFile,
-                [new TextEditDto(1, 1, 1, 1, "// pinned edit\n")],
-                "apply_text_edit",
-                CancellationToken.None,
-                canonicalWritePath: canonical);
-
-            Assert.IsTrue(pinnedResult.Success);
-            StringAssert.Contains(await File.ReadAllTextAsync(realProgramFile), "// pinned edit",
-                "The write must follow the canonical target validation approved. Re-walking the " +
-                "request path at write time would have sent these bytes to the swapped location.");
-
-            // Roslyn's earlier workspace-level apply can still write through the swapped document
-            // path (the residual gap documented above). Revert must not touch that target again:
-            // its authoritative snapshot path is the same canonical target used for persistence.
-            var swappedBytesBeforeRevert = await File.ReadAllBytesAsync(
+            var swappedBytesBeforeRejectedApply = await File.ReadAllBytesAsync(
                 swappedProgramFile, CancellationToken.None);
-            var reverted = await UndoService.RevertAsync(tempWorkspaceId, CancellationToken.None);
 
-            Assert.IsTrue(reverted, "Revert should restore the pinned pre-apply snapshot.");
+            // A request path that changed physical identity between validation and document
+            // resolution must fail closed. The earlier canonical target is write authority only;
+            // it must not let a stale logical request select a different document identity.
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                EditService.ApplyTextEditsAsync(
+                    tempWorkspaceId,
+                    linkedProgramFile,
+                    [new TextEditDto(1, 1, 1, 1, "// rejected edit\n")],
+                    "apply_text_edit",
+                    CancellationToken.None,
+                    canonicalWritePath: canonical));
+
             CollectionAssert.AreEqual(
-                realBytesBeforePinnedApply,
+                realBytesBeforeRejectedApply,
                 await File.ReadAllBytesAsync(realProgramFile, CancellationToken.None),
-                "Revert must restore the exact bytes captured from the validated in-boundary target.");
+                "A swapped logical request must not mutate the workspace's physical document.");
             CollectionAssert.AreEqual(
-                swappedBytesBeforeRevert,
+                swappedBytesBeforeRejectedApply,
                 await File.ReadAllBytesAsync(swappedProgramFile, CancellationToken.None),
-                "Revert must not re-walk the client path and overwrite its swapped target.");
+                "A swapped logical request must not mutate its new out-of-boundary target.");
         }
         finally
         {
@@ -943,9 +930,10 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     /// observe directly, because pre-swap the link still resolves to the in-boundary file.
     /// </summary>
     /// <remarks>
-    /// Inverting by construction: the workspace is loaded through a directory link, so the
-    /// validator's canonical result is a DIFFERENT string from the request path the client
-    /// supplied. Dropping the <c>canonicalWritePath:</c> argument at
+    /// Inverting by construction: the workspace is requested through a directory link but retains
+    /// physical document identities. The test reconstructs the client's logical request path, so
+    /// the validator's canonical result is a DIFFERENT string. Dropping the
+    /// <c>canonicalWritePath:</c> argument at
     /// <c>EditTools.ApplyTextEdit</c> makes the captured value <c>null</c>; forwarding the
     /// un-canonicalized request path instead makes it the link path. Both fail here.
     /// </remarks>
@@ -972,7 +960,11 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
             tempWorkspaceId = await LoadWorkspaceCopyAsync(
                 Path.Combine(linkRoot, Path.GetFileName(workspacePath)));
-            var linkedProgramFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
+            var physicalProgramFile = FindDocumentPath(tempWorkspaceId, "Program.cs");
+            StringAssert.StartsWith(physicalProgramFile, realRoot,
+                "Workspace load must pin Roslyn document paths to the physical tree.");
+            var relativeProgramPath = Path.GetRelativePath(realRoot, physicalProgramFile);
+            var linkedProgramFile = Path.GetFullPath(Path.Combine(linkRoot, relativeProgramPath));
 
             await using var harness = await CreateServerWithSanctionedRootAsync(
                 sanctionedRoot, CancellationToken.None);

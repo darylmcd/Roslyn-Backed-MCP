@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-21T21:38:22Z
+**updated_at:** 2026-08-22T04:04:40Z
 
 ## Agent contract
 
@@ -47,7 +47,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `path-boundary-link-swap-toctou` | High | workspace-load-path-canonicalization | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
+| `path-boundary-link-swap-toctou` | High | — | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
 
 ## Medium
 
@@ -67,7 +67,6 @@
 | `stable-profile-preview-apply-closure` | Medium | — | Make support-tier selection closed over preview and apply routes so no selected preview issues an unusable token. | M | items/stable-profile-preview-apply-closure.md |
 | `mcp-roots-fixture-lifecycle-consolidation` | Medium | test-assembly-cleanup-failure-observability,tool-call-error-envelope-wire-contract | Reuse the shared owned in-memory MCP lifecycle for configured-root fixtures and close its initialization-failure resource leak. | S | items/mcp-roots-fixture-lifecycle-consolidation.md |
 | `test-base-static-service-locator-decomposition` | Medium | test-assembly-cleanup-failure-observability,mcp-roots-fixture-lifecycle-consolidation | **Decompose the TestBase static service locator** — Introduce one immutable assembly fixture context and separate shared-service, repository-path, and lifecycle ownership without changing test semantics. [type: refactor] [source: top-immediate-remediation adjacent review] | S | items/test-base-static-service-locator-decomposition.md |
-| `workspace-load-path-canonicalization` | Medium | analyzer-shadow-loader-lifecycle | **Canonicalize document paths at workspace-load time** so `Document.FilePath` carries no swappable link component — `MSBuildWorkspace.TryApplyChanges` flushes to disk through it before any pinned write. [type: bug] [source: 2026-08-13 sweep 20260813T172325Z, path-boundary-link-swap-toctou re-plan] | M | items/workspace-load-path-canonicalization.md |
 | `stdio-shutdown-flush-transport-ownership` | Medium | host-shutdown-di-owned-workspace-disposal,public-exception-detail-policy | **Remove ineffective Console.Out shutdown flushing** — delete the flusher and hooks, then replace source-text assertions with a real EOF subprocess regression at the SDK transport boundary. [type: bug] [source: 2026-08-14 host review] | M | items/stdio-shutdown-flush-transport-ownership.md |
 | `host-shutdown-di-owned-workspace-disposal` | Medium | mcp-logging-stderr-otel-migration | **Give DI sole workspace-disposal ownership** — remove ApplicationStopping disposal and prove in-flight request completion precedes exactly one container-owned teardown. [type: bug] [source: 2026-08-14 host review] | S | items/host-shutdown-di-owned-workspace-disposal.md |
 | `code-action-provider-loading-consolidation` | Medium | public-exception-detail-policy,mcp-logging-stderr-otel-migration,fixall-provider-error-detail-redaction | **Consolidate feature-provider loading** — single-source CSharp.Features discovery across code actions, registry, and FixAll with accurate secret-safe failure reporting. [type: refactor] [source: 2026-08-14 adjacent review] | M | items/code-action-provider-loading-consolidation.md |
@@ -201,6 +200,7 @@
 | `tool-error-category-wire-mapping-exhaustiveness` | Low | — | Make every declared tool-error category to resource wire-code mapping mechanically exhaustive. | M | items/tool-error-category-wire-mapping-exhaustiveness.md |
 | `workspace-gate-test-double-consolidation` | Low | — | Add a shared fail-closed IWorkspaceExecutionGate test double and migrate two representative duplicate fakes with pass-through, cancellation, and unconfigured-member regressions. | S | items/workspace-gate-test-double-consolidation.md |
 | `type-extraction-test-cleanup-observability` | Low | — | **Observe type-extraction fixture cleanup failures** — replace catch-all suppression with bounded cleanup that preserves primary failures and reports unexpected filesystem errors. [type: test] [source: 2026-08-21 adjacent review] | S | items/type-extraction-test-cleanup-observability.md |
+| `workspace-manager-load-finalization-collaborator-extraction` | Low | — | **Extract workspace-load finalization** — move path validation, indexing, readiness projection, and session-state assembly out of WorkspaceManager without changing load/reload semantics. [type: refactor] [source: 2026-08-21 adjacent review] | M | items/workspace-manager-load-finalization-collaborator-extraction.md |
 
 ## Defer
 

@@ -566,18 +566,18 @@ public static class SymbolResolver
 
     /// <summary>
     /// Finds the first document in <paramref name="solution"/> whose file path matches <paramref name="filePath"/>
-    /// (case-insensitive on all platforms).
+    /// using the current platform's filesystem identity semantics.
     /// </summary>
     /// <returns>The matching document, or <see langword="null"/> if not found.</returns>
     public static Document? FindDocument(Solution solution, string filePath)
     {
-        var normalizedPath = Path.GetFullPath(filePath);
+        var normalizedPath = PhysicalPathResolver.Resolve(filePath);
         foreach (var project in solution.Projects)
         {
             foreach (var document in project.Documents)
             {
                 if (document.FilePath is not null &&
-                    string.Equals(Path.GetFullPath(document.FilePath), normalizedPath, StringComparison.OrdinalIgnoreCase))
+                    FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(document.FilePath), normalizedPath))
                 {
                     return document;
                 }

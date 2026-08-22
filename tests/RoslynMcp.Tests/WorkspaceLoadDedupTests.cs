@@ -195,4 +195,92 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
             DeleteDirectoryIfExists(copiedRoot);
         }
     }
+
+    [TestMethod]
+    public async Task LoadAsync_LinkedRootPinsPhysicalDocumentsBeforeLinkSwap()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var physicalRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var testId = Guid.NewGuid().ToString("N");
+        var logicalRoot = Path.Combine(TestTempRoot.Current, "rmcp-workspace-link-" + testId);
+        var outsideRoot = Path.Combine(TestTempRoot.Current, "rmcp-workspace-outside-" + testId);
+        string? workspaceId = null;
+        try
+        {
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(logicalRoot, physicalRoot))
+            {
+                Assert.Inconclusive("Directory links are unavailable in this test environment.");
+                return;
+            }
+
+            var linkedSolutionPath = Path.Combine(logicalRoot, Path.GetFileName(copiedSolutionPath));
+            var status = await WorkspaceManager.LoadAsync(linkedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            Assert.AreEqual(
+                Path.GetFullPath(copiedSolutionPath),
+                status.LoadedPath,
+                "workspace_load must open and retain the physical solution identity.");
+
+            var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
+            var physicalDocument = solution.Projects
+                .SelectMany(project => project.Documents)
+                .First(document => document.FilePath is not null &&
+                                   Path.GetFileName(document.FilePath) == "AnimalService.cs");
+            var physicalDocumentPath = physicalDocument.FilePath!;
+            var relativeDocumentPath = Path.GetRelativePath(physicalRoot, physicalDocumentPath);
+            var linkedDocumentPath = Path.Combine(logicalRoot, relativeDocumentPath);
+
+            var resolvedThroughLink = RoslynMcp.Roslyn.Helpers.SymbolResolver.FindDocument(
+                solution,
+                linkedDocumentPath);
+            Assert.IsNotNull(resolvedThroughLink,
+                "A caller may address a document through the linked workspace root before it changes.");
+            Assert.AreEqual(
+                Path.GetFullPath(physicalDocumentPath),
+                resolvedThroughLink.FilePath,
+                "The loaded Roslyn document must carry the physical path, not the linked alias.");
+
+            Directory.Delete(logicalRoot);
+            var outsideDocumentPath = Path.Combine(outsideRoot, relativeDocumentPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(outsideDocumentPath)!);
+            const string outsideSentinel = "// outside target must remain unchanged";
+            await File.WriteAllTextAsync(outsideDocumentPath, outsideSentinel);
+            if (!TestFixtureFileSystem.TryCreateDirectoryLink(logicalRoot, outsideRoot))
+            {
+                Assert.Inconclusive("Directory link re-pointing is unavailable in this test environment.");
+                return;
+            }
+
+            var originalText = await physicalDocument.GetTextAsync();
+            var updatedText = Microsoft.CodeAnalysis.Text.SourceText.From(
+                originalText.ToString() + Environment.NewLine + "// physical write target");
+            var updatedSolution = solution.WithDocumentText(physicalDocument.Id, updatedText);
+
+            Assert.IsTrue(WorkspaceManager.TryApplyChanges(workspaceId, updatedSolution));
+            Assert.AreEqual(
+                outsideSentinel,
+                await File.ReadAllTextAsync(outsideDocumentPath),
+                "A post-load link swap must not redirect MSBuildWorkspace.TryApplyChanges outside the loaded root.");
+            StringAssert.Contains(
+                await File.ReadAllTextAsync(physicalDocumentPath),
+                "// physical write target",
+                "The intended physical document must still receive the edit.");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            if (Directory.Exists(logicalRoot))
+            {
+                Directory.Delete(logicalRoot);
+            }
+
+            DeleteDirectoryIfExists(outsideRoot);
+            DeleteDirectoryIfExists(physicalRoot);
+        }
+    }
 }

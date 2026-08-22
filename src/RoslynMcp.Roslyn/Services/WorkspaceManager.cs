@@ -1179,6 +1179,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
             await _analyzerReferenceStripper.StripAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, MaxDiagnosticsPerWorkspace, _logger, ct).ConfigureAwait(false);
 
+            EnsureWorkspacePathsArePhysical(newWorkspace.CurrentSolution);
+
             // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
             // project metadata-reference list for cache write-back. Building the graph first
             // (so the third cache-key component — graphHash — can be computed) lets a cache hit
@@ -1395,7 +1397,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             throw new ArgumentException("A workspace path is required.", nameof(path));
         }
 
-        var fullPath = Path.GetFullPath(path);
+        var fullPath = PhysicalPathResolver.Resolve(path);
         if (!File.Exists(fullPath))
         {
             throw new FileNotFoundException($"Workspace path was not found: {fullPath}", fullPath);
@@ -1409,6 +1411,32 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
 
         return fullPath;
+    }
+
+    private static void EnsureWorkspacePathsArePhysical(Solution solution)
+    {
+        foreach (var project in solution.Projects)
+        {
+            EnsurePhysicalPath(project.FilePath);
+            foreach (var document in project.Documents
+                         .Concat<TextDocument>(project.AdditionalDocuments)
+                         .Concat(project.AnalyzerConfigDocuments))
+            {
+                EnsurePhysicalPath(document.FilePath);
+            }
+        }
+
+        static void EnsurePhysicalPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            var physicalPath = PhysicalPathResolver.Resolve(path);
+            if (FileSystemPath.Comparer.Equals(path, physicalPath)) return;
+
+            throw new InvalidOperationException(
+                "Workspace loading left a project or document path with a filesystem-link component. " +
+                "Load the workspace through its physical solution or project path.");
+        }
     }
 
     private static ImmutableHashSet<string> BuildDocumentPathIndex(Solution solution) =>
