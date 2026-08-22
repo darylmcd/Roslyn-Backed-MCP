@@ -15,16 +15,27 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// <para>
 /// tunit-treenode-filter-or-of-literals-silently-zero-matches: OR-ing more than one atom is
 /// deliberately NOT supported, even within a single path segment where MTP's own grammar
-/// permits it (<c>/A/B/C/(Method1|Method2)</c>). Verified against a real production TUnit
-/// project (Microsoft.Testing.Platform 2.2.3, via TUnit 1.45.8): a parenthesized group of two
-/// or more literal values matches ZERO tests — silently, with no parse error — while the
-/// identical syntax worked correctly against a different scratch project on MTP 2.3.3 (TUnit
-/// 1.65.38). A bare, unparenthesized single literal matches correctly on both versions; so does
-/// a lone wildcard <c>(*)</c>. Only OR-ing two or more literal values is affected. Since this
-/// repo can't reliably determine a target project's resolved MTP version from its .csproj, and
-/// a silent zero-match reads as a plausible "nothing matched" result rather than an error, the
-/// only safe choice is to never emit that shape — even though it's real MTP grammar and does
-/// work on some versions.
+/// permits it (<c>/A/B/C/(Method1|Method2)</c>). Reproduced against a real production TUnit
+/// project: a parenthesized group of two or more literal values matches ZERO tests — silently,
+/// with no parse error — while the identical syntax worked against a different (scratch)
+/// project on a different TUnit version. Root cause, per the MTP maintainer's own investigation
+/// (https://github.com/microsoft/testfx/issues/7300#issuecomment-4564789043): MTP's
+/// <c>TreeNodeFilter</c> itself matches this shape correctly — a direct reflection probe
+/// confirmed <c>MatchesFilter</c> returns true for it. The zero-match is TUnit's OWN pre-filter
+/// (<c>MetadataFilterMatcher.ExtractFilterHints</c>) rejecting every test descriptor before
+/// MTP's real filter ever runs: it splits the filter on <c>/</c> and checks the last segment
+/// for a literal <c>*</c>/<c>?</c> to decide whether to treat it as a wildcard hint — for
+/// <c>(Method1|Method2)</c> that check sees the literal parentheses/pipe with no wildcard
+/// character and wrongly concludes the user is filtering on a literal method named
+/// <c>"(Method1|Method2)"</c>, so it discards everything up front. This is an open, unresolved
+/// TUnit bug (https://github.com/thomhurst/TUnit/issues/6026), not an MTP defect and not tied to
+/// any MTP platform version — so there is no version check that makes OR-translation safe.
+/// Reflecting a project's resolved MTP version (doable via the same MSBuild-evaluation approach
+/// <see cref="ProjectMetadataParser"/> already uses) would not help: the relevant version is
+/// TUnit's own, the bug has no shipped fix to gate on yet, and the pre-filter heuristic that
+/// causes it could differ release to release in ways this repo has no visibility into. Only a
+/// bare literal value (no parens, no wildcard) reliably bypasses TUnit's broken pre-filter
+/// entirely, which is why translation is restricted to exactly one atom.
 /// </para>
 /// </summary>
 internal static partial class TreeNodeFilterTranslator
@@ -46,12 +57,12 @@ internal static partial class TreeNodeFilterTranslator
         if (vsTestFilter.Contains('|'))
         {
             throw new InvalidOperationException(
-                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter " +
-                "can OR literal values within a single path segment in principle, but that shape was " +
-                "confirmed to silently match zero tests on a real production Microsoft.Testing.Platform " +
-                "2.2.3 project — a plausible-looking wrong result, not a loud error — while identical " +
-                "syntax worked on a different MTP version. Only a single test can be translated per " +
-                "test_run call for now; call it once per test.");
+                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
+                "literal values within a single path segment, and MTP itself matches that correctly, but " +
+                "TUnit's own pre-filter has an open bug (github.com/thomhurst/TUnit/issues/6026) that " +
+                "silently rejects every test for that exact shape before MTP's filter ever runs — " +
+                "confirmed by direct repro against a real project. Only a single test can be translated " +
+                "per test_run call for now; call it once per test.");
         }
 
         if (vsTestFilter.Contains('&') || vsTestFilter.Contains('(') || vsTestFilter.Contains(')'))

@@ -7,10 +7,11 @@ namespace RoslynMcp.Tests;
 /// FullyQualifiedName atom into MTP's --treenode-filter syntax. The path shape
 /// (/{Assembly}/{Namespace}/{Class}/{Method}) is verified against a real TUnit project (see
 /// TreeNodeFilterTranslator's doc comment). OR-ing more than one atom is deliberately rejected
-/// rather than translated: a real production project on Microsoft.Testing.Platform 2.2.3 was
-/// found to silently match ZERO tests for a parenthesized OR-of-literals group, even though the
-/// identical syntax worked on a different MTP version — a version-dependent, silently-wrong
-/// result too risky to emit.
+/// rather than translated: reproduced against a real production project silently matching ZERO
+/// tests for a parenthesized OR-of-literals group. Per the MTP maintainer's own investigation
+/// (testfx#7300), MTP's TreeNodeFilter matches that shape correctly — the zero-match is an open,
+/// unresolved bug in TUnit's own pre-filter (thomhurst/TUnit#6026), not an MTP defect, and not
+/// tied to any MTP platform version.
 /// </summary>
 [TestClass]
 public sealed class TreeNodeFilterTranslatorTests
