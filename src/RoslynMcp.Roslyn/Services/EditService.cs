@@ -772,11 +772,10 @@ public sealed class EditService : IEditService
     /// </summary>
     /// <param name="canonicalWritePath">
     /// When non-null, the boundary-canonicalized target the caller's path validation already pinned;
-    /// the write lands there instead of on <c>document.FilePath</c>. Document LOOKUP deliberately still
-    /// keys off <paramref name="normalizedPath"/> and encoding still comes from the document's own
-    /// SourceText: MSBuildWorkspace does not canonicalize <c>Document.FilePath</c> through links, so
-    /// matching on the canonical form would miss documents in workspaces loaded via a symlinked project
-    /// directory. Only the physical write target is pinned (<c>path-boundary-link-swap-toctou</c>).
+    /// the write lands there instead of on <c>document.FilePath</c>. Document lookup resolves both the
+    /// logical request and Roslyn's physically pinned identity through <see cref="SymbolResolver"/>;
+    /// encoding still comes from the document's own SourceText
+    /// (<c>workspace-load-path-canonicalization</c>, <c>path-boundary-link-swap-toctou</c>).
     /// </param>
     private async Task<bool> PersistDocumentTextToDiskAsync(
         string workspaceId,
@@ -785,10 +784,7 @@ public sealed class EditService : IEditService
         string? canonicalWritePath = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = solution.Projects
-            .SelectMany(p => p.Documents)
-            .FirstOrDefault(d => d.FilePath is not null &&
-                Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+        var document = SymbolResolver.FindDocument(solution, normalizedPath);
 
         if (document?.FilePath is null)
             return false;

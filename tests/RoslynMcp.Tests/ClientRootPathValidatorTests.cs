@@ -1,5 +1,6 @@
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -362,7 +363,7 @@ public class ClientRootPathValidatorTests
             Assert.IsTrue(Path.IsPathRooted(rawLinkTarget));
             Assert.IsFalse(Path.IsPathFullyQualified(rawLinkTarget));
             var error = Assert.ThrowsExactly<IOException>(() =>
-                ConfiguredRootBoundary.GetLinkTargetPath(linkPath, rawLinkTarget));
+                PhysicalPathResolver.GetLinkTargetPath(linkPath, rawLinkTarget));
             StringAssert.Contains(error.Message, "ambiguous partially-qualified target");
         }
     }
