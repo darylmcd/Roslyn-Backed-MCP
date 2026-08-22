@@ -3,12 +3,14 @@ using RoslynMcp.Roslyn.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// tunit-treenode-filter-translation: translates the tool-generated VSTest-style
-/// FullyQualifiedName filter into MTP's --treenode-filter syntax. The path shape
-/// (/{Assembly}/{Namespace}/{Class}/{Method}) and the "OR only within one path segment"
-/// constraint are both verified against a real TUnit project (see TestRunnerService's
-/// ResolveMtpNativeExecutionPlan doc comment) — these tests cover the translator's parsing
-/// and grouping logic in isolation.
+/// tunit-treenode-filter-translation: translates a single tool-generated VSTest-style
+/// FullyQualifiedName atom into MTP's --treenode-filter syntax. The path shape
+/// (/{Assembly}/{Namespace}/{Class}/{Method}) is verified against a real TUnit project (see
+/// TreeNodeFilterTranslator's doc comment). OR-ing more than one atom is deliberately rejected
+/// rather than translated: a real production project on Microsoft.Testing.Platform 2.2.3 was
+/// found to silently match ZERO tests for a parenthesized OR-of-literals group, even though the
+/// identical syntax worked on a different MTP version — a version-dependent, silently-wrong
+/// result too risky to emit.
 /// </summary>
 [TestClass]
 public sealed class TreeNodeFilterTranslatorTests
@@ -51,17 +53,6 @@ public sealed class TreeNodeFilterTranslatorTests
     }
 
     [TestMethod]
-    public void Translate_SameNamespaceAndClass_MultipleMethods_OrsWithinLastSegment()
-    {
-        // Exactly the shape TestDiscoveryService.SynthesizeDotnetTestFilter produces for
-        // test_related/test_related_files results that land in the same test class.
-        var result = TreeNodeFilterTranslator.Translate(
-            "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2");
-
-        Assert.AreEqual("/*/MyNamespace/MyClass/(Method1|Method2)", result);
-    }
-
-    [TestMethod]
     public void Translate_PropertyNameIsCaseInsensitive()
     {
         var result = TreeNodeFilterTranslator.Translate("fullyqualifiedname=MyNamespace.MyClass.MyMethod");
@@ -70,25 +61,27 @@ public sealed class TreeNodeFilterTranslatorTests
     }
 
     [TestMethod]
-    public void Translate_AtomsSpanDifferentClasses_ThrowsWithGroupCount()
+    public void Translate_TwoAtomsOrdTogether_SameClass_ThrowsRatherThanEmitOrGroup()
+    {
+        // Confirmed by direct repro against a real production TUnit project: this exact shape
+        // — two literal values OR'd within one path segment — silently matched zero tests on
+        // Microsoft.Testing.Platform 2.2.3, even though MTP's own grammar permits it and it
+        // worked on a different MTP version. Never emit it.
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            TreeNodeFilterTranslator.Translate(
+                "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2"));
+
+        StringAssert.Contains(ex.Message, "more than one test");
+    }
+
+    [TestMethod]
+    public void Translate_TwoAtomsOrdTogether_DifferentClasses_Throws()
     {
         var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.ClassA.Method1|FullyQualifiedName~MyNamespace.ClassB.Method2"));
 
-        StringAssert.Contains(ex.Message, "2 different namespace/class");
-    }
-
-    [TestMethod]
-    public void Translate_AtomsSpanDifferentNamespaces_SameClassName_ThrowsWithGroupCount()
-    {
-        // Same class NAME in two different namespaces is still two distinct groups — grouping
-        // must key on (namespace, class), not class alone.
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
-            TreeNodeFilterTranslator.Translate(
-                "FullyQualifiedName~NamespaceA.MyClass.Method1|FullyQualifiedName~NamespaceB.MyClass.Method2"));
-
-        StringAssert.Contains(ex.Message, "2 different namespace/class");
+        StringAssert.Contains(ex.Message, "more than one test");
     }
 
     [TestMethod]

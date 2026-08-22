@@ -3,26 +3,28 @@ using System.Text.RegularExpressions;
 namespace RoslynMcp.Roslyn.Helpers;
 
 /// <summary>
-/// tunit-treenode-filter-translation: translates the common tool-generated VSTest-style filter —
-/// one or more <c>FullyQualifiedName&lt;=|~&gt;{namespace}.{class}.{method}</c> atoms OR'd with
-/// <c>|</c>, exactly what <c>TestDiscoveryService.SynthesizeDotnetTestFilter</c> emits for
-/// <c>test_related</c>/<c>test_related_files</c> — into MTP's <c>--treenode-filter</c> tree-path
-/// syntax for an MTP-only project (TUnit).
+/// tunit-treenode-filter-translation: translates a single VSTest-style
+/// <c>FullyQualifiedName&lt;=|~&gt;{namespace}.{class}.{method}</c> atom — the shape
+/// <c>TestDiscoveryService.SynthesizeDotnetTestFilter</c> emits for one test — into MTP's
+/// <c>--treenode-filter</c> tree-path syntax for an MTP-only project (TUnit).
 /// <para>
 /// Verified against a real TUnit project rather than assumed from docs: a plain test method's
 /// tree-node path is exactly 4 segments, <c>/{Assembly}/{Namespace}/{ClassName}/{Method}</c>
-/// (confirmed via <c>--treenode-filter</c> probes with wildcarded segments), and alternatives
-/// can be OR'd with <c>(a|b)</c> only WITHIN one path segment — OR-ing full paths together
-/// (<c>(/A/B/C/M1)|(/A/B/C/M2)</c>) is documented as unsupported and, confirmed by direct repro,
-/// crashes the MTP test host at runtime rather than failing to parse. So a filter naming tests
-/// across more than one namespace+class combination cannot be expressed as a single tree filter
-/// at all.
+/// (confirmed via <c>--treenode-filter</c> probes with wildcarded segments).
 /// </para>
 /// <para>
-/// Deliberately narrow rather than a full VSTest filter grammar translator: <c>&amp;</c> (AND),
-/// parenthesized grouping, <c>!=</c>/<c>!~</c> (negation), and any property other than
-/// <c>FullyQualifiedName</c> are rejected with an actionable error rather than guessed at,
-/// since test_run's real-world filters are overwhelmingly the tool-generated shape above.
+/// tunit-treenode-filter-or-of-literals-silently-zero-matches: OR-ing more than one atom is
+/// deliberately NOT supported, even within a single path segment where MTP's own grammar
+/// permits it (<c>/A/B/C/(Method1|Method2)</c>). Verified against a real production TUnit
+/// project (Microsoft.Testing.Platform 2.2.3, via TUnit 1.45.8): a parenthesized group of two
+/// or more literal values matches ZERO tests — silently, with no parse error — while the
+/// identical syntax worked correctly against a different scratch project on MTP 2.3.3 (TUnit
+/// 1.65.38). A bare, unparenthesized single literal matches correctly on both versions; so does
+/// a lone wildcard <c>(*)</c>. Only OR-ing two or more literal values is affected. Since this
+/// repo can't reliably determine a target project's resolved MTP version from its .csproj, and
+/// a silent zero-match reads as a plausible "nothing matched" result rather than an error, the
+/// only safe choice is to never emit that shape — even though it's real MTP grammar and does
+/// work on some versions.
 /// </para>
 /// </summary>
 internal static partial class TreeNodeFilterTranslator
@@ -31,55 +33,38 @@ internal static partial class TreeNodeFilterTranslator
     private static partial Regex FullyQualifiedNameAtomRegex();
 
     /// <summary>
-    /// Translates <paramref name="vsTestFilter"/> into an MTP <c>--treenode-filter</c> expression.
+    /// Translates a single-atom <paramref name="vsTestFilter"/> into an MTP
+    /// <c>--treenode-filter</c> expression.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// The filter uses a shape this translator doesn't (yet) handle: AND/grouping/negation, a
-    /// property other than <c>FullyQualifiedName</c>, an atom that doesn't split into at least a
-    /// class and method, or atoms spanning more than one namespace+class (unsupported by MTP's
-    /// tree filter grammar itself — verified by direct repro, not just documentation).
+    /// The filter names more than one test (OR'd with <c>|</c> — unsupported, see the type doc
+    /// comment), uses AND/grouping/negation, names a property other than
+    /// <c>FullyQualifiedName</c>, or doesn't split into at least a class and method.
     /// </exception>
     public static string Translate(string vsTestFilter)
     {
+        if (vsTestFilter.Contains('|'))
+        {
+            throw new InvalidOperationException(
+                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter " +
+                "can OR literal values within a single path segment in principle, but that shape was " +
+                "confirmed to silently match zero tests on a real production Microsoft.Testing.Platform " +
+                "2.2.3 project — a plausible-looking wrong result, not a loud error — while identical " +
+                "syntax worked on a different MTP version. Only a single test can be translated per " +
+                "test_run call for now; call it once per test.");
+        }
+
         if (vsTestFilter.Contains('&') || vsTestFilter.Contains('(') || vsTestFilter.Contains(')'))
         {
             throw new InvalidOperationException(
                 $"Filter '{vsTestFilter}' uses AND ('&') or parenthesized grouping, which this MTP filter " +
-                "translation doesn't support yet. Only one or more FullyQualifiedName~ or FullyQualifiedName= " +
-                "atoms joined with '|' are translated.");
+                "translation doesn't support. Only a single FullyQualifiedName~ or FullyQualifiedName= " +
+                "atom is translated.");
         }
 
-        var groups = new List<FilterGroup>();
-        foreach (var atom in vsTestFilter.Split('|'))
-        {
-            var (@namespace, className, method) = ParseAtom(atom, vsTestFilter);
-            var group = groups.Find(g =>
-                string.Equals(g.Namespace, @namespace, StringComparison.Ordinal) &&
-                string.Equals(g.ClassName, className, StringComparison.Ordinal));
-            if (group is null)
-            {
-                group = new FilterGroup(@namespace, className);
-                groups.Add(group);
-            }
-
-            group.Methods.Add(method);
-        }
-
-        if (groups.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Filter '{vsTestFilter}' names tests across {groups.Count} different namespace/class " +
-                "combinations. Microsoft.Testing.Platform's --treenode-filter can only OR alternatives within " +
-                "a single path segment (e.g. one class's methods) — OR-ing full test paths together is " +
-                "unsupported and crashes the MTP test host. Run test_run once per namespace/class group instead.");
-        }
-
-        var only = groups[0];
-        var namespaceSegment = only.Namespace ?? "*";
-        var methodSegment = only.Methods.Count == 1
-            ? only.Methods[0]
-            : $"({string.Join("|", only.Methods)})";
-        return $"/*/{namespaceSegment}/{only.ClassName}/{methodSegment}";
+        var (@namespace, className, method) = ParseAtom(vsTestFilter, vsTestFilter);
+        var namespaceSegment = @namespace ?? "*";
+        return $"/*/{namespaceSegment}/{className}/{method}";
     }
 
     private static (string? Namespace, string ClassName, string Method) ParseAtom(string atom, string fullFilter)
@@ -88,9 +73,9 @@ internal static partial class TreeNodeFilterTranslator
         if (!match.Success)
         {
             throw new InvalidOperationException(
-                $"Filter '{fullFilter}' contains atom '{atom}' that isn't a supported " +
-                "'FullyQualifiedName=<value>' or 'FullyQualifiedName~<value>' expression. Only those two " +
-                "operators against the FullyQualifiedName property are translated to MTP's --treenode-filter.");
+                $"Filter '{fullFilter}' isn't a supported 'FullyQualifiedName=<value>' or " +
+                "'FullyQualifiedName~<value>' expression. Only those two operators against the " +
+                "FullyQualifiedName property are translated to MTP's --treenode-filter.");
         }
 
         // BuildFullyQualifiedTestName (TestDiscoveryService) builds "{namespace}.{class}.{method}",
@@ -100,21 +85,13 @@ internal static partial class TreeNodeFilterTranslator
         if (parts.Length < 2)
         {
             throw new InvalidOperationException(
-                $"Filter '{fullFilter}' contains atom '{atom}' whose FullyQualifiedName value " +
-                $"'{match.Groups[2].Value}' has no '.'-separated class/method — expected at least " +
-                "'{ClassName}.{Method}'.");
+                $"Filter '{fullFilter}' has FullyQualifiedName value '{match.Groups[2].Value}' with no " +
+                "'.'-separated class/method — expected at least '{ClassName}.{Method}'.");
         }
 
         var method = parts[^1];
         var className = parts[^2];
         var @namespace = parts.Length > 2 ? string.Join('.', parts[..^2]) : null;
         return (@namespace, className, method);
-    }
-
-    private sealed class FilterGroup(string? @namespace, string className)
-    {
-        public string? Namespace { get; } = @namespace;
-        public string ClassName { get; } = className;
-        public List<string> Methods { get; } = [];
     }
 }
