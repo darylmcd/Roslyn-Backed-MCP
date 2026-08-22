@@ -332,7 +332,10 @@ public static class ValidationTools
                 // failed/skipped) always reflect the FULL run; only the per-failure detail array
                 // is capped, with failuresTotal/hasMoreFailures so callers can tell.
                 var failuresTotal = result.Failures.Count;
-                var pagedFailures = result.Failures.Skip(failuresOffset).Take(failuresLimit).ToList();
+                var pagedFailures = publicResult.Failures
+                    .Skip(failuresOffset)
+                    .Take(failuresLimit)
+                    .ToList();
                 var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
 
                 return JsonSerializer.Serialize(new

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-22T04:04:40Z
+**updated_at:** 2026-08-22T14:32:36Z
 
 ## Agent contract
 
@@ -87,7 +87,6 @@
 | `tool-call-error-wire-fastfail-era-coverage` | Medium | — | **Cover the two fast-fail paths in the tools/call error wire suite** — both were newly era-shaped but only the general-catch path is driven, so a `resultType` regression there ships green. [type: test] [source: 2026-08-19 PR #1290 review] | S | items/tool-call-error-wire-fastfail-era-coverage.md |
 | `workspace-dispatch-parameter-validation-hoist-siblings` | Medium | — | **Validate request parameters before workspace dispatch** — hoist ten sibling endpoint guards ahead of gate/workspace resolution with one table-driven precedence matrix. [type: bug] [source: 2026-08-20 adjacent review] | M | items/workspace-dispatch-parameter-validation-hoist-siblings.md |
 | `get-prompt-binding-stage-contract-adapter` | Medium | — | **Own the prompt binding-stage contract** — replace private SDK stack-frame recognition with an explicit adapter while preserving fail-closed wire semantics. [type: refactor] [source: 2026-08-20 adjacent review] | M | items/get-prompt-binding-stage-contract-adapter.md |
-| `command-output-external-path-public-policy` | Medium | — | **Define public policy for external paths in command output** — choose and enforce a useful cross-platform projection for paths known only from child diagnostics. [type: security] [source: 2026-08-20 adjacent review] | M | items/command-output-external-path-public-policy.md |
 | `test-run-nonzero-exit-result-consistency` | Medium | — | **Keep nonzero test exits internally consistent** — attach a failure envelope when partial passing counts accompany a failing process exit. [type: bug] [source: 2026-08-20 adjacent review] | M | items/test-run-nonzero-exit-result-consistency.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
 | `workspace-lifecycle-handler-log-redaction` | Medium | — | **Redact workspace lifecycle subscriber failures** — log only secret-safe event/type context while preserving per-subscriber isolation. [type: security] [source: 2026-08-21 adjacent review] | S | items/workspace-lifecycle-handler-log-redaction.md |
