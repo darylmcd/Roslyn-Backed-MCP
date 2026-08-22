@@ -32,6 +32,9 @@ public sealed class TestRunPublicProjectionTests
     private static readonly string _sensitiveResultsDirectory = Path.GetFullPath(
         Path.Combine(Path.GetTempPath(), "roslynmcp-private-results-sentinel"));
 
+    private const string _sensitiveExternalPath =
+        "/private/roslynmcp-external-child-sentinel/Secret.cs";
+
     [TestMethod]
     public async Task RunTests_OrdinaryResult_RedactsPublicExecutionWithoutMutatingInternalDiagnostics()
     {
@@ -69,6 +72,12 @@ public sealed class TestRunPublicProjectionTests
         AssertPublicTextIsRedacted(envelope.GetProperty("summary").GetString(), "failureEnvelope.summary");
         AssertPublicTextIsRedacted(envelope.GetProperty("stdOutTail").GetString(), "failureEnvelope.stdOutTail");
         AssertPublicTextIsRedacted(envelope.GetProperty("stdErrTail").GetString(), "failureEnvelope.stdErrTail");
+        AssertPublicTextIsRedacted(
+            root.GetProperty("failures")[0].GetProperty("message").GetString(),
+            "failures[0].message");
+        AssertPublicTextIsRedacted(
+            root.GetProperty("failures")[0].GetProperty("stackTrace").GetString(),
+            "failures[0].stackTrace");
         AssertInternalExecutionIsUnchanged(result.Execution);
     }
 
@@ -259,6 +268,86 @@ public sealed class TestRunPublicProjectionTests
     }
 
     [TestMethod]
+    public void CommandOutputPathPolicy_ProjectsCrossPlatformPathsAndPreservesLocations()
+    {
+        var cases = new[]
+        {
+            new
+            {
+                Workspace = @"C:\work\repo",
+                InWorkspace = @"C:\work\repo\src\Widget.cs",
+                External = @"D:\private\Secret.cs",
+            },
+            new
+            {
+                Workspace = @"\\build-server\share\repo",
+                InWorkspace = @"\\build-server\share\repo\src\Widget.cs",
+                External = @"\\private-server\share\Secret.cs",
+            },
+            new
+            {
+                Workspace = "/work/repo",
+                InWorkspace = "/work/repo/src/Widget.cs",
+                External = "/private/Secret.cs",
+            },
+        };
+
+        foreach (var item in cases)
+        {
+            var diagnostic =
+                $"{item.InWorkspace}(12,34): error RMCP001; at {item.External}:line 56; " +
+                "url=https://example.test/a/b ratio=1/2";
+            var execution = new CommandExecutionDto(
+                "dotnet",
+                ["test"],
+                item.Workspace,
+                item.InWorkspace,
+                1,
+                false,
+                10,
+                diagnostic,
+                diagnostic,
+                diagnostic);
+            var failure = new TestFailureDto("sample", "Tests.Sample", diagnostic, diagnostic);
+            var envelope = new TestRunFailureEnvelopeDto(
+                "BuildFailure",
+                false,
+                diagnostic,
+                diagnostic,
+                diagnostic);
+
+            var projected = TestRunPublicProjection.Create(
+                new TestRunResultDto(execution, 1, 0, 1, 0, [failure], envelope));
+
+            var publicTexts = new[]
+            {
+                projected.Execution.StdOut,
+                projected.Execution.StdErr,
+                projected.Execution.EarlyKillReason!,
+                projected.Failures[0].Message,
+                projected.Failures[0].StackTrace!,
+                projected.FailureEnvelope!.Summary,
+                projected.FailureEnvelope.StdOutTail!,
+                projected.FailureEnvelope.StdErrTail!,
+            };
+            foreach (var publicText in publicTexts)
+            {
+                StringAssert.Contains(publicText, "src/Widget.cs(12,34)");
+                StringAssert.Contains(
+                    publicText,
+                    TestRunPublicProjection.RedactedExternalPath + ":line 56");
+                StringAssert.Contains(publicText, "https://example.test/a/b");
+                StringAssert.Contains(publicText, "ratio=1/2");
+                Assert.IsFalse(publicText.Contains(item.Workspace, StringComparison.OrdinalIgnoreCase));
+                Assert.IsFalse(publicText.Contains(item.External, StringComparison.OrdinalIgnoreCase));
+            }
+
+            StringAssert.Contains(failure.Message, item.External);
+            StringAssert.Contains(execution.StdOut, item.InWorkspace);
+        }
+    }
+
+    [TestMethod]
     public async Task RunTests_RawWireProjection_RedactsKnownInputsAcrossBothProtocolEras()
     {
         const string shortFilter = "zQ7";
@@ -293,6 +382,9 @@ public sealed class TestRunPublicProjectionTests
             Assert.IsFalse(rawFrame.Contains(
                 "roslynmcp-private-results-sentinel",
                 StringComparison.OrdinalIgnoreCase));
+            Assert.IsFalse(rawFrame.Contains(
+                "roslynmcp-external-child-sentinel",
+                StringComparison.OrdinalIgnoreCase));
             using var publicPayload = ParseTextPayload(rawFrame);
             var publicJson = publicPayload.RootElement.GetRawText();
             var publicExecution = publicPayload.RootElement.GetProperty("execution");
@@ -323,7 +415,8 @@ public sealed class TestRunPublicProjectionTests
     {
         sensitiveFilter ??= _sensitiveFilter;
         var output =
-            $"target={_sensitiveTargetPath}; results={_sensitiveResultsDirectory}; filter={sensitiveFilter}";
+            $"target={_sensitiveTargetPath}; results={_sensitiveResultsDirectory}; " +
+            $"filter={sensitiveFilter}; external={_sensitiveExternalPath}";
         var execution = new CommandExecutionDto(
             Command: "dotnet",
             Arguments:
@@ -349,7 +442,16 @@ public sealed class TestRunPublicProjectionTests
             Passed: isTimeout ? 0 : 1,
             Failed: isTimeout ? 1 : 0,
             Skipped: 0,
-            Failures: [],
+            Failures: isTimeout
+                ?
+                [
+                    new TestFailureDto(
+                        "sensitive failure",
+                        "Tests.SensitiveFailure",
+                        $"failure at {_sensitiveExternalPath}(9,13)",
+                        $"at Tests.SensitiveFailure in {_sensitiveExternalPath}:line 27"),
+                ]
+                : [],
             FailureEnvelope: isTimeout
                 ? new TestRunFailureEnvelopeDto(
                     ErrorKind: "Timeout",
@@ -469,6 +571,8 @@ public sealed class TestRunPublicProjectionTests
             $"{field} leaked the workspace path: {value}");
         Assert.IsFalse(value.Contains("roslynmcp-private-results-sentinel", StringComparison.OrdinalIgnoreCase),
             $"{field} leaked the results path: {value}");
+        Assert.IsFalse(value.Contains("roslynmcp-external-child-sentinel", StringComparison.OrdinalIgnoreCase),
+            $"{field} leaked an external child path: {value}");
     }
 
     private static void AssertInternalExecutionIsUnchanged(CommandExecutionDto execution)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -8,10 +9,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Builds the client-facing form of a test run without mutating the full-fidelity execution
 /// record used by parsers and server diagnostics.
 /// </summary>
-internal static class TestRunPublicProjection
+internal static partial class TestRunPublicProjection
 {
     internal const string RedactedValue = "<redacted>";
     internal const string RedactedResultsDirectory = "<results-directory>";
+    internal const string RedactedExternalPath = "<external-path>";
 
     public static PublicCommandExecutionDto CreateExecution(CommandExecutionDto execution)
     {
@@ -32,6 +34,13 @@ internal static class TestRunPublicProjection
                 StdOutTail = redactor.RedactOptionalText(result.FailureEnvelope.StdOutTail),
                 StdErrTail = redactor.RedactOptionalText(result.FailureEnvelope.StdErrTail),
             };
+        var failures = result.Failures
+            .Select(failure => failure with
+            {
+                Message = redactor.RedactText(failure.Message),
+                StackTrace = redactor.RedactOptionalText(failure.StackTrace),
+            })
+            .ToArray();
 
         return new PublicTestRunResultDto(
             redactor.CreatePublicExecution(),
@@ -39,7 +48,7 @@ internal static class TestRunPublicProjection
             result.Passed,
             result.Failed,
             result.Skipped,
-            result.Failures,
+            failures,
             failureEnvelope);
     }
 
@@ -80,7 +89,7 @@ internal static class TestRunPublicProjection
 
         public string RedactText(string value)
         {
-            var redacted = value;
+            var redacted = DiagnosticPathProjector.Project(value, _execution.WorkingDirectory);
             foreach (var (sensitiveValue, replacement) in _replacements)
             {
                 redacted = redacted.Replace(
@@ -230,6 +239,174 @@ internal static class TestRunPublicProjection
                     && value[1] == ':'
                     && value[2] is '/' or '\\');
         }
+    }
+
+    /// <summary>
+    /// Projects filesystem-shaped text without relying on the current host operating system.
+    /// Child output can contain Windows, UNC, and POSIX paths regardless of where the server runs.
+    /// </summary>
+    private static partial class DiagnosticPathProjector
+    {
+        public static string Project(string value, string workspaceRoot)
+        {
+            if (string.IsNullOrEmpty(value))
+                return value;
+
+            var projected = ProjectMatches(CompilerLocationPathRegex(), value, workspaceRoot);
+            projected = ProjectMatches(StackTracePathRegex(), projected, workspaceRoot);
+            projected = ProjectMatches(DoubleQuotedPathRegex(), projected, workspaceRoot);
+            projected = ProjectMatches(SingleQuotedPathRegex(), projected, workspaceRoot);
+            return ProjectMatches(BarePathRegex(), projected, workspaceRoot);
+        }
+
+        private static string ProjectMatches(Regex regex, string value, string workspaceRoot) =>
+            regex.Replace(value, match => ProjectMatch(match, workspaceRoot));
+
+        private static string ProjectMatch(Match match, string workspaceRoot)
+        {
+            var group = match.Groups["path"];
+            var path = group.Value;
+            var pathLength = path.Length;
+            while (pathLength > 0 && IsTrailingPunctuation(path[pathLength - 1]))
+                pathLength--;
+
+            var candidate = path[..pathLength].TrimEnd();
+            if (!TryParseAbsolutePath(candidate, out var parsedPath))
+                return match.Value;
+
+            var replacement = TryParseAbsolutePath(workspaceRoot, out var parsedWorkspace)
+                && parsedPath.TryMakeRelativeTo(parsedWorkspace, out var relativePath)
+                    ? relativePath
+                    : RedactedExternalPath;
+            var pathOffset = group.Index - match.Index;
+            return string.Concat(
+                match.Value.AsSpan(0, pathOffset),
+                replacement,
+                match.Value.AsSpan(pathOffset + candidate.Length));
+        }
+
+        private static bool TryParseAbsolutePath(string value, out ParsedAbsolutePath path)
+        {
+            path = default;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var normalized = value.Replace('\\', '/');
+            string root;
+            string remainder;
+            bool ignoreCase;
+
+            if (normalized.Length >= 3
+                && char.IsAsciiLetter(normalized[0])
+                && normalized[1] == ':'
+                && normalized[2] == '/')
+            {
+                root = normalized[..3];
+                remainder = normalized[3..];
+                ignoreCase = true;
+            }
+            else if (normalized.StartsWith("//", StringComparison.Ordinal))
+            {
+                var rootSegments = normalized[2..]
+                    .Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (rootSegments.Length < 2)
+                    return false;
+
+                root = $"//{rootSegments[0]}/{rootSegments[1]}";
+                remainder = string.Join('/', rootSegments.Skip(2));
+                ignoreCase = true;
+            }
+            else if (normalized[0] == '/')
+            {
+                root = "/";
+                remainder = normalized[1..];
+                ignoreCase = false;
+            }
+            else
+            {
+                return false;
+            }
+
+            var segments = new List<string>();
+            foreach (var segment in remainder.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (segment == ".")
+                    continue;
+                if (segment == "..")
+                {
+                    if (segments.Count == 0)
+                        return false;
+                    segments.RemoveAt(segments.Count - 1);
+                    continue;
+                }
+
+                segments.Add(segment);
+            }
+
+            path = new ParsedAbsolutePath(root, segments.ToArray(), ignoreCase);
+            return true;
+        }
+
+        private static bool IsTrailingPunctuation(char value) =>
+            value is '.' or ',' or ';' or ':' or ')' or ']' or '}';
+
+        private readonly record struct ParsedAbsolutePath(
+            string Root,
+            string[] Segments,
+            bool IgnoreCase)
+        {
+            public bool TryMakeRelativeTo(ParsedAbsolutePath workspace, out string relativePath)
+            {
+                relativePath = string.Empty;
+                if (IgnoreCase != workspace.IgnoreCase)
+                    return false;
+
+                var comparison = IgnoreCase
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+                if (!string.Equals(Root, workspace.Root, comparison)
+                    || Segments.Length < workspace.Segments.Length)
+                {
+                    return false;
+                }
+
+                for (var index = 0; index < workspace.Segments.Length; index++)
+                {
+                    if (!string.Equals(Segments[index], workspace.Segments[index], comparison))
+                        return false;
+                }
+
+                relativePath = Segments.Length == workspace.Segments.Length
+                    ? "."
+                    : string.Join('/', Segments.Skip(workspace.Segments.Length));
+                return true;
+            }
+        }
+
+        [GeneratedRegex(
+            """(?<![A-Za-z0-9_:/\\])(?<path>(?:[A-Za-z]:[\\/]|\\\\|//|/(?!/))[^\"\r\n]*?)(?<suffix>\(\d+,\d+(?:,\d+,\d+)?\))(?=:\s|\s|$)""",
+            RegexOptions.CultureInvariant)]
+        private static partial Regex CompilerLocationPathRegex();
+
+        [GeneratedRegex(
+            """(?<![A-Za-z0-9_:/\\])(?<path>(?:[A-Za-z]:[\\/]|\\\\|//|/(?!/))[^\"\r\n]*?)(?<suffix>:line[ \t]+\d+)""",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+        private static partial Regex StackTracePathRegex();
+
+        [GeneratedRegex(
+            """(?<prefix>\")(?<path>(?:[A-Za-z]:[\\/]|\\\\|//|/(?!/))[^\"\r\n]+)(?<suffix>\")""",
+            RegexOptions.CultureInvariant)]
+        private static partial Regex DoubleQuotedPathRegex();
+
+        [GeneratedRegex(
+            """(?<prefix>')(?<path>(?:[A-Za-z]:[\\/]|\\\\|//|/(?!/))[^'\r\n]+)(?<suffix>')""",
+            RegexOptions.CultureInvariant)]
+        private static partial Regex SingleQuotedPathRegex();
+
+        [GeneratedRegex(
+            """(?<![A-Za-z0-9_:/\\])(?<path>(?:[A-Za-z]:[\\/]|\\\\|//|/(?!/))[^ \t\r\n\"'<>|]+)""",
+            RegexOptions.CultureInvariant)]
+        private static partial Regex BarePathRegex();
     }
 }
 

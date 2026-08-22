@@ -50,6 +50,17 @@ Stable resources:
 - `workspace_diagnostics`
 - `source_file`
 
+### Public command-diagnostic paths
+
+Build and test response fields may retain child-process diagnostics, but they do not expose absolute
+filesystem paths. Absolute paths lexically contained by the command working directory are emitted
+as `/`-normalized relative paths. Other Windows drive, UNC, and POSIX absolute paths are emitted as
+the stable `<external-path>` placeholder. Compiler `(line,column)` and stack `:line N` suffixes are
+preserved; URI and ratio-like text is not treated as a filesystem path.
+
+This policy applies to command stdout, stderr, early-kill reasons, test failure messages and stack
+traces, and failure-envelope summaries and tails. Internal execution records remain full fidelity.
+
 ## Experimental Surface
 
 Experimental entries are intentionally discoverable but may evolve faster before a second transport or editor-backed host exists.
