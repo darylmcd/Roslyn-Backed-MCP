@@ -4,9 +4,12 @@ namespace RoslynMcp.Tests;
 /// tunit-mtp-native-test-run: TUnit is entirely built on Microsoft.Testing.Platform (MTP) and
 /// never registers with the classic VSTest adapter, so test_run needs a different, MTP-native
 /// dotnet test invocation for it. These fixtures deliberately never restore the TUnit package —
-/// the two preconditions covered here (an unsupported filter, and no global.json opt-in) are
-/// both checked and thrown before TestRunnerService ever shells out to dotnet test, so an
-/// unrestorable/network-independent fixture is enough to exercise them.
+/// every precondition covered here (an untranslatable filter, and no global.json opt-in) is
+/// checked and thrown before TestRunnerService ever shells out to dotnet test, so an
+/// unrestorable/network-independent fixture is enough to exercise them. TreeNodeFilterTranslatorTests
+/// covers the filter-translation grammar itself in isolation; the end-to-end behavior of a
+/// translated filter against a real, restored TUnit project was verified manually (see
+/// TreeNodeFilterTranslator's doc comment) rather than via a network-dependent committed test.
 /// </summary>
 [TestClass]
 public sealed class TUnitMtpNativeTestRunTests : TestBase
@@ -18,16 +21,18 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
-    public async Task RunTestsAsync_TUnitProjectWithFilter_ThrowsBeforeExecutingDotnetTest()
+    public async Task RunTestsAsync_TUnitProjectWithUntranslatableFilter_ThrowsBeforeExecutingDotnetTest()
     {
+        // "Foo" has no '.'-separated class/method for TreeNodeFilterTranslator to recover —
+        // one of several untranslatable shapes; TreeNodeFilterTranslatorTests covers the rest.
         var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
         try
         {
             var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName, filter: "FullyQualifiedName~Foo", CancellationToken.None));
 
-            StringAssert.Contains(ex.Message, "treenode-filter",
-                "The error must point the caller at MTP's own filter syntax.");
+            StringAssert.Contains(ex.Message, "class/method",
+                "The error must explain why the filter didn't translate to MTP's --treenode-filter syntax.");
         }
         finally
         {

@@ -85,7 +85,9 @@ public sealed partial class TestRunnerService : ITestRunnerService
         // runs (projectName is null) stay on the classic path: Microsoft documents mixing
         // VSTest and MTP projects in one dotnet test invocation as unsupported, so only a
         // single resolved project can safely take the MTP branch.
-        var requiresMtpNative = resolvedProject is not null && ResolveRequiresMtpNativeExecution(resolvedProject, filter);
+        var mtpPlan = resolvedProject is not null
+            ? ResolveMtpNativeExecutionPlan(resolvedProject, filter)
+            : MtpNativeExecutionPlan.NotRequired;
 
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(resultsDirectory);
@@ -94,8 +96,8 @@ public sealed partial class TestRunnerService : ITestRunnerService
         {
             // Do not set a fixed TRX/results file name: solution-level runs emit one TRX per
             // test project; a fixed name would overwrite.
-            var arguments = requiresMtpNative
-                ? BuildMtpNativeArguments(targetPath, resultsDirectory)
+            var arguments = mtpPlan.RequiresMtpNative
+                ? BuildMtpNativeArguments(targetPath, resultsDirectory, mtpPlan.TreeNodeFilter)
                 : BuildVsTestArguments(targetPath, resultsDirectory, filter);
 
             CommandExecutionDto execution;
@@ -163,33 +165,31 @@ public sealed partial class TestRunnerService : ITestRunnerService
     }
 
     /// <summary>
-    /// True when <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
-    /// argument shape rather than today's classic VSTest-style invocation.
+    /// Whether <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
+    /// argument shape rather than today's classic VSTest-style invocation, and — when a filter
+    /// was supplied — its translated <c>--treenode-filter</c> equivalent.
     /// </summary>
+    private sealed record MtpNativeExecutionPlan(bool RequiresMtpNative, string? TreeNodeFilter)
+    {
+        public static readonly MtpNativeExecutionPlan NotRequired = new(false, null);
+    }
+
     /// <exception cref="InvalidOperationException">
     /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:
-    /// a <paramref name="filter"/> was supplied (MTP's <c>--treenode-filter</c> syntax isn't
-    /// translated from <c>test_run</c>'s VSTest-style filter yet), or the target repo's
-    /// <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP <c>dotnet test</c> mode.
+    /// the target repo's <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP
+    /// <c>dotnet test</c> mode, or a supplied <paramref name="filter"/> doesn't translate to
+    /// MTP's <c>--treenode-filter</c> syntax (see <see cref="TreeNodeFilterTranslator"/>).
     /// Verified against a real TUnit project: on the .NET 10 SDK, the legacy VSTest-mode MTP
     /// bridge (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
     /// <c>"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
     /// .NET 10 SDK and later"</c> — so there is no fallback to attempt without the opt-in.
     /// </exception>
-    private bool ResolveRequiresMtpNativeExecution(ProjectStatusDto resolvedProject, string? filter)
+    private MtpNativeExecutionPlan ResolveMtpNativeExecutionPlan(ProjectStatusDto resolvedProject, string? filter)
     {
         var projectDocument = ProjectMetadataParser.LoadProjectDocument(resolvedProject.FilePath, _logger);
         if (!ProjectMetadataParser.RequiresMtpNativeExecution(projectDocument))
         {
-            return false;
-        }
-
-        if (!string.IsNullOrWhiteSpace(filter))
-        {
-            throw new InvalidOperationException(
-                $"Project '{resolvedProject.Name}' only supports Microsoft.Testing.Platform (MTP) — TUnit never " +
-                "registers with the classic VSTest adapter. test_run's filter is not yet translated to MTP's " +
-                "--treenode-filter syntax; call test_run without a filter for this project.");
+            return MtpNativeExecutionPlan.NotRequired;
         }
 
         var projectDirectory = GatedCommandExecutor.GetWorkingDirectory(resolvedProject.FilePath);
@@ -203,7 +203,8 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 "experience, then retry.");
         }
 
-        return true;
+        var treeNodeFilter = string.IsNullOrWhiteSpace(filter) ? null : TreeNodeFilterTranslator.Translate(filter);
+        return new MtpNativeExecutionPlan(true, treeNodeFilter);
     }
 
     private static List<string> BuildVsTestArguments(string targetPath, string resultsDirectory, string? filter)
@@ -234,10 +235,22 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// unlike VSTest mode's build-target dispatch, native MTP mode forwards any argument it
     /// doesn't recognize straight to the test host, and the host rejects <c>--nologo</c>
     /// outright ("Unknown option '--nologo'"), producing a false "zero tests ran" — confirmed
-    /// by direct repro, not by reading the docs.
+    /// by direct repro, not by reading the docs. <paramref name="treeNodeFilter"/> is the
+    /// already-translated MTP filter expression (see <see cref="TreeNodeFilterTranslator"/>),
+    /// passed through to <c>--treenode-filter</c> as-is when present.
     /// </summary>
-    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory) =>
-        ["test", targetPath, "--report-trx", "--results-directory", resultsDirectory];
+    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, string? treeNodeFilter)
+    {
+        var arguments = new List<string> { "test", targetPath, "--report-trx", "--results-directory", resultsDirectory };
+
+        if (!string.IsNullOrWhiteSpace(treeNodeFilter))
+        {
+            arguments.Add("--treenode-filter");
+            arguments.Add(treeNodeFilter);
+        }
+
+        return arguments;
+    }
 
     /// <summary>
     /// Some vstest versions ignore <c>--results-directory</c> for the TRX logger and emit under
