@@ -1,11 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -23,7 +26,8 @@ namespace RoslynMcp.Tests;
 /// era discriminator behavior, and that nothing sensitive leaks.
 /// </summary>
 [TestClass]
-public sealed class ToolCallErrorWireContractTests
+[DoNotParallelize]
+public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 {
     private const string ToolName = "synthetic_unexpected_failure";
 
@@ -33,6 +37,12 @@ public sealed class ToolCallErrorWireContractTests
     private const string LocalPathFragment = @"C:\local\path\to\redacted";
 
     private const string InnerMessage = "inner detail " + SecretSentinel + " at " + LocalPathFragment;
+
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    [ClassCleanup]
+    public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
     public async Task UnexpectedToolException_SerializesAsRedactedIsErrorResult()
@@ -86,6 +96,8 @@ public sealed class ToolCallErrorWireContractTests
             Assert.IsFalse(
                 string.IsNullOrWhiteSpace(correlationId),
                 "InternalError envelopes must carry a safe operator correlation reference.");
+            Assert.AreNotEqual("unavailable", correlationId,
+                "A generated wire correlation id must not degrade to the literal fallback sentinel.");
             Assert.IsInstanceOfType<JsonObject>(
                 payload["_meta"],
                 "The application error envelope must carry the gate-metrics _meta block.");
@@ -152,9 +164,87 @@ public sealed class ToolCallErrorWireContractTests
         }
     }
 
-    private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(string? protocolVersion)
+    [TestMethod]
+    public async Task WorkspaceFastFails_UseEraSpecificWireShape()
+    {
+        var firstSolutionPath = CreateSampleSolutionCopy();
+        var secondSolutionPath = CreateSampleSolutionCopy();
+        var firstRoot = Path.GetDirectoryName(firstSolutionPath)!;
+        var secondRoot = Path.GetDirectoryName(secondSolutionPath)!;
+        var ambiguousRoot = Path.Combine(TestTempRoot.Current, "ambiguous-wire-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var manager = CreateIsolatedWorkspaceManager();
+            var firstWorkspace = await manager.LoadAsync(firstSolutionPath, CancellationToken.None);
+            var secondWorkspace = await manager.LoadAsync(secondSolutionPath, CancellationToken.None);
+
+            try
+            {
+                foreach (var protocol in Protocols())
+                {
+                    await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
+                    var frame = await CallAndCaptureAsync(harness, "compile_check", arguments: null);
+                    AssertFastFailFrame(frame, "loaded workspace", protocol.Modern);
+                }
+            }
+            finally
+            {
+                manager.Close(firstWorkspace.WorkspaceId);
+                manager.Close(secondWorkspace.WorkspaceId);
+            }
+
+            Assert.IsEmpty(manager.ListWorkspaces(), "The ambiguous auto-load case must start with no ambient workspace.");
+            Directory.CreateDirectory(ambiguousRoot);
+            File.WriteAllText(Path.Combine(ambiguousRoot, "Alpha.slnx"), "<Solution />");
+            File.WriteAllText(Path.Combine(ambiguousRoot, "Beta.slnx"), "<Solution />");
+            var sourcePath = Path.Combine(ambiguousRoot, "Class1.cs");
+            File.WriteAllText(sourcePath, "// source");
+
+            var arguments = new Dictionary<string, object?>
+            {
+                ["filePath"] = sourcePath,
+                ["line"] = 1,
+                ["column"] = 1,
+            };
+            foreach (var protocol in Protocols())
+            {
+                await using var harness = await CreateHarnessAsync(protocol.Requested, manager, ambiguousRoot);
+                var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
+                AssertFastFailFrame(frame, "candidate solutions", protocol.Modern);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(firstRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(secondRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(ambiguousRoot);
+        }
+    }
+
+    private static WorkspaceManager CreateIsolatedWorkspaceManager()
+    {
+        var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        return new WorkspaceManager(
+            NullLogger<WorkspaceManager>.Instance,
+            new PreviewStore(),
+            fileWatcher,
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });
+    }
+
+    private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(
+        string? protocolVersion,
+        IWorkspaceManager? workspaceManager = null,
+        string? sanctionedRoot = null)
     {
         var services = new ServiceCollection();
+        if (workspaceManager is not null)
+        {
+            services.AddSingleton<IWorkspaceManager>(workspaceManager);
+        }
+        if (sanctionedRoot is not null)
+        {
+            services.AddSingleton(new SecurityOptions { SanctionedRoots = [sanctionedRoot] });
+        }
         services
             .AddMcpServer(options =>
             {
@@ -165,6 +255,8 @@ public sealed class ToolCallErrorWireContractTests
                 };
             })
             .WithTools<SyntheticUnexpectedFailureTools>()
+            .WithMessageFilters(static filters =>
+                filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(static filters =>
                 filters.AddCallToolFilter(StructuredCallToolFilter.Create));
         var provider = services.BuildServiceProvider();
@@ -180,6 +272,47 @@ public sealed class ToolCallErrorWireContractTests
             serverOptions: options,
             serverServicesFactory: () => provider,
             captureServerMessages: true);
+    }
+
+    private static async Task<JsonObject> CallAndCaptureAsync(
+        InMemoryMcpClientServerHarness harness,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments)
+    {
+        var priorMessageCount = harness.RawServerMessages.Count;
+        _ = await harness.Client.CallToolAsync(
+            toolName,
+            arguments,
+            cancellationToken: CancellationToken.None);
+        return FindSingleNewResponseFrame(harness.RawServerMessages, priorMessageCount);
+    }
+
+    private static void AssertFastFailFrame(JsonObject frame, string expectedMessage, bool modern)
+    {
+        var rawFrame = frame.ToJsonString();
+        Assert.IsNull(frame["error"], rawFrame);
+        var result = Assert.IsInstanceOfType<JsonObject>(frame["result"]);
+        Assert.AreEqual(true, result["isError"]?.GetValue<bool>(), rawFrame);
+        if (modern)
+        {
+            Assert.AreEqual("complete", result["resultType"]?.GetValue<string>(), rawFrame);
+        }
+        else
+        {
+            Assert.IsNull(result["resultType"], rawFrame);
+        }
+
+        var content = Assert.IsInstanceOfType<JsonArray>(result["content"]);
+        var block = Assert.IsInstanceOfType<JsonObject>(content.Single());
+        var payload = Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(block["text"]!.GetValue<string>()));
+        Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>(), rawFrame);
+        StringAssert.Contains(payload["message"]?.GetValue<string>(), expectedMessage);
+    }
+
+    private static IEnumerable<(string? Requested, bool Modern)> Protocols()
+    {
+        yield return ("2025-11-25", false);
+        yield return (null, true);
     }
 
     /// <summary>
@@ -218,5 +351,15 @@ public sealed class ToolCallErrorWireContractTests
             throw new NullReferenceException(
                 "outer " + SecretSentinel,
                 new InvalidOperationException(InnerMessage));
+
+        [McpServerTool(Name = "compile_check")]
+        public static string CompileCheck(string? workspaceId = null) => workspaceId ?? "missing";
+
+        [McpServerTool(Name = "symbol_info")]
+        public static string SymbolInfo(
+            string filePath,
+            int line,
+            int column,
+            string? workspaceId = null) => workspaceId ?? $"missing:{filePath}:{line}:{column}";
     }
 }

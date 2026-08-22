@@ -238,8 +238,14 @@ public sealed class ServerDiscoveryWireTests
         var tools = await harness.Client.ListToolsAsync(
             new ListToolsRequestParams(),
             CancellationToken.None);
-        var expectedToolNames = SelectedNames(ServerSurfaceCatalog.Tools);
+        var expectedToolNames = ServerSurfaceCatalog.SelectTools(selection)
+            .Select(static entry => entry.Name)
+            .ToArray();
         CollectionAssert.AreEquivalent(expectedToolNames, tools.Tools.Select(static tool => tool.Name).ToArray());
+        Assert.IsFalse(expectedToolNames.Contains("extract_type_preview", StringComparer.Ordinal),
+            "A stable preview must be omitted when its compatible apply route is experimental.");
+        Assert.IsTrue(expectedToolNames.Contains("rename_preview", StringComparer.Ordinal),
+            "A stable preview must remain selected when its apply route is also stable.");
 
         var prompts = await harness.Client.ListPromptsAsync(
             new ListPromptsRequestParams(),
@@ -308,17 +314,15 @@ public sealed class ServerDiscoveryWireTests
         await Assert.ThrowsAsync<McpException>(async () => await harness.Client.CallToolAsync(
             "recommend_workflow",
             cancellationToken: CancellationToken.None));
+        await Assert.ThrowsAsync<McpException>(async () => await harness.Client.CallToolAsync(
+            "extract_type_preview",
+            cancellationToken: CancellationToken.None));
         await Assert.ThrowsAsync<McpException>(async () => await harness.Client.GetPromptAsync(
             "explain_error",
             cancellationToken: CancellationToken.None));
         await Assert.ThrowsAsync<McpException>(async () => await harness.Client.ReadResourceAsync(
             "roslyn://server/catalog/full",
             cancellationToken: CancellationToken.None));
-
-        static string[] SelectedNames(IReadOnlyList<SurfaceEntry> entries) => entries
-            .Where(static entry => entry.SupportTier == "stable")
-            .Select(static entry => entry.Name)
-            .ToArray();
 
         static void AssertPrivateCacheHints(TimeSpan? timeToLive, CacheScope? cacheScope)
         {

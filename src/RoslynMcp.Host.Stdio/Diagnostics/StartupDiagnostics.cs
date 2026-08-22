@@ -74,7 +74,7 @@ public static class StartupDiagnostics
         var resourcesRegistered = serverOptions.ResourceCollection?.Count ?? 0;
         var promptsRegistered = serverOptions.PromptCollection?.Count ?? 0;
         var selection = services.GetService<ToolTierSelection>() ?? ToolTierSelection.All;
-        var toolsExpected = ServerSurfaceCatalog.Tools.Count(entry => selection.Includes(entry.SupportTier));
+        var toolsExpected = ServerSurfaceCatalog.SelectTools(selection).Count;
         var resourcesExpected = ServerSurfaceCatalog.Resources.Count(entry => selection.Includes(entry.SupportTier));
         var promptsExpected = ServerSurfaceCatalog.Prompts.Count(entry => selection.Includes(entry.SupportTier));
 

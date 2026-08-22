@@ -416,10 +416,13 @@ public sealed class ParameterObjectService : IParameterObjectService
         SemanticModel semanticModel,
         CancellationToken ct)
     {
-        var semanticUseKind = ClassifySemanticVariableRequiredUse(reference, semanticModel, ct);
+        var operation = semanticModel.GetOperation(reference, ct);
+        var unwrappedOperation = operation is null ? null : UnwrapTransparentOperation(operation);
+        var semanticUseKind = ClassifySemanticVariableRequiredUse(unwrappedOperation);
         if (semanticUseKind is not null) return semanticUseKind;
 
-        var valueTypeMutationKind = ClassifyValueTypeMutation(reference, parameter, semanticModel, ct);
+        var valueTypeMutationKind = ClassifyValueTypeMutation(
+            reference, parameter, unwrappedOperation, semanticModel, ct);
         if (valueTypeMutationKind is not null) return valueTypeMutationKind;
 
         var assignment = reference.Ancestors().OfType<AssignmentExpressionSyntax>()
@@ -428,15 +431,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             return assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) ? "assignment" : "compound assignment";
 
         var effectiveNode = UnwrapParentheses(reference);
-        if (effectiveNode.Parent is PrefixUnaryExpressionSyntax prefix
-            && (prefix.IsKind(SyntaxKind.PreIncrementExpression)
-                || prefix.IsKind(SyntaxKind.PreDecrementExpression)))
-        {
-            return "increment/decrement";
-        }
-        if (effectiveNode.Parent is PostfixUnaryExpressionSyntax postfix
-            && (postfix.IsKind(SyntaxKind.PostIncrementExpression)
-                || postfix.IsKind(SyntaxKind.PostDecrementExpression)))
+        if (IsIncrementOrDecrementTarget(effectiveNode))
         {
             return "increment/decrement";
         }
@@ -460,15 +455,9 @@ public sealed class ParameterObjectService : IParameterObjectService
         return null;
     }
 
-    private static string? ClassifySemanticVariableRequiredUse(
-        IdentifierNameSyntax reference,
-        SemanticModel semanticModel,
-        CancellationToken ct)
+    private static string? ClassifySemanticVariableRequiredUse(IOperation? operation)
     {
-        var operation = semanticModel.GetOperation(reference, ct);
         if (operation is null) return null;
-
-        operation = UnwrapTransparentOperation(operation);
         if (operation.Parent is IArgumentOperation argument && ReferenceEquals(argument.Value, operation))
         {
             if (argument.Parameter?.RefKind == RefKind.Ref
@@ -501,18 +490,17 @@ public sealed class ParameterObjectService : IParameterObjectService
     private static string? ClassifyValueTypeMutation(
         IdentifierNameSyntax reference,
         IParameterSymbol parameter,
+        IOperation? unwrappedOperation,
         SemanticModel semanticModel,
         CancellationToken ct)
     {
         if (!parameter.Type.IsValueType) return null;
         if (parameter.Type is INamedTypeSymbol { IsReadOnly: true }) return null;
 
-        var operation = semanticModel.GetOperation(reference, ct);
-        if (operation is not null)
+        if (unwrappedOperation is not null)
         {
-            var unwrapped = UnwrapTransparentOperation(operation);
-            if (unwrapped.Parent is IInvocationOperation directInvocation
-                && ReferenceEquals(directInvocation.Instance, unwrapped)
+            if (unwrappedOperation.Parent is IInvocationOperation directInvocation
+                && ReferenceEquals(directInvocation.Instance, unwrappedOperation)
                 && directInvocation.TargetMethod.ContainingType?.IsValueType == true
                 && !directInvocation.TargetMethod.IsReadOnly)
             {
@@ -557,21 +545,21 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         if (current.Parent is AssignmentExpressionSyntax assignment && assignment.Left == current)
             return "value-type member assignment";
-        if (current.Parent is PrefixUnaryExpressionSyntax prefix
-            && (prefix.IsKind(SyntaxKind.PreIncrementExpression)
-                || prefix.IsKind(SyntaxKind.PreDecrementExpression)))
-        {
-            return "value-type member assignment";
-        }
-        if (current.Parent is PostfixUnaryExpressionSyntax postfix
-            && (postfix.IsKind(SyntaxKind.PostIncrementExpression)
-                || postfix.IsKind(SyntaxKind.PostDecrementExpression)))
+        if (IsIncrementOrDecrementTarget(current))
         {
             return "value-type member assignment";
         }
 
         return null;
     }
+
+    private static bool IsIncrementOrDecrementTarget(ExpressionSyntax expression)
+        => expression.Parent is PrefixUnaryExpressionSyntax prefix
+               && (prefix.IsKind(SyntaxKind.PreIncrementExpression)
+                   || prefix.IsKind(SyntaxKind.PreDecrementExpression))
+           || expression.Parent is PostfixUnaryExpressionSyntax postfix
+               && (postfix.IsKind(SyntaxKind.PostIncrementExpression)
+                   || postfix.IsKind(SyntaxKind.PostDecrementExpression));
 
     private static IOperation UnwrapTransparentOperation(IOperation operation)
     {
@@ -669,8 +657,10 @@ public sealed class ParameterObjectService : IParameterObjectService
                 "change the interface first, then re-run against a free-standing method.",
                 nameof(target));
 
-        if (target.IsExtern || target.GetAttributes().Any(a =>
-                a.AttributeClass?.Name is "DllImportAttribute" or "LibraryImportAttribute"))
+        if (target.IsExtern || target.GetAttributes().Any(static attribute =>
+                attribute.AttributeClass?.ToDisplayString() is
+                    "System.Runtime.InteropServices.DllImportAttribute"
+                    or "System.Runtime.InteropServices.LibraryImportAttribute"))
             throw new ArgumentException(
                 $"parameter_object_preview refuses: '{target.ToDisplayString()}' is an extern/PInvoke declaration. " +
                 "Its signature is bound to a native entry point and cannot be regrouped.",
@@ -1580,13 +1570,11 @@ public sealed class ParameterObjectService : IParameterObjectService
             }
             if (targets.Count == 0) continue;
 
+            var dtoTypeReference = ResolveDtoTypeReference(targets.Keys.First(), dtoNamespace, newTypeName);
             var rewrittenCount = 0;
             var newRoot = oldRoot.ReplaceNodes(targets.Keys, (original, rewrittenNode) =>
             {
                 var invocation = (InvocationExpressionSyntax)rewrittenNode;
-                // Resolve scope against `original` — it is still attached to oldRoot, so
-                // its namespace/using context is visible; `rewrittenNode` may be detached.
-                var dtoTypeReference = ResolveDtoTypeReference(original, dtoNamespace, newTypeName);
                 var newArgList = BuildRewrittenArgumentList(
                     invocation.ArgumentList, method, grouped, dtoTypeReference, targets[original]);
                 if (newArgList is null) return invocation;
