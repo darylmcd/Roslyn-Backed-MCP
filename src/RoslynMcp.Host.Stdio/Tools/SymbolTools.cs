@@ -198,7 +198,8 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports form elicitation, a multi-candidate resolve instead asks for a request-scoped operator choice; unsupported clients still receive the candidate list.")] bool allowElicitation = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ICompilationCache? compilationCache = null)
     {
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
@@ -207,7 +208,8 @@ public static class SymbolTools
 
             // elicit-disambiguation-on-multi-symbol-resolve: see find_references for rationale.
             var disambiguation = await TryDisambiguateMetadataNameAsync(
-                requestContext, workspaceManager, workspaceId, locator, "go_to_definition", allowElicitation, c).ConfigureAwait(false);
+                requestContext, workspaceManager, workspaceId, locator, "go_to_definition", allowElicitation, c,
+                compilationCache).ConfigureAwait(false);
             if (disambiguation.ListEnvelope is not null)
             {
                 return disambiguation.ListEnvelope;
@@ -270,7 +272,8 @@ public static class SymbolTools
         [Description("When true, drops per-ref preview text to keep the response small for high-fan-out symbols. File path + line + column + classification still populated. Default false preserves the v1.18.2 shape.")] bool summary = false,
         [Description("Optional: case-sensitive Project.Name filter to scope the result; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
         [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports form elicitation, a multi-candidate resolve instead asks for a request-scoped operator choice; unsupported clients still receive the candidate list.")] bool allowElicitation = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ICompilationCache? compilationCache = null)
     {
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
@@ -285,7 +288,8 @@ public static class SymbolTools
             // disambiguation list response (additive). Position-based locators already pin a
             // single symbol, so this branch is metadata-name-only.
             var disambiguation = await TryDisambiguateMetadataNameAsync(
-                requestContext, workspaceManager, workspaceId, locator, "find_references", allowElicitation, c).ConfigureAwait(false);
+                requestContext, workspaceManager, workspaceId, locator, "find_references", allowElicitation, c,
+                compilationCache).ConfigureAwait(false);
             if (disambiguation.ListEnvelope is not null)
             {
                 return disambiguation.ListEnvelope;
@@ -974,7 +978,8 @@ public static class SymbolTools
         SymbolLocator locator,
         string toolName,
         bool allowElicitation,
-        CancellationToken ct)
+        CancellationToken ct,
+        ICompilationCache? compilationCache = null)
     {
         if (!locator.HasMetadataName || string.IsNullOrEmpty(locator.MetadataName))
         {
@@ -983,7 +988,7 @@ public static class SymbolTools
 
         var solution = workspaceManager.GetCurrentSolution(workspaceId);
         var candidates = await SymbolHandleSerializer
-            .FindAllByMetadataNameAsync(solution, locator.MetadataName, ct)
+            .FindAllByMetadataNameAsync(solution, locator.MetadataName, ct, compilationCache, workspaceId)
             .ConfigureAwait(false);
 
         if (candidates.Count <= 1)

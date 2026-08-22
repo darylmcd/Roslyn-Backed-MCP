@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-22T14:32:36Z
+**updated_at:** 2026-08-22T15:58:14Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `path-boundary-link-swap-toctou` | High | — | **Close the validation-to-use link-swap race** — carry the canonical validated target into high-risk writes or revalidate atomically before mutation. [type: security] [source: 2026-08-13 roots migration review] | M | items/path-boundary-link-swap-toctou.md |
 
 ## Medium
 
@@ -57,8 +56,6 @@
 | `core-dto-location-quartet-consolidation-secondary` | Medium | core-dto-location-quartet-stage-followups | **Compose LocationDto in PropertyWriteDto/TypeMutationDto** — apply the same LocationDto composition to PropertyWriteDto and TypeMutationDto's MutationCallerDto once the primary pattern lands. [type: refactor] [source: refactor-matrix-pass1] | M | items/core-dto-location-quartet-consolidation-secondary.md |
 | `core-dto-location-quartet-stage-followups` | Medium | — | **File ADR 0001's Stage 1 (producer population) and Stage 3 (flat-field deprecation) rows** — both stages were deferred to "future backlog row" and never filed. [type: refactor] [source: PR #1180 code-quality review] | M | items/core-dto-location-quartet-stage-followups.md |
 | `shipped-skills-hardcode-bare-roslyn-tool-prefix` | Medium | — | **Prefix-agnostic shipped skills** — VERIFY FIRST whether the plugin-prefix surface-test entry gate misfires, then sweep shipped `skills/**` + retro prompt to suffix-based tool references via the genericity guard. [type: bug] [source: 2026-06-08 retro follow-up] | L | items/shipped-skills-hardcode-bare-roslyn-tool-prefix.md |
-| `compilation-cache-wire-group-c-consumer` | Medium | group-c-compilation-cache-gate-hardening | **Wire a production consumer of the group-c cache params** — PR #1207 added optional `compilationCache`/`workspaceId` but every `src/` call site passes the 3-arg form, so the cache path is unreachable; also re-establish the lost raw-site inventory. [type: refactor] [source: 2026-08-10 sweep cold review] | M | items/compilation-cache-wire-group-c-consumer.md |
-| `compilation-cache-cancellation-test-contract-drift` | Medium | compilation-cache-wire-group-c-consumer | **Align CompilationCache cancellation tests with the documented OperationCanceledException contract** — over-exact assertions dictate production exception shape; a poisoning test is now unreachable. [type: chore] [source: compilation-cache-analyzers-entry-guard cq review] | M | items/compilation-cache-cancellation-test-contract-drift.md |
 | `method-description-diet` | Medium | server-instructions-discovery-hint | **Method-level description diet** — cap 393-char-avg Descriptions at ~200-char capability statements; relocate guidance to ServerInstructions/prompts/catalog (~8.5k tokens). Sweep across ~54 Tools/*.cs — split per category before planning. [type: refactor] [source: 20260813 mcp-audit] | L | items/method-description-diet.md |
 | `risk-aligned-tool-consolidation` | Medium | — | Risk-align tool consolidation from 173 toward 117 endpoints while preserving permission buckets and a public deprecation cycle. [type: refactor] [source: 20260813 mcp-audit] | L | items/risk-aligned-tool-consolidation.md |
 | `preview-token-apply-route-provenance` | Medium | — | **Bind preview tokens to compatible apply routes** — persist producer provenance and reject wrong-route redemption before mutation. [type: security] [source: 2026-08-13 parameter-object review] | M | items/preview-token-apply-route-provenance.md |
@@ -87,15 +84,10 @@
 | `tool-call-error-wire-fastfail-era-coverage` | Medium | — | **Cover the two fast-fail paths in the tools/call error wire suite** — both were newly era-shaped but only the general-catch path is driven, so a `resultType` regression there ships green. [type: test] [source: 2026-08-19 PR #1290 review] | S | items/tool-call-error-wire-fastfail-era-coverage.md |
 | `workspace-dispatch-parameter-validation-hoist-siblings` | Medium | — | **Validate request parameters before workspace dispatch** — hoist ten sibling endpoint guards ahead of gate/workspace resolution with one table-driven precedence matrix. [type: bug] [source: 2026-08-20 adjacent review] | M | items/workspace-dispatch-parameter-validation-hoist-siblings.md |
 | `get-prompt-binding-stage-contract-adapter` | Medium | — | **Own the prompt binding-stage contract** — replace private SDK stack-frame recognition with an explicit adapter while preserving fail-closed wire semantics. [type: refactor] [source: 2026-08-20 adjacent review] | M | items/get-prompt-binding-stage-contract-adapter.md |
-| `test-run-nonzero-exit-result-consistency` | Medium | — | **Keep nonzero test exits internally consistent** — attach a failure envelope when partial passing counts accompany a failing process exit. [type: bug] [source: 2026-08-20 adjacent review] | M | items/test-run-nonzero-exit-result-consistency.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
-| `workspace-lifecycle-handler-log-redaction` | Medium | — | **Redact workspace lifecycle subscriber failures** — log only secret-safe event/type context while preserving per-subscriber isolation. [type: security] [source: 2026-08-21 adjacent review] | S | items/workspace-lifecycle-handler-log-redaction.md |
 | `workspace-auto-load-registered-dispatch-wire-coverage` | Medium | — | Add a live filter regression for successful unique-solution auto-load through the registered workspace_load primitive, including id patching, metrics, and cancellation/no-id fail-closed behavior. | S | items/workspace-auto-load-registered-dispatch-wire-coverage.md |
 | `scaffold-sampling-mrtr-replay-cost` | Medium | — | Split scaffold sampling preparation from completion so MRTR replay does not repeat compilation and sibling discovery; keep request state bounded and secret-safe and prove one expensive preparation. | M | items/scaffold-sampling-mrtr-replay-cost.md |
-| `release-managed-guard-malformed-input-fail-closed` | Medium | — | Make the release-managed-file hook reject malformed or shape-invalid input with a sanitized blocking result, while preserving explicitly supported empty-input behavior and valid unmanaged edits. | S | items/release-managed-guard-malformed-input-fail-closed.md |
 | `type-extraction-same-file-consumer-rewrite` | Medium | — | **Preserve same-file extraction consumers** — semantically rewrite retained source members through the injected composition field or refuse before storing an uncompilable preview. [type: bug] [source: 2026-08-21 current-session regression] | S | items/type-extraction-same-file-consumer-rewrite.md |
-| `filewatcher-worktree-root-relative-ignore` | Medium | — | Evaluate FileWatcher worktree exclusions relative to the loaded root so a workspace located below `.worktrees/<id>` still observes its own external edits. [type: bug] [source: adjacent review] | S | items/filewatcher-worktree-root-relative-ignore.md |
-| `workspace-document-filepath-platform-identity` | Medium | — | Centralize document and generated-document file-path matching on platform-aware filesystem identity semantics. [type: bug] [source: adjacent review] | M | items/workspace-document-filepath-platform-identity.md |
 
 ## Low
 

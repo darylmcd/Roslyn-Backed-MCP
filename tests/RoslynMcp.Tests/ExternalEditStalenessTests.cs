@@ -344,6 +344,39 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 [TestClass]
 public sealed class FileWatcherClearStaleAwaiterTests
 {
+    [TestMethod]
+    public async Task WorkspaceRootInsideWorktrees_TrackedEditStillMarksStale()
+    {
+        var tempParent = Path.Combine(Path.GetTempPath(), $"rmcp-fw-root-{Guid.NewGuid():N}");
+        var worktreeRoot = Path.Combine(tempParent, ".worktrees", "agent-1");
+        Directory.CreateDirectory(worktreeRoot);
+        var workspacePath = Path.Combine(worktreeRoot, "Sentinel.slnx");
+        await File.WriteAllTextAsync(workspacePath, "<Solution />", CancellationToken.None);
+
+        try
+        {
+            using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+            const string workspaceId = "ws-inside-worktree";
+            watcher.Watch(workspaceId, workspacePath);
+
+            var trackedPath = Path.Combine(worktreeRoot, "Tracked.cs");
+            await File.WriteAllTextAsync(
+                trackedPath,
+                "namespace WorktreeProbe; internal sealed class Tracked { }",
+                CancellationToken.None);
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await watcher.WaitForStaleAsync(workspaceId, timeout.Token).ConfigureAwait(false);
+            Assert.IsTrue(watcher.IsStale(workspaceId),
+                "The worktree root's ancestry must not suppress events for files inside that workspace.");
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+        }
+        finally
+        {
+            Directory.Delete(tempParent, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Regression for <c>filewatcher-waitforstale-clearstale-stranded-awaiter</c>: an awaiter parked
     /// on <see cref="FileWatcherService.WaitForStaleAsync"/> for a non-stale entry must be released

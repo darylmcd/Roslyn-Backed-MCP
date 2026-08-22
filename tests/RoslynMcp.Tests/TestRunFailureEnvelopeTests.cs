@@ -109,6 +109,33 @@ public sealed class TestRunFailureEnvelopeTests
     }
 
     [TestMethod]
+    public void ParseTestRun_NonzeroExitWithTrx_PreservesCountsAndEmitsExecutionFailure()
+    {
+        var trxPath = WritePassedTrxFixture();
+        try
+        {
+            var execution = FakeExecution(
+                exitCode: 1,
+                stdOut: "Passed Sample.Test\nBuild FAILED.",
+                stdErr: "CS0103: The name 'Missing' does not exist in the current context");
+
+            var result = DotnetOutputParser.ParseTestRun(execution, [trxPath]);
+
+            Assert.AreEqual(1, result.Total, "A failed process must not erase valid TRX counters.");
+            Assert.AreEqual(1, result.Passed);
+            Assert.AreEqual(0, result.Failed);
+            Assert.IsNotNull(result.FailureEnvelope,
+                "The process exit status remains authoritative even when a TRX file was produced.");
+            Assert.AreEqual("BuildFailure", result.FailureEnvelope!.ErrorKind);
+            Assert.IsFalse(result.FailureEnvelope.IsRetryable);
+        }
+        finally
+        {
+            File.Delete(trxPath);
+        }
+    }
+
+    [TestMethod]
     public void ParseTestRun_NoTrxFailure_TailsAreTruncatedTo2000Chars()
     {
         var longStdErr = new string('x', 5000) + "MSB3027";
@@ -610,6 +637,23 @@ public sealed class TestRunFailureEnvelopeTests
 
         var path = Path.Combine(Path.GetTempPath(), $"roslynmcp-testrun-fixture-{Guid.NewGuid():N}.trx");
         File.WriteAllText(path, xml);
+        return path;
+    }
+
+    private static string WritePassedTrxFixture()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"rmcp-passed-{Guid.NewGuid():N}.trx");
+        File.WriteAllText(path, """
+            <?xml version="1.0" encoding="utf-8"?>
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results>
+                <UnitTestResult testName="Sample.Test" outcome="Passed" />
+              </Results>
+              <ResultSummary outcome="Failed">
+                <Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" />
+              </ResultSummary>
+            </TestRun>
+            """);
         return path;
     }
 

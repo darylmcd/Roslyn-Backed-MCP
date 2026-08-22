@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace RoslynMcp.Tests;
@@ -111,6 +112,35 @@ public sealed class HookConfigurationTests
             "Moved here from the shipped hooks/hooks.json in `roslyn-mcp-edit-hooks-mis-scoped-cross-repo` (2026-05-21).");
     }
 
+    [TestMethod]
+    public async Task ReleaseManagedGuard_FailsClosedOnMalformedNonemptyInput_WithoutEchoingPayload()
+    {
+        const string secretSentinel = "SECRET-HOOK-PAYLOAD";
+        var cases = new (string Name, string Input, int ExpectedExit)[]
+        {
+            ("empty compatibility input", string.Empty, 0),
+            ("valid unmanaged path", "{\"tool_input\":{\"file_path\":\"src/Foo.cs\"}}", 0),
+            ("valid managed path", "{\"tool_input\":{\"file_path\":\"Directory.Build.props\"}}", 2),
+            ("invalid json", "{" + secretSentinel, 2),
+            ("null payload", "null", 2),
+            ("scalar payload", "\"payload\"", 2),
+            ("missing tool input", "{}", 2),
+            ("wrong tool input shape", "{\"tool_input\":[]}", 2),
+            ("missing file path", "{\"tool_input\":{}}", 2),
+            ("wrong file path type", "{\"tool_input\":{\"file_path\":7}}", 2),
+            ("blank file path", "{\"tool_input\":{\"file_path\":\"   \"}}", 2),
+        };
+
+        foreach (var testCase in cases)
+        {
+            var result = await RunReleaseManagedGuardAsync(testCase.Input);
+            Assert.AreEqual(testCase.ExpectedExit, result.ExitCode,
+                $"Unexpected exit for {testCase.Name}. stderr={result.StdErr}");
+            Assert.IsFalse(result.StdErr.Contains(secretSentinel, StringComparison.Ordinal),
+                $"Malformed-input diagnostics must classify, not echo, the payload. stderr={result.StdErr}");
+        }
+    }
+
     // ----- Helpers -----
 
     private static JsonDocument LoadShippedHooks()
@@ -182,4 +212,51 @@ public sealed class HookConfigurationTests
             }
         }
     }
+
+    private static async Task<GuardResult> RunReleaseManagedGuardAsync(string input)
+    {
+        var scriptPath = FindRepoRootFile(Path.Combine("eng", "guard-release-managed-files.ps1"));
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"rmcp-hook-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            var startInfo = new ProcessStartInfo("pwsh")
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(scriptPath);
+            startInfo.Environment["CLAUDE_PROJECT_DIR"] = tempRoot;
+
+            using var process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start release-managed guard process.");
+            await process.StandardInput.WriteAsync(input);
+            process.StandardInput.Close();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                throw;
+            }
+            return new GuardResult(process.ExitCode, await stdoutTask, await stderrTask);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    private sealed record GuardResult(int ExitCode, string StdOut, string StdErr);
 }
