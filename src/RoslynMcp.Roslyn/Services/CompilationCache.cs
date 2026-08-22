@@ -95,10 +95,7 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         // once it is running nothing can stop it; short-circuiting here mirrors
         // ObserveWithCallerToken's own already-canceled check and restores the pre-cache behavior
         // of handing a canceled token straight to Roslyn.
-        if (ct.IsCancellationRequested)
-        {
-            return Task.FromCanceled<Compilation?>(ct);
-        }
+        ct.ThrowIfCancellationRequested();
 
         // Lazy is load-bearing: AddOrUpdate may invoke its factories more than once, so starting
         // Roslyn work while constructing a candidate would still let losing racers compile.
@@ -130,18 +127,9 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         }
 
         // An already-canceled caller must not pay for — or install — an analyzer-bound build pass
-        // it can never observe. Mirrors the guard in GetCompilationAsync (see remarks there): the
-        // shared task below is started detached via CancellationToken.None, so once it is running
-        // nothing can stop it. Awaiting Task.FromCanceled (rather than ct.ThrowIfCancellationRequested)
-        // is deliberate: the async-method-builder's exception path preserves a directly-thrown
-        // OperationCanceledException's exact type when the caller observes it, whereas a task already
-        // in the Canceled state (no captured cancellation exception) surfaces as TaskCanceledException
-        // on await — matching ObserveWithCallerToken's identical guard and the TaskCanceledException
-        // contract this method's existing tests already assert on.
-        if (ct.IsCancellationRequested)
-        {
-            return await Task.FromCanceled<CompilationWithAnalyzers?>(ct).ConfigureAwait(false);
-        }
+        // it can never observe. The shared task below is started detached via
+        // CancellationToken.None, so once it is running nothing can stop it.
+        ct.ThrowIfCancellationRequested();
 
         var candidate = new AnalyzerEntry(
             version,

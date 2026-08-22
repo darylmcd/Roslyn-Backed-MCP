@@ -698,10 +698,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(
-                    ex,
-                    "{EventName} handler threw for {WorkspaceId}",
+                    "{EventName} handler threw for {WorkspaceId}; exceptionType={ExceptionType}",
                     eventName,
-                    workspaceId);
+                    workspaceId,
+                    ex.GetType().FullName);
             }
         }
     }
@@ -859,7 +859,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
                     document = sourceGenDocs.FirstOrDefault(d =>
                         d.FilePath is not null &&
-                        string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+                        FileSystemPath.Comparer.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath)));
                     if (document is not null) break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

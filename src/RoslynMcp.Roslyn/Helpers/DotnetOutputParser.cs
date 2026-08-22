@@ -84,8 +84,8 @@ internal static partial class DotnetOutputParser
 
     /// <summary>
     /// Parses one or more TRX files produced by <c>dotnet test</c> (solution runs may emit multiple TRX files)
-    /// into a single aggregated <see cref="TestRunResultDto"/>. When no TRX files exist and the
-    /// underlying command failed, the result carries a populated <see cref="TestRunFailureEnvelopeDto"/>
+    /// into a single aggregated <see cref="TestRunResultDto"/>. When the underlying command fails,
+    /// the result carries a populated <see cref="TestRunFailureEnvelopeDto"/>
     /// so callers see a structured classification (file lock / build failure / unknown) instead of
     /// a bare invocation error.
     /// </summary>
@@ -97,7 +97,7 @@ internal static partial class DotnetOutputParser
         {
             var envelope = execution.Succeeded
                 ? null
-                : ClassifyNoTrxFailure(execution);
+                : ClassifyExecutionFailure(execution, producedTrx: false);
 
             return new TestRunResultDto(
                 execution,
@@ -125,7 +125,10 @@ internal static partial class DotnetOutputParser
             failures.AddRange(one.Failures);
         }
 
-        return new TestRunResultDto(execution, total, passed, failed, skipped, failures);
+        var failureEnvelope = execution.Succeeded
+            ? null
+            : ClassifyExecutionFailure(execution, producedTrx: true);
+        return new TestRunResultDto(execution, total, passed, failed, skipped, failures, failureEnvelope);
     }
 
     /// <summary>
@@ -152,7 +155,9 @@ internal static partial class DotnetOutputParser
             FailureEnvelope: envelope);
     }
 
-    private static TestRunFailureEnvelopeDto ClassifyNoTrxFailure(CommandExecutionDto execution)
+    private static TestRunFailureEnvelopeDto ClassifyExecutionFailure(
+        CommandExecutionDto execution,
+        bool producedTrx)
     {
         var stdOutTail = Tail(execution.StdOut);
         var stdErrTail = Tail(execution.StdErr);
@@ -205,7 +210,8 @@ internal static partial class DotnetOutputParser
         return new TestRunFailureEnvelopeDto(
             ErrorKind: "Unknown",
             IsRetryable: false,
-            Summary: $"dotnet test exited with code {execution.ExitCode} and produced no TRX output. " +
+            Summary: $"dotnet test exited with code {execution.ExitCode} and " +
+                     (producedTrx ? "produced TRX output despite the failed process. " : "produced no TRX output. ") +
                      "Inspect StdOutTail/StdErrTail for diagnosis.",
             StdOutTail: stdOutTail,
             StdErrTail: stdErrTail);

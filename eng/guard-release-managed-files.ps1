@@ -17,7 +17,8 @@
 # Exit codes:
 #   0 -- allow (path not in set, OR sentinel valid)
 #   2 -- block (path in set, no valid sentinel) -- prints denial to stderr
-# Other exits indicate script failure; hook treats as allow.
+# Malformed non-empty hook input fails closed with exit 2. Empty stdin remains an explicit
+# compatibility no-op for direct invocations that are not carrying a hook request.
 
 param()
 
@@ -29,11 +30,29 @@ if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
 try {
     $payload = $raw | ConvertFrom-Json
 } catch {
-    exit 0
+    [Console]::Error.WriteLine('Blocked: malformed release-managed hook input (invalid-json).')
+    exit 2
 }
 
-$filePath = $payload.tool_input.file_path
-if (-not $filePath) { exit 0 }
+if ($null -eq $payload -or $payload -isnot [PSCustomObject]) {
+    [Console]::Error.WriteLine('Blocked: malformed release-managed hook input (invalid-payload).')
+    exit 2
+}
+
+$toolInputProperty = $payload.PSObject.Properties['tool_input']
+if ($null -eq $toolInputProperty -or $toolInputProperty.Value -isnot [PSCustomObject]) {
+    [Console]::Error.WriteLine('Blocked: malformed release-managed hook input (missing-tool-input).')
+    exit 2
+}
+
+$filePathProperty = $toolInputProperty.Value.PSObject.Properties['file_path']
+if ($null -eq $filePathProperty -or
+    $filePathProperty.Value -isnot [string] -or
+    [string]::IsNullOrWhiteSpace($filePathProperty.Value)) {
+    [Console]::Error.WriteLine('Blocked: malformed release-managed hook input (invalid-file-path).')
+    exit 2
+}
+$filePath = $filePathProperty.Value
 
 $repoRoot = $env:CLAUDE_PROJECT_DIR
 if (-not $repoRoot) { $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }

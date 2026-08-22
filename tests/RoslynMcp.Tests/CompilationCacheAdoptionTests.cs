@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -36,6 +37,21 @@ namespace RoslynMcp.Tests;
 /// bypassed the cache, <see cref="RecordingCompilationCache.GetCompilationCallCount"/> would stay
 /// at zero. The second assertion confirms the cache hands back the reference-equal warm
 /// compilation across successive read calls at an unchanged workspace version.
+/// </para>
+/// <para>
+/// Raw-call inventory re-established 2026-08-22: 17 production
+/// <c>project.GetCompilationAsync</c> sites remain. Live-solution candidates are
+/// <c>CodeActionService</c> (1), <c>BatchTestScaffolder</c> (3),
+/// <c>CompileCheckService</c> (1), <c>NamespaceRelocationService</c> (1),
+/// <c>ParameterObjectService</c> (2), <c>RefactoringService</c> (2),
+/// <c>SingleTestScaffolder</c> (3), <c>TypeScaffolder</c> (1), and
+/// <c>WorkspaceWarmService</c> (1). The <c>SymbolResolver</c> fallback (1) is intentionally
+/// conditional: live callers with an opted-in cache take the cache branch; forked, stale, or
+/// unwired callers remain raw. Confirmed forked-solution exclusions are
+/// <c>InterfaceExtractionService.ReplaceConcreteUsagesAsync</c> (1) and
+/// <c>TypeMoveService.RemoveUnusedUsingsAsync</c> (1). The older inventory's claimed forked
+/// <c>RefactoringService</c> exclusion no longer resolves at current HEAD; both current raw sites
+/// operate on the live workspace solution and are future adoption candidates.
 /// </para>
 /// </summary>
 [TestClass]
@@ -68,7 +84,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         using var canceled = new CancellationTokenSource();
         await canceled.CancelAsync();
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => cache.GetCompilationAsync(workspace.WorkspaceId, project, canceled.Token),
             "A caller passing an already-canceled token must observe its own cancellation.");
 
@@ -101,7 +117,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         using var canceled = new CancellationTokenSource();
         await canceled.CancelAsync();
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, canceled.Token),
             "A caller passing an already-canceled token must observe its own cancellation.");
 
@@ -111,7 +127,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
 
     /// <summary>
     /// Regression cover for <c>compilation-cache-analyzers-entry-guard</c>: mirrors the entry guard
-    /// <see cref="GetCompilationAsync"/> already has at <c>CompilationCache.cs:85</c>. Before the
+    /// <see cref="CompilationCache.GetCompilationAsync"/> already has before installing a cache entry. Before the
     /// fix, <see cref="CompilationCache.GetCompilationWithAnalyzersAsync"/>'s cache-miss branch
     /// unconditionally called <c>BuildCompilationWithAnalyzersAsync</c> and installed an
     /// <c>_analyzerBound</c> entry before checking the caller's token — an already-canceled caller
@@ -130,7 +146,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         using var canceled = new CancellationTokenSource();
         await canceled.CancelAsync();
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => cache.GetCompilationWithAnalyzersAsync(workspace.WorkspaceId, project, canceled.Token),
             "An already-canceled caller must observe its own cancellation before any analyzer-bound " +
             "build starts, mirroring GetCompilationAsync's entry guard.");
@@ -182,7 +198,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
             "added to GetCompilationAsync ahead of ObserveWithCallerToken would cause this — the test " +
             "must be reworked rather than relaxed.");
 
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             () => pending,
             "A caller canceling mid-fetch must observe its own cancellation.");
 
@@ -190,6 +206,42 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(compilation,
             "Caller B reads the same (workspaceId, project) key at the unchanged workspace version, so " +
             "caller A's mid-flight cancellation must not have canceled the shared compilation pass.");
+    }
+
+    [TestMethod]
+    public async Task GetCompilationWithAnalyzersAsync_CallerCanceledMidFetch_DoesNotAffectOtherCaller()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var project = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.First();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<CompilationWithAnalyzers?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var attempts = 0;
+        using var cache = new CompilationCache(
+            WorkspaceManager,
+            compilationFactory: null,
+            analyzerFactory: async (_, _) =>
+            {
+                Interlocked.Increment(ref attempts);
+                started.TrySetResult();
+                return await release.Task.ConfigureAwait(false);
+            });
+        using var midFetch = new CancellationTokenSource();
+
+        var pending = cache.GetCompilationWithAnalyzersAsync(
+            workspace.WorkspaceId, project, midFetch.Token);
+        await started.Task.ConfigureAwait(false);
+        midFetch.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => pending,
+            "The caller that cancels after the shared analyzer build starts must observe cancellation.");
+
+        release.TrySetResult(null);
+        var later = await cache.GetCompilationWithAnalyzersAsync(
+            workspace.WorkspaceId, project, CancellationToken.None);
+        Assert.IsNull(later, "A project without analyzers may legitimately produce a null bound result.");
+        Assert.AreEqual(1, attempts,
+            "Caller cancellation must not cancel or evict the shared analyzer-bound build.");
     }
 
     /// <summary>
@@ -777,6 +829,29 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
             var symbols = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
                 solution, "SampleLib.Dog", CancellationToken.None, cache, workspace.WorkspaceId);
             Assert.IsTrue(symbols.Count > 0, "SampleLib.Dog must resolve — otherwise the cached path is untested.");
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task FindReferences_MetadataNameDisambiguation_RoutesThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            _ = await SymbolTools.FindReferences(
+                requestContext: null,
+                WorkspaceManager,
+                WorkspaceExecutionGate,
+                ReferenceService,
+                workspaceId: workspace.WorkspaceId,
+                metadataName: "SampleLib.Dog",
+                limit: 10,
+                ct: CancellationToken.None,
+                compilationCache: cache);
         });
 
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);

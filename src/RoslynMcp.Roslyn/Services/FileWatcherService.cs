@@ -197,9 +197,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             catch (Exception exception)
             {
                 logger.LogWarning(
-                    exception,
-                    "Workspace-root-missing subscriber failed for workspace {WorkspaceId}",
-                    workspaceId);
+                    "Workspace-root-missing subscriber failed for workspace {WorkspaceId}; exceptionType={ExceptionType}",
+                    workspaceId,
+                    exception.GetType().FullName);
             }
         }
     }
@@ -221,12 +221,16 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     private static bool ShouldIgnorePath(string fullPath, string rootDirectory)
     {
-        return fullPath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-               fullPath.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-               fullPath.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-               (!ContainsPathSegment(rootDirectory, ".roslynmcp") &&
-                fullPath.Contains($"{Path.DirectorySeparatorChar}.roslynmcp{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) ||
-               fullPath.Contains($"{Path.DirectorySeparatorChar}.worktrees{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        // Exclusions are relative to the watched workspace root. Inspecting the absolute path
+        // makes a workspace rooted at <repo>/.worktrees/<id> ignore every event because the
+        // root's own ancestry contains ".worktrees". The relative path still excludes nested
+        // worktrees from a primary checkout without suppressing the worktree checkout itself.
+        var relativePath = Path.GetRelativePath(rootDirectory, fullPath);
+        return ContainsPathSegment(relativePath, "obj") ||
+               ContainsPathSegment(relativePath, "bin") ||
+               ContainsPathSegment(relativePath, ".git") ||
+               ContainsPathSegment(relativePath, ".roslynmcp") ||
+               ContainsPathSegment(relativePath, ".worktrees");
     }
 
     private static bool ContainsPathSegment(string path, string segment)
