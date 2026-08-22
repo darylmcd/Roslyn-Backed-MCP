@@ -41,6 +41,9 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
+    [ClassCleanup]
+    public static void ClassCleanup() => DisposeServices();
+
     [TestMethod]
     public async Task UnexpectedToolException_SerializesAsRedactedIsErrorResult()
     {
