@@ -1422,6 +1422,84 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    [TestMethod]
+    public async Task UserDefinedDllImportAttribute_DoesNotTriggerPInvokeRefusal()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace Other
+            {
+                [System.AttributeUsage(System.AttributeTargets.Method)]
+                public sealed class DllImportAttribute : System.Attribute { }
+            }
+
+            namespace SampleLib
+            {
+                public static class POCustomAttributeFixture
+                {
+                    [Other.DllImport]
+                    public static int Sum(int a, int b) => a + b;
+                }
+            }
+            """,
+            "POCustomAttributeFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 12, column: 30),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken,
+                "A same-simple-name user attribute must not be classified as Runtime.InteropServices PInvoke metadata.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task NestedNamespace_DtoInOuterNamespace_UsesUnqualifiedTypeAtDeclarationAndCaller()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib.Inner;
+
+            public class PONestedNamespaceFixture
+            {
+                public int Sum(int a, int b) => a + b;
+                public int Caller() => Sum(1, 2);
+            }
+            """,
+            "PONestedNamespaceFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16),
+                new ParameterObjectPreviewRequest(
+                    ["a", "b"],
+                    "SumArgs",
+                    DtoNamespace: "SampleLib"),
+                CancellationToken.None);
+
+            var fixtureDiff = preview.Changes.Single(change =>
+                change.FilePath.EndsWith("PONestedNamespaceFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(fixtureDiff, "Sum(SumArgs sumArgs)");
+            StringAssert.Contains(fixtureDiff, "new SumArgs(1, 2)");
+            Assert.IsFalse(fixtureDiff.Contains("global::SampleLib.SumArgs", StringComparison.Ordinal),
+                "C# namespace lookup searches outward from SampleLib.Inner, so qualification is unnecessary.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     /// <summary>
     /// Guard against over-refusal: a plain (non-virtual, non-interface, non-partial)
     /// extension method's non-receiver parameters must remain eligible for grouping.

@@ -158,8 +158,7 @@ public sealed class StartupDiagnosticsTests
         var registeredPromptNames = options.PromptCollection!.ToArray()
             .Select(static prompt => prompt.ProtocolPrompt.Name)
             .ToArray();
-        var expectedToolNames = ServerSurfaceCatalog.Tools
-            .Where(static tool => tool.SupportTier == "stable")
+        var expectedToolNames = ServerSurfaceCatalog.SelectTools(selection)
             .Select(static tool => tool.Name)
             .ToArray();
         var expectedResourceNames = ServerSurfaceCatalog.Resources
@@ -210,6 +209,41 @@ public sealed class StartupDiagnosticsTests
         StringAssert.Contains(unknown.Message, "stable,experimental");
         Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse(" "));
         Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("experimental"));
+    }
+
+    [TestMethod]
+    public void SurfaceSelection_KeepsPreviewApplyClosureWithoutChangingAllTierProfile()
+    {
+        var allSelected = ServerSurfaceCatalog.SelectTools(ToolTierSelection.All);
+        CollectionAssert.AreEqual(
+            ServerSurfaceCatalog.Tools.Select(static entry => entry.Name).ToArray(),
+            allSelected.Select(static entry => entry.Name).ToArray(),
+            "The default all-tier surface must retain the catalog byte order and membership.");
+
+        var stableNames = ServerSurfaceCatalog.SelectTools(ToolTierSelection.Parse("stable"))
+            .Select(static entry => entry.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.IsTrue(stableNames.Contains("rename_preview"));
+        Assert.IsTrue(stableNames.Contains("rename_apply"));
+        Assert.IsFalse(stableNames.Contains("extract_type_preview"));
+        Assert.IsFalse(stableNames.Contains("extract_type_apply"));
+        Assert.IsFalse(stableNames.Contains("create_file_preview"));
+        Assert.IsFalse(stableNames.Contains("create_file_apply"));
+
+        foreach (var stablePreview in ServerSurfaceCatalog.Tools.Where(static entry =>
+                     entry.SupportTier == "stable"
+                     && entry.ReadOnly
+                     && entry.Name.Contains("preview", StringComparison.Ordinal)))
+        {
+            Assert.IsTrue(
+                ServerSurfaceCatalog.TryGetCompatibleApplyRoute(stablePreview.Name, out var applyRoute),
+                $"Stable token-issuing preview '{stablePreview.Name}' must declare its compatible apply route.");
+            Assert.AreEqual(
+                stableNames.Contains(applyRoute),
+                stableNames.Contains(stablePreview.Name),
+                $"Preview '{stablePreview.Name}' and apply route '{applyRoute}' must be selected together.");
+        }
     }
 
     [TestMethod]

@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -329,6 +330,21 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(wsId);
         }
+    }
+
+    [TestMethod]
+    public void SameFilePath_UsesPlatformIdentityAfterCanonicalization()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "RoslynMcp", "path-identity", "segment");
+        var canonical = Path.Combine(root, "Consumer.cs");
+        var equivalent = Path.Combine(root, ".", "Consumer.cs");
+        var caseVariant = Path.Combine(root, "consumer.cs");
+
+        Assert.IsTrue(global::RoslynMcp.Roslyn.Services.TypeExtractionService.IsSameFilePath(canonical, equivalent));
+        Assert.AreEqual(
+            OperatingSystem.IsWindows(),
+            global::RoslynMcp.Roslyn.Services.TypeExtractionService.IsSameFilePath(canonical, caseVariant),
+            "Windows path identity is case-insensitive; case-sensitive hosts must keep distinct files external.");
     }
 
     [TestMethod]
@@ -1049,8 +1065,11 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
             public class UnicodeTypeNameFixture
             {
-                public int InternalUser() => 42;
+                public int InternalUser() => Compute(21);
+                public System.Func<int, int> MethodGroupUser() => Compute;
+                public static int StaticUser() => StaticCompute(21);
                 private int Compute(int value) => value * 2;
+                private static int StaticCompute(int value) => value * 3;
             }
             """);
 
@@ -1060,11 +1079,15 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
                 fixture.WorkspaceId,
                 fixture.FilePath,
                 "UnicodeTypeNameFixture",
-                ["Compute"],
+                ["Compute", "StaticCompute"],
                 "CaféHelper",
                 null,
                 CancellationToken.None);
 
+            var updatedSource = await GetModifiedDocumentTextAsync(preview.PreviewToken, fixture.FilePath);
+            StringAssert.Contains(updatedSource, "_caféHelper.Compute(21)");
+            StringAssert.Contains(updatedSource, "MethodGroupUser() => _caféHelper.Compute");
+            StringAssert.Contains(updatedSource, "CaféHelper.StaticCompute(21)");
             await AssertModifiedSolutionCompilesAsync(preview.PreviewToken);
         }
         finally
@@ -1242,8 +1265,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
         var document = retrieved.Value.ModifiedSolution.Projects
             .SelectMany(p => p.Documents)
-            .FirstOrDefault(d => string.Equals(
-                Path.GetFullPath(d.FilePath ?? string.Empty), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(d => FileSystemPath.Comparer.Equals(
+                Path.GetFullPath(d.FilePath ?? string.Empty), Path.GetFullPath(filePath)));
         Assert.IsNotNull(document, $"modified solution must contain the source document '{filePath}'");
         return (await document.GetTextAsync()).ToString();
     }

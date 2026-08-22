@@ -1,10 +1,10 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -53,18 +53,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 "declared in other parts. Consolidate the constructors into one declaration first, then retry.");
         }
 
-        var (membersToExtract, membersToKeep, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
+        var (membersToExtract, _, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
-        var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, analysisNodes, ct);
+        var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
         // members staying on the source type, leading to broken builds when applied. Halting here
         // forces the caller to either include the missing members in the extraction or to redesign
         // the split before attempting it.
-        if (warnings.Count > 0)
+        if (blockingDependencies.Count > 0)
         {
-            var summary = string.Join("; ", warnings.Select(w => w.Reason));
+            var summary = string.Join("; ", blockingDependencies.Select(dependency => dependency.Reason));
             // extract-type-preview-refusal-missing-blocking-deps: the prose message is unchanged;
             // the structured per-member blocking data that produced it now rides along on the
             // exception so callers can retry with a corrected memberNames set programmatically.
@@ -73,7 +73,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"that would remain on the source type, so the generated code would not compile. " +
                 $"Either include the referenced members in the extraction or perform a manual redesign first. " +
                 $"Details: {summary}",
-                warnings);
+                blockingDependencies);
         }
 
         // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
@@ -96,6 +96,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"with the new type directly via DI / a public factory. Details: {summary}");
         }
 
+        var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
+        var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
+        var rewrittenTypeDecl = RewriteSameFileConsumers(
+            typeDecl,
+            semanticModel,
+            analysisNodes,
+            newTypeName,
+            fieldName,
+            sourceTypeName,
+            ct);
+        var (_, rewrittenMembersToKeep, _) = PartitionMembers(rewrittenTypeDecl, memberNames, sourceTypeName);
+
         // Determine target file path
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var resolvedTargetPath = newFilePath ?? Path.Combine(sourceDir, $"{newTypeName}.cs");
@@ -105,10 +117,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var newFileRoot = BuildNewFileRoot(sourceRoot, typeDecl, membersToExtract, newTypeName);
 
         // Remove extracted members from source type and inject field + ctor parameter
-        var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
-        var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
         var updatedTypeDecl = InjectFieldAndCtorParameter(
-            typeDecl.WithMembers(SyntaxFactory.List(membersToKeep)),
+            rewrittenTypeDecl.WithMembers(SyntaxFactory.List(rewrittenMembersToKeep)),
             typeDecl, semanticModel, newTypeName, fieldName, sourceTypeName, ct);
 
         // Replace in source root (normalize so field/modifier tokens get proper spacing)
@@ -360,6 +370,181 @@ public sealed class TypeExtractionService : ITypeExtractionService
     {
         return field.WithDeclaration(
             field.Declaration.WithVariables(SyntaxFactory.SeparatedList(declarators)));
+    }
+
+    /// <summary>
+    /// Rebinds references from retained source members to the extracted member's new owner.
+    /// References are matched by symbol identity, so overloads, static access, and method groups
+    /// cannot be redirected by a same-spelled unrelated symbol. Extracted declarations themselves
+    /// are skipped and retain their original intra-helper references.
+    /// </summary>
+    private static TypeDeclarationSyntax RewriteSameFileConsumers(
+        TypeDeclarationSyntax typeDecl,
+        SemanticModel semanticModel,
+        IReadOnlyList<SyntaxNode> analysisNodes,
+        string newTypeName,
+        string fieldName,
+        string sourceTypeName,
+        CancellationToken ct)
+    {
+        var extractedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        foreach (var node in analysisNodes)
+        {
+            if (!IsDeclarationNode(node)) continue;
+
+            var symbol = semanticModel.GetDeclaredSymbol(node, ct);
+            if (symbol is not null)
+            {
+                extractedSymbols.Add(symbol.OriginalDefinition);
+            }
+        }
+
+        var rewriter = new SameFileConsumerRewriter(
+            semanticModel,
+            extractedSymbols,
+            newTypeName,
+            fieldName,
+            sourceTypeName,
+            ct);
+        return (TypeDeclarationSyntax)rewriter.Visit(typeDecl)!;
+    }
+
+    private sealed class SameFileConsumerRewriter : CSharpSyntaxRewriter
+    {
+        private readonly SemanticModel _semanticModel;
+        private readonly IReadOnlySet<ISymbol> _extractedSymbols;
+        private readonly string _newTypeName;
+        private readonly string _fieldName;
+        private readonly string _sourceTypeName;
+        private readonly CancellationToken _ct;
+
+        public SameFileConsumerRewriter(
+            SemanticModel semanticModel,
+            IReadOnlySet<ISymbol> extractedSymbols,
+            string newTypeName,
+            string fieldName,
+            string sourceTypeName,
+            CancellationToken ct)
+        {
+            _semanticModel = semanticModel;
+            _extractedSymbols = extractedSymbols;
+            _newTypeName = newTypeName;
+            _fieldName = fieldName;
+            _sourceTypeName = sourceTypeName;
+            _ct = ct;
+        }
+
+        public override SyntaxNode? Visit(SyntaxNode? node)
+        {
+            _ct.ThrowIfCancellationRequested();
+            if (node is MemberDeclarationSyntax or VariableDeclaratorSyntax)
+            {
+                var declared = _semanticModel.GetDeclaredSymbol(node, _ct);
+                if (declared is not null && IsExtracted(declared))
+                {
+                    return node;
+                }
+            }
+
+            return base.Visit(node);
+        }
+
+        public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+        {
+            if (!TryGetExtractedSymbol(node.Name, out var symbol))
+            {
+                return base.VisitMemberAccessExpression(node);
+            }
+
+            EnsureInstanceReferenceCanBeRewritten(node, symbol);
+            var memberName = (SimpleNameSyntax)base.Visit(node.Name)!;
+            ExpressionSyntax owner;
+            if (symbol.IsStatic)
+            {
+                owner = SyntaxFactory.IdentifierName(_newTypeName);
+            }
+            else
+            {
+                var receiver = (ExpressionSyntax)base.Visit(node.Expression)!;
+                owner = SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    receiver.WithoutTrivia(),
+                    SyntaxFactory.IdentifierName(_fieldName));
+            }
+
+            return SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    owner,
+                    memberName.WithoutTrivia())
+                .WithTriviaFrom(node);
+        }
+
+        public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
+            => RewriteUnqualifiedName(node) ?? base.VisitIdentifierName(node);
+
+        public override SyntaxNode? VisitGenericName(GenericNameSyntax node)
+            => RewriteUnqualifiedName(node) ?? base.VisitGenericName(node);
+
+        private ExpressionSyntax? RewriteUnqualifiedName(SimpleNameSyntax node)
+        {
+            if (node.Parent is MemberAccessExpressionSyntax { Name: var name } && name == node)
+            {
+                return null;
+            }
+
+            if (!TryGetExtractedSymbol(node, out var symbol))
+            {
+                return null;
+            }
+
+            if (node.Parent is MemberBindingExpressionSyntax)
+            {
+                throw CannotRewrite(symbol, "conditional-access receiver");
+            }
+
+            EnsureInstanceReferenceCanBeRewritten(node, symbol);
+            var owner = symbol.IsStatic ? _newTypeName : _fieldName;
+            return SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.IdentifierName(owner),
+                    node.WithoutTrivia())
+                .WithTriviaFrom(node);
+        }
+
+        private bool TryGetExtractedSymbol(SimpleNameSyntax node, out ISymbol symbol)
+        {
+            var resolved = _semanticModel.GetSymbolInfo(node, _ct).Symbol;
+            if (resolved is not null && IsExtracted(resolved))
+            {
+                symbol = resolved;
+                return true;
+            }
+
+            symbol = null!;
+            return false;
+        }
+
+        private bool IsExtracted(ISymbol symbol)
+            => _extractedSymbols.Contains(symbol.OriginalDefinition);
+
+        private void EnsureInstanceReferenceCanBeRewritten(SyntaxNode node, ISymbol symbol)
+        {
+            if (symbol.IsStatic)
+            {
+                return;
+            }
+
+            if (node.AncestorsAndSelf().OfType<ConstructorDeclarationSyntax>().Any())
+            {
+                throw CannotRewrite(symbol, "constructor body before the injected composition field is assigned");
+            }
+        }
+
+        private InvalidOperationException CannotRewrite(ISymbol symbol, string reason)
+            => new(
+                $"Refusing to extract type '{_newTypeName}' from '{_sourceTypeName}': retained same-file code " +
+                $"references extracted member '{symbol.Name}' through a {reason}, which cannot be rebound without " +
+                "changing behavior. Refactor that reference first, then retry the extraction.");
     }
 
     private static CompilationUnitSyntax BuildNewFileRoot(
@@ -639,9 +824,6 @@ public sealed class TypeExtractionService : ITypeExtractionService
     }
 
     /// <summary>
-    /// Warns when extracted members reference symbols that remain on the original type (not moved with the extraction).
-    /// </summary>
-    /// <summary>
     /// dr-9-1-does-not-update-external-consumer-call-sites: For each member to be extracted,
     /// run a solution-wide reference search and collect any reference whose source-file path
     /// differs from the source document. Each external caller becomes a warning so the
@@ -657,7 +839,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
     {
         var warnings = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var sourceFilePath = sourceDocument.FilePath;
+        var sourceFilePath = sourceDocument.FilePath
+            ?? throw new InvalidOperationException("Source document must have a filesystem path.");
 
         foreach (var node in analysisNodes)
         {
@@ -681,7 +864,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     if (!loc.Location.IsInSource) continue;
                     var refDoc = solution.GetDocument(loc.Document.Id);
                     if (refDoc?.FilePath is null) continue;
-                    if (string.Equals(refDoc.FilePath, sourceFilePath, StringComparison.OrdinalIgnoreCase))
+                    if (IsSameFilePath(refDoc.FilePath, sourceFilePath))
                         continue;
 
                     var msg =
@@ -696,6 +879,16 @@ public sealed class TypeExtractionService : ITypeExtractionService
         return warnings;
     }
 
+    internal static bool IsSameFilePath(string firstPath, string secondPath)
+    {
+        ArgumentNullException.ThrowIfNull(firstPath);
+        ArgumentNullException.ThrowIfNull(secondPath);
+        return string.Equals(
+            Path.GetFullPath(firstPath),
+            Path.GetFullPath(secondPath),
+            FileSystemPath.Comparison);
+    }
+
     /// <summary>
     /// Collects one entry per (extracted member, referenced symbol that stays behind) pair.
     /// extract-type-preview-refusal-missing-blocking-deps: returns structured
@@ -704,7 +897,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// (unchanged from the pre-structured behavior), so a symbol referenced from several
     /// extracted members is reported once, attributed to the first member that referenced it.
     /// </summary>
-    private static List<BlockingDependencyDto> CollectExtractTypeDanglingReferenceWarnings(
+    private static List<BlockingDependencyDto> CollectExtractTypeBlockingDependencies(
         SemanticModel semanticModel,
         INamedTypeSymbol typeSymbol,
         IReadOnlyList<SyntaxNode> analysisNodes,
@@ -721,13 +914,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var warnings = new List<BlockingDependencyDto>();
+        var blockingDependencies = new List<BlockingDependencyDto>();
 
         foreach (var member in analysisNodes)
         {
-            // GetAnalysisNodeName returns null for shapes it does not name (operators, indexers,
-            // destructors); fall back to the syntax kind so the structured entry always
-            // carries a non-null attribution.
+            // AnalysisNodes deliberately includes non-declaration context nodes for split fields
+            // (attribute lists and the declared type). Those nodes have no member name, so their
+            // syntax kind is the load-bearing attribution fallback for a dependency found there.
             var memberName = GetAnalysisNodeName(member) ?? member.Kind().ToString();
 
             foreach (var node in member.DescendantNodesAndSelf())
@@ -753,11 +946,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
                     $"Extracted member may reference '{sym.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}' " +
                     $"which remains on the original type '{typeSymbol.Name}' and is not available in the new type.";
                 if (seen.Add(msg))
-                    warnings.Add(new BlockingDependencyDto(memberName, msg));
+                    blockingDependencies.Add(new BlockingDependencyDto(memberName, msg));
             }
         }
 
-        return warnings;
+        return blockingDependencies;
     }
 
     private static bool IsDeclaredInOrUnderType(ISymbol sym, INamedTypeSymbol typeSymbol)

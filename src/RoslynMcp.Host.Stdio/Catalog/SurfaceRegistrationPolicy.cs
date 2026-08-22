@@ -36,6 +36,10 @@ internal static class SurfaceRegistrationPolicy
         var resources = options.ResourceCollection
             ?? throw new InvalidOperationException("The MCP SDK did not initialize its resource collection.");
 
+        var selectedToolNames = ServerSurfaceCatalog.SelectTools(selection)
+            .Select(static entry => entry.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
         using var deferredToolNotifications = tools.DeferChangedEvents();
         foreach (var tool in tools.ToArray())
         {
@@ -47,7 +51,7 @@ internal static class SurfaceRegistrationPolicy
                 tool.ProtocolTool.OutputSchema = JsonSerializer.SerializeToElement(schema);
             }
 
-            if (!selection.Includes(entry.SupportTier))
+            if (!selectedToolNames.Contains(entry.Name))
             {
                 tools.Remove(tool);
             }

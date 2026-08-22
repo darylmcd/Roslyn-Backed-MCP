@@ -39,6 +39,35 @@ public static partial class ServerSurfaceCatalog
     private static readonly Lazy<IReadOnlyDictionary<string, SurfaceEntry>> s_toolsByName = new(
         static () => Tools.ToDictionary(entry => entry.Name, StringComparer.Ordinal));
 
+    private static readonly IReadOnlyDictionary<string, string> PreviewApplyRoutes =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["rename_preview"] = "rename_apply",
+            ["organize_usings_preview"] = "organize_usings_apply",
+            ["format_document_preview"] = "format_document_apply",
+            ["code_fix_preview"] = "code_fix_apply",
+            ["preview_code_action"] = "apply_code_action",
+            ["move_type_to_file_preview"] = "move_type_to_file_apply",
+            ["bulk_replace_type_preview"] = "bulk_replace_type_apply",
+            ["extract_type_preview"] = "extract_type_apply",
+            ["extract_method_preview"] = "extract_method_apply",
+            ["format_range_preview"] = "format_range_apply",
+            ["create_file_preview"] = "create_file_apply",
+            ["delete_file_preview"] = "delete_file_apply",
+            ["move_file_preview"] = "move_file_apply",
+            ["remove_dead_code_preview"] = "remove_dead_code_apply",
+            ["add_package_reference_preview"] = "apply_project_mutation",
+            ["remove_package_reference_preview"] = "apply_project_mutation",
+            ["add_project_reference_preview"] = "apply_project_mutation",
+            ["remove_project_reference_preview"] = "apply_project_mutation",
+            ["set_project_property_preview"] = "apply_project_mutation",
+            ["add_target_framework_preview"] = "apply_project_mutation",
+            ["remove_target_framework_preview"] = "apply_project_mutation",
+            ["set_conditional_property_preview"] = "apply_project_mutation",
+            ["remove_central_package_version_preview"] = "apply_project_mutation",
+            ["scaffold_test_preview"] = "scaffold_test_apply",
+        };
+
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
 
     /// <summary>
@@ -143,7 +172,7 @@ public static partial class ServerSurfaceCatalog
     {
         ArgumentNullException.ThrowIfNull(selection);
 
-        var selectedTools = SelectEntries(Tools, selection);
+        var selectedTools = SelectTools(selection);
         var selectedResources = SelectEntries(Resources, selection);
         var selectedPrompts = SelectEntries(Prompts, selection);
         var selectedToolNames = selectedTools
@@ -188,6 +217,32 @@ public static partial class ServerSurfaceCatalog
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(selection);
         return entries.Where(entry => selection.Includes(entry.SupportTier)).ToArray();
+    }
+
+    /// <summary>
+    /// Selects callable tools for a support-tier profile and keeps preview issuance closed over
+    /// its compatible apply routes. The all-tier profile retains the catalog's original ordering
+    /// and content; narrower profiles omit a preview when its redemption route is filtered out.
+    /// </summary>
+    internal static IReadOnlyList<SurfaceEntry> SelectTools(ToolTierSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+
+        var tierSelected = SelectEntries(Tools, selection);
+        var selectedNames = tierSelected
+            .Select(static entry => entry.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return tierSelected
+            .Where(entry => !TryGetCompatibleApplyRoute(entry.Name, out var applyRoute)
+                || selectedNames.Contains(applyRoute))
+            .ToArray();
+    }
+
+    internal static bool TryGetCompatibleApplyRoute(string previewTool, [NotNullWhen(true)] out string? applyRoute)
+    {
+        ArgumentNullException.ThrowIfNull(previewTool);
+        return PreviewApplyRoutes.TryGetValue(previewTool, out applyRoute);
     }
 
     /// <summary>
