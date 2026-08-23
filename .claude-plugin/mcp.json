@@ -3,7 +3,7 @@
     "type": "stdio",
     "command": "dnx",
     "args": [
-      "Darylmcd.RoslynMcp@3.0.2",
+      "Darylmcd.RoslynMcp@4.0.0",
       "--source",
       "https://api.nuget.org/v3/index.json"
     ],
