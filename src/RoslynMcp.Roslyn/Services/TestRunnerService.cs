@@ -56,6 +56,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
             projectName,
             !string.IsNullOrWhiteSpace(filter));
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
+        var testProjects = status.Projects.Where(p => p.IsTestProject).ToList();
 
         ProjectStatusDto? resolvedProject = null;
         if (projectName is not null)
@@ -65,33 +66,25 @@ public sealed partial class TestRunnerService : ITestRunnerService
             {
                 throw new InvalidOperationException(
                     $"Project '{projectName}' is not a test project. " +
-                    $"Available test projects: {string.Join(", ", status.Projects.Where(p => p.IsTestProject).Select(p => p.Name))}");
+                    $"Available test projects: {string.Join(", ", testProjects.Select(p => p.Name))}");
             }
         }
-        else if (status.Projects.Count == 1 && IsDirectlyLoadedProjectFile(status.LoadedPath))
-        {
-            // tunit-projectname-null-single-project-routing: an omitted projectName is the
-            // normal single-project call shape (validate_workspace, workspace_fork_apply, etc.),
-            // not proof of a multi-project/ambiguous target. A workspace loaded directly from one
-            // .csproj has exactly one candidate project, so route it through the same per-project
-            // MTP plan an explicitly named project gets — otherwise this branch silently fell back
-            // to VSTest args and skipped an MTP-only (TUnit) project's tests.
-            resolvedProject = status.Projects[0];
-            if (!resolvedProject.IsTestProject)
-            {
-                throw new InvalidOperationException(
-                    $"Project '{resolvedProject.Name}' is not a test project. " +
-                    "Ensure the workspace contains a project with a test SDK reference (e.g., MSTest, xUnit, NUnit, TUnit).");
-            }
-        }
-        else if (!status.Projects.Any(p => p.IsTestProject))
+        else if (testProjects.Count == 0)
         {
             throw new InvalidOperationException(
                 $"No test projects found in workspace '{workspaceId}'. " +
                 "Ensure the workspace contains projects with a test SDK reference (e.g., MSTest, xUnit, NUnit).");
         }
-        else if (status.Projects.Count > 1 &&
-                 status.Projects.Where(p => p.IsTestProject).Any(ProjectRequiresMtpNativeExecution))
+        else if (testProjects.Count == 1)
+        {
+            // tunit-projectname-null-single-test-project-routing: an omitted projectName is
+            // unambiguous whenever the workspace contains exactly one test project, regardless of
+            // whether the workspace was loaded from that .csproj, a one-project solution, or a
+            // solution that also contains non-test application projects. Route the sole test
+            // project through the same per-project MTP plan as an explicitly named target.
+            resolvedProject = testProjects[0];
+        }
+        else if (testProjects.Any(ProjectRequiresMtpNativeExecution))
         {
             // tunit-solution-level-mixed-mtp-refusal: Microsoft documents mixing VSTest and MTP
             // projects in one dotnet test invocation as unsupported, so a genuinely multi-project
@@ -101,7 +94,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // caller. Refuse instead of guessing: the caller can pass projectName to target the
             // MTP-only project individually, or run each project's tests separately.
             throw new PublicInvalidOperationException(
-                $"Workspace '{workspaceId}' contains {status.Projects.Count} projects, and at least " +
+                $"Workspace '{workspaceId}' contains {testProjects.Count} test projects, and at least " +
                 "one only supports Microsoft.Testing.Platform (MTP) — TUnit never registers with the " +
                 "classic VSTest adapter, and Microsoft does not support mixing VSTest and MTP projects " +
                 "in one 'dotnet test' invocation. Running the whole workspace would silently skip that " +
@@ -214,10 +207,6 @@ public sealed partial class TestRunnerService : ITestRunnerService
     private bool ProjectRequiresMtpNativeExecution(ProjectStatusDto project) =>
         ProjectMetadataParser.RequiresMtpNativeExecution(
             ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger));
-
-    private static bool IsDirectlyLoadedProjectFile(string? loadedPath) =>
-        !string.IsNullOrWhiteSpace(loadedPath) &&
-        loadedPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
 
     /// <exception cref="InvalidOperationException">
     /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:

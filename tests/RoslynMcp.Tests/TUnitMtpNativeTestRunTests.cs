@@ -164,6 +164,18 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     }
 
     [TestMethod]
+    public async Task RunTestsAsync_ProjectNameOmitted_OneProjectSolution_RoutesSoleTUnitProjectThroughMtpPlan()
+    {
+        await AssertSoleTUnitProjectRoutesThroughMtpAsync(includeApplicationProject: false);
+    }
+
+    [TestMethod]
+    public async Task RunTestsAsync_ProjectNameOmitted_ApplicationAndOneTUnitProject_RoutesSoleTestProjectThroughMtpPlan()
+    {
+        await AssertSoleTUnitProjectRoutesThroughMtpAsync(includeApplicationProject: true);
+    }
+
+    [TestMethod]
     public async Task RunTestsAsync_OrFilter_RestoresBeforeCheckingResolvedVersion()
     {
         // tunit-treenode-filter-version-check-restore-snapshot: an OR filter's safety depends
@@ -371,6 +383,83 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             """);
 
         var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "Mixed.slnx"), CancellationToken.None);
+        return loaded.WorkspaceId;
+    }
+
+    private static async Task AssertSoleTUnitProjectRoutesThroughMtpAsync(bool includeApplicationProject)
+    {
+        var workspaceId = await LoadSoleTUnitProjectSolutionFixtureAsync(includeApplicationProject);
+        try
+        {
+            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
+            var service = new TestRunnerService(
+                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+
+            await service.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None);
+
+            Assert.AreEqual(1, recordingExecutor.ExecutedArguments.Count);
+            var argv = recordingExecutor.ExecutedArguments[0];
+            var projectArgumentIndex = argv.ToList().IndexOf("--project");
+            Assert.AreNotEqual(-1, projectArgumentIndex, "The sole TUnit project must use MTP's --project argument.");
+            StringAssert.EndsWith(argv[projectArgumentIndex + 1], "TUnitProject.csproj");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    private static async Task<string> LoadSoleTUnitProjectSolutionFixtureAsync(bool includeApplicationProject)
+    {
+        var root = Path.Combine(
+            TestTempRoot.Current,
+            nameof(TUnitMtpNativeTestRunTests),
+            "sole-tunit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(
+            Path.Combine(root, "global.json"),
+            """{ "test": { "runner": "Microsoft.Testing.Platform" } }""");
+
+        var tunitDir = Path.Combine(root, "TUnitProject");
+        Directory.CreateDirectory(tunitDir);
+        File.WriteAllText(
+            Path.Combine(tunitDir, "TUnitProject.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="TUnit" Version="1.65.38" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// MTP generates its own entry point.\n");
+
+        var applicationEntry = string.Empty;
+        if (includeApplicationProject)
+        {
+            var applicationDir = Path.Combine(root, "Application");
+            Directory.CreateDirectory(applicationDir);
+            File.WriteAllText(
+                Path.Combine(applicationDir, "Application.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(applicationDir, "Placeholder.cs"), "namespace Application;\n");
+            applicationEntry = "  <Project Path=\"Application/Application.csproj\" />\n";
+        }
+
+        File.WriteAllText(
+            Path.Combine(root, "SoleTUnit.slnx"),
+            $"<Solution>\n{applicationEntry}  <Project Path=\"TUnitProject/TUnitProject.csproj\" />\n</Solution>\n");
+
+        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "SoleTUnit.slnx"), CancellationToken.None);
         return loaded.WorkspaceId;
     }
 }

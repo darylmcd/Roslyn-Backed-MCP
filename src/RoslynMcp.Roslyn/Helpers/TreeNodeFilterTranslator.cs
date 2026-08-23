@@ -104,22 +104,6 @@ internal static partial class TreeNodeFilterTranslator
         }
 
         var atoms = vsTestFilter.Split('|');
-        var orFilterFixed = resolvedTUnitEngineVersion is not null
-            && resolvedTUnitEngineVersion >= MinimumTUnitEngineVersionWithOrFilterFix;
-        if (atoms.Length > 1 && !orFilterFixed)
-        {
-            throw new PublicInvalidOperationException(
-                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
-                "literal values within a single path segment, and MTP itself matches that correctly, but " +
-                "TUnit's own pre-filter had a bug (fixed in TUnit.Engine 1.46.0 — " +
-                "github.com/thomhurst/TUnit/issues/6026) that silently rejects every test for that exact " +
-                "shape on older versions. " +
-                (resolvedTUnitEngineVersion is null
-                    ? "This project's resolved TUnit.Engine version could not be determined (has it been restored?)."
-                    : $"This project resolves TUnit.Engine {resolvedTUnitEngineVersion}.") +
-                " Call test_run once per test for now, or upgrade TUnit.Engine to 1.46.0 or later.");
-        }
-
         var knownNames = knownFullyQualifiedTestNames is null
             ? null
             : new HashSet<string>(knownFullyQualifiedTestNames, StringComparer.Ordinal);
@@ -168,6 +152,22 @@ internal static partial class TreeNodeFilterTranslator
                 "class-only shape that would be safe here. Run test_run once per namespace/class group instead.");
         }
 
+        var orFilterFixed = resolvedTUnitEngineVersion is not null
+            && resolvedTUnitEngineVersion >= MinimumTUnitEngineVersionWithOrFilterFix;
+        if (atoms.Length > 1 && !orFilterFixed)
+        {
+            throw new PublicInvalidOperationException(
+                $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
+                "literal values within a single path segment, and MTP itself matches that correctly, but " +
+                "TUnit's own pre-filter had a bug (fixed in TUnit.Engine 1.46.0 — " +
+                "github.com/thomhurst/TUnit/issues/6026) that silently rejects every test for that exact " +
+                "shape on older versions. " +
+                (resolvedTUnitEngineVersion is null
+                    ? "This project's resolved TUnit.Engine version could not be determined (has it been restored?)."
+                    : $"This project resolves TUnit.Engine {resolvedTUnitEngineVersion}.") +
+                " Call test_run once per test for now, or upgrade TUnit.Engine to 1.46.0 or later.");
+        }
+
         var only = groups[0];
         var namespaceSegment = only.Namespace ?? "*";
         var methodSegment = only.Methods.Count == 1
@@ -187,7 +187,8 @@ internal static partial class TreeNodeFilterTranslator
                 "operators against the FullyQualifiedName property are translated to MTP's --treenode-filter.");
         }
 
-        // BuildFullyQualifiedTestName (TestDiscoveryService) builds "{namespace}.{class}.{method}",
+        // BuildFullyQualifiedTestName (TestDiscoveryService) builds "{namespace}.{class}.{method}";
+        // nested types stay inside the class segment as "Outer+Inner",
         // joining a possibly multi-part namespace with dots — invert by taking the last two
         // dot-separated parts as class/method and treating everything before them as the namespace.
         var parts = match.Groups[2].Value.Split('.');

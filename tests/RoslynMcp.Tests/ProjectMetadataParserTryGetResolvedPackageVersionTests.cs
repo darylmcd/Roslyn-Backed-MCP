@@ -1,4 +1,5 @@
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -15,32 +16,8 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     private readonly List<string> _createdRoots = [];
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        // tunit-fixture-cleanup-failure-observability: attempt every root's delete even after one
-        // fails, but surface the failure(s) at the end rather than swallowing them — a silently
-        // leaked locked-file delete previously hid the actual defect it exists to catch.
-        List<Exception>? failures = null;
-        foreach (var root in _createdRoots)
-        {
-            try
-            {
-                if (Directory.Exists(root))
-                {
-                    Directory.Delete(root, recursive: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                (failures ??= []).Add(ex);
-            }
-        }
-
-        if (failures is not null)
-        {
-            throw new AggregateException("Failed to delete one or more temp directories created by this test.", failures);
-        }
-    }
+    public async Task Cleanup() =>
+        await CleanupFailureCollector.DeleteDirectoriesAsync(_createdRoots);
 
     private string CreateProjectDirectory()
     {
@@ -136,17 +113,27 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     }
 
     [TestMethod]
-    public void Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
+    public async Task Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
     {
         var root1 = CreateProjectDirectory();
         var root2 = CreateProjectDirectory();
-        var lockedFile = Path.Combine(root1, "locked.txt");
-        File.WriteAllText(lockedFile, "content");
-        using var lockHandle = File.Open(lockedFile, FileMode.Open, FileAccess.Read, FileShare.None);
+        var expectedFailure = new IOException("Injected delete failure.");
 
-        var ex = Assert.ThrowsExactly<AggregateException>(Cleanup);
+        var ex = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
+            await CleanupFailureCollector.DeleteDirectoriesAsync(
+                [root1, root2],
+                root =>
+                {
+                    if (string.Equals(root, root1, StringComparison.Ordinal))
+                    {
+                        throw expectedFailure;
+                    }
+
+                    Directory.Delete(root, recursive: true);
+                }));
 
         Assert.AreEqual(1, ex.InnerExceptions.Count);
+        Assert.AreSame(expectedFailure, ex.InnerExceptions[0]);
         Assert.IsFalse(Directory.Exists(root2), "The second root's delete must still be attempted despite the first root's failure.");
     }
 }

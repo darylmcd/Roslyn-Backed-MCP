@@ -127,6 +127,20 @@ public sealed class TreeNodeFilterTranslatorTests
     }
 
     [TestMethod]
+    public void Translate_TwoAtomsOrdTogether_DifferentClasses_BelowFixVersion_RejectsShapeBeforeVersionAdvice()
+    {
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
+            TreeNodeFilterTranslator.Translate(
+                "FullyQualifiedName~MyNamespace.ClassA.Method1|FullyQualifiedName~MyNamespace.ClassB.Method2",
+                BelowOrFixThreshold));
+
+        StringAssert.Contains(ex.Message, "2 different namespace/class");
+        Assert.IsFalse(
+            ex.Message.Contains("upgrade TUnit.Engine", StringComparison.Ordinal),
+            "A version-independent cross-class refusal must not recommend an ineffective package upgrade.");
+    }
+
+    [TestMethod]
     public void Translate_AndOperator_ThrowsMentioningAnd()
     {
         var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>

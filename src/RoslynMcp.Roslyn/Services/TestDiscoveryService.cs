@@ -1053,8 +1053,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     /// <summary>
     /// test-run-fqdn-drift-vs-test-discover: build the fully-qualified test name using the
     /// method's actual declared namespace (read from the syntax tree) rather than the
-    /// MSBuild project name. Test runners (xunit / MSTest / NUnit) register tests under
-    /// <c>{declared-namespace}.{containing-type}.{method}</c>; using the project name as the
+    /// MSBuild project name. Test runners (xunit / MSTest / NUnit / TUnit) register tests under
+    /// <c>{declared-namespace}.{containing-type}.{method}</c>; nested types use the runtime-style
+    /// <c>Outer+Inner</c> separator. Using the project name as the
     /// prefix produced silent zero-hits when a test class lived in a sub-namespace (e.g.
     /// <c>SampleLib.Tests.Unit.AnimalServiceTests</c> in a project named
     /// <c>SampleLib.Tests</c>) because <c>--filter "FullyQualifiedName~..."</c> never matched.
@@ -1063,11 +1064,14 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     /// </summary>
     internal static string BuildFullyQualifiedTestName(string projectName, MethodDeclarationSyntax method)
     {
-        var containingType = method.Parent switch
-        {
-            ClassDeclarationSyntax cls => cls.Identifier.Text,
-            _ => "Unknown"
-        };
+        var containingTypes = method.Ancestors()
+            .OfType<TypeDeclarationSyntax>()
+            .Reverse()
+            .Select(type => type.Identifier.Text)
+            .ToList();
+        var containingType = containingTypes.Count == 0
+            ? "Unknown"
+            : string.Join('+', containingTypes);
         var namespacePrefix = GetEnclosingNamespace(method) ?? projectName;
         return $"{namespacePrefix}.{containingType}.{method.Identifier.Text}";
     }

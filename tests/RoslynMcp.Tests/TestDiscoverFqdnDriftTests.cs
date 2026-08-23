@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -165,6 +166,34 @@ public class TestDiscoverFqdnDriftTests
         var filter = TestDiscoveryService.SynthesizeDotnetTestFilter([fqn]);
 
         Assert.AreEqual("FullyQualifiedName~SampleLib.Tests.Unit.AnimalServiceTests.CountAnimals", filter);
+    }
+
+    [TestMethod]
+    public void NestedTestType_RoundTripsFromDiscoveryNameToMtpTreeNodeFilter()
+    {
+        var method = ParseTestMethod(
+            """
+            namespace Repro.Tests;
+
+            public class Outer
+            {
+                public class Inner
+                {
+                    [Test]
+                    public void NestedTest() { }
+                }
+            }
+            """);
+
+        var fqn = TestDiscoveryService.BuildFullyQualifiedTestName("Repro.Tests", method);
+        var filter = TestDiscoveryService.SynthesizeDotnetTestFilter([fqn]);
+        var treeNodeFilter = TreeNodeFilterTranslator.Translate(
+            filter,
+            resolvedTUnitEngineVersion: null,
+            knownFullyQualifiedTestNames: [fqn]);
+
+        Assert.AreEqual("Repro.Tests.Outer+Inner.NestedTest", fqn);
+        Assert.AreEqual("/*/Repro.Tests/Outer+Inner/NestedTest", treeNodeFilter);
     }
 
     private static MethodDeclarationSyntax ParseTestMethod(string source)
