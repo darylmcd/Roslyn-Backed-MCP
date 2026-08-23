@@ -1,4 +1,6 @@
 using RoslynMcp.Core.Models;
+using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -42,6 +44,64 @@ public sealed class CohesionAnalysisTests : IsolatedWorkspaceTestBase
         var first = result[0];
         Assert.IsFalse(string.IsNullOrWhiteSpace(first.TypeName));
         Assert.IsTrue(first.Lcom4Score >= 1, "LCOM4 score should be at least 1");
+    }
+
+    [TestMethod]
+    public async Task DetailedScan_PerTypeFailureReturnsPartialContractAndLegacyProjectionFailsClosed()
+    {
+        var analyzerCallCount = 0;
+        var injectedFailure = true;
+        var service = new CohesionAnalysisService(
+            WorkspaceManager,
+            NullLogger<CohesionAnalysisService>.Instance,
+            (declaration, _, _, _, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                analyzerCallCount++;
+                if (injectedFailure)
+                {
+                    injectedFailure = false;
+                    throw new InvalidOperationException("injected per-type failure");
+                }
+
+                return new CohesionMetricsDto(
+                    declaration.Identifier.Text,
+                    declaration.Identifier.Text,
+                    declaration.SyntaxTree.FilePath,
+                    1,
+                    2,
+                    1,
+                    1,
+                    []);
+            });
+
+        var detailed = await service.GetCohesionMetricsDetailedAsync(
+            WorkspaceId, null, "SampleLib", 1, 50, includeInterfaces: true,
+            excludeTestProjects: false, CancellationToken.None);
+
+        Assert.IsFalse(detailed.IsComplete);
+        Assert.AreEqual(1, detailed.FailedTypeCount);
+        Assert.IsNotEmpty(detailed.Metrics);
+        Assert.IsTrue(analyzerCallCount > 1, "The scan must continue after one type fails.");
+
+        analyzerCallCount = 0;
+        injectedFailure = true;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+            await service.GetCohesionMetricsAsync(
+                WorkspaceId, null, "SampleLib", 1, 50, includeInterfaces: true,
+                excludeTestProjects: false, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task DetailedScan_PreCancelledTokenPropagatesCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+            await CohesionAnalysisService.GetCohesionMetricsDetailedAsync(
+                WorkspaceId, null, null, 1, 50, includeInterfaces: false,
+                excludeTestProjects: false, cancellation.Token));
     }
 
     [TestMethod]

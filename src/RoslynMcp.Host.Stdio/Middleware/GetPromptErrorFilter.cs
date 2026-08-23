@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -43,9 +41,9 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 ///   <item><see cref="McpProtocolException"/> (unknown prompt name, SDK-level parameter
 ///         validation) is rethrown untouched, keeping the SDK's <c>InvalidParams</c>
 ///         contract.</item>
-///   <item>SDK-origin <see cref="ArgumentException"/> and <see cref="JsonException"/> binding
-///         failures receive a fixed <see cref="McpErrorCode.InvalidParams"/> response. The same
-///         exception types from handler code use the sanitized unexpected-error path.</item>
+///   <item>Caller argument shape is validated by <see cref="PromptBindingStageAdapter"/> before
+///         SDK dispatch. Handler exceptions therefore always use the sanitized unexpected-error
+///         path, even when their public type matches a JSON binding exception.</item>
 /// </list>
 /// </summary>
 internal static class GetPromptErrorFilter
@@ -70,6 +68,10 @@ internal static class GetPromptErrorFilter
 
             try
             {
+                var bindingAdapter = context.Services?
+                    .GetService<PromptBindingStageAdapter>() ??
+                    PromptBindingStageAdapter.Default;
+                bindingAdapter.Validate(context.Params);
                 return await next(context, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -104,7 +106,8 @@ internal static class GetPromptErrorFilter
     /// unit tests; the returned exception never carries the source exception's message, type
     /// names, inner chain, stack text, or paths. SDK versions that already protocol-shape a
     /// binding failure are passed through by <see cref="Create"/> before this method is called;
-    /// plain SDK binding exceptions are classified below.
+    /// caller-owned binding failures are protocol-shaped before dispatch by
+    /// <see cref="PromptBindingStageAdapter"/>.
     /// </summary>
     internal static McpProtocolException TranslateException(
         Exception exception,
@@ -113,15 +116,6 @@ internal static class GetPromptErrorFilter
         ILogger? logger)
     {
         ArgumentNullException.ThrowIfNull(exception);
-
-        if (IsSdkParameterBindingFailure(exception))
-        {
-            logger?.LogWarning("Prompt {PromptName} failed SDK parameter binding", promptName);
-            return new McpProtocolException(
-                $"Invalid parameters for prompt '{promptName}'. " +
-                "Provide every required argument using the advertised parameter types.",
-                McpErrorCode.InvalidParams);
-        }
 
         var details = UnexpectedExceptionReporting.Report(
             reporter,
@@ -136,34 +130,4 @@ internal static class GetPromptErrorFilter
             McpErrorCode.InternalError);
     }
 
-    /// <summary>
-    /// The pinned SDK performs prompt binding and handler invocation inside one dispatcher and
-    /// uses the same public exception types for both stages. Identify binding by its SDK-owned
-    /// invocation frame instead of by exception type, parameter name, or message; those latter
-    /// values are all controllable by a handler. Wire tests pin both sides of this distinction so
-    /// an SDK implementation change fails closed as <c>InternalError</c> rather than disclosing a
-    /// handler message.
-    /// </summary>
-    private static bool IsSdkParameterBindingFailure(Exception exception)
-    {
-        if (exception is not (ArgumentException or JsonException))
-            return false;
-
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            foreach (var frame in new StackTrace(current, fNeedFileInfo: false).GetFrames())
-            {
-                var declaringType = frame.GetMethod()?.DeclaringType;
-                if (declaringType?.Assembly.GetName().Name == "Microsoft.Extensions.AI.Abstractions" &&
-                    declaringType.FullName?.StartsWith(
-                        "Microsoft.Extensions.AI.AIFunctionFactory+ReflectionAIFunctionDescriptor",
-                        StringComparison.Ordinal) == true)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
 }

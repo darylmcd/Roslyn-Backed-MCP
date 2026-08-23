@@ -49,16 +49,19 @@ internal static class PromptParameterIndex
                 var attr = method.GetCustomAttribute<McpServerPromptAttribute>();
                 if (attr?.Name is null) continue;
 
-                var parameters = method.GetParameters()
-                    .Where(p => !IsServiceType(p.ParameterType) && p.ParameterType != typeof(CancellationToken))
-                    .Select(BuildEntry)
-                    .ToArray();
+                var parameters = BuildEntries(method);
                 dict[attr.Name] = parameters;
             }
         }
 
         return dict;
     }
+
+    internal static IReadOnlyList<PromptParameterEntry> BuildEntries(MethodInfo method) =>
+        method.GetParameters()
+            .Where(PromptParameterClassifier.IsCallerInput)
+            .Select(BuildEntry)
+            .ToArray();
 
     private static PromptParameterEntry BuildEntry(ParameterInfo parameter)
     {
@@ -87,11 +90,4 @@ internal static class PromptParameterIndex
         return defaultValue;
     }
 
-    /// <summary>
-    /// Mirrors <c>PromptShimTools.IsServiceType</c>: prompts receive DI services either via
-    /// interface-typed parameters or via the <c>Microsoft.Extensions</c> namespace family. Both
-    /// are resolved by the host at invoke time and must NOT appear in the published schema.
-    /// </summary>
-    private static bool IsServiceType(Type t) =>
-        t.IsInterface || t.Namespace?.StartsWith("Microsoft.Extensions", StringComparison.Ordinal) == true;
 }

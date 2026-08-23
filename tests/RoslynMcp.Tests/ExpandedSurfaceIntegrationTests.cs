@@ -522,6 +522,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         using var cohesionDoc = JsonDocument.Parse(cohesionJson);
+        Assert.IsTrue(cohesionDoc.RootElement.GetProperty("isComplete").GetBoolean());
+        Assert.AreEqual(0, cohesionDoc.RootElement.GetProperty("failedTypeCount").GetInt32());
         var metrics = cohesionDoc.RootElement.GetProperty("metrics").EnumerateArray().ToList();
         Assert.IsTrue(metrics.Any(m =>
             m.TryGetProperty("typeKind", out var typeKind) &&
