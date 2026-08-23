@@ -305,6 +305,7 @@ public sealed class PromptCallErrorFilterTests
             serverOptions: options,
             serverServicesFactory: () => new ServiceCollection()
                 .AddSingleton<IUnexpectedExceptionReporter>(new ServerObservabilityReporter(sink))
+                .AddSingleton(new PromptBindingStageAdapter(typeof(FilterTestPrompts).Assembly))
                 .BuildServiceProvider(),
             captureServerMessages: true);
     }

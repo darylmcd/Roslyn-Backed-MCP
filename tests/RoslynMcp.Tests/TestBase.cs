@@ -2,6 +2,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -253,20 +254,13 @@ public abstract class TestBase
     /// </summary>
     internal static async Task DisposeAssemblyResourcesAsync()
     {
+        WorkspaceManager? workspaceManager = null;
         Task<McpRootsTestServerFactory.Session>? pathAuthorizedServerTask;
         lock (_initLock)
         {
             if (_servicesInitialized)
             {
-                try
-                {
-                    WorkspaceManager?.Dispose();
-                }
-                catch
-                {
-                    // Best-effort: avoid masking real test failures with cleanup errors.
-                }
-
+                workspaceManager = WorkspaceManager;
                 _workspaceIdCache.Clear();
                 _servicesInitialized = false;
             }
@@ -275,18 +269,17 @@ public abstract class TestBase
             _pathAuthorizedServerTask = null;
         }
 
-        if (pathAuthorizedServerTask is not null)
-        {
-            try
+        await CleanupFailureCollector.RunAsync(
+            "Shared test resource cleanup failed.",
+            CleanupFailureCollector.FromAction(() => workspaceManager?.Dispose()),
+            async () =>
             {
-                var session = await pathAuthorizedServerTask.ConfigureAwait(false);
-                await session.DisposeAsync().ConfigureAwait(false);
-            }
-            catch
-            {
-                // Best-effort: avoid masking real test failures with cleanup errors.
-            }
-        }
+                if (pathAuthorizedServerTask is not null)
+                {
+                    var session = await pathAuthorizedServerTask.ConfigureAwait(false);
+                    await session.DisposeAsync().ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
     }
 
     /// <summary>

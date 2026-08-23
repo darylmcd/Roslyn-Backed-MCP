@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -29,8 +30,9 @@ public static class CohesionAnalysisTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
+            var scan = await cohesionAnalysisService.GetCohesionMetricsDetailedAsync(
                 workspaceId, filePath, projectName, minMethods, limit, includeInterfaces, excludeTestProjects, c);
+            IReadOnlyList<CohesionMetricsDto> results = scan.Metrics;
 
             if (excludeTests)
             {
@@ -39,7 +41,13 @@ public static class CohesionAnalysisTools
                     !IsTestFilePath(r.FilePath ?? string.Empty)).ToList();
             }
 
-            return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new
+            {
+                count = results.Count,
+                metrics = results,
+                scan.IsComplete,
+                scan.FailedTypeCount,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 

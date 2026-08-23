@@ -8,22 +8,56 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
+internal delegate CohesionMetricsDto? CohesionTypeAnalyzer(
+    TypeDeclarationSyntax typeDeclaration,
+    SemanticModel semanticModel,
+    int? minMethods,
+    bool includeInterfaces,
+    CancellationToken cancellationToken);
+
 public sealed class CohesionAnalysisService : ICohesionAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<CohesionAnalysisService> _logger;
+    private readonly CohesionTypeAnalyzer _typeAnalyzer;
 
     public CohesionAnalysisService(IWorkspaceManager workspace, ILogger<CohesionAnalysisService> logger)
+        : this(workspace, logger, AnalyzeTypeCohesion)
+    {
+    }
+
+    internal CohesionAnalysisService(
+        IWorkspaceManager workspace,
+        ILogger<CohesionAnalysisService> logger,
+        CohesionTypeAnalyzer typeAnalyzer)
     {
         _workspace = workspace;
         _logger = logger;
+        _typeAnalyzer = typeAnalyzer;
     }
 
     public async Task<IReadOnlyList<CohesionMetricsDto>> GetCohesionMetricsAsync(
         string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, bool excludeTestProjects, CancellationToken ct)
     {
+        var scan = await GetCohesionMetricsDetailedAsync(
+            workspaceId, filePath, projectFilter, minMethods, limit, includeInterfaces,
+            excludeTestProjects, ct).ConfigureAwait(false);
+        if (!scan.IsComplete)
+        {
+            throw new InvalidOperationException(
+                $"Cohesion scan was incomplete: {scan.FailedTypeCount} type(s) could not be analyzed.");
+        }
+
+        return scan.Metrics;
+    }
+
+    public async Task<CohesionMetricsScanResult> GetCohesionMetricsDetailedAsync(
+        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, bool excludeTestProjects, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<CohesionMetricsDto>();
+        var failedTypeCount = 0;
 
         IEnumerable<Document> documents;
         if (!string.IsNullOrWhiteSpace(filePath))
@@ -43,7 +77,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
         foreach (var doc in documents)
         {
-            if (ct.IsCancellationRequested || results.Count >= limit) break;
+            ct.ThrowIfCancellationRequested();
+            if (results.Count >= limit) break;
 
             var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
@@ -52,23 +87,30 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             var typeDeclarations = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
             foreach (var typeDecl in typeDeclarations)
             {
-                if (ct.IsCancellationRequested || results.Count >= limit) break;
+                ct.ThrowIfCancellationRequested();
+                if (results.Count >= limit) break;
 
                 try
                 {
-                    var metrics = AnalyzeTypeCohesion(typeDecl, semanticModel, minMethods, includeInterfaces, ct);
-                    if (metrics is not null)
-                        results.Add(metrics);
+                    var typeMetrics = _typeAnalyzer(typeDecl, semanticModel, minMethods, includeInterfaces, ct);
+                    if (typeMetrics is not null)
+                        results.Add(typeMetrics);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex, "Failed to analyze cohesion for type '{TypeName}' in {File}, skipping",
-                        typeDecl.Identifier.Text, doc.FilePath);
+                    failedTypeCount++;
+                    _logger.LogWarning(
+                        "Cohesion analysis skipped one type after an unexpected failure; failedTypeCount={FailedTypeCount}",
+                        failedTypeCount);
                 }
             }
         }
 
-        return results.OrderByDescending(r => r.Lcom4Score).Take(limit).ToList();
+        var orderedMetrics = results.OrderByDescending(r => r.Lcom4Score).Take(limit).ToList();
+        return new CohesionMetricsScanResult(
+            orderedMetrics,
+            IsComplete: failedTypeCount == 0,
+            FailedTypeCount: failedTypeCount);
     }
 
     private static CohesionMetricsDto? AnalyzeTypeCohesion(

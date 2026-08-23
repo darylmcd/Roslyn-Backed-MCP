@@ -8,6 +8,7 @@ using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.TestInfrastructure;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -37,7 +38,7 @@ public sealed class HostProcessMetadataTests
     private string _tempDir = string.Empty;
 
     [TestMethod]
-    public void ServerProcessMetadata_UsesOneSourceAndReportsExpectedFallback()
+    public async Task ServerProcessMetadata_UsesOneSourceAndReportsExpectedFallback()
     {
         var expectedStart = new DateTimeOffset(2026, 8, 22, 12, 0, 0, TimeSpan.Zero);
         var fallback = expectedStart.AddMinutes(1);
@@ -53,7 +54,7 @@ public sealed class HostProcessMetadataTests
         Assert.AreEqual(expectedStart, metadata.StartedAtUtc);
         Assert.AreEqual(1, sourceReads);
         Assert.IsFalse(metadata.UsedWallClockFallback);
-        AssertEveryStartTimeSurfaceUses(metadata);
+        await AssertEveryStartTimeSurfaceUses(metadata);
 
         var sink = new CapturingServerObservabilitySink();
         var fallbackMetadata = new ServerProcessMetadata(
@@ -63,7 +64,7 @@ public sealed class HostProcessMetadataTests
 
         Assert.AreEqual(fallback, fallbackMetadata.StartedAtUtc);
         Assert.IsTrue(fallbackMetadata.UsedWallClockFallback);
-        AssertEveryStartTimeSurfaceUses(fallbackMetadata);
+        await AssertEveryStartTimeSurfaceUses(fallbackMetadata);
         Assert.HasCount(1, sink.Events);
         Assert.AreEqual("ServerProcessMetadata", sink.Events.Single().Category);
         Assert.IsFalse(System.Text.Json.JsonSerializer.Serialize(sink.Events.Single())
@@ -78,20 +79,20 @@ public sealed class HostProcessMetadataTests
             () => DateTimeOffset.UtcNow));
     }
 
-    private static void AssertEveryStartTimeSurfaceUses(ServerProcessMetadata metadata)
+    private static async Task AssertEveryStartTimeSurfaceUses(ServerProcessMetadata metadata)
     {
         try
         {
             WorkspaceEvictionRegistry.PublishRecycleContext(metadata.StartedAtUtc, previousRecycleReason: null);
             Assert.AreEqual(metadata.StartedAtUtc, WorkspaceEvictionRegistry.ServerStartedAtUtc);
 
-            var info = ServerTools.GetServerInfo(
+            var info = await ServerTools.GetServerInfo(
                 new FakeWorkspaceManager(),
                 new FakeVersionProvider(),
-                metadata).GetAwaiter().GetResult();
-            var heartbeat = ServerTools.GetServerHeartbeat(
+                metadata);
+            var heartbeat = await ServerTools.GetServerHeartbeat(
                 new FakeWorkspaceManager(),
-                metadata).GetAwaiter().GetResult();
+                metadata);
 
             using var infoDocument = JsonDocument.Parse(info.TextPayload());
             using var heartbeatDocument = JsonDocument.Parse(heartbeat.TextPayload());
@@ -123,21 +124,18 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        try
-        {
-            if (Directory.Exists(_tempDir))
+        await CleanupFailureCollector.RunAsync(
+            "Host process metadata test cleanup failed.",
+            CleanupFailureCollector.FromAction(() =>
             {
-                Directory.Delete(_tempDir, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort — another test may hold a lock; the assembly cleanup will sweep.
-        }
-
-        HostProcessMetadataSnapshotProvider.Reset();
+                if (Directory.Exists(_tempDir))
+                {
+                    Directory.Delete(_tempDir, recursive: true);
+                }
+            }),
+            CleanupFailureCollector.FromAction(HostProcessMetadataSnapshotProvider.Reset));
     }
 
     private string PathInTemp() => Path.Combine(_tempDir, "host-process.json");
@@ -321,7 +319,7 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
-    public void ServerInfo_FirstProbeAfterRestart_CarriesPreviousMetadata()
+    public async Task ServerInfo_FirstProbeAfterRestart_CarriesPreviousMetadata()
     {
         // End-to-end: simulate the restart sequence by publishing a snapshot directly to
         // the provider, then call ServerTools.GetServerInfo and verify the wire shape.
@@ -331,7 +329,7 @@ public sealed class HostProcessMetadataTests
             RecycleReason: "graceful");
         HostProcessMetadataSnapshotProvider.Publish(snapshot);
 
-        var json = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -345,7 +343,7 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
-    public void ServerInfo_SecondProbe_DropsPreviousMetadata()
+    public async Task ServerInfo_SecondProbe_DropsPreviousMetadata()
     {
         // The wire contract: previous-* fields appear EXACTLY ONCE per host lifetime.
         // A polling consumer that calls server_info twice in quick succession must see the
@@ -357,10 +355,10 @@ public sealed class HostProcessMetadataTests
         HostProcessMetadataSnapshotProvider.Publish(snapshot);
 
         // First probe drains the provider.
-        _ = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        _ = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
 
         // Second probe must NOT carry previous-* fields.
-        var secondJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConnection = secondDoc.RootElement.GetProperty("connection");
 
@@ -373,7 +371,7 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
-    public void ServerHeartbeat_FirstProbeAfterRestart_CarriesPreviousMetadata()
+    public async Task ServerHeartbeat_FirstProbeAfterRestart_CarriesPreviousMetadata()
     {
         // server_heartbeat shares the connection block with server_info. The previous-*
         // fields must appear there too — consumers polling via the cheap heartbeat tool
@@ -384,7 +382,7 @@ public sealed class HostProcessMetadataTests
             RecycleReason: "watchdog");
         HostProcessMetadataSnapshotProvider.Publish(snapshot);
 
-        var json = ServerTools.GetServerHeartbeat(new FakeWorkspaceManager()).GetAwaiter().GetResult();
+        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager());
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -395,14 +393,14 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
-    public void ServerInfo_ColdStart_NoSnapshotPublished_OmitsPreviousMetadata()
+    public async Task ServerInfo_ColdStart_NoSnapshotPublished_OmitsPreviousMetadata()
     {
         // No Publish() call: the provider has nothing to consume. The previous-* fields must
         // be ABSENT from the wire (not present-with-null) so consumers can use TryGetProperty
         // as a presence check.
         // (Cleanup() called Reset() before this test, so the provider is clean.)
 
-        var json = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
@@ -421,7 +419,7 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
-    public void EndToEnd_DiskWriteRead_RestartSequence_FirstProbeOnlyCarriesMetadata()
+    public async Task EndToEnd_DiskWriteRead_RestartSequence_FirstProbeOnlyCarriesMetadata()
     {
         // Full integration: write metadata to disk (process A), then read + publish + consume
         // (process B), simulating the actual restart sequence. Verifies the disk store and
@@ -441,7 +439,7 @@ public sealed class HostProcessMetadataTests
         HostProcessMetadataSnapshotProvider.Publish(loaded);
 
         // First probe.
-        var firstJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        var firstJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
         using var firstDoc = JsonDocument.Parse(firstJson.TextPayload());
         var firstConn = firstDoc.RootElement.GetProperty("connection");
         Assert.AreEqual(Environment.ProcessId, firstConn.GetProperty("previousStdioPid").GetInt32(),
@@ -449,7 +447,7 @@ public sealed class HostProcessMetadataTests
         Assert.AreEqual("graceful", firstConn.GetProperty("previousRecycleReason").GetString());
 
         // Second probe — fields must drop.
-        var secondJson = ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider()).GetAwaiter().GetResult();
+        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConn = secondDoc.RootElement.GetProperty("connection");
         Assert.IsFalse(secondConn.TryGetProperty("previousStdioPid", out _),

@@ -138,7 +138,7 @@ public static class PromptShimTools
         return registrations.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
-    private static object?[] BuildParameterValues(
+    internal static object?[] BuildParameterValues(
         MethodInfo method, IServiceProvider services, string parametersJson, CancellationToken ct)
     {
         using var doc = ParseParametersDocument(parametersJson);
@@ -187,8 +187,7 @@ public static class PromptShimTools
         string methodName, ParameterInfo[] parameters, JsonElement rootObj)
     {
         var missingRequired = parameters
-            .Where(p => p.ParameterType != typeof(CancellationToken))
-            .Where(p => !IsServiceType(p.ParameterType))
+            .Where(PromptParameterClassifier.IsCallerInput)
             .Where(p => !p.HasDefaultValue)
             .Where(p => !rootObj.TryGetProperty(p.Name!, out _))
             .Select(p => p.Name!)
@@ -206,7 +205,7 @@ public static class PromptShimTools
     {
         if (p.ParameterType == typeof(CancellationToken))
             return ct;
-        if (IsServiceType(p.ParameterType))
+        if (PromptParameterClassifier.IsServiceType(p.ParameterType))
             return services.GetRequiredService(p.ParameterType);
         if (rootObj.TryGetProperty(p.Name!, out var element))
             return DeserializeParameterValue(p, element);
@@ -261,9 +260,6 @@ public static class PromptShimTools
             return "[]";
         return "{}";
     }
-
-    private static bool IsServiceType(Type t) =>
-        t.IsInterface || t.Namespace?.StartsWith("Microsoft.Extensions", StringComparison.Ordinal) == true;
 
     private static async Task<IEnumerable<PromptMessage>> UnwrapPromptResultAsync(object? result)
     {

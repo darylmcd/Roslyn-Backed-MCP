@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
 
@@ -169,4 +170,40 @@ public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
             PromptShimTools.PromptIndexBuildCount,
             "Prompt reflection metadata must be indexed once and reused across calls.");
     }
+
+    [TestMethod]
+    public void PromptParameterClassifier_ServiceSentinel_IsExcludedAndResolvedConsistently()
+    {
+        var method = typeof(PromptShimToolsTests).GetMethod(
+            nameof(ClassifierSentinelPrompt),
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var sentinel = new ClassifierSentinelService();
+        using var services = new ServiceCollection()
+            .AddSingleton<IClassifierSentinelService>(sentinel)
+            .BuildServiceProvider();
+
+        var schema = PromptParameterIndex.BuildEntries(method);
+        var values = PromptShimTools.BuildParameterValues(
+            method,
+            services,
+            "{\"callerValue\":\"expected\"}",
+            CancellationToken.None);
+
+        Assert.HasCount(1, schema);
+        Assert.AreEqual("callerValue", schema[0].Name);
+        Assert.AreSame(sentinel, values[0]);
+        Assert.AreEqual("expected", values[1]);
+        Assert.AreEqual(CancellationToken.None, values[2]);
+    }
+
+    private static void ClassifierSentinelPrompt(
+        IClassifierSentinelService service,
+        string callerValue,
+        CancellationToken ct)
+    {
+    }
+
+    private interface IClassifierSentinelService;
+
+    private sealed class ClassifierSentinelService : IClassifierSentinelService;
 }
