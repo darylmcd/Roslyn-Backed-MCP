@@ -169,4 +169,56 @@ public sealed class TreeNodeFilterTranslatorTests
 
         StringAssert.Contains(ex.Message, "class/method");
     }
+
+    [TestMethod]
+    public void Translate_KnownNamesSupplied_ContainsAtomMatchingARealTest_TranslatesNormally()
+    {
+        // The SynthesizeDotnetTestFilter round trip: a "~" atom that names a real, complete
+        // discovered test must keep working once discovery-backed validation is wired in.
+        var result = TreeNodeFilterTranslator.Translate(
+            "FullyQualifiedName~MyNamespace.MyClass.MyMethod",
+            resolvedTUnitEngineVersion: null,
+            knownFullyQualifiedTestNames: ["MyNamespace.MyClass.MyMethod", "MyNamespace.MyClass.OtherMethod"]);
+
+        Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
+    }
+
+    [TestMethod]
+    public void Translate_KnownNamesSupplied_ContainsAtomNamingAClassNotATest_ThrowsDecliningRatherThanMistranslating()
+    {
+        // tunit-treenode-filter-requires-known-test: "My.Tests.WidgetTests" is exactly as
+        // consistent with "class WidgetTests, all methods" as with "method WidgetTests on class
+        // Tests" — when the real discovered test is neither, this must decline, not silently
+        // guess a class/method split that matches zero (or the wrong) tests.
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            TreeNodeFilterTranslator.Translate(
+                "FullyQualifiedName~My.Tests.WidgetTests",
+                resolvedTUnitEngineVersion: null,
+                knownFullyQualifiedTestNames: ["My.Tests.WidgetTests.ShouldRender", "My.Tests.WidgetTests.ShouldValidate"]));
+
+        StringAssert.Contains(ex.Message, "My.Tests.WidgetTests");
+        StringAssert.Contains(ex.Message, "test_discover");
+    }
+
+    [TestMethod]
+    public void Translate_KnownNamesSuppliedButEmpty_ThrowsDeclining()
+    {
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            TreeNodeFilterTranslator.Translate(
+                "FullyQualifiedName=MyNamespace.MyClass.MyMethod",
+                resolvedTUnitEngineVersion: null,
+                knownFullyQualifiedTestNames: []));
+
+        StringAssert.Contains(ex.Message, "MyNamespace.MyClass.MyMethod");
+    }
+
+    [TestMethod]
+    public void Translate_KnownNamesNotSupplied_SkipsDiscoveryValidation()
+    {
+        // Default (null) preserves every existing pure-parsing test above unchanged.
+        var result = TreeNodeFilterTranslator.Translate(
+            "FullyQualifiedName=MyNamespace.MyClass.MyMethod", resolvedTUnitEngineVersion: null);
+
+        Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", result);
+    }
 }

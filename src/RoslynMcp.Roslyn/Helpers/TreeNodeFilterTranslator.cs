@@ -31,9 +31,28 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// TUnit release.
 /// </para>
 /// <para>
-/// OR-ing across different namespace/class combinations remains unsupported regardless of
-/// TUnit version — that's a separate, genuine MTP grammar limit (OR over full paths, not within
-/// one path segment, crashes the MTP test host: testfx#7415), not the TUnit pre-filter bug.
+/// OR-ing exact method-qualified paths across different namespace/class combinations remains
+/// unsupported — MTP's <c>--treenode-filter</c> can't disambiguate an independent OR per segment
+/// from a cross-product (which of ClassA/ClassB does MethodX belong to?), and attempting it
+/// crashes the MTP test host (testfx#7415). This is a limit of what THIS translator represents,
+/// not a blanket claim about TUnit's grammar: TUnit's own filter syntax does support OR-ing bare
+/// class names within one class segment when no method needs to be pinned down (e.g.
+/// <c>/*/*/(LoginTests)|(SignupTests)/*</c>, all methods of either class — see
+/// https://tunit.dev/docs/execution/test-filters/#or-filter-across-classes). This translator only
+/// ever accepts <c>FullyQualifiedName</c> atoms, which are always method-qualified, so that
+/// class-level shape isn't representable as input here regardless of version.
+/// </para>
+/// <para>
+/// tunit-treenode-filter-requires-known-test: <c>FullyQualifiedName~</c> is VSTest's "contains"
+/// operator, not "equals" — a value like <c>My.Tests.WidgetTests</c> is exactly as consistent
+/// with "class WidgetTests in namespace My.Tests" (no method — a class-level filter this
+/// translator can't represent) as with "method WidgetTests on class Tests in namespace My" (the
+/// shape <see cref="RoslynMcp.Roslyn.Services.TestDiscoveryService.SynthesizeDotnetTestFilter"/>
+/// always emits), and no amount of dot-counting resolves that ambiguity from the string alone.
+/// <see cref="Translate"/> accepts an optional set of the target project's actually-discovered
+/// test names; when supplied, an atom that doesn't name one of them is declined rather than
+/// silently mistranslated. Every filter <c>SynthesizeDotnetTestFilter</c> produces names a real,
+/// complete test by construction, so this never rejects that round trip.
 /// </para>
 /// </summary>
 internal static partial class TreeNodeFilterTranslator
@@ -56,13 +75,24 @@ internal static partial class TreeNodeFilterTranslator
     /// when it couldn't be determined (project not restored, or the assets file was unreadable).
     /// Gates whether a multi-method filter is safe to translate — see the type doc comment.
     /// </param>
+    /// <param name="knownFullyQualifiedTestNames">
+    /// The target project's actually-discovered test names (typically from
+    /// <see cref="RoslynMcp.Core.Services.ITestDiscoveryService"/>), or <see langword="null"/> to
+    /// skip this check. When supplied, every parsed atom must name one of these exactly — see the
+    /// type doc comment's <c>tunit-treenode-filter-requires-known-test</c> section for why this is
+    /// necessary to safely translate <c>~</c> atoms at all.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// The filter names more than one test but the resolved TUnit.Engine version isn't known to
     /// have the OR pre-filter fix, spans more than one namespace+class combination, uses
-    /// AND/grouping/negation, names a property other than <c>FullyQualifiedName</c>, or doesn't
-    /// split into at least a class and method.
+    /// AND/grouping/negation, names a property other than <c>FullyQualifiedName</c>, doesn't split
+    /// into at least a class and method, or (when <paramref name="knownFullyQualifiedTestNames"/>
+    /// is supplied) doesn't match a real discovered test.
     /// </exception>
-    public static string Translate(string vsTestFilter, Version? resolvedTUnitEngineVersion)
+    public static string Translate(
+        string vsTestFilter,
+        Version? resolvedTUnitEngineVersion,
+        IReadOnlyCollection<string>? knownFullyQualifiedTestNames = null)
     {
         if (vsTestFilter.Contains('&') || vsTestFilter.Contains('(') || vsTestFilter.Contains(')'))
         {
@@ -89,10 +119,30 @@ internal static partial class TreeNodeFilterTranslator
                 " Call test_run once per test for now, or upgrade TUnit.Engine to 1.46.0 or later.");
         }
 
+        var knownNames = knownFullyQualifiedTestNames is null
+            ? null
+            : new HashSet<string>(knownFullyQualifiedTestNames, StringComparer.Ordinal);
+
         var groups = new List<FilterGroup>();
         foreach (var atom in atoms)
         {
             var (@namespace, className, method) = ParseAtom(atom, vsTestFilter);
+
+            if (knownNames is not null)
+            {
+                var candidateFqn = @namespace is null ? $"{className}.{method}" : $"{@namespace}.{className}.{method}";
+                if (!knownNames.Contains(candidateFqn))
+                {
+                    throw new InvalidOperationException(
+                        $"Filter '{vsTestFilter}' contains atom '{atom}', which this translator parses as the " +
+                        $"test '{candidateFqn}' — but no discovered test in this project has that fully-qualified " +
+                        "name. A 'FullyQualifiedName~' filter is a contains match, not an exact one, so a value " +
+                        "that names a class or namespace rather than one complete test (e.g. 'Foo' meaning " +
+                        "\"every test in class Foo\") can't be safely translated to MTP's --treenode-filter this " +
+                        "way. Run test_discover to confirm the exact test name, or call test_run once per test.");
+                }
+            }
+
             var group = groups.Find(g =>
                 string.Equals(g.Namespace, @namespace, StringComparison.Ordinal) &&
                 string.Equals(g.ClassName, className, StringComparison.Ordinal));
@@ -109,9 +159,12 @@ internal static partial class TreeNodeFilterTranslator
         {
             throw new InvalidOperationException(
                 $"Filter '{vsTestFilter}' names tests across {groups.Count} different namespace/class " +
-                "combinations. Microsoft.Testing.Platform's --treenode-filter can only OR alternatives within " +
-                "a single path segment (e.g. one class's methods) — OR-ing full test paths together is " +
-                "unsupported and crashes the MTP test host. Run test_run once per namespace/class group instead.");
+                "combinations. Microsoft.Testing.Platform's --treenode-filter can OR alternatives within a " +
+                "single path segment (e.g. TUnit supports OR-ing whole class names, like " +
+                "'/*/*/(LoginTests)|(SignupTests)/*'), but OR-ing full method-qualified paths together across " +
+                "classes is an unsafe cross-product and crashes the MTP test host — and this translator, whose " +
+                "input is always method-qualified (FullyQualifiedName), has no way to drop down to the " +
+                "class-only shape that would be safe here. Run test_run once per namespace/class group instead.");
         }
 
         var only = groups[0];
