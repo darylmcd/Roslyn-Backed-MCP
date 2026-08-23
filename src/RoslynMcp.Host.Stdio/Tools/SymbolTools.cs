@@ -38,12 +38,12 @@ public static class SymbolTools
         [Description("Default false (agent-first). When false, a query matching more than one symbol returns the full paginated candidate list to the calling agent. When true AND the client supports form elicitation, a >1-candidate result instead asks for a request-scoped operator choice and returns only the chosen symbol (with chosenViaElicitation:true); unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
+        if (limit > 50)
+            throw new ArgumentException($"Invalid limit '{limit}'. Limit must be 50 or less.");
+
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(offset, limit);
-            if (limit > 50)
-                throw new ArgumentException($"Invalid limit '{limit}'. Limit must be 50 or less.");
-
             // Guard: empty/whitespace queries would otherwise dump the full workspace symbol index
             // (observed 70-80 KB payloads on mid-sized solutions). Return a structured empty-query
             // envelope so the caller gets an actionable note instead of a giant unfiltered dump.
@@ -275,10 +275,10 @@ public static class SymbolTools
         CancellationToken ct = default,
         ICompilationCache? compilationCache = null)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(offset, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
 
             // elicit-disambiguation-on-multi-symbol-resolve: when locator.HasMetadataName and the
@@ -405,6 +405,13 @@ public static class SymbolTools
         ToolAliasDeprecation? deprecation,
         CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(symbolHandle) &&
+            string.IsNullOrWhiteSpace(metadataName) &&
+            string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new ArgumentException("Provide either a filePath, a symbolHandle, or a metadataName.");
+        }
+
         return gate.RunReadAsync(workspaceId, async c =>
         {
             IReadOnlyList<Core.Models.DocumentSymbolDto> results;
@@ -418,10 +425,8 @@ public static class SymbolTools
             else
             {
                 // Classic filePath path — validate against workspace roots before the service call.
-                if (string.IsNullOrWhiteSpace(filePath))
-                    throw new ArgumentException("Provide either a filePath, a symbolHandle, or a metadataName.");
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c).ConfigureAwait(false);
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath!, c).ConfigureAwait(false);
+                results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath!, c).ConfigureAwait(false);
             }
 
             return JsonSerializer.Serialize(new { count = results.Count, symbols = results, deprecation }, JsonDefaults.Indented);
@@ -617,9 +622,9 @@ public static class SymbolTools
         [Description("When true (default), a caret on a method's return-type token or a property's type token is auto-promoted to the enclosing member symbol. Set to false to resolve the type token literally.")] bool preferDeclaringMember = true,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(0, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(0, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, preferDeclaringMember, c);
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
@@ -671,13 +676,13 @@ public static class SymbolTools
         [Description("Maximum number of reference locations to keep per symbol (default: 100). Applied BEFORE the outer envelope is assembled so the cap actually bounds aggregate output. Each result's `truncated` flag indicates whether its list was trimmed; `referenceCount` still reflects the full pre-cap total so callers can page follow-up queries via find_references.")] int maxItemsPerSymbol = 100,
         CancellationToken ct = default)
     {
+        if (maxItemsPerSymbol < 1)
+            throw new ArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
+
+        ArgumentNullException.ThrowIfNull(symbols);
+        ParameterValidation.ValidateBulkSize(symbols.Length, 50, nameof(symbols));
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            if (maxItemsPerSymbol < 1)
-                throw new ArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
-
-            ParameterValidation.ValidateBulkSize(symbols.Length, 50, nameof(symbols));
-
             var results = await referenceService.FindReferencesBulkAsync(workspaceId, symbols, includeDefinition, c);
 
             // Apply the per-symbol cap + summary stripping BEFORE assembling the outer envelope.

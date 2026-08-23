@@ -83,16 +83,35 @@ internal static class SymbolServiceHelpers
             yield return explicitImplementation;
         }
 
-        // Implicit interface implementations: yield any interface member this symbol implements.
-        if (symbol.ContainingType is not null)
+        // Interface implementations: yield any interface member this symbol implements.
+        foreach (var interfaceMember in GetImplementedInterfaceMembers(symbol))
         {
-            foreach (var iface in symbol.ContainingType.AllInterfaces)
+            yield return interfaceMember;
+        }
+    }
+
+    /// <summary>
+    /// Enumerates interface members implemented by <paramref name="symbol"/> using Roslyn's
+    /// authoritative implementation mapping. The ordering follows <see cref="INamedTypeSymbol.AllInterfaces"/>
+    /// and each interface's member order.
+    /// </summary>
+    public static IEnumerable<T> GetImplementedInterfaceMembers<T>(T symbol)
+        where T : class, ISymbol
+    {
+        var containingType = symbol.ContainingType;
+        if (containingType is null || containingType.TypeKind == TypeKind.Interface)
+        {
+            yield break;
+        }
+
+        foreach (var iface in containingType.AllInterfaces)
+        {
+            foreach (var interfaceMember in iface.GetMembers().OfType<T>())
             {
-                foreach (var interfaceMember in iface.GetMembers().OfType<T>())
+                var implementation = containingType.FindImplementationForInterfaceMember(interfaceMember);
+                if (SymbolEqualityComparer.Default.Equals(implementation, symbol))
                 {
-                    var impl = symbol.ContainingType.FindImplementationForInterfaceMember(interfaceMember);
-                    if (SymbolEqualityComparer.Default.Equals(impl, symbol))
-                        yield return interfaceMember;
+                    yield return interfaceMember;
                 }
             }
         }

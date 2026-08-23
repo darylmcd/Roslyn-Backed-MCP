@@ -83,9 +83,9 @@ internal static class ToolDispatch
     /// gate, revalidates the preview's write set against the sanctioned-root boundary
     /// (<see cref="RevalidateChangedPathsAsync"/> — preview-apply-token-write-path-toctou),
     /// invokes <paramref name="serviceCall"/>, and returns the indented-JSON-serialized DTO.
-    /// The delegate-peek overload below performs NO such revalidation: its stores
-    /// (<c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) cannot yet
-    /// enumerate their write sets — tracked as a spin-off backlog row.
+    /// The delegate-peek overload below performs NO such revalidation because its stores
+    /// (<c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) expose only a
+    /// token-to-workspace lookup and no write-set contract.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -118,10 +118,7 @@ internal static class ToolDispatch
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
     {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new PreviewTokenStaleException(
-                previewToken,
-                $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
+        var wsId = RequirePreviewWorkspaceId(previewStore.PeekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
         {
             // preview-apply-token-write-path-toctou: revalidate the preview's write set against
@@ -151,7 +148,9 @@ internal static class ToolDispatch
     /// <see cref="RootExpansionGrantRegistry"/> replays that load-time grant. The widening still
     /// takes effect only when the operator-owned <see cref="RoslynMcp.Roslyn.Services.SecurityOptions.AllowRootExpansion"/>
     /// is set — an out-of-boundary path is refused on an expansion-loaded workspace exactly as on
-    /// any other.
+    /// any other. The current request's <see cref="ModelContextProtocol.Server.McpServer"/> is
+    /// supplied from <see cref="RequestMcpServerContext"/> so legacy MCP Roots remain an
+    /// additional narrowing boundary during redemption, matching preview-time validation.
     /// </para>
     /// </summary>
     internal static async Task RevalidateChangedPathsAsync(
@@ -176,7 +175,7 @@ internal static class ToolDispatch
         foreach (var path in changedPaths)
         {
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
-                server: null,
+                RequestMcpServerContext.Current,
                 path,
                 ct,
                 securityOptions: securityOptions,
@@ -225,16 +224,21 @@ internal static class ToolDispatch
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
     {
-        var wsId = peekWorkspaceId(previewToken)
-            ?? throw new PreviewTokenStaleException(
-                previewToken,
-                $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
+        var wsId = RequirePreviewWorkspaceId(peekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
         {
             var result = await serviceCall(c).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
+
+    private static string RequirePreviewWorkspaceId(
+        Func<string, string?> peekWorkspaceId,
+        string previewToken) =>
+        peekWorkspaceId(previewToken)
+        ?? throw new PreviewTokenStaleException(
+            previewToken,
+            $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
 
     /// <summary>
     /// Dispatch body for <c>*_preview</c> tools that take an explicit

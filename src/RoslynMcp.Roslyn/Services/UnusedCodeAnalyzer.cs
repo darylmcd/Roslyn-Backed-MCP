@@ -382,21 +382,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             or MethodKind.Destructor or MethodKind.UserDefinedOperator
             or MethodKind.Conversion;
 
-    private static bool IsInterfaceImplementation(ISymbol symbol)
-    {
-        if (symbol.ContainingType is null) return false;
-
-        foreach (var iface in symbol.ContainingType.AllInterfaces)
-        {
-            foreach (var ifaceMember in iface.GetMembers())
-            {
-                var impl = symbol.ContainingType.FindImplementationForInterfaceMember(ifaceMember);
-                if (SymbolEqualityComparer.Default.Equals(impl, symbol))
-                    return true;
-            }
-        }
-        return false;
-    }
+    private static bool IsInterfaceImplementation(ISymbol symbol) =>
+        SymbolServiceHelpers.GetImplementedInterfaceMembers(symbol).Any();
 
     private static bool IsOverrideMember(ISymbol symbol) =>
         symbol is IMethodSymbol { IsOverride: true } or IPropertySymbol { IsOverride: true };

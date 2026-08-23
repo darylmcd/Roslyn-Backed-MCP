@@ -4,8 +4,10 @@ using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -33,6 +35,79 @@ namespace RoslynMcp.Tests;
 public sealed class HostProcessMetadataTests
 {
     private string _tempDir = string.Empty;
+
+    [TestMethod]
+    public void ServerProcessMetadata_UsesOneSourceAndReportsExpectedFallback()
+    {
+        var expectedStart = new DateTimeOffset(2026, 8, 22, 12, 0, 0, TimeSpan.Zero);
+        var fallback = expectedStart.AddMinutes(1);
+        var sourceReads = 0;
+        var metadata = new ServerProcessMetadata(
+            () =>
+            {
+                sourceReads++;
+                return expectedStart;
+            },
+            () => fallback);
+
+        Assert.AreEqual(expectedStart, metadata.StartedAtUtc);
+        Assert.AreEqual(1, sourceReads);
+        Assert.IsFalse(metadata.UsedWallClockFallback);
+        AssertEveryStartTimeSurfaceUses(metadata);
+
+        var sink = new CapturingServerObservabilitySink();
+        var fallbackMetadata = new ServerProcessMetadata(
+            () => throw new InvalidOperationException("secret process detail"),
+            () => fallback,
+            new ServerObservabilityReporter(sink));
+
+        Assert.AreEqual(fallback, fallbackMetadata.StartedAtUtc);
+        Assert.IsTrue(fallbackMetadata.UsedWallClockFallback);
+        AssertEveryStartTimeSurfaceUses(fallbackMetadata);
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual("ServerProcessMetadata", sink.Events.Single().Category);
+        Assert.IsFalse(System.Text.Json.JsonSerializer.Serialize(sink.Events.Single())
+            .Contains("secret process detail", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ServerProcessMetadata_UnexpectedFailureIsNotSwallowed()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => new ServerProcessMetadata(
+            () => throw new ArgumentException("unexpected"),
+            () => DateTimeOffset.UtcNow));
+    }
+
+    private static void AssertEveryStartTimeSurfaceUses(ServerProcessMetadata metadata)
+    {
+        try
+        {
+            WorkspaceEvictionRegistry.PublishRecycleContext(metadata.StartedAtUtc, previousRecycleReason: null);
+            Assert.AreEqual(metadata.StartedAtUtc, WorkspaceEvictionRegistry.ServerStartedAtUtc);
+
+            var info = ServerTools.GetServerInfo(
+                new FakeWorkspaceManager(),
+                new FakeVersionProvider(),
+                metadata).GetAwaiter().GetResult();
+            var heartbeat = ServerTools.GetServerHeartbeat(
+                new FakeWorkspaceManager(),
+                metadata).GetAwaiter().GetResult();
+
+            using var infoDocument = JsonDocument.Parse(info.TextPayload());
+            using var heartbeatDocument = JsonDocument.Parse(heartbeat.TextPayload());
+            var expected = metadata.StartedAtUtc.ToString("O", CultureInfo.InvariantCulture);
+            Assert.AreEqual(
+                expected,
+                infoDocument.RootElement.GetProperty("connection").GetProperty("serverStartedAt").GetString());
+            Assert.AreEqual(
+                expected,
+                heartbeatDocument.RootElement.GetProperty("connection").GetProperty("serverStartedAt").GetString());
+        }
+        finally
+        {
+            WorkspaceEvictionRegistry.Reset();
+        }
+    }
 
     [TestInitialize]
     public void Setup()

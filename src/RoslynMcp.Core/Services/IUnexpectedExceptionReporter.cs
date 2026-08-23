@@ -15,9 +15,11 @@ public enum UnexpectedExceptionCategory
     CompositeApply,
     FixAll,
     WorkspaceReadiness,
+    WorkspaceCloseProcessDrain,
     GetPrompt,
     FlowAnalysis,
     TestRun,
+    ServerProcessMetadata,
 }
 
 /// <summary>

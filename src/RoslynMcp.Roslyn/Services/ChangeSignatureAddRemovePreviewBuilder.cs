@@ -202,20 +202,16 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         }
         else
         {
-            foreach (var iface in method.ContainingType.AllInterfaces)
+            foreach (var ifaceMember in SymbolServiceHelpers.GetImplementedInterfaceMembers(method))
             {
-                foreach (var ifaceMember in iface.GetMembers().OfType<IMethodSymbol>())
+                set.Add(ifaceMember);
+                var siblingImpls = await SymbolFinder.FindImplementationsAsync(
+                    ifaceMember,
+                    solution,
+                    cancellationToken: ct).ConfigureAwait(false);
+                foreach (var sibling in siblingImpls)
                 {
-                    var concrete = method.ContainingType.FindImplementationForInterfaceMember(ifaceMember);
-                    if (SymbolEqualityComparer.Default.Equals(concrete, method))
-                    {
-                        set.Add(ifaceMember);
-                        var siblingImpls = await SymbolFinder.FindImplementationsAsync(ifaceMember, solution, cancellationToken: ct).ConfigureAwait(false);
-                        foreach (var sibling in siblingImpls)
-                        {
-                            if (sibling is IMethodSymbol siblingMethod) set.Add(siblingMethod);
-                        }
-                    }
+                    if (sibling is IMethodSymbol siblingMethod) set.Add(siblingMethod);
                 }
             }
         }

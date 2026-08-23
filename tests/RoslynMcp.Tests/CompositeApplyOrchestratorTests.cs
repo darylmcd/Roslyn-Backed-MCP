@@ -95,10 +95,20 @@ public sealed class CompositeApplyOrchestratorTests
         using var hold = new FileStream(tmp, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
 
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        using var correlationScope = RequestCorrelationContext.Begin();
+        var correlationId = RequestCorrelationContext.Current
+            ?? throw new AssertFailedException("The request correlation scope must publish an id.");
 
         // (a) The original write failure must still propagate — primary failure is not masked.
         await Assert.ThrowsExactlyAsync<IOException>(
-            () => AtomicFileWriter.WriteAllTextAsync(path, "// content", CancellationToken.None, logger));
+            () => AtomicFileWriter.WriteAllTextAsync(
+                path,
+                "// content",
+                CancellationToken.None,
+                logger,
+                exceptionReporter: reporter));
 
         // (b) Exactly one Warning is recorded, and it is redacted: no raw exception attached, no
         // absolute temp/target paths, no caught-exception message text — only the stable cleanup
@@ -111,8 +121,10 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsFalse(warnings[0].Message.Contains(tmp, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute .tmp path.");
         StringAssert.Contains(warnings[0].Message, "CompositeApplyTempCleanup", "The warning must carry the stable cleanup category token.");
         StringAssert.Contains(warnings[0].Message, Path.GetFileName(path), "The warning must name the target file (file name only).");
-        StringAssert.Contains(warnings[0].Message, "correlationId=unavailable", "With no request scope active, the correlation token must be 'unavailable'.");
+        StringAssert.Contains(warnings[0].Message, $"correlationId={correlationId}", "The warning must carry the active request correlation id.");
         StringAssert.Contains(warnings[0].Message, nameof(IOException), "The warning must carry the exception-type topology from the shared projection.");
+        Assert.HasCount(1, sink.Events);
+        Assert.AreEqual(correlationId, sink.Events.Single().Exception.CorrelationId);
 
         // (c) The .tmp still exists — cleanup genuinely failed (it is still locked open), not a no-op.
         Assert.IsTrue(File.Exists(tmp), "The locked .tmp must remain on disk because its cleanup delete failed.");

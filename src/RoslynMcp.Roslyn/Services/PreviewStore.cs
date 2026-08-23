@@ -202,6 +202,17 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
             }
         }
 
+        // Removing a whole project deletes every source document it owned. Project-level
+        // removals are not repeated in GetProjectChanges(), so enumerate them explicitly just
+        // like additions or the redemption-time write-set check would silently omit deletions.
+        foreach (var removedProject in changes.GetRemovedProjects())
+        {
+            foreach (var document in removedProject.Documents)
+            {
+                AddDocumentPath(paths, document);
+            }
+        }
+
         return paths;
     }
 

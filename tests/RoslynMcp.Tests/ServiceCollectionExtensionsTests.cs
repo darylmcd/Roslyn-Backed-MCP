@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
@@ -94,6 +95,7 @@ public sealed class ServiceCollectionExtensionsTests
         AssertSingleRegistration<NuGetVersionChecker>(services);
         AssertSingleRegistration<ILatestVersionProvider>(services);
         AssertSingleRegistration<IWorkspaceCacheStore>(services);
+        AssertSingleRegistration<ServerProcessMetadata>(services);
         Assert.IsFalse(
             services.Any(descriptor =>
                 descriptor.ServiceType == typeof(HttpClient)

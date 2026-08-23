@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
@@ -76,6 +77,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ServerObservabilityReporter>();
         services.TryAddSingleton<IUnexpectedExceptionReporter>(static provider =>
             provider.GetRequiredService<ServerObservabilityReporter>());
+        services.AddSingleton<ServerProcessMetadata>();
 
         services.AddHttpClient(NuGetVersionChecker.HttpClientName);
         services.AddSingleton(sp => new NuGetVersionChecker(
