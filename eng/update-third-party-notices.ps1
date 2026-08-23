@@ -80,7 +80,9 @@ $lines.Add('---')
 $lines.Add('')
 $lines.Add('Run `pwsh eng/update-third-party-notices.ps1` after changing central package pins. Verification fails closed when a package lacks reviewed attribution metadata.')
 $lines.Add('')
-$generated = $lines -join [Environment]::NewLine
+# Repository markdown uses canonical LF on every runner. Environment.NewLine would make
+# verify-only mode disagree across Windows and Linux even when the package inventory matches.
+$generated = $lines -join "`n"
 
 if ($Verify) {
     $current = Get-Content -LiteralPath $noticePath -Raw
