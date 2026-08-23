@@ -80,13 +80,31 @@ If the CHANGELOG.md `## [Unreleased]` section had content, `/bump` moved it unde
 
 ### Step 3: Verify
 
-Run the full CI-equivalent locally:
+Run the publish-gate invocation locally — the same entry point and flags
+`publish-nuget.yml` runs at tag time:
 
 ```
-pwsh -NoProfile -File eng/verify-release.ps1 -Configuration Release
+pwsh -NoProfile -File eng/verify-release.ps1 -Configuration Release -NoCoverage -RequireConsumedFragments
 ```
+
+**The flags are load-bearing — do NOT drop them to the bare form.**
+
+| Flag | Why |
+|---|---|
+| `-NoCoverage` | Coverage is informational per `CI_POLICY.md` and gates nothing. The bare form is the dispatch/schedule coverage path, and it trips the known Coverlet .NET 10 teardown crash (`coverlet-net10-session-end-crash-upgrade`) — an `AccessViolationException` in `CoverletInProcDataCollector.TestSessionEnd` that aborts the run and returns exit 1 *after every test has already passed*. That is a false red on an otherwise green release. |
+| `-RequireConsumedFragments` | Enforces that a consumed breaking section advances the major. Step 3 is the only local gate for the breaking→major rule; without this flag a mis-typed bump reaches Ship unchecked. |
+
+Reference invocations (keep this table in sync with the workflows):
+
+| Gate | Invocation |
+|---|---|
+| PR merge gate (`ci.yml`) | `-Configuration Release -NoCoverage -ExcludeNetworkTests` |
+| Publish gate (`publish-nuget.yml`) | `-Configuration Release -NoCoverage -RequireConsumedFragments` |
+| dispatch / schedule (informational only) | `-Configuration Release` |
 
 Save stdout+stderr to `artifacts/verify-release.log` (tee pattern) so Step 4 Ship has evidence and re-runs can probe the log mtime. If exit code is non-zero: STOP and report the failure. Do NOT proceed to Ship with a red verify.
+
+If the run reports `Failed: 0` yet still exits non-zero, check the tail for a collector crash before treating it as a product failure — see the `-NoCoverage` row above.
 
 Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-skill generality + link check).
 
