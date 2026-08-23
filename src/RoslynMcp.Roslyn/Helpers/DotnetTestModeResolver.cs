@@ -34,14 +34,26 @@ internal static class DotnetTestModeResolver
         return false;
     }
 
+    // global.json officially allows JavaScript/C#-style comments and trailing commas
+    // (https://learn.microsoft.com/dotnet/core/tools/global-json#comments-in-globaljson),
+    // which System.Text.Json rejects by default — without this, a validly-commented global.json
+    // that DOES opt into MTP would throw JsonException below and silently fall back to "assume
+    // VSTest mode", the exact silent-omission this whole check exists to prevent.
+    private static readonly JsonDocumentOptions GlobalJsonParseOptions = new()
+    {
+        CommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
     private static bool ReadsNativeMtpRunner(string globalJsonPath, ILogger? logger)
     {
         try
         {
             using var stream = File.OpenRead(globalJsonPath);
-            using var document = JsonDocument.Parse(stream);
+            using var document = JsonDocument.Parse(stream, GlobalJsonParseOptions);
             return document.RootElement.TryGetProperty("test", out var testElement) &&
                    testElement.TryGetProperty("runner", out var runnerElement) &&
+                   runnerElement.ValueKind == JsonValueKind.String &&
                    string.Equals(
                        runnerElement.GetString(),
                        "Microsoft.Testing.Platform",

@@ -17,6 +17,10 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     [TestCleanup]
     public void Cleanup()
     {
+        // tunit-fixture-cleanup-failure-observability: attempt every root's delete even after one
+        // fails, but surface the failure(s) at the end rather than swallowing them — a silently
+        // leaked locked-file delete previously hid the actual defect it exists to catch.
+        List<Exception>? failures = null;
         foreach (var root in _createdRoots)
         {
             try
@@ -26,10 +30,15 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
                     Directory.Delete(root, recursive: true);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort cleanup; a locked file just leaks a temp directory.
+                (failures ??= []).Add(ex);
             }
+        }
+
+        if (failures is not null)
+        {
+            throw new AggregateException("Failed to delete one or more temp directories created by this test.", failures);
         }
     }
 
@@ -124,5 +133,20 @@ public sealed class ProjectMetadataParserTryGetResolvedPackageVersionTests
     public void TryGetResolvedPackageVersion_NullProjectPath_ReturnsNull()
     {
         Assert.IsNull(ProjectMetadataParser.TryGetResolvedPackageVersion(null, "TUnit.Engine"));
+    }
+
+    [TestMethod]
+    public void Cleanup_DeleteFailureForOneRoot_SurfacesAggregateExceptionAfterAttemptingAllRoots()
+    {
+        var root1 = CreateProjectDirectory();
+        var root2 = CreateProjectDirectory();
+        var lockedFile = Path.Combine(root1, "locked.txt");
+        File.WriteAllText(lockedFile, "content");
+        using var lockHandle = File.Open(lockedFile, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var ex = Assert.ThrowsExactly<AggregateException>(Cleanup);
+
+        Assert.AreEqual(1, ex.InnerExceptions.Count);
+        Assert.IsFalse(Directory.Exists(root2), "The second root's delete must still be attempted despite the first root's failure.");
     }
 }
