@@ -36,6 +36,7 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("Interface", dto.Kind);
         StringAssert.Contains(dto.FullyQualifiedName ?? "", "IAnimal");
         Assert.AreEqual("SampleLib", dto.Namespace);
+        AssertLocationMatchesLegacySpan(dto.Location, dto.FilePath, dto.StartLine, dto.StartColumn, dto.EndLine, dto.EndColumn);
     }
 
     [TestMethod]
@@ -208,7 +209,7 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
     public void ToDiagnosticDto_MapsIdAndSeverity()
     {
         var text = SourceText.From("class X { }");
-        var tree = SyntaxFactory.ParseSyntaxTree(text);
+        var tree = SyntaxFactory.ParseSyntaxTree(text, path: "mapper-diagnostic.cs");
         var loc = Location.Create(tree, TextSpan.FromBounds(0, 1));
         var diagnostic = Diagnostic.Create(
             new DiagnosticDescriptor(
@@ -223,5 +224,22 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
         Assert.AreEqual("TEST999", dto.Id);
         Assert.AreEqual("message", dto.Message);
         StringAssert.Contains(dto.Severity ?? "", "Warning");
+        AssertLocationMatchesLegacySpan(dto.Location, dto.FilePath, dto.StartLine, dto.StartColumn, dto.EndLine, dto.EndColumn);
+    }
+
+    private static void AssertLocationMatchesLegacySpan(
+        LocationDto? location,
+        string? filePath,
+        int? startLine,
+        int? startColumn,
+        int? endLine,
+        int? endColumn)
+    {
+        Assert.IsNotNull(location);
+        Assert.AreEqual(filePath, location.FilePath);
+        Assert.AreEqual(startLine, location.StartLine);
+        Assert.AreEqual(startColumn, location.StartColumn);
+        Assert.AreEqual(endLine, location.EndLine);
+        Assert.AreEqual(endColumn, location.EndColumn);
     }
 }

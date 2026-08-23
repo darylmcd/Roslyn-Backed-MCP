@@ -54,6 +54,14 @@ public class FileSnapshotStoreSample
         return File.ReadAllText(Path.Combine(_root, "manifest.txt"));
     }
 }
+
+public static class FileSnapshotStoreSampleCaller
+{
+    public static void Persist(FileSnapshotStoreSample store)
+    {
+        store.WriteManifest("content");
+    }
+}
 """, CancellationToken.None);
 
         // Fixture #3: a lifecycle-manager class that mutates a ConcurrentDictionary field via
@@ -155,12 +163,18 @@ public class CompoundMutationSample
     [ClassCleanup]
     public static void ClassCleanup()
     {
-        if (WorkspaceId is not null)
+        try
         {
-            try { WorkspaceManager.Close(WorkspaceId); } catch { }
+            if (WorkspaceId is not null)
+            {
+                WorkspaceManager.Close(WorkspaceId);
+            }
         }
-        DeleteDirectoryIfExists(CopiedRoot);
-        DisposeServices();
+        finally
+        {
+            DeleteDirectoryIfExists(CopiedRoot);
+            DisposeServices();
+        }
     }
 
     [TestMethod]
@@ -175,6 +189,13 @@ public class CompoundMutationSample
         Assert.IsNotNull(writeManifest, "WriteManifest should be flagged as a mutating member after the side-effect classifier lands.");
         CollectionAssert.Contains(writeManifest.MutationScopes.ToList(), SideEffectClassifier.Scopes.IO,
             "File.WriteAllText should classify as IO.");
+        var externalCaller = writeManifest.ExternalCallers.Single(
+            caller => caller.ContainingMember?.Contains("FileSnapshotStoreSampleCaller.Persist", StringComparison.Ordinal) == true);
+        Assert.IsNotNull(externalCaller.Location);
+        Assert.AreEqual(externalCaller.FilePath, externalCaller.Location.FilePath);
+        Assert.AreEqual(externalCaller.StartLine, externalCaller.Location.StartLine);
+        Assert.AreEqual(externalCaller.StartColumn, externalCaller.Location.StartColumn);
+        Assert.AreEqual(externalCaller.CallerPhase, externalCaller.Location.Classification);
 
         var deleteManifest = result.MutatingMembers.FirstOrDefault(m => m.Name == "DeleteManifest");
         Assert.IsNotNull(deleteManifest);

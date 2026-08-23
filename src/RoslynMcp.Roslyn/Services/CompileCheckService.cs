@@ -221,16 +221,22 @@ public sealed class CompileCheckService : ICompileCheckService
     /// </summary>
     private static DiagnosticDto BuildDiagnosticDto(Diagnostic diag, FileLinePositionSpan lineSpan)
     {
+        var startLine = lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : (int?)null;
+        var startColumn = lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : (int?)null;
+        var endLine = lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : (int?)null;
+        var endColumn = lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : (int?)null;
         return new DiagnosticDto(
             Id: diag.Id,
             Message: diag.GetMessage(),
             Severity: diag.Severity.ToString(),
             Category: diag.Descriptor.Category,
             FilePath: lineSpan.Path,
-            StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-            StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-            EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-            EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
+            StartLine: startLine,
+            StartColumn: startColumn,
+            EndLine: endLine,
+            EndColumn: endColumn,
+            Location: SymbolMapper.ToOptionalLocationDto(
+                lineSpan.Path, startLine, startColumn, endLine, endColumn));
     }
 
     /// <summary>

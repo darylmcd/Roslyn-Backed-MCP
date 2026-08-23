@@ -5,7 +5,7 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs:94`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.*.cs`
+- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs`
 
 ## Acceptance
 

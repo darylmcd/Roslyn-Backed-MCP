@@ -61,12 +61,18 @@ public static class WebSnapshotConsumer
     [ClassCleanup]
     public static void ClassCleanup()
     {
-        if (WorkspaceId is not null)
+        try
         {
-            try { WorkspaceManager.Close(WorkspaceId); } catch { }
+            if (WorkspaceId is not null)
+            {
+                WorkspaceManager.Close(WorkspaceId);
+            }
         }
-        DeleteDirectoryIfExists(CopiedRoot);
-        DisposeServices();
+        finally
+        {
+            DeleteDirectoryIfExists(CopiedRoot);
+            DisposeServices();
+        }
     }
 
     [TestMethod]
@@ -83,6 +89,15 @@ public static class WebSnapshotConsumer
         Assert.AreEqual(2, primaryCtorBinds.Count,
             "Both `new WebSnapshotStoreContext(...)` call sites must be reported as PrimaryConstructorBind writes. " +
             $"Got: {string.Join(", ", writes.Select(w => $"{w.WriteKind}@{w.StartLine}"))} (total {writes.Count})");
+        Assert.IsTrue(primaryCtorBinds.All(write =>
+            write.Location is not null &&
+            write.Location.FilePath == write.FilePath &&
+            write.Location.StartLine == write.StartLine &&
+            write.Location.StartColumn == write.StartColumn &&
+            write.Location.EndLine == write.EndLine &&
+            write.Location.EndColumn == write.EndColumn &&
+            write.Location.Classification == write.WriteKind),
+            "Every property-write result must carry one nested location equal to its legacy span.");
 
         // Sanity: the `existing with { Port = ... }` site writes Port, NOT Store — none of the
         // reported writes should be on `Store` from a with-expression in this fixture.

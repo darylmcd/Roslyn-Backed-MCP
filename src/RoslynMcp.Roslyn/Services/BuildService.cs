@@ -124,7 +124,7 @@ public sealed class BuildService : IBuildService
                     diagnostic.StartLine,
                     diagnostic.StartColumn);
                 return key is not null && spans.TryGetValue(key, out var span)
-                    ? diagnostic with { EndLine = span.EndLine, EndColumn = span.EndColumn }
+                    ? SymbolMapper.WithEndPosition(diagnostic, span.EndLine, span.EndColumn)
                     : diagnostic;
             })
             .ToList();

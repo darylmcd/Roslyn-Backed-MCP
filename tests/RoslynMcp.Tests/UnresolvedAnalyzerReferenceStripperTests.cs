@@ -75,6 +75,8 @@ public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspace
         StringAssert.Contains(dto.Message, "SampleLib");
         StringAssert.Contains(dto.Message, "Run `dotnet build`");
         Assert.IsFalse(dto.Message.Contains("package path", StringComparison.Ordinal));
+        Assert.IsNull(dto.Location,
+            "A project-only diagnostic has no complete source span and must not fabricate a nested location.");
     }
 
     [TestMethod]

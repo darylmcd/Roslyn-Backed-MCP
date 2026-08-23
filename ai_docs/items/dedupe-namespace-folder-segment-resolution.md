@@ -1,6 +1,6 @@
 # dedupe-namespace-folder-segment-resolution — Share namespace folder-segment resolution
 
-**row:** `dedupe-namespace-folder-segment-resolution` · **pri:** `Low` · **size:** `M`
+**row:** `dedupe-namespace-folder-segment-resolution` · **pri:** `Low` · **size:** `M` · **deps:** `scaffolding-hotspot-complexity-reduction`
 
 ## Anchors
 

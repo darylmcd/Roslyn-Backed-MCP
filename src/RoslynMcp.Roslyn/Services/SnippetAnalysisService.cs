@@ -60,7 +60,7 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
         var diagnosticDtos = diagnostics.Select(d =>
         {
             var lineSpan = d.Location.GetMappedLineSpan();
-            int? StartLine = null, StartCol = null, EndLine = null, EndCol = null;
+            int? startLine = null, startColumn = null, endLine = null, endColumn = null;
             if (lineSpan.IsValid)
             {
                 // Convert from wrapped (0-based) to user (1-based) coordinates.
@@ -69,13 +69,13 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                 var wrappedEndLine = lineSpan.EndLinePosition.Line + 1;
                 var wrappedEndCol = lineSpan.EndLinePosition.Character + 1;
 
-                StartLine = Math.Max(1, wrappedStartLine - userStartLine + 1);
-                StartCol = wrappedStartLine == userStartLine
+                startLine = Math.Max(1, wrappedStartLine - userStartLine + 1);
+                startColumn = wrappedStartLine == userStartLine
                     ? Math.Max(1, wrappedStartCol - userStartColumn + 1)
                     : wrappedStartCol;
 
-                EndLine = Math.Max(1, wrappedEndLine - userStartLine + 1);
-                EndCol = wrappedEndLine == userStartLine
+                endLine = Math.Max(1, wrappedEndLine - userStartLine + 1);
+                endColumn = wrappedEndLine == userStartLine
                     ? Math.Max(1, wrappedEndCol - userStartColumn + 1)
                     : wrappedEndCol;
             }
@@ -86,10 +86,11 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                 Severity: d.Severity.ToString(),
                 Category: d.Descriptor.Category,
                 FilePath: null,
-                StartLine: StartLine,
-                StartColumn: StartCol,
-                EndLine: EndLine,
-                EndColumn: EndCol);
+                StartLine: startLine,
+                StartColumn: startColumn,
+                EndLine: endLine,
+                EndColumn: endColumn,
+                Location: null);
         }).ToList();
 
         // Extract declared symbols from the compilation

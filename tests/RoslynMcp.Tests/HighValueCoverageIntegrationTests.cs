@@ -45,6 +45,12 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(
             result.Diagnostics.Any(d => d.Id.Contains("CS", StringComparison.Ordinal)),
             "Expected compiler diagnostics.");
+        var locatedDiagnostic = result.Diagnostics.First(d => d.Location is not null);
+        Assert.AreEqual(locatedDiagnostic.FilePath, locatedDiagnostic.Location!.FilePath);
+        Assert.AreEqual(locatedDiagnostic.StartLine, locatedDiagnostic.Location.StartLine);
+        Assert.AreEqual(locatedDiagnostic.StartColumn, locatedDiagnostic.Location.StartColumn);
+        Assert.AreEqual(locatedDiagnostic.EndLine, locatedDiagnostic.Location.EndLine);
+        Assert.AreEqual(locatedDiagnostic.EndColumn, locatedDiagnostic.Location.EndColumn);
     }
 
     [TestMethod]

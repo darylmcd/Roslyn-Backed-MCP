@@ -1,6 +1,6 @@
 # locationdto-stage3-flat-field-deprecation — deprecate legacy flat location fields
 
-**row:** `locationdto-stage3-flat-field-deprecation` · **pri:** `Low` · **size:** `M` · **deps:** `locationdto-stage1-symbol-type-producers, locationdto-stage1-diagnostic-producers-a, locationdto-stage1-diagnostic-producers-b`
+**row:** `locationdto-stage3-flat-field-deprecation` · **pri:** `Defer` · **size:** `M` · **deps:** `locationdto-stage1-symbol-type-producers, locationdto-stage1-diagnostic-producers-a, locationdto-stage1-diagnostic-producers-b`
 
 ## Anchors
 

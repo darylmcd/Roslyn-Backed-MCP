@@ -7,7 +7,7 @@
 - `src/RoslynMcp.Roslyn/Services/CodeActionService.cs`
 - `src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs`
 - `src/RoslynMcp.Roslyn/Services/FixAllService.cs`
-- New focused `CSharpFeatureProviderLoader` under `src/RoslynMcp.Roslyn/Services/`.
+- `src/RoslynMcp.Roslyn/Services/CSharpFeatureProviderLoader.cs` (new)
 - `tests/RoslynMcp.Tests/CodeActionServiceTests.cs`
 - `tests/RoslynMcp.Tests/CodeFixProviderRegistryTests.cs`
 - `tests/RoslynMcp.Tests/FixAllServiceTests.cs`

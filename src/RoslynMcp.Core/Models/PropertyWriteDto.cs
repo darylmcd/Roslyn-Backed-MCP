@@ -26,4 +26,5 @@ public sealed record PropertyWriteDto(
     int EndColumn,
     string? ContainingMember,
     string? PreviewText,
-    string WriteKind);
+    string WriteKind,
+    LocationDto? Location = null);

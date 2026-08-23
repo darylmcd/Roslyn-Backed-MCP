@@ -4,6 +4,8 @@
 - **Deciders:** repository owner
 - **Supersedes:** nothing
 - **Superseded by:** nothing
+- **Implementation:** Stage 1 and the additive secondary DTO slice landed together through
+  `locationdto-stage1-*` and `core-dto-location-quartet-consolidation-secondary`.
 
 This is the first Architecture Decision Record in this repository. It establishes `docs/decisions/` as the home for durable, numbered design decisions whose rationale must outlive the pull request that implemented them. Subsequent ADRs continue the `NNNN-kebab-title.md` numbering.
 
@@ -136,9 +138,9 @@ Stage 1 must sweep for equality-dependent call sites and either populate `Locati
 
 ## Migration Plan
 
-The work is split into bounded stages. **Stage 1 is out of scope for this ADR** — this document records the decision and the plan only; no DTO or producer code changes ship with it.
+The migration is split into bounded stages. Stage 1 and the additive secondary DTO slice are now implemented; later deprecation and removal remain release-gated.
 
-### Stage 1 — producer-side introduction (future backlog row)
+### Stage 1 — producer-side introduction
 
 - Append `LocationDto? Location = null` to `SymbolDto`, `DiagnosticDto`, and `TypeUsageDto`.
 - Populate it in the **nine** confirmed producers enumerated per DTO in **constraint 2 above** — eight for `DiagnosticDto`, one for `SymbolDto` (`SymbolMapper.cs`, the sets' only overlap), one for `TypeUsageDto` (`MutationAnalysisService.cs`). That list is the single source; do NOT re-derive this file set from a `DiagnosticDto`-only `rg`, which silently omits the sole `TypeUsageDto` producer.
@@ -148,9 +150,11 @@ The work is split into bounded stages. **Stage 1 is out of scope for this ADR** 
 
 Stage 1 may itself be split further if the producer sweep exceeds the repository's per-initiative file caps. A natural sub-split is one stage per DTO, since the three producers sets barely overlap.
 
-### Stage 2 — consumer-side composition (already filed: `core-dto-location-quartet-consolidation-secondary`)
+### Stage 2 — secondary DTO composition
 
-Composes `LocationDto` into `PropertyWriteDto` and `MutationCallerDto`. That row **stays blocked** until Stage 1 lands — its acceptance ties unblocking to the primary contract being decided *and* the first migration stage shipping. Recording this ADR satisfies the first half only.
+Additively composes `LocationDto` into `PropertyWriteDto` and `MutationCallerDto`. The latter's
+legacy shape exposes only the start point; its nested value carries the complete resolved span
+without inventing new flat end-coordinate fields. Both DTOs retain every legacy field.
 
 ### Stage 3 — deprecation and removal (future backlog row)
 

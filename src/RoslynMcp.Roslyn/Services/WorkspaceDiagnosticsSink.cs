@@ -43,7 +43,8 @@ internal sealed class WorkspaceDiagnosticsSink
                 StartLine: null,
                 StartColumn: null,
                 EndLine: null,
-                EndColumn: null);
+                EndColumn: null,
+                Location: null);
             _queue.Enqueue(dto);
             while (_queue.Count > _maxDiagnostics)
             {

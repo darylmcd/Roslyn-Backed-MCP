@@ -52,6 +52,13 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         Assert.IsNotNull(crefHit, "Expected DiagnosticsProbe's <see cref=\"Dog\"/> to surface as a type usage.");
         Assert.AreEqual(TypeUsageClassification.Documentation, crefHit.Classification,
             "Doc-comment cref references must be classified as Documentation, not Other.");
+        Assert.IsNotNull(crefHit.Location);
+        Assert.AreEqual(crefHit.FilePath, crefHit.Location.FilePath);
+        Assert.AreEqual(crefHit.StartLine, crefHit.Location.StartLine);
+        Assert.AreEqual(crefHit.StartColumn, crefHit.Location.StartColumn);
+        Assert.AreEqual(crefHit.EndLine, crefHit.Location.EndLine);
+        Assert.AreEqual(crefHit.EndColumn, crefHit.Location.EndColumn);
+        Assert.AreEqual(nameof(TypeUsageClassification.Documentation), crefHit.Location.Classification);
     }
 
     // ── find-overrides-virtual-declaration-site-doc ──
@@ -265,5 +272,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             $"StartColumn must point at the opening quote of the literal; got {error.StartColumn}.");
         Assert.IsTrue(error.EndColumn is >= 15 and <= 17,
             $"EndColumn must point past the closing quote of the literal; got {error.EndColumn}.");
+        Assert.IsNull(error.Location,
+            "In-memory snippets have no resolvable file path and must not fabricate a nested location.");
     }
 }

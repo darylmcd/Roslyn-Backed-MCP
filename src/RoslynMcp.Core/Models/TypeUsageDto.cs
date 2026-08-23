@@ -39,4 +39,5 @@ public sealed record TypeUsageDto(
     int EndColumn,
     string? ContainingMember,
     string? PreviewText,
-    TypeUsageClassification Classification);
+    TypeUsageClassification Classification,
+    LocationDto? Location = null);

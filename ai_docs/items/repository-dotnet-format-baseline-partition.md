@@ -1,12 +1,13 @@
 # repository-dotnet-format-baseline-partition — Partition the repository formatter baseline
 
-**row:** `repository-dotnet-format-baseline-partition` · **pri:** `Low` · **size:** `M` · **deps:** `ci-router-runner-label-duplication`
+**row:** `repository-dotnet-format-baseline-partition` · **pri:** `Low` · **size:** `L` · **deps:** `ci-router-runner-label-duplication`
 
 ## Anchors
 
 - `.editorconfig`
 - `CI_POLICY.md`
 - `.github/workflows/ci.yml`
+- `RoslynMcp.slnx`
 - New `eng/verify-changed-format.ps1`
 - New `tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs`
 

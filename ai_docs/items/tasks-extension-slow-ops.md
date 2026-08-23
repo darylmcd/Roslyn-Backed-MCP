@@ -1,6 +1,6 @@
 # tasks-extension-slow-ops — Adopt the MCP tasks extension for slow operations
 
-**row:** `tasks-extension-slow-ops` · **pri:** `Low` · **size:** `M` · **deps:** `stdio-shutdown-flush-transport-ownership,prompt-call-error-filter-boundary,workspace-resource-list-notification-semantics`
+**row:** `tasks-extension-slow-ops` · **pri:** `Low` · **size:** `L` · **deps:** `stdio-shutdown-flush-transport-ownership,prompt-call-error-filter-boundary,workspace-resource-list-notification-semantics`
 
 ## Anchors
 

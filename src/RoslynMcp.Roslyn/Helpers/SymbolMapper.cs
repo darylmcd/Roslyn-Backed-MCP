@@ -35,6 +35,11 @@ public static class SymbolMapper
         var modifiers = GetModifiers(symbol);
         var (baseTypes, interfaces) = GetTypeHierarchy(symbol);
         var (hasGetter, hasSetter, setterAccessibility) = GetPropertyAccessors(symbol);
+        var filePath = lineSpan?.Path;
+        var startLine = lineSpan?.StartLinePosition.Line + 1;
+        var startColumn = lineSpan?.StartLinePosition.Character + 1;
+        var endLine = lineSpan?.EndLinePosition.Line + 1;
+        var endColumn = lineSpan?.EndLinePosition.Character + 1;
 
         return new SymbolDto(
             Name: symbol.Name,
@@ -46,11 +51,11 @@ public static class SymbolMapper
                 ? symbol.ContainingNamespace.ToDisplayString()
                 : null,
             Project: projectName,
-            FilePath: lineSpan?.Path,
-            StartLine: lineSpan?.StartLinePosition.Line + 1,
-            StartColumn: lineSpan?.StartLinePosition.Character + 1,
-            EndLine: lineSpan?.EndLinePosition.Line + 1,
-            EndColumn: lineSpan?.EndLinePosition.Character + 1,
+            FilePath: filePath,
+            StartLine: startLine,
+            StartColumn: startColumn,
+            EndLine: endLine,
+            EndColumn: endColumn,
             ReturnType: returnType,
             Parameters: parameters,
             Modifiers: modifiers.Count > 0 ? modifiers : null,
@@ -59,7 +64,8 @@ public static class SymbolMapper
             Documentation: symbol.GetDocumentationCommentXml(),
             HasGetter: hasGetter,
             HasSetter: hasSetter,
-            SetterAccessibility: setterAccessibility);
+            SetterAccessibility: setterAccessibility,
+            Location: ToOptionalLocationDto(filePath, startLine, startColumn, endLine, endColumn));
     }
 
     private static string? GetReturnType(ISymbol symbol) => symbol switch
@@ -135,6 +141,56 @@ public static class SymbolMapper
     }
 
     /// <summary>
+    /// Creates a complete nested location when every required span component is available.
+    /// Partial legacy locations deliberately remain flat during the migration window.
+    /// </summary>
+    internal static LocationDto? ToOptionalLocationDto(
+        string? filePath,
+        int? startLine,
+        int? startColumn,
+        int? endLine,
+        int? endColumn,
+        string? containingMember = null,
+        string? previewText = null,
+        string? classification = null)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) ||
+            startLine is null ||
+            startColumn is null ||
+            endLine is null ||
+            endColumn is null)
+        {
+            return null;
+        }
+
+        return new LocationDto(
+            FilePath: filePath,
+            StartLine: startLine.Value,
+            StartColumn: startColumn.Value,
+            EndLine: endLine.Value,
+            EndColumn: endColumn.Value,
+            ContainingMember: containingMember,
+            PreviewText: previewText,
+            Classification: classification);
+    }
+
+    /// <summary>
+    /// Enriches a diagnostic's end position without allowing the legacy and nested spans to drift.
+    /// </summary>
+    internal static DiagnosticDto WithEndPosition(DiagnosticDto diagnostic, int endLine, int endColumn) =>
+        diagnostic with
+        {
+            EndLine = endLine,
+            EndColumn = endColumn,
+            Location = ToOptionalLocationDto(
+                diagnostic.FilePath,
+                diagnostic.StartLine,
+                diagnostic.StartColumn,
+                endLine,
+                endColumn)
+        };
+
+    /// <summary>
     /// Classifies a reference location as <c>Read</c>, <c>Write</c>, <c>ReadWrite</c>, <c>NameOf</c>,
     /// <c>Attribute</c>, or <c>Other</c> based on the surrounding syntax context.
     /// </summary>
@@ -206,16 +262,21 @@ public static class SymbolMapper
     public static DiagnosticDto ToDiagnosticDto(Diagnostic diagnostic)
     {
         var lineSpan = diagnostic.Location.GetLineSpan();
+        var startLine = lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : (int?)null;
+        var startColumn = lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : (int?)null;
+        var endLine = lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : (int?)null;
+        var endColumn = lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : (int?)null;
         return new DiagnosticDto(
             Id: diagnostic.Id,
             Message: diagnostic.GetMessage(),
             Severity: diagnostic.Severity.ToString(),
             Category: diagnostic.Descriptor.Category,
             FilePath: lineSpan.Path,
-            StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-            StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-            EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-            EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
+            StartLine: startLine,
+            StartColumn: startColumn,
+            EndLine: endLine,
+            EndColumn: endColumn,
+            Location: ToOptionalLocationDto(lineSpan.Path, startLine, startColumn, endLine, endColumn));
     }
 
     private static List<string> GetModifiers(ISymbol symbol)

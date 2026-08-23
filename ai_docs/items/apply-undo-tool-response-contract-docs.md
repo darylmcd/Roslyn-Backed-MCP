@@ -1,6 +1,6 @@
 # apply-undo-tool-response-contract-docs — Document apply and undo response variants
 
-**row:** `apply-undo-tool-response-contract-docs` · **pri:** `Low` · **size:** `M`
+**row:** `apply-undo-tool-response-contract-docs` · **pri:** `Low` · **size:** `M` · **deps:** `apply-undo-workflow-service-extraction`
 
 ## Anchors
 
