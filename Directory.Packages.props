@@ -4,14 +4,14 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="ModelContextProtocol" Version="2.1.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <!-- Ships the RS* release-tracking rules used by ServerSurfaceCatalogAnalyzer.
-         Must match the 5.6.x Microsoft.CodeAnalysis.CSharp family — 4.x trips NU1605. -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Features" Version="5.6.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.6.0" />
+         Keep aligned with the Microsoft.CodeAnalysis.CSharp family to avoid NU1605. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Features" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.9.0" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
@@ -30,15 +30,16 @@
     <PackageVersion Include="MSTest.TestFramework" Version="4.3.3" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <!-- Analyzer-testing infrastructure for ServerSurfaceCatalogAnalyzer (RMCP001/RMCP002).
-         The harness consumes the centrally-pinned Microsoft.CodeAnalysis.* 5.6.0 family so
+         The harness consumes the centrally-pinned Microsoft.CodeAnalysis.* 5.9.0 family so
          analyzer tests and production analysis share the same Roslyn workspace ABI. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest" Version="1.1.2" />
     <!-- Transitive pin: the analyzer-testing harness drags in NuGet.Frameworks; pin an
          explicit version so Microsoft.Build.Locator's MSBL001 check stays satisfied
          (see the PackageReference in RoslynMcp.Tests.csproj for ExcludeAssets details). -->
     <PackageVersion Include="NuGet.Frameworks" Version="6.3.4" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.302" />
+    <!-- Independently versioned package; do not align mechanically with the compiler family. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="Nito.AsyncEx" Version="5.1.2" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.301" />
