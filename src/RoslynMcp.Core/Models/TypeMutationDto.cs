@@ -29,7 +29,8 @@ public sealed record MutationCallerDto(
     int StartColumn,
     string? ContainingMember,
     string? PreviewText,
-    string CallerPhase);
+    string CallerPhase,
+    LocationDto? Location = null);
 
 /// <summary>
 /// Represents state mutation analysis results for a type.

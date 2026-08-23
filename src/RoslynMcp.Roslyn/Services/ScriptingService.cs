@@ -254,7 +254,8 @@ public sealed class ScriptingService : IScriptingService
                     StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
                     StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
                     EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-                    EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
+                    EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null,
+                    Location: null);
             })
             .ToList();
     }

@@ -62,6 +62,8 @@ internal static partial class DotnetOutputParser
             var file = match.Groups["file"].Value;
             var startLine = ParseNullableInt(match.Groups["line"].Value);
             var startColumn = ParseNullableInt(match.Groups["column"].Value);
+            var endLine = ParseNullableInt(match.Groups["endLine"].Value);
+            var endColumn = ParseNullableInt(match.Groups["endColumn"].Value);
 
             // Deduplicate by (Id, FilePath, Line, Column) to avoid MSBuild retry duplicates
             if (!seen.Add((id, file, startLine, startColumn)))
@@ -75,8 +77,10 @@ internal static partial class DotnetOutputParser
                 FilePath: file,
                 StartLine: startLine,
                 StartColumn: startColumn,
-                EndLine: ParseNullableInt(match.Groups["endLine"].Value),
-                EndColumn: ParseNullableInt(match.Groups["endColumn"].Value)));
+                EndLine: endLine,
+                EndColumn: endColumn,
+                Location: SymbolMapper.ToOptionalLocationDto(
+                    file, startLine, startColumn, endLine, endColumn)));
         }
 
         return diagnostics;

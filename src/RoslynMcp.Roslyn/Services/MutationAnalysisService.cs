@@ -137,17 +137,18 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             var writeKind = ClassifyWriteReference(refNode);
             if (writeKind is null) continue;
 
-            var lineSpan = item.Source.Location.GetLineSpan();
+            var location = item.Dto with { Classification = writeKind };
 
             results.Add(new PropertyWriteDto(
-                FilePath: lineSpan.Path,
-                StartLine: lineSpan.StartLinePosition.Line + 1,
-                StartColumn: lineSpan.StartLinePosition.Character + 1,
-                EndLine: lineSpan.EndLinePosition.Line + 1,
-                EndColumn: lineSpan.EndLinePosition.Character + 1,
-                ContainingMember: item.ContainingSymbol?.ToDisplayString(),
-                PreviewText: item.Dto.PreviewText,
-                WriteKind: writeKind));
+                FilePath: location.FilePath,
+                StartLine: location.StartLine,
+                StartColumn: location.StartColumn,
+                EndLine: location.EndLine,
+                EndColumn: location.EndColumn,
+                ContainingMember: location.ContainingMember,
+                PreviewText: location.PreviewText,
+                WriteKind: writeKind,
+                Location: location));
         }
 
         // find-property-writes-positional-record-silent-zero:
@@ -181,6 +182,16 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
                     var lineSpan = argLocation.GetLineSpan();
                     var preview = await SymbolResolver.GetPreviewTextAsync(item.Source.Document, argLocation, ct).ConfigureAwait(false);
+                    var containingMember = item.ContainingSymbol?.ToDisplayString();
+                    var location = SymbolMapper.ToOptionalLocationDto(
+                        lineSpan.Path,
+                        lineSpan.StartLinePosition.Line + 1,
+                        lineSpan.StartLinePosition.Character + 1,
+                        lineSpan.EndLinePosition.Line + 1,
+                        lineSpan.EndLinePosition.Character + 1,
+                        containingMember,
+                        preview,
+                        "PrimaryConstructorBind");
 
                     results.Add(new PropertyWriteDto(
                         FilePath: lineSpan.Path,
@@ -188,9 +199,10 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                         StartColumn: lineSpan.StartLinePosition.Character + 1,
                         EndLine: lineSpan.EndLinePosition.Line + 1,
                         EndColumn: lineSpan.EndLinePosition.Character + 1,
-                        ContainingMember: item.ContainingSymbol?.ToDisplayString(),
+                        ContainingMember: containingMember,
                         PreviewText: preview,
-                        WriteKind: "PrimaryConstructorBind"));
+                        WriteKind: "PrimaryConstructorBind",
+                        Location: location));
                 }
             }
         }
@@ -307,17 +319,20 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan, findInsideTrivia: true);
             var classification = ClassifyTypeUsage(refNode, symbol);
 
-            var lineSpan = item.Source.Location.GetLineSpan();
+            // LocationDto exposes classifications as strings; use the enum member name so the
+            // nested value remains stable and round-trippable without a second vocabulary.
+            var location = item.Dto with { Classification = classification.ToString() };
 
             results.Add(new TypeUsageDto(
-                FilePath: lineSpan.Path,
-                StartLine: lineSpan.StartLinePosition.Line + 1,
-                StartColumn: lineSpan.StartLinePosition.Character + 1,
-                EndLine: lineSpan.EndLinePosition.Line + 1,
-                EndColumn: lineSpan.EndLinePosition.Character + 1,
-                ContainingMember: item.ContainingSymbol?.ToDisplayString(),
-                PreviewText: item.Dto.PreviewText,
-                Classification: classification));
+                FilePath: location.FilePath,
+                StartLine: location.StartLine,
+                StartColumn: location.StartColumn,
+                EndLine: location.EndLine,
+                EndColumn: location.EndColumn,
+                ContainingMember: location.ContainingMember,
+                PreviewText: location.PreviewText,
+                Classification: classification,
+                Location: location));
         }
 
         return results;
@@ -488,14 +503,25 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
         var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
         var lineSpan = refLocation.Location.GetLineSpan();
+        var containingMember = containingSymbol?.ToDisplayString();
+        var location = SymbolMapper.ToOptionalLocationDto(
+            lineSpan.Path,
+            lineSpan.StartLinePosition.Line + 1,
+            lineSpan.StartLinePosition.Character + 1,
+            lineSpan.EndLinePosition.Line + 1,
+            lineSpan.EndLinePosition.Character + 1,
+            containingMember,
+            preview,
+            phase);
 
         return new MutationCallerDto(
             FilePath: lineSpan.Path,
             StartLine: lineSpan.StartLinePosition.Line + 1,
             StartColumn: lineSpan.StartLinePosition.Character + 1,
-            ContainingMember: containingSymbol?.ToDisplayString(),
+            ContainingMember: containingMember,
             PreviewText: preview,
-            CallerPhase: phase);
+            CallerPhase: phase,
+            Location: location);
     }
 
     private static async Task<SyntaxNode?> GetCachedSyntaxRootAsync(

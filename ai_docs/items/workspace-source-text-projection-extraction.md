@@ -6,7 +6,7 @@
 
 - `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` — `GetSourceText`.
 - `src/RoslynMcp.Roslyn/Helpers/SourceTextSlicer.cs`
-- New focused internal request/projection helper under `src/RoslynMcp.Host.Stdio/Tools/`.
+- `src/RoslynMcp.Host.Stdio/Tools/SourceTextRequestProjection.cs` (new)
 - `tests/RoslynMcp.Tests/WorkspaceToolsTests.cs`
 
 ## Acceptance

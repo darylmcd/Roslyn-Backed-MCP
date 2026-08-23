@@ -64,7 +64,8 @@ internal class UnresolvedAnalyzerReferenceStripper
                     StartLine: null,
                     StartColumn: null,
                     EndLine: null,
-                    EndColumn: null));
+                    EndColumn: null,
+                    Location: null));
             }
         }
 

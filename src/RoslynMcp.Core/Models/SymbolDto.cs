@@ -24,4 +24,5 @@ public sealed record SymbolDto(
     string? Documentation,
     bool? HasGetter = null,
     bool? HasSetter = null,
-    string? SetterAccessibility = null);
+    string? SetterAccessibility = null,
+    LocationDto? Location = null);

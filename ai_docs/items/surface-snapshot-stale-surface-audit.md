@@ -5,7 +5,6 @@
 ## Anchors
 
 - `.ai-doc-audit.md:86`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.*.cs`
 
 ## Acceptance
 
@@ -14,7 +13,7 @@
 
 ## Evidence
 
-- `.ai-doc-audit.md` Known Gaps explicitly requests this before the next release; 10 `changelog.d/` fragments are staging for that cut. Source: 2026-06-04 discovery-sweep work-search.
+- `.ai-doc-audit.md` Known Gaps explicitly requests this before the next release; measure the live `ServerSurfaceCatalog` rather than editing its partial files. Source: 2026-06-04 discovery-sweep work-search.
 
 ## Context
 

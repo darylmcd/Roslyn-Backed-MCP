@@ -182,7 +182,7 @@ public sealed class DiagnosticService : IDiagnosticService
         {
             var miss = new DiagnosticDto(
                 "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
-                "Error", "Workspace", project.FilePath, null, null, null, null);
+                "Error", "Workspace", project.FilePath, null, null, null, null, Location: null);
             compilerAll.Add(miss);
             compilerFiltered.Add(miss);
             return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);

@@ -5,6 +5,7 @@
 ## Anchors
 
 - `docs/self-hosted-runner.md:19,170,203`
+- `eng/verify-ai-docs.ps1` (only if the optional regression guard is implemented)
 
 ## Acceptance
 

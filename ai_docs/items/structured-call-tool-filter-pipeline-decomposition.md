@@ -5,7 +5,9 @@
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs` — `Create` and its retry/recovery helpers.
-- New internal collaborators under `src/RoslynMcp.Host.Stdio/Middleware/`.
+- `src/RoslynMcp.Host.Stdio/Middleware/StructuredWorkspaceResolver.cs` (new)
+- `src/RoslynMcp.Host.Stdio/Middleware/StructuredDispatchPipeline.cs` (new)
+- `src/RoslynMcp.Host.Stdio/Middleware/StructuredResultProjector.cs` (new)
 - `tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs`
 - `tests/RoslynMcp.Tests/StructuredCallToolFilterElicitationTests.cs`
 - `tests/RoslynMcp.Tests/StructuredToolRawWireIntegrationTests.cs`

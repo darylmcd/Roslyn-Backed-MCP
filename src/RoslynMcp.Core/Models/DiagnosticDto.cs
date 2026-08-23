@@ -12,4 +12,5 @@ public sealed record DiagnosticDto(
     int? StartLine,
     int? StartColumn,
     int? EndLine,
-    int? EndColumn);
+    int? EndColumn,
+    LocationDto? Location = null);
