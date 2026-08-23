@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -68,7 +69,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_TwoAtomsOrdTogether_VersionUnknown_ThrowsMentioningTUnitEngine()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
                 resolvedTUnitEngineVersion: null));
@@ -81,7 +82,7 @@ public sealed class TreeNodeFilterTranslatorTests
     public void Translate_TwoAtomsOrdTogether_BelowFixVersion_Throws()
     {
         // The exact version this bug was reproduced on against a real production project.
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
                 BelowOrFixThreshold));
@@ -117,7 +118,7 @@ public sealed class TreeNodeFilterTranslatorTests
         // OR across different namespace/class combos is a separate, version-independent MTP
         // grammar limit (OR over full paths, not one path segment) — the TUnit pre-filter fix
         // doesn't touch this at all.
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~MyNamespace.ClassA.Method1|FullyQualifiedName~MyNamespace.ClassB.Method2",
                 AboveOrFixThreshold));
@@ -128,7 +129,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_AndOperator_ThrowsMentioningAnd()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate("FullyQualifiedName~Foo.Bar.Baz&TestCategory=Nightly", resolvedTUnitEngineVersion: null));
 
         StringAssert.Contains(ex.Message, "AND");
@@ -137,7 +138,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_ParenthesizedGrouping_Throws()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate("(FullyQualifiedName~Foo.Bar.Baz)", resolvedTUnitEngineVersion: null));
 
         StringAssert.Contains(ex.Message, "grouping");
@@ -146,7 +147,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_NonFullyQualifiedNameProperty_ThrowsMentioningProperty()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate("TestCategory=Nightly", resolvedTUnitEngineVersion: null));
 
         StringAssert.Contains(ex.Message, "FullyQualifiedName");
@@ -155,7 +156,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_NegationOperator_Throws()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate("FullyQualifiedName!=Foo.Bar.Baz", resolvedTUnitEngineVersion: null));
 
         StringAssert.Contains(ex.Message, "FullyQualifiedName");
@@ -164,7 +165,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_BareValueWithNoDots_ThrowsExplainingMissingClassAndMethod()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate("FullyQualifiedName~JustAWord", resolvedTUnitEngineVersion: null));
 
         StringAssert.Contains(ex.Message, "class/method");
@@ -190,7 +191,7 @@ public sealed class TreeNodeFilterTranslatorTests
         // consistent with "class WidgetTests, all methods" as with "method WidgetTests on class
         // Tests" — when the real discovered test is neither, this must decline, not silently
         // guess a class/method split that matches zero (or the wrong) tests.
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName~My.Tests.WidgetTests",
                 resolvedTUnitEngineVersion: null,
@@ -203,7 +204,7 @@ public sealed class TreeNodeFilterTranslatorTests
     [TestMethod]
     public void Translate_KnownNamesSuppliedButEmpty_ThrowsDeclining()
     {
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(() =>
+        var ex = Assert.ThrowsExactly<PublicInvalidOperationException>(() =>
             TreeNodeFilterTranslator.Translate(
                 "FullyQualifiedName=MyNamespace.MyClass.MyMethod",
                 resolvedTUnitEngineVersion: null,

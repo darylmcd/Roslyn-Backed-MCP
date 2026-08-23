@@ -143,8 +143,18 @@ internal static class ToolErrorHandler
         // generic InvalidOperationException entry so the Disconnected category wins over
         // the fallback InvalidOperation envelope. Recovery hint mirrors WorkspaceEvicted:
         // the workspace itself is intact — the client needs to reconnect and reload.
+        // tunit-boundary-domain-refusal-message-preserved: registered as part of the generic
+        // InvalidOperationException entry (not a separate dictionary slot) because
+        // PublicInvalidOperationException IS-A InvalidOperationException — the insertion-order
+        // walk would reach this same entry either way. See the type's doc comment for why the
+        // generic fallback below exists and why this one bypasses it.
         [typeof(InvalidOperationException)] = (ex, _) =>
         {
+            if (ex is PublicInvalidOperationException publicInvalidOperation)
+            {
+                return new(ErrorCategories.InvalidOperation, publicInvalidOperation.PublicMessage);
+            }
+
             if (ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase))
             {
                 return new(ErrorCategories.Disconnected,

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -82,7 +83,7 @@ internal static partial class TreeNodeFilterTranslator
     /// type doc comment's <c>tunit-treenode-filter-requires-known-test</c> section for why this is
     /// necessary to safely translate <c>~</c> atoms at all.
     /// </param>
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="PublicInvalidOperationException">
     /// The filter names more than one test but the resolved TUnit.Engine version isn't known to
     /// have the OR pre-filter fix, spans more than one namespace+class combination, uses
     /// AND/grouping/negation, names a property other than <c>FullyQualifiedName</c>, doesn't split
@@ -96,7 +97,7 @@ internal static partial class TreeNodeFilterTranslator
     {
         if (vsTestFilter.Contains('&') || vsTestFilter.Contains('(') || vsTestFilter.Contains(')'))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Filter '{vsTestFilter}' uses AND ('&') or parenthesized grouping, which this MTP filter " +
                 "translation doesn't support. Only one or more FullyQualifiedName~ or FullyQualifiedName= " +
                 "atoms joined with '|' are translated.");
@@ -107,7 +108,7 @@ internal static partial class TreeNodeFilterTranslator
             && resolvedTUnitEngineVersion >= MinimumTUnitEngineVersionWithOrFilterFix;
         if (atoms.Length > 1 && !orFilterFixed)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Filter '{vsTestFilter}' names more than one test ('|'). MTP's --treenode-filter can OR " +
                 "literal values within a single path segment, and MTP itself matches that correctly, but " +
                 "TUnit's own pre-filter had a bug (fixed in TUnit.Engine 1.46.0 — " +
@@ -133,7 +134,7 @@ internal static partial class TreeNodeFilterTranslator
                 var candidateFqn = @namespace is null ? $"{className}.{method}" : $"{@namespace}.{className}.{method}";
                 if (!knownNames.Contains(candidateFqn))
                 {
-                    throw new InvalidOperationException(
+                    throw new PublicInvalidOperationException(
                         $"Filter '{vsTestFilter}' contains atom '{atom}', which this translator parses as the " +
                         $"test '{candidateFqn}' — but no discovered test in this project has that fully-qualified " +
                         "name. A 'FullyQualifiedName~' filter is a contains match, not an exact one, so a value " +
@@ -157,7 +158,7 @@ internal static partial class TreeNodeFilterTranslator
 
         if (groups.Count > 1)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Filter '{vsTestFilter}' names tests across {groups.Count} different namespace/class " +
                 "combinations. Microsoft.Testing.Platform's --treenode-filter can OR alternatives within a " +
                 "single path segment (e.g. TUnit supports OR-ing whole class names, like " +
@@ -180,7 +181,7 @@ internal static partial class TreeNodeFilterTranslator
         var match = FullyQualifiedNameAtomRegex().Match(atom);
         if (!match.Success)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Filter '{fullFilter}' contains atom '{atom}' that isn't a supported " +
                 "'FullyQualifiedName=<value>' or 'FullyQualifiedName~<value>' expression. Only those two " +
                 "operators against the FullyQualifiedName property are translated to MTP's --treenode-filter.");
@@ -192,7 +193,7 @@ internal static partial class TreeNodeFilterTranslator
         var parts = match.Groups[2].Value.Split('.');
         if (parts.Length < 2)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Filter '{fullFilter}' contains atom '{atom}' whose FullyQualifiedName value " +
                 $"'{match.Groups[2].Value}' has no '.'-separated class/method — expected at least " +
                 "'{ClassName}.{Method}'.");

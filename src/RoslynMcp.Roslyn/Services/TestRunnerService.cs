@@ -100,7 +100,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // exact failure tunit-mtp-native-test-run exists to fix) rather than telling the
             // caller. Refuse instead of guessing: the caller can pass projectName to target the
             // MTP-only project individually, or run each project's tests separately.
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Workspace '{workspaceId}' contains {status.Projects.Count} projects, and at least " +
                 "one only supports Microsoft.Testing.Platform (MTP) — TUnit never registers with the " +
                 "classic VSTest adapter, and Microsoft does not support mixing VSTest and MTP projects " +
@@ -243,7 +243,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
         var projectDirectory = GatedCommandExecutor.GetWorkingDirectory(resolvedProject.FilePath);
         if (!DotnetTestModeResolver.UsesNativeMtpDotnetTest(projectDirectory, _logger))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Project '{resolvedProject.Name}' only supports Microsoft.Testing.Platform (MTP) — TUnit never " +
                 "registers with the classic VSTest adapter, and the legacy VSTest-mode MTP bridge is removed on " +
                 "the .NET 10 SDK. Add a global.json at or above the project with " +
@@ -311,7 +311,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
         if (!execution.Succeeded)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
                 "TUnit.Engine version before translating an OR filter (see " +
                 "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +

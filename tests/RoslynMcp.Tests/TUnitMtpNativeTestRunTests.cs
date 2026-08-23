@@ -37,7 +37,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName, filter: "FullyQualifiedName~Foo", CancellationToken.None));
 
             StringAssert.Contains(ex.Message, "class/method",
@@ -60,7 +60,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName: null, filter: "FullyQualifiedName~Foo", CancellationToken.None));
 
             StringAssert.Contains(ex.Message, "class/method",
@@ -151,7 +151,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         var workspaceId = await LoadMixedMultiProjectFixtureAsync();
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None));
 
             StringAssert.Contains(ex.Message, "Microsoft.Testing.Platform");
@@ -185,7 +185,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             // actually restored, so no real project.assets.json exists -- Translate still throws
             // past the restore step (unresolved TUnit.Engine version). That's fine: this test only
             // needs to prove restore ran first.
-            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 service.RunTestsAsync(
                     workspaceId, projectName: null,
                     filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
@@ -210,7 +210,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             var service = new TestRunnerService(
                 WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
 
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 service.RunTestsAsync(
                     workspaceId, projectName: null,
                     filter: "FullyQualifiedName~MyNamespace.MyClass.Method1|FullyQualifiedName~MyNamespace.MyClass.Method2",
@@ -275,7 +275,7 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         var (workspaceId, projectName) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: false);
         try
         {
-            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 TestRunnerService.RunTestsAsync(workspaceId, projectName, filter: null, CancellationToken.None));
 
             StringAssert.Contains(ex.Message, "global.json");
