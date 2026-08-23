@@ -131,7 +131,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // Do not set a fixed TRX/results file name: solution-level runs emit one TRX per
             // test project; a fixed name would overwrite.
             var arguments = mtpPlan.RequiresMtpNative
-                ? BuildMtpNativeArguments(targetPath, resultsDirectory, mtpPlan.TreeNodeFilter)
+                ? BuildMtpNativeArguments(targetPath, resultsDirectory, mtpPlan.TreeNodeFilter, mtpPlan.NoRestore)
                 : BuildVsTestArguments(targetPath, resultsDirectory, filter);
 
             CommandExecutionDto execution;
@@ -201,9 +201,12 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// <summary>
     /// Whether <paramref name="resolvedProject"/> needs the MTP-native <c>dotnet test</c>
     /// argument shape rather than today's classic VSTest-style invocation, and — when a filter
-    /// was supplied — its translated <c>--treenode-filter</c> equivalent.
+    /// was supplied — its translated <c>--treenode-filter</c> equivalent. <see cref="NoRestore"/>
+    /// is set when <see cref="ResolveMtpNativeExecutionPlanAsync"/> already ran an explicit
+    /// restore to check the resolved <c>TUnit.Engine</c> version — see its
+    /// <c>tunit-treenode-filter-version-check-restore-snapshot</c> remarks.
     /// </summary>
-    private sealed record MtpNativeExecutionPlan(bool RequiresMtpNative, string? TreeNodeFilter)
+    private sealed record MtpNativeExecutionPlan(bool RequiresMtpNative, string? TreeNodeFilter, bool NoRestore = false)
     {
         public static readonly MtpNativeExecutionPlan NotRequired = new(false, null);
     }
@@ -249,8 +252,25 @@ public sealed partial class TestRunnerService : ITestRunnerService
         }
 
         string? treeNodeFilter = null;
+        var noRestore = false;
         if (!string.IsNullOrWhiteSpace(filter))
         {
+            // tunit-treenode-filter-version-check-restore-snapshot: TryGetResolvedPackageVersion
+            // reads obj/project.assets.json as it stands right now, but plain `dotnet test`
+            // performs its own implicit restore before running — a floating/ranged TUnit.Engine
+            // version could resolve differently between this check and that implicit restore,
+            // authorizing the OR shape against a stale >=1.46.0 snapshot that the real restore
+            // then downgrades (or the reverse: rejecting a run a fresh restore would have made
+            // safe). Only the OR shape's safety depends on the resolved version, so only an OR
+            // filter is worth paying for an explicit restore up front: restore now, read the
+            // assets file THAT restore just wrote, then skip dotnet test's own implicit restore
+            // (--no-restore) so nothing can change between the check and the execution.
+            if (filter.Contains('|'))
+            {
+                await RestoreProjectAsync(workspaceId, resolvedProject, ct).ConfigureAwait(false);
+                noRestore = true;
+            }
+
             var resolvedTUnitEngineVersion = ProjectMetadataParser.TryGetResolvedPackageVersion(
                 resolvedProject.FilePath, "TUnit.Engine", _logger);
 
@@ -276,7 +296,27 @@ public sealed partial class TestRunnerService : ITestRunnerService
             treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion, knownFullyQualifiedTestNames);
         }
 
-        return new MtpNativeExecutionPlan(true, treeNodeFilter);
+        return new MtpNativeExecutionPlan(true, treeNodeFilter, noRestore);
+    }
+
+    /// <exception cref="InvalidOperationException">'dotnet restore' failed.</exception>
+    private async Task RestoreProjectAsync(string workspaceId, ProjectStatusDto resolvedProject, CancellationToken ct)
+    {
+        var execution = await _executor.ExecuteAsync(
+            workspaceId,
+            resolvedProject.FilePath,
+            ["restore", resolvedProject.FilePath],
+            _options.BuildTimeout,
+            ct).ConfigureAwait(false);
+
+        if (!execution.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Project '{resolvedProject.Name}' needs a fresh restore to safely check its resolved " +
+                "TUnit.Engine version before translating an OR filter (see " +
+                "tunit-treenode-filter-or-requires-tunit-fix), but 'dotnet restore' failed with exit code " +
+                $"{execution.ExitCode}. Restore the project directly to see the full error, then retry.");
+        }
     }
 
     private static List<string> BuildVsTestArguments(string targetPath, string resultsDirectory, string? filter)
@@ -317,10 +357,23 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// via '--project'"); on 10.0.400 the positional form happens to still work, but <c>--project</c>
     /// succeeds identically on both, so there's no reason to keep the version-fragile shape.
     /// </para>
+    /// <para>
+    /// <paramref name="noRestore"/> is set when <see cref="ResolveMtpNativeExecutionPlanAsync"/>
+    /// already ran an explicit restore to check the resolved <c>TUnit.Engine</c> version for an
+    /// OR filter — <c>--no-restore</c> here guarantees that this run uses that exact same
+    /// snapshot rather than letting <c>dotnet test</c>'s own implicit restore potentially resolve
+    /// a different version in between. Verified directly: <c>--no-restore</c> is honored the
+    /// same way under native MTP mode as under classic VSTest mode.
+    /// </para>
     /// </summary>
-    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, string? treeNodeFilter)
+    private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, string? treeNodeFilter, bool noRestore)
     {
         var arguments = new List<string> { "test", "--project", targetPath, "--report-trx", "--results-directory", resultsDirectory };
+
+        if (noRestore)
+        {
+            arguments.Add("--no-restore");
+        }
 
         if (!string.IsNullOrWhiteSpace(treeNodeFilter))
         {
