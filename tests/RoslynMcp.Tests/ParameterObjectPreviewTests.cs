@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -695,6 +696,116 @@ public sealed class ParameterObjectPreviewTests : TestBase
     }
 
     [TestMethod]
+    public async Task DeclarationAttributes_PreserveGroupedNameAcrossDtoAndRetainedMetadata()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            [System.AttributeUsage(System.AttributeTargets.All, AllowMultiple = true)]
+            public sealed class LinkNameAttribute(string name) : System.Attribute
+            {
+                public string Name { get; } = name;
+            }
+
+            public class POAttributeFixture
+            {
+                [LinkName(nameof(a))]
+                [return: LinkName(nameof(a))]
+                public int Sum([LinkName(nameof(a))] int a, int b, [LinkName(nameof(a))] int retained)
+                    => a + b + retained;
+
+                public int Caller() => Sum(1, 2, 3);
+            }
+            """,
+            "POAttributeFixture.cs");
+
+        try
+        {
+            var preview = await ParameterObjectService.PreviewParameterObjectAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 13, column: 16),
+                new ParameterObjectPreviewRequest(["a", "b"], "SumArgs"),
+                CancellationToken.None);
+
+            var dtoDiff = preview.Changes.Single(change =>
+                change.FilePath.EndsWith("SumArgs.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(dtoDiff, "[global::SampleLib.LinkNameAttribute(\"a\")] int A");
+            var declarationDiff = preview.Changes.Single(change =>
+                change.FilePath.EndsWith("POAttributeFixture.cs", StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+            StringAssert.Contains(declarationDiff, "[LinkName(\"a\")]");
+
+            var workflowService = new ApplyUndoWorkflowService(
+                RefactoringService,
+                CompileCheckService,
+                UndoService,
+                PreviewStore);
+            var applyJson = await ApplyWithVerifyTool.ApplyWithVerify(
+                WorkspaceExecutionGate,
+                workflowService,
+                PreviewStore,
+                preview.PreviewToken,
+                rollbackOnError: true,
+                ct: CancellationToken.None);
+            using var apply = JsonDocument.Parse(applyJson);
+            Assert.AreEqual("applied", apply.RootElement.GetProperty("status").GetString(), applyJson);
+
+            var project = WorkspaceManager.GetCurrentSolution(workspaceId).Projects.Single(item => item.Name == "SampleLib");
+            var compilation = await project.GetCompilationAsync();
+            Assert.IsNotNull(compilation);
+            using var pe = new MemoryStream();
+            var emit = compilation.Emit(pe);
+            Assert.IsTrue(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics));
+            var assembly = Assembly.Load(pe.ToArray());
+
+            var method = assembly.GetType("SampleLib.POAttributeFixture")!.GetMethod("Sum")!;
+            AssertLinkName(method.GetCustomAttributesData(), "a");
+            AssertLinkName(method.ReturnParameter.GetCustomAttributesData(), "a");
+            AssertLinkName(method.GetParameters().Single(parameter => parameter.Name == "retained").GetCustomAttributesData(), "a");
+            var dtoConstructor = assembly.GetType("SampleLib.SumArgs")!.GetConstructors().Single();
+            AssertLinkName(dtoConstructor.GetParameters().Single(parameter => parameter.Name == "A").GetCustomAttributesData(), "a");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task CallerArgumentExpressionLinkToGroupedParameter_RefusesActionably()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POCallerExpressionFixture
+            {
+                public void Log(
+                    int value,
+                    [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(value))] string? expression = null,
+                    int other = 0) { }
+            }
+            """,
+            "POCallerExpressionFixture.cs");
+
+        try
+        {
+            var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+                () => ParameterObjectService.PreviewParameterObjectAsync(
+                    workspaceId,
+                    SymbolLocator.BySource(fixturePath, line: 5, column: 17),
+                    new ParameterObjectPreviewRequest(["value", "other"], "LogArgs"),
+                    CancellationToken.None));
+            StringAssert.Contains(error.Message, "CallerArgumentExpressionAttribute");
+            StringAssert.Contains(error.Message, "value");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
     public async Task NamedAndMixedCallSites_RewriteToPositionalDtoConstructor()
     {
         var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
@@ -860,6 +971,16 @@ public sealed class ParameterObjectPreviewTests : TestBase
         {
             WorkspaceManager.Close(workspaceId);
         }
+    }
+
+    [TestMethod]
+    public void NullDtoProjectCompilation_RefusesWithNamedProjectInsteadOfNullReference()
+    {
+        var error = Assert.ThrowsExactly<InvalidOperationException>(
+            () => ParameterObjectService.RequireDtoCompilation(null, "NonCompilableProject"));
+
+        StringAssert.Contains(error.Message, "NonCompilableProject");
+        StringAssert.Contains(error.Message, "does not provide a compilation");
     }
 
     [TestMethod]
@@ -2056,5 +2177,11 @@ public sealed class ParameterObjectPreviewTests : TestBase
         var i = 0;
         while ((i = haystack.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { count++; i += needle.Length; }
         return count;
+    }
+
+    private static void AssertLinkName(IList<CustomAttributeData> attributes, string expected)
+    {
+        var attribute = attributes.Single(item => item.AttributeType.Name == "LinkNameAttribute");
+        Assert.AreEqual(expected, attribute.ConstructorArguments.Single().Value);
     }
 }

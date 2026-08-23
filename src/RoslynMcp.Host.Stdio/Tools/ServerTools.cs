@@ -226,7 +226,22 @@ public static class ServerTools
                 Tools: registeredSnapshot.ToolsRegistered,
                 Resources: registeredSnapshot.ResourcesRegistered,
                 Prompts: registeredSnapshot.PromptsRegistered,
-                ParityOk: registeredSnapshot.AllParityOk));
+                ParityOk: registeredSnapshot.AllParityOk)
+            {
+                IdentityDrift = registeredSnapshot.AllParityOk ? null : new SurfaceIdentityDriftDto(
+                    registeredSnapshot.ToolRegistrationDrift.Missing,
+                    registeredSnapshot.ToolRegistrationDrift.Unexpected,
+                    registeredSnapshot.ToolReflectionDrift.Missing,
+                    registeredSnapshot.ToolReflectionDrift.Unexpected,
+                    registeredSnapshot.ResourceRegistrationDrift.Missing,
+                    registeredSnapshot.ResourceRegistrationDrift.Unexpected,
+                    registeredSnapshot.ResourceReflectionDrift.Missing,
+                    registeredSnapshot.ResourceReflectionDrift.Unexpected,
+                    registeredSnapshot.PromptRegistrationDrift.Missing,
+                    registeredSnapshot.PromptRegistrationDrift.Unexpected,
+                    registeredSnapshot.PromptReflectionDrift.Missing,
+                    registeredSnapshot.PromptReflectionDrift.Unexpected),
+            });
 
     /// <summary>
     /// Computes the <see cref="ServerUpdateInfoDto"/> update block: reads the cached latest

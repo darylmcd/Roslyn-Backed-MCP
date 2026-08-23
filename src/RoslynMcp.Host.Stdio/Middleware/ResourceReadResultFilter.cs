@@ -22,6 +22,25 @@ internal static class ResourceReadResultFilter
 {
     internal static readonly TimeSpan CacheTimeToLive = TimeSpan.Zero;
 
+    private static readonly IReadOnlyDictionary<ToolErrorHandler.ToolErrorCategory, McpErrorCode> s_errorCodes =
+        new Dictionary<ToolErrorHandler.ToolErrorCategory, McpErrorCode>
+        {
+            [ToolErrorHandler.ToolErrorCategory.NotFound] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.FileNotFound] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.DirectoryNotFound] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.WorkspaceEvicted] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.InvalidArgument] = McpErrorCode.InvalidParams,
+            [ToolErrorHandler.ToolErrorCategory.StaleWorkspaceTransition] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.WorkspaceReloadedDuringCall] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.PreviewTokenStale] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.Timeout] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.Disconnected] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.RateLimited] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.InvalidOperation] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.PermissionDenied] = McpErrorCode.InternalError,
+            [ToolErrorHandler.ToolErrorCategory.InternalError] = McpErrorCode.InternalError,
+        };
+
     public static McpRequestHandler<ReadResourceRequestParams, ReadResourceResult> Create(
         McpRequestHandler<ReadResourceRequestParams, ReadResourceResult> next) =>
         async (context, cancellationToken) =>
@@ -80,35 +99,25 @@ internal static class ResourceReadResultFilter
 
     /// <summary>
     /// Maps every currently declared <see cref="ToolErrorHandler.ClassifyError"/> category onto
-    /// a wire code. Each known category gets an explicit arm, including those that resolve to
-    /// <see cref="McpErrorCode.InternalError"/>. The trailing discard arm is a fail-safe because
-    /// string switches are not exhaustive; category additions must still update this mapping.
+    /// a wire code. The table is deliberately inspectable by tests so a new enum member cannot
+    /// silently inherit the defensive <see cref="McpErrorCode.InternalError"/> fallback.
     /// </summary>
-    private static McpErrorCode MapErrorCode(string category, bool useInvalidParamsForMissingResource) =>
-        category switch
+    internal static McpErrorCode MapErrorCode(
+        ToolErrorHandler.ToolErrorCategory category,
+        bool useInvalidParamsForMissingResource)
+    {
+        if (!s_errorCodes.TryGetValue(category, out var code))
         {
-            // Missing-resource family: era-dependent (-32002 legacy, -32602 from 2026-07-28).
-            ToolErrorHandler.ErrorCategories.NotFound or
-            ToolErrorHandler.ErrorCategories.FileNotFound or
-            ToolErrorHandler.ErrorCategories.DirectoryNotFound or
-            ToolErrorHandler.ErrorCategories.WorkspaceEvicted =>
-                useInvalidParamsForMissingResource ? McpErrorCode.InvalidParams : McpErrorCode.ResourceNotFound,
-            // Caller-input fault: always -32602.
-            ToolErrorHandler.ErrorCategories.InvalidArgument => McpErrorCode.InvalidParams,
-            // Server-side / transport / lifecycle conditions. The caller's request was
-            // well-formed, so these are server faults (-32603) with a retry hint in the
-            // sanitized remediation text, not InvalidParams.
-            ToolErrorHandler.ErrorCategories.StaleWorkspaceTransition or
-            ToolErrorHandler.ErrorCategories.WorkspaceReloadedDuringCall or
-            ToolErrorHandler.ErrorCategories.PreviewTokenStale or
-            ToolErrorHandler.ErrorCategories.Timeout or
-            ToolErrorHandler.ErrorCategories.Disconnected or
-            ToolErrorHandler.ErrorCategories.RateLimited or
-            ToolErrorHandler.ErrorCategories.InvalidOperation or
-            ToolErrorHandler.ErrorCategories.PermissionDenied or
-            ToolErrorHandler.ErrorCategories.InternalError => McpErrorCode.InternalError,
-            _ => McpErrorCode.InternalError,
-        };
+            return McpErrorCode.InternalError;
+        }
+
+        return code == McpErrorCode.ResourceNotFound && useInvalidParamsForMissingResource
+            ? McpErrorCode.InvalidParams
+            : code;
+    }
+
+    internal static bool HasExplicitErrorCodeMapping(ToolErrorHandler.ToolErrorCategory category) =>
+        s_errorCodes.ContainsKey(category);
 
     private static string BuildSanitizedMessage(ToolErrorHandler.ErrorInfo info, string uri)
     {

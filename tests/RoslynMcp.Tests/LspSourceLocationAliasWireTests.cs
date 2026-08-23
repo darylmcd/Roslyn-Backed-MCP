@@ -54,7 +54,7 @@ public sealed class LspSourceLocationAliasWireTests
         });
         Assert.IsTrue(conflict.IsError is true);
         var error = ParseTextContent(conflict);
-        Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument,
+        Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
             error.GetProperty("category").GetString());
         StringAssert.Contains(
             error.GetProperty("message").GetString(),

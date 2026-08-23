@@ -291,11 +291,11 @@ public sealed class WorkspacePathMrtrWireTests
         var envelope = ToolErrorHandler.ClassifyAndFormat(validationError, _toolName);
         using var document = JsonDocument.Parse(envelope);
         Assert.AreEqual(
-            ToolErrorHandler.ErrorCategories.InvalidArgument,
+            ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
             document.RootElement.GetProperty("category").GetString());
         Assert.IsFalse(envelope.Contains(outsidePath, StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(envelope.Contains(
-            ToolErrorHandler.ErrorCategories.PermissionDenied,
+            ToolErrorHandler.ErrorCategories.PermissionDenied.ToString(),
             StringComparison.Ordinal));
     }
 
@@ -325,7 +325,7 @@ public sealed class WorkspacePathMrtrWireTests
                 string.Join(" | ", harness.RawServerMessages));
             var text = ((TextContentBlock)result.Content![0]).Text;
             var payload = JsonDocument.Parse(text).RootElement;
-            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidOperation,
+            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidOperation.ToString(),
                 payload.GetProperty("category").GetString());
             Assert.AreEqual(_workspaceStatusToolName, payload.GetProperty("tool").GetString());
             Assert.IsFalse(text.Contains(privateFailureDetail, StringComparison.Ordinal),
@@ -374,7 +374,7 @@ public sealed class WorkspacePathMrtrWireTests
             Assert.IsFalse(results[0].TryGetProperty("resultType", out var resultType) &&
                            resultType.GetString() == "input_required");
             var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
-            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument,
+            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
                 payload.GetProperty("category").GetString());
         }
         finally
@@ -560,7 +560,7 @@ public sealed class WorkspacePathMrtrWireTests
                 "A non-accepted path response must not fall back to request state or ambient state.");
             var payload = JsonDocument.Parse(
                 result.GetProperty("content")[0].GetProperty("text").GetString()!).RootElement;
-            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument,
+            Assert.AreEqual(ToolErrorHandler.ErrorCategories.InvalidArgument.ToString(),
                 payload.GetProperty("category").GetString());
         }
         finally

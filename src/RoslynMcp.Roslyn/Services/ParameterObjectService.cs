@@ -75,11 +75,14 @@ public sealed class ParameterObjectService : IParameterObjectService
 
         var (dtoProject, dtoVisibilityIsPublic) = ResolveDtoProject(solution, method, request);
 
-        var callSites = await CollectCallSiteBindingsAsync(solution, method, groupedParameters, ct).ConfigureAwait(false);
         var methodProject = solution.GetProject(method.ContainingAssembly, ct)!;
-        EnforceCrossProjectReferences(solution, methodProject, dtoProject, callSites);
         await EnforceGroupedParameterTypesAreDtoCompatibleAsync(
             solution, methodProject, dtoProject, groupedParameters, dtoVisibilityIsPublic, ct).ConfigureAwait(false);
+        var groupedParameterAttributes = await AnalyzeDeclarationMetadataAsync(
+            solution, method, groupedParameters, newParameterName, ct).ConfigureAwait(false);
+
+        var callSites = await CollectCallSiteBindingsAsync(solution, method, groupedParameters, ct).ConfigureAwait(false);
+        EnforceCrossProjectReferences(solution, methodProject, dtoProject, callSites);
 
         var defaultValueWarnings = await CollectDefaultValueWarningsAsync(
             solution, groupedParameters, callSites, ct).ConfigureAwait(false);
@@ -95,7 +98,12 @@ public sealed class ParameterObjectService : IParameterObjectService
         var dtoFilePath = ResolveDtoFilePath(dtoProject, dtoFolders, request.NewTypeName);
         await EnforceDtoDestinationIsFreeAsync(
             dtoProject, dtoFilePath, dtoNamespace, request.NewTypeName, ct).ConfigureAwait(false);
-        var dtoSource = BuildDtoSource(dtoNamespace, request.NewTypeName, groupedParameters, dtoVisibilityIsPublic);
+        var dtoSource = BuildDtoSource(
+            dtoNamespace,
+            request.NewTypeName,
+            groupedParameters,
+            groupedParameterAttributes,
+            dtoVisibilityIsPublic);
 
         var originalTexts = new Dictionary<DocumentId, string>();
         var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -979,10 +987,9 @@ public sealed class ParameterObjectService : IParameterObjectService
         }
 
         if (missing.Count > 0)
-            throw new ArgumentException(
-                "parameter_object_preview refuses: one or more caller projects do not reference the DTO project. " +
-                "Add a project reference (use add_project_reference_preview) for each entry, then retry. " +
-                "Missing references: " + string.Join("; ", missing));
+            throw new ArgumentException(MissingProjectReferenceMessage(
+                "one or more caller projects do not reference the DTO project",
+                missing));
     }
 
     /// <summary>
@@ -1005,7 +1012,9 @@ public sealed class ParameterObjectService : IParameterObjectService
     {
         var crossProject = dtoProject.Id != methodProject.Id;
         var dtoCompilation = crossProject
-            ? await dtoProject.GetCompilationAsync(ct).ConfigureAwait(false)
+            ? RequireDtoCompilation(
+                await dtoProject.GetCompilationAsync(ct).ConfigureAwait(false),
+                dtoProject.Name)
             : null;
         var neededRank = dtoVisibilityIsPublic ? PublicAccessibilityRank : InternalAccessibilityRank;
         var recordVisibility = dtoVisibilityIsPublic ? "public" : "internal";
@@ -1045,10 +1054,10 @@ public sealed class ParameterObjectService : IParameterObjectService
                     var typeProjectName = solution.GetProject(named.ContainingAssembly, ct)?.Name
                         ?? named.ContainingAssembly.Name;
                     throw new ArgumentException(
-                        $"parameter_object_preview refuses: parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' " +
-                        $"involving '{named.ToDisplayString()}', which is declared in '{typeProjectName}' — not referenced by DTO project '{dtoProject.Name}'. " +
-                        "Add a project reference (use add_project_reference_preview) for each entry, then retry. " +
-                        $"Missing references: {dtoProject.Name} -> {typeProjectName}",
+                        MissingProjectReferenceMessage(
+                            $"parameter '{parameter.Name}' has type '{parameter.Type.ToDisplayString()}' involving " +
+                            $"'{named.ToDisplayString()}', which is declared in '{typeProjectName}' and cannot be resolved by DTO project '{dtoProject.Name}'",
+                            [$"{dtoProject.Name} -> {typeProjectName}"]),
                         nameof(grouped));
                 }
             }
@@ -1056,7 +1065,13 @@ public sealed class ParameterObjectService : IParameterObjectService
     }
 
     private const int PublicAccessibilityRank = 4;
+    private const int ProtectedOrInternalAccessibilityRank = 3;
     private const int InternalAccessibilityRank = 2;
+
+    internal static Compilation RequireDtoCompilation(Compilation? compilation, string projectName) =>
+        compilation ?? throw new InvalidOperationException(
+            $"parameter_object_preview refuses: DTO project '{projectName}' does not provide a compilation. " +
+            "Choose a compilable C# DTO project, then retry.");
 
     /// <summary>
     /// Rank order for "accessible from a new top-level file": protected/private-family
@@ -1066,10 +1081,15 @@ public sealed class ParameterObjectService : IParameterObjectService
     private static int AccessibilityRank(Accessibility accessibility) => accessibility switch
     {
         Accessibility.Public => PublicAccessibilityRank,
-        Accessibility.ProtectedOrInternal => 3,
+        Accessibility.ProtectedOrInternal => ProtectedOrInternalAccessibilityRank,
         Accessibility.Internal => InternalAccessibilityRank,
         _ => 1,
     };
+
+    private static string MissingProjectReferenceMessage(string reason, IReadOnlyList<string> missing) =>
+        $"parameter_object_preview refuses: {reason}. " +
+        "Add a project reference (use add_project_reference_preview) for each entry, then retry. " +
+        "Missing references: " + string.Join("; ", missing);
 
     /// <summary>
     /// Yields <paramref name="type"/> and every type it structurally depends on: array
@@ -1328,7 +1348,11 @@ public sealed class ParameterObjectService : IParameterObjectService
     }
 
     private static string BuildDtoSource(
-        string ns, string typeName, IReadOnlyList<IParameterSymbol> grouped, bool isPublic)
+        string ns,
+        string typeName,
+        IReadOnlyList<IParameterSymbol> grouped,
+        IReadOnlyDictionary<int, string> groupedParameterAttributes,
+        bool isPublic)
     {
         var visibility = isPublic ? "public" : "internal";
         var sb = new StringBuilder();
@@ -1338,10 +1362,131 @@ public sealed class ParameterObjectService : IParameterObjectService
         for (var i = 0; i < grouped.Count; i++)
         {
             if (i > 0) sb.Append(", ");
+            if (groupedParameterAttributes.TryGetValue(grouped[i].Ordinal, out var attributes))
+                sb.Append(attributes).Append(' ');
             sb.Append(grouped[i].Type.ToDisplayString()).Append(' ').Append(Capitalize(grouped[i].Name));
         }
         sb.AppendLine(");");
         return sb.ToString();
+    }
+
+    private static async Task<IReadOnlyDictionary<int, string>> AnalyzeDeclarationMetadataAsync(
+        Solution solution,
+        IMethodSymbol method,
+        IReadOnlyList<IParameterSymbol> grouped,
+        string newParameterName,
+        CancellationToken ct)
+    {
+        var declaration = await method.DeclaringSyntaxReferences.Single().GetSyntaxAsync(ct).ConfigureAwait(false)
+            as BaseMethodDeclarationSyntax
+            ?? throw new InvalidOperationException("parameter_object_preview cannot locate the method declaration syntax.");
+        var document = solution.GetDocument(declaration.SyntaxTree)
+            ?? throw new InvalidOperationException("parameter_object_preview cannot locate the method declaration document.");
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("parameter_object_preview cannot obtain the method semantic model.");
+        var declaredMethod = semanticModel.GetDeclaredSymbol(declaration, ct) as IMethodSymbol
+            ?? throw new InvalidOperationException("parameter_object_preview cannot resolve the method declaration symbol.");
+
+        var groupedNames = grouped.Select(static parameter => parameter.Name).ToHashSet(StringComparer.Ordinal);
+        EnforceStringLinkedAttributeRefusals(declaredMethod, groupedNames);
+
+        var parameterMembers = new Dictionary<IParameterSymbol, string>(SymbolEqualityComparer.Default);
+        foreach (var parameter in grouped)
+            parameterMembers[declaredMethod.Parameters[parameter.Ordinal]] = Capitalize(parameter.Name);
+        var rewriter = new GroupedParameterReferenceRewriter(
+            semanticModel,
+            parameterMembers,
+            newParameterName,
+            ct);
+        var attributesByOrdinal = new Dictionary<int, string>();
+        foreach (var parameter in declaration.ParameterList.Parameters)
+        {
+            if (!groupedNames.Contains(parameter.Identifier.ValueText) || parameter.AttributeLists.Count == 0)
+                continue;
+
+            var symbol = semanticModel.GetDeclaredSymbol(parameter, ct) as IParameterSymbol;
+            if (symbol is null) continue;
+            var rewrittenLists = parameter.AttributeLists.Select(attributeList =>
+                RewriteGroupedParameterAttributeList(attributeList, semanticModel, rewriter, ct));
+            attributesByOrdinal[symbol.Ordinal] = string.Join(
+                " ",
+                rewrittenLists.Select(static list => list.NormalizeWhitespace().ToFullString()));
+        }
+
+        return attributesByOrdinal;
+    }
+
+    private static void EnforceStringLinkedAttributeRefusals(
+        IMethodSymbol method,
+        IReadOnlySet<string> groupedNames)
+    {
+        foreach (var parameter in method.Parameters)
+        {
+            foreach (var attribute in parameter.GetAttributes())
+            {
+                var attributeName = attribute.AttributeClass?.ToDisplayString();
+                if (attributeName is not (
+                    "System.Runtime.CompilerServices.CallerArgumentExpressionAttribute" or
+                    "System.Runtime.CompilerServices.InterpolatedStringHandlerArgumentAttribute"))
+                {
+                    continue;
+                }
+
+                if (groupedNames.Contains(parameter.Name))
+                {
+                    throw new InvalidOperationException(
+                        $"parameter_object_preview refuses: grouped parameter '{parameter.Name}' uses '{attribute.AttributeClass?.Name}'. " +
+                        "That compiler-sensitive attribute cannot be transferred to a generated DTO constructor without changing its binding context; " +
+                        "remove the parameter from parameterNames or remove the attribute first.");
+                }
+
+                foreach (var linkedName in EnumerateStringConstants(attribute.ConstructorArguments))
+                {
+                    if (!groupedNames.Contains(linkedName)) continue;
+                    throw new InvalidOperationException(
+                        $"parameter_object_preview refuses: parameter '{parameter.Name}' uses '{attribute.AttributeClass?.Name}' " +
+                        $"to link to grouped parameter '{linkedName}'. Moving that parameter into a DTO would change the compiler-observed contract; " +
+                        "remove the linked parameter from parameterNames or remove the attribute first.");
+                }
+            }
+        }
+    }
+
+    private static AttributeListSyntax RewriteGroupedParameterAttributeList(
+        AttributeListSyntax original,
+        SemanticModel semanticModel,
+        GroupedParameterReferenceRewriter rewriter,
+        CancellationToken ct)
+    {
+        var rewritten = (AttributeListSyntax)rewriter.Visit(original)!;
+        for (var index = 0; index < original.Attributes.Count; index++)
+        {
+            var constructor = semanticModel.GetSymbolInfo(original.Attributes[index], ct).Symbol as IMethodSymbol
+                ?? throw new InvalidOperationException(
+                    $"parameter_object_preview refuses: attribute '{original.Attributes[index].Name}' could not be resolved for safe transfer.");
+            var current = rewritten.Attributes[index];
+            var qualifiedName = SyntaxFactory.ParseName(
+                    constructor.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                .WithTriviaFrom(current.Name);
+            rewritten = rewritten.ReplaceNode(current, current.WithName(qualifiedName));
+        }
+
+        return rewritten;
+    }
+
+    private static IEnumerable<string> EnumerateStringConstants(IEnumerable<TypedConstant> constants)
+    {
+        foreach (var constant in constants)
+        {
+            if (constant.Kind == TypedConstantKind.Array)
+            {
+                foreach (var value in EnumerateStringConstants(constant.Values)) yield return value;
+            }
+            else if (constant.Value is string value)
+            {
+                yield return value;
+            }
+        }
     }
 
     private static string Capitalize(string name) =>
@@ -1443,6 +1588,7 @@ public sealed class ParameterObjectService : IParameterObjectService
             rewritten = rewritten.WithBody((BlockSyntax)referenceRewriter.Visit(body)!);
         if (declaration.ExpressionBody is { } expressionBody)
             rewritten = rewritten.WithExpressionBody((ArrowExpressionClauseSyntax)referenceRewriter.Visit(expressionBody)!);
+        rewritten = rewritten.WithAttributeLists(referenceRewriter.VisitList(declaration.AttributeLists));
 
         var existingList = declaration.ParameterList;
         var newParamTexts = new List<string>(existingList.Parameters.Count);
@@ -1458,7 +1604,7 @@ public sealed class ParameterObjectService : IParameterObjectService
                 }
                 continue;
             }
-            newParamTexts.Add(parameter.ToString());
+            newParamTexts.Add(referenceRewriter.Visit(parameter)!.ToString());
         }
         if (!insertedDtoParam)
             newParamTexts.Add($"{dtoTypeReference} {newParameterName}");

@@ -80,7 +80,30 @@ public sealed record SurfaceTierCountsDto(int Stable, int Experimental);
 /// <c>host.Build()</c>. <see cref="ParityOk"/> is true when SDK registrations match the selected
 /// tier expectation and reflected declarations match the complete catalog for every surface.
 /// </summary>
-public sealed record SurfaceRegisteredCountsDto(int Tools, int Resources, int Prompts, bool ParityOk);
+public sealed record SurfaceRegisteredCountsDto(int Tools, int Resources, int Prompts, bool ParityOk)
+{
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public SurfaceIdentityDriftDto? IdentityDrift { get; init; }
+}
+
+/// <summary>
+/// Exact registered/reflected identity drift for startup surface diagnostics. This block is
+/// omitted on the healthy path; every list is ordinal-sorted when present.
+/// </summary>
+public sealed record SurfaceIdentityDriftDto(
+    IReadOnlyList<string> ToolsMissing,
+    IReadOnlyList<string> ToolsUnexpected,
+    IReadOnlyList<string> ToolsReflectionMissing,
+    IReadOnlyList<string> ToolsReflectionUnexpected,
+    IReadOnlyList<string> ResourcesMissing,
+    IReadOnlyList<string> ResourcesUnexpected,
+    IReadOnlyList<string> ResourcesReflectionMissing,
+    IReadOnlyList<string> ResourcesReflectionUnexpected,
+    IReadOnlyList<string> PromptsMissing,
+    IReadOnlyList<string> PromptsUnexpected,
+    IReadOnlyList<string> PromptsReflectionMissing,
+    IReadOnlyList<string> PromptsReflectionUnexpected);
 
 /// <summary>
 /// Client-facing resource server-name guidance. MCP resource URIs stay <c>roslyn://...</c>,

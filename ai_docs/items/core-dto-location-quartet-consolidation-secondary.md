@@ -1,6 +1,6 @@
 # core-dto-location-quartet-consolidation-secondary — Compose LocationDto in PropertyWriteDto/TypeMutationDto
 
-**row:** `core-dto-location-quartet-consolidation-secondary` · **pri:** `Medium` · **size:** `M` · **deps:** `core-dto-location-quartet-stage-followups`
+**row:** `core-dto-location-quartet-consolidation-secondary` · **pri:** `Medium` · **size:** `M` · **deps:** `locationdto-stage1-contracts, locationdto-stage1-symbol-type-producers, locationdto-stage1-diagnostic-producers-a, locationdto-stage1-diagnostic-producers-b`
 
 ## Anchors
 
