@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-23T17:48:40Z
+**updated_at:** 2026-08-23T22:23:29Z
 
 ## Agent contract
 
@@ -166,7 +166,7 @@
 | `prompt-wire-protocol-negotiation-parallel-isolation` | Low | — | Isolate intermittent legacy/latest protocol negotiation state across parallel in-memory MCP wire tests and add a repeated concurrency regression. | S | items/prompt-wire-protocol-negotiation-parallel-isolation.md |
 | `mutation-analysis-property-write-orchestrator-decomposition` | Low | analysis-services-dedup-reference-classifiers | **Decompose property-write analysis orchestration** — extract reference traversal and positional-record projection from the 95-line hotspot while preserving write classifications. [type: refactor] [source: 2026-08-23 LocationDto Stage 1 adjacent review] | S | items/mutation-analysis-property-write-orchestrator-decomposition.md |
 | `analysis-fixture-workspace-close-observability` | Low | — | **Surface analysis fixture close failures** — stop swallowing workspace-close exceptions in the two remaining copied analysis-fixture cleanup paths while still attempting owned-root cleanup. [type: test] [source: 2026-08-23 LocationDto Stage 1 adjacent review] | S | items/analysis-fixture-workspace-close-observability.md |
-| `tunit-fixture-cleanup-failure-observability` | Low | — | Surface contributor TUnit fixture cleanup failures after all bounded cleanup steps run. | S | items/tunit-fixture-cleanup-failure-observability.md |
+| `test-runner-mtp-filter-discovery-fail-closed` | Low | — | Require discovery-backed MTP filter validation — remove the nullable discovery bypass so direct TestRunnerService construction cannot translate ambiguous FullyQualifiedName filters without known-test evidence. [type: correctness] [source: PR #1315 review follow-up] | M | items/test-runner-mtp-filter-discovery-fail-closed.md |
 
 ## Defer
 

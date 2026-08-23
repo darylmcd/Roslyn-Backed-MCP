@@ -1,5 +1,6 @@
 using Microsoft.Build.Evaluation;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using System.Xml.Linq;
 using RoslynProject = Microsoft.CodeAnalysis.Project;
 
@@ -7,6 +8,61 @@ namespace RoslynMcp.Roslyn.Helpers;
 
 internal static class ProjectMetadataParser
 {
+    /// <summary>
+    /// Reads the NuGet-resolved version of <paramref name="packageId"/> from the project's
+    /// restored <c>obj/project.assets.json</c> — the authoritative record of what actually got
+    /// restored, cheaper and simpler than an MSBuild evaluation for this one fact. Returns
+    /// <see langword="null"/> when the project hasn't been restored, the assets file can't be
+    /// read, the package isn't referenced (directly or transitively), or its version string
+    /// doesn't parse as a <see cref="Version"/>.
+    /// </summary>
+    public static Version? TryGetResolvedPackageVersion(string? projectFilePath, string packageId, ILogger? logger = null)
+    {
+        var projectDirectory = string.IsNullOrWhiteSpace(projectFilePath) ? null : Path.GetDirectoryName(projectFilePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            return null;
+        }
+
+        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
+        if (!File.Exists(assetsPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(assetsPath);
+            using var document = JsonDocument.Parse(stream);
+            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            {
+                return null;
+            }
+
+            var prefix = packageId + "/";
+            foreach (var library in libraries.EnumerateObject())
+            {
+                if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var versionText = library.Name[prefix.Length..];
+                if (Version.TryParse(versionText, out var version))
+                {
+                    return version;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            logger?.LogDebug(ex, "Failed to read resolved version of {PackageId} from {Path}", packageId, assetsPath);
+            return null;
+        }
+    }
+
     public static IReadOnlyList<string> GetTargetFrameworks(RoslynProject project, XDocument? document, ILogger? logger = null)
     {
         var evaluatedFrameworks = GetEvaluatedTargetFrameworks(project.FilePath, logger);
@@ -80,6 +136,11 @@ internal static class ProjectMetadataParser
         "xunit", "xunit.core", "xunit.v3", "xunit.v3.core",
         "NUnit", "nunit", "NUnit3TestAdapter",
         "MSTest.TestFramework", "Microsoft.NET.Test.Sdk",
+        // TUnit ships its own Microsoft.Testing.Platform host instead of the classic VSTest
+        // adapter, so it never references Microsoft.NET.Test.Sdk and doesn't stamp
+        // <IsTestProject> itself — without this entry these projects were invisible to
+        // test_discover/test_run (0 test projects found).
+        "TUnit",
     };
 
     public static bool IsTestProject(XDocument? document)
@@ -117,6 +178,44 @@ internal static class ProjectMetadataParser
     {
         var doc = LoadProjectDocument(project.FilePath, null);
         return IsTestProject(doc);
+    }
+
+    /// <summary>
+    /// Test frameworks that are built entirely on Microsoft.Testing.Platform (MTP) and never
+    /// register with the classic VSTest adapter — currently just TUnit
+    /// (https://learn.microsoft.com/dotnet/core/testing/#testing-tools: "TUnit is entirely
+    /// built on top of MTP and doesn't support VSTest"). Unlike MSTest/NUnit/xUnit, which stay
+    /// VSTest-compatible via Microsoft.Testing.Extensions.VSTestBridge, a project referencing
+    /// one of these packages requires the MTP-native <c>dotnet test</c> argument shape —
+    /// <c>--logger</c>/<c>--filter</c> are silently ignored for it.
+    /// </summary>
+    private static readonly HashSet<string> MtpOnlyTestFrameworkPackageNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TUnit",
+    };
+
+    /// <summary>
+    /// True when <paramref name="document"/> references a test framework that only supports
+    /// Microsoft.Testing.Platform (MTP), never the classic VSTest adapter. Callers that shell
+    /// out to <c>dotnet test</c> must use the MTP-native argument shape for such a project.
+    /// </summary>
+    public static bool RequiresMtpNativeExecution(XDocument? document)
+    {
+        if (document is null)
+        {
+            return false;
+        }
+
+        foreach (var pkgRef in document.Descendants("PackageReference"))
+        {
+            var include = pkgRef.Attribute("Include")?.Value;
+            if (include is not null && MtpOnlyTestFrameworkPackageNames.Contains(include))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -6,6 +6,25 @@ namespace RoslynMcp.Tests.Helpers;
 /// </summary>
 internal static class CleanupFailureCollector
 {
+    internal static ValueTask DeleteDirectoriesAsync(
+        IEnumerable<string> directories,
+        Action<string>? deleteDirectory = null)
+    {
+        ArgumentNullException.ThrowIfNull(directories);
+
+        deleteDirectory ??= static directory =>
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        };
+
+        return RunAsync(
+            "Failed to delete one or more temp directories created by this test.",
+            directories.Select(directory => FromAction(() => deleteDirectory(directory))).ToArray());
+    }
+
     internal static async ValueTask RunAsync(
         string failureMessage,
         params Func<ValueTask>[] cleanupSteps)

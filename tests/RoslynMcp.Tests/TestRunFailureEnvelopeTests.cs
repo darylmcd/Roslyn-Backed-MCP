@@ -855,6 +855,66 @@ public sealed class TestRunFailureEnvelopeTests
         StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "workspaceId");
     }
 
+    [TestMethod]
+    public async Task RunTests_ToolRunnerThrowsPublicInvalidOperationException_PreservesActionableMessageAtTheToolBoundary()
+    {
+        // tunit-boundary-domain-refusal-message-preserved: the test above proves a PLAIN
+        // InvalidOperationException's message is (deliberately) discarded at this boundary. A
+        // domain refusal that was already written FOR the caller -- TestRunnerService's
+        // global.json/restore guidance, TreeNodeFilterTranslator's filter-translation refusals --
+        // must survive verbatim instead of collapsing to the same generic "check the tool
+        // contract" text. This is the actual host-boundary regression the PR review asked for;
+        // the two ToolErrorHandler-only tests immediately below it are narrower unit coverage
+        // for the same fix, kept co-located.
+        const string actionableMessage =
+            "Project 'Sample.Tests' only supports Microsoft.Testing.Platform (MTP). " +
+            "Add a global.json with {\"test\": {\"runner\": \"Microsoft.Testing.Platform\"}} and retry.";
+
+        var json = await ValidationTools.RunTests(
+            new PassthroughGate(),
+            new ThrowingTestRunnerService(new PublicInvalidOperationException(actionableMessage)),
+            workspaceId: "ws-public-invalid-operation",
+            projectName: "Sample.Tests",
+            filter: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsTrue(root.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
+        Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
+        Assert.AreEqual(nameof(PublicInvalidOperationException), root.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(actionableMessage, root.GetProperty("message").GetString(),
+            $"A PublicInvalidOperationException's message must survive verbatim. Envelope: {json}");
+    }
+
+    [TestMethod]
+    public void ClassifyAndFormat_PublicInvalidOperationException_MessageSurvivesVerbatim()
+    {
+        var ex = new PublicInvalidOperationException("Actionable, server-authored refusal text.");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "test_run");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidOperation", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("Actionable, server-authored refusal text.", doc.RootElement.GetProperty("message").GetString());
+    }
+
+    [TestMethod]
+    public void ClassifyAndFormat_PlainInvalidOperationException_StillFallsBackToGenericMessage()
+    {
+        // Guards the OTHER half of the contract: PublicInvalidOperationException is an opt-in
+        // marker, not a behavior change for every InvalidOperationException in the codebase.
+        var ex = new InvalidOperationException("some internal detail that must not leak");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "test_run");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidOperation", doc.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse((doc.RootElement.GetProperty("message").GetString() ?? string.Empty)
+            .Contains("some internal detail", StringComparison.Ordinal));
+    }
+
     // host-tools-layer-test-coverage-gap: build_workspace, build_project, test_discover,
     // test_related, and test_related_files now attach the same schemaHint-on-failure recovery
     // guidance as test_run on ANY error category (previously only ever hinting on
