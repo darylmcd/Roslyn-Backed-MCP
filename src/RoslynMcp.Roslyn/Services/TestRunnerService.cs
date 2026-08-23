@@ -30,19 +30,22 @@ public sealed partial class TestRunnerService : ITestRunnerService
     private readonly ILogger<TestRunnerService> _logger;
     private readonly ValidationServiceOptions _options;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly ITestDiscoveryService? _testDiscoveryService;
 
     public TestRunnerService(
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
         ValidationServiceOptions? options = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        ITestDiscoveryService? testDiscoveryService = null)
     {
         _workspaceManager = workspaceManager;
         _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
         _exceptionReporter = exceptionReporter;
+        _testDiscoveryService = testDiscoveryService;
     }
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
@@ -65,14 +68,48 @@ public sealed partial class TestRunnerService : ITestRunnerService
                     $"Available test projects: {string.Join(", ", status.Projects.Where(p => p.IsTestProject).Select(p => p.Name))}");
             }
         }
+        else if (status.Projects.Count == 1 && IsDirectlyLoadedProjectFile(status.LoadedPath))
+        {
+            // tunit-projectname-null-single-project-routing: an omitted projectName is the
+            // normal single-project call shape (validate_workspace, workspace_fork_apply, etc.),
+            // not proof of a multi-project/ambiguous target. A workspace loaded directly from one
+            // .csproj has exactly one candidate project, so route it through the same per-project
+            // MTP plan an explicitly named project gets — otherwise this branch silently fell back
+            // to VSTest args and skipped an MTP-only (TUnit) project's tests.
+            resolvedProject = status.Projects[0];
+            if (!resolvedProject.IsTestProject)
+            {
+                throw new InvalidOperationException(
+                    $"Project '{resolvedProject.Name}' is not a test project. " +
+                    "Ensure the workspace contains a project with a test SDK reference (e.g., MSTest, xUnit, NUnit, TUnit).");
+            }
+        }
         else if (!status.Projects.Any(p => p.IsTestProject))
         {
             throw new InvalidOperationException(
                 $"No test projects found in workspace '{workspaceId}'. " +
                 "Ensure the workspace contains projects with a test SDK reference (e.g., MSTest, xUnit, NUnit).");
         }
+        else if (status.Projects.Count > 1 &&
+                 status.Projects.Where(p => p.IsTestProject).Any(ProjectRequiresMtpNativeExecution))
+        {
+            // tunit-solution-level-mixed-mtp-refusal: Microsoft documents mixing VSTest and MTP
+            // projects in one dotnet test invocation as unsupported, so a genuinely multi-project
+            // run can't safely take the MTP branch for everything. But silently staying on the
+            // classic VSTest path here would silently skip this MTP-only project's tests (the
+            // exact failure tunit-mtp-native-test-run exists to fix) rather than telling the
+            // caller. Refuse instead of guessing: the caller can pass projectName to target the
+            // MTP-only project individually, or run each project's tests separately.
+            throw new InvalidOperationException(
+                $"Workspace '{workspaceId}' contains {status.Projects.Count} projects, and at least " +
+                "one only supports Microsoft.Testing.Platform (MTP) — TUnit never registers with the " +
+                "classic VSTest adapter, and Microsoft does not support mixing VSTest and MTP projects " +
+                "in one 'dotnet test' invocation. Running the whole workspace would silently skip that " +
+                "project's tests. Pass projectName to target the MTP-only project individually, or run " +
+                "each project's tests separately.");
+        }
 
-        var targetPath = projectName is null ? status.LoadedPath : resolvedProject!.FilePath;
+        var targetPath = resolvedProject?.FilePath ?? status.LoadedPath;
 
         if (string.IsNullOrWhiteSpace(targetPath))
         {
@@ -81,12 +118,9 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
         // tunit-mtp-native-test-run: TUnit is MTP-only and never registers with the classic
         // VSTest adapter, so dotnet test's default VSTest mode silently ignores --logger/
-        // --filter for it — it needs a different, MTP-native argument shape. Solution-level
-        // runs (projectName is null) stay on the classic path: Microsoft documents mixing
-        // VSTest and MTP projects in one dotnet test invocation as unsupported, so only a
-        // single resolved project can safely take the MTP branch.
+        // --filter for it — it needs a different, MTP-native argument shape.
         var mtpPlan = resolvedProject is not null
-            ? ResolveMtpNativeExecutionPlan(resolvedProject, filter)
+            ? await ResolveMtpNativeExecutionPlanAsync(resolvedProject, filter, workspaceId, ct).ConfigureAwait(false)
             : MtpNativeExecutionPlan.NotRequired;
 
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
@@ -174,22 +208,31 @@ public sealed partial class TestRunnerService : ITestRunnerService
         public static readonly MtpNativeExecutionPlan NotRequired = new(false, null);
     }
 
+    private bool ProjectRequiresMtpNativeExecution(ProjectStatusDto project) =>
+        ProjectMetadataParser.RequiresMtpNativeExecution(
+            ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger));
+
+    private static bool IsDirectlyLoadedProjectFile(string? loadedPath) =>
+        !string.IsNullOrWhiteSpace(loadedPath) &&
+        loadedPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+
     /// <exception cref="InvalidOperationException">
     /// The project is MTP-only (TUnit) but the run can't currently produce a structured result:
     /// the target repo's <c>global.json</c> doesn't opt into the .NET 10 SDK's native MTP
     /// <c>dotnet test</c> mode, or a supplied <paramref name="filter"/> doesn't translate to
     /// MTP's <c>--treenode-filter</c> syntax — including a multi-test filter when the project's
-    /// resolved <c>TUnit.Engine</c> version isn't known to include the OR pre-filter fix (see
-    /// <see cref="TreeNodeFilterTranslator"/>). Verified against a real TUnit project: on the
-    /// .NET 10 SDK, the legacy VSTest-mode MTP bridge
+    /// resolved <c>TUnit.Engine</c> version isn't known to include the OR pre-filter fix, or an
+    /// atom that doesn't name a test <see cref="ITestDiscoveryService"/> actually found in this
+    /// project (see <see cref="TreeNodeFilterTranslator"/>). Verified against a real TUnit
+    /// project: on the .NET 10 SDK, the legacy VSTest-mode MTP bridge
     /// (<c>-p:TestingPlatformDotnetTestSupport=true --</c>) is hard-removed —
     /// <c>"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
     /// .NET 10 SDK and later"</c> — so there is no fallback to attempt without the opt-in.
     /// </exception>
-    private MtpNativeExecutionPlan ResolveMtpNativeExecutionPlan(ProjectStatusDto resolvedProject, string? filter)
+    private async Task<MtpNativeExecutionPlan> ResolveMtpNativeExecutionPlanAsync(
+        ProjectStatusDto resolvedProject, string? filter, string workspaceId, CancellationToken ct)
     {
-        var projectDocument = ProjectMetadataParser.LoadProjectDocument(resolvedProject.FilePath, _logger);
-        if (!ProjectMetadataParser.RequiresMtpNativeExecution(projectDocument))
+        if (!ProjectRequiresMtpNativeExecution(resolvedProject))
         {
             return MtpNativeExecutionPlan.NotRequired;
         }
@@ -210,7 +253,27 @@ public sealed partial class TestRunnerService : ITestRunnerService
         {
             var resolvedTUnitEngineVersion = ProjectMetadataParser.TryGetResolvedPackageVersion(
                 resolvedProject.FilePath, "TUnit.Engine", _logger);
-            treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion);
+
+            // tunit-treenode-filter-requires-known-test: a caller-supplied FullyQualifiedName~
+            // filter's operator is "contains", not "equals" — the value might name a whole class
+            // (all methods) rather than one test, and that's indistinguishable from a complete
+            // test identifier by string shape alone (both are dot-separated). Rather than guess,
+            // check the parsed namespace/class/method against what this project's tests actually
+            // are: our own internally-synthesized filters (TestDiscoveryService.
+            // SynthesizeDotnetTestFilter) always name a real, complete test and pass by
+            // construction; an ambiguous or mistyped caller-supplied filter is safely declined
+            // instead of silently matching zero (or the wrong) tests.
+            IReadOnlyCollection<string>? knownFullyQualifiedTestNames = null;
+            if (_testDiscoveryService is not null)
+            {
+                var discovery = await _testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
+                knownFullyQualifiedTestNames = discovery.TestProjects
+                    .Where(p => string.Equals(p.ProjectName, resolvedProject.Name, StringComparison.Ordinal))
+                    .SelectMany(p => p.Tests.Select(t => t.FullyQualifiedName))
+                    .ToList();
+            }
+
+            treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion, knownFullyQualifiedTestNames);
         }
 
         return new MtpNativeExecutionPlan(true, treeNodeFilter);
@@ -247,10 +310,17 @@ public sealed partial class TestRunnerService : ITestRunnerService
     /// by direct repro, not by reading the docs. <paramref name="treeNodeFilter"/> is the
     /// already-translated MTP filter expression (see <see cref="TreeNodeFilterTranslator"/>),
     /// passed through to <c>--treenode-filter</c> as-is when present.
+    /// <para>
+    /// tunit-native-argv-requires-explicit-project-flag: <c>targetPath</c> must be passed via
+    /// <c>--project</c>, not positionally. Confirmed by direct repro on both installed SDKs: on
+    /// 10.0.204, a bare positional path fails ("Specifying a project for 'dotnet test' should be
+    /// via '--project'"); on 10.0.400 the positional form happens to still work, but <c>--project</c>
+    /// succeeds identically on both, so there's no reason to keep the version-fragile shape.
+    /// </para>
     /// </summary>
     private static List<string> BuildMtpNativeArguments(string targetPath, string resultsDirectory, string? treeNodeFilter)
     {
-        var arguments = new List<string> { "test", targetPath, "--report-trx", "--results-directory", resultsDirectory };
+        var arguments = new List<string> { "test", "--project", targetPath, "--report-trx", "--results-directory", resultsDirectory };
 
         if (!string.IsNullOrWhiteSpace(treeNodeFilter))
         {

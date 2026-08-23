@@ -41,6 +41,52 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     }
 
     [TestMethod]
+    public async Task RunTestsAsync_TUnitProjectDirectlyLoaded_ProjectNameOmitted_StillRoutesThroughMtpPlan()
+    {
+        // tunit-projectname-null-single-project-routing: a workspace loaded directly from one
+        // .csproj (no solution) has exactly one candidate project, so an omitted projectName —
+        // the normal single-project call shape — must route through the same MTP plan an
+        // explicitly named project gets. Before this fix, this path silently built VSTest args
+        // instead and never reached TreeNodeFilterTranslator at all.
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TestRunnerService.RunTestsAsync(workspaceId, projectName: null, filter: "FullyQualifiedName~Foo", CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "class/method",
+                "Reaching TreeNodeFilterTranslator's parse error — rather than silently shelling out with " +
+                "VSTest args — proves the null-projectName path routed through the MTP plan.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunTestsAsync_ProjectNameOmitted_MultiProjectWorkspaceContainingTUnit_ThrowsActionableRefusal()
+    {
+        // tunit-solution-level-mixed-mtp-refusal: a genuinely multi-project workspace can't
+        // safely take the MTP branch for everything (Microsoft doesn't support mixing VSTest and
+        // MTP projects in one dotnet test invocation), but silently staying on the classic
+        // VSTest path would silently skip the TUnit project's tests. This must refuse instead.
+        var workspaceId = await LoadMixedMultiProjectFixtureAsync();
+        try
+        {
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                TestRunnerService.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "Microsoft.Testing.Platform");
+            StringAssert.Contains(ex.Message, "projectName");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
     public async Task RunTestsAsync_TUnitProjectWithoutGlobalJsonOptIn_ThrowsActionableError()
     {
         // tunit-legacy-vstest-bridge-removed-net10: verified by direct repro against a real
@@ -95,5 +141,58 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
 
         var loaded = await WorkspaceManager.LoadAsync(projectPath, CancellationToken.None);
         return (loaded.WorkspaceId, projectName);
+    }
+
+    private static async Task<string> LoadMixedMultiProjectFixtureAsync()
+    {
+        var root = Path.Combine(TestTempRoot.Current, nameof(TUnitMtpNativeTestRunTests), "mixed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var mstestDir = Path.Combine(root, "MsTestProject");
+        Directory.CreateDirectory(mstestDir);
+        File.WriteAllText(
+            Path.Combine(mstestDir, "MsTestProject.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <IsPackable>false</IsPackable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(mstestDir, "Placeholder.cs"), "namespace MsTestProject;\n");
+
+        var tunitDir = Path.Combine(root, "TUnitProject");
+        Directory.CreateDirectory(tunitDir);
+        File.WriteAllText(
+            Path.Combine(tunitDir, "TUnitProject.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <IsPackable>false</IsPackable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="TUnit" Version="1.65.38" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(tunitDir, "Program.cs"), "// MTP generates its own entry point.\n");
+
+        File.WriteAllText(
+            Path.Combine(root, "Mixed.slnx"),
+            """
+            <Solution>
+              <Project Path="MsTestProject/MsTestProject.csproj" />
+              <Project Path="TUnitProject/TUnitProject.csproj" />
+            </Solution>
+            """);
+
+        var loaded = await WorkspaceManager.LoadAsync(Path.Combine(root, "Mixed.slnx"), CancellationToken.None);
+        return loaded.WorkspaceId;
     }
 }

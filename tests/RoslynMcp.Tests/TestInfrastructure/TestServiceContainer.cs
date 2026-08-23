@@ -91,6 +91,10 @@ internal sealed class TestServiceContainer
             workspaceManager,
             dotnetCommandRunner,
             NullLogger<GatedCommandExecutor>.Instance);
+        var testDiscoveryService = new TestDiscoveryService(
+            workspaceManager,
+            NullLogger<TestDiscoveryService>.Instance,
+            validationOptions);
         var referenceService = new ReferenceService(
             workspaceManager,
             compilationCache,
@@ -183,11 +187,10 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 gatedCommandExecutor,
                 NullLogger<TestRunnerService>.Instance,
-                validationOptions),
-            TestDiscoveryService = new TestDiscoveryService(
-                workspaceManager,
-                NullLogger<TestDiscoveryService>.Instance,
-                validationOptions),
+                validationOptions,
+                exceptionReporter: null,
+                testDiscoveryService: testDiscoveryService),
+            TestDiscoveryService = testDiscoveryService,
             CompletionService = new CompletionService(workspaceManager),
             CodeActionService = new CodeActionService(
                 workspaceManager,
