@@ -141,6 +141,13 @@ catch {
     $issues.Add("Upgrade matrix parity check failed to read package or matrix data: $($_.Exception.Message)")
 }
 
+try {
+    & (Join-Path $PSScriptRoot 'update-third-party-notices.ps1') -RepoRoot $RepoRoot -Verify
+}
+catch {
+    $issues.Add("Third-party notice parity: $($_.Exception.Message)")
+}
+
 if ($issues.Count -gt 0) {
     $issues | Sort-Object -Unique | ForEach-Object { Write-Error $_ }
     exit 1

@@ -107,7 +107,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         using var json = JsonDocument.Parse(envelope);
 
         Assert.AreEqual(
-            ToolErrorHandler.ErrorCategories.PermissionDenied,
+            ToolErrorHandler.ErrorCategories.PermissionDenied.ToString(),
             json.RootElement.GetProperty("category").GetString());
         Assert.IsFalse(envelope.Contains(secretPath, StringComparison.OrdinalIgnoreCase));
     }

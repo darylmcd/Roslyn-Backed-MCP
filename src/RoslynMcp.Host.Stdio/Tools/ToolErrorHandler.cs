@@ -33,8 +33,26 @@ internal static class MetaSerializer
 
 internal static class ToolErrorHandler
 {
+    internal enum ToolErrorCategory
+    {
+        NotFound,
+        FileNotFound,
+        DirectoryNotFound,
+        PermissionDenied,
+        WorkspaceEvicted,
+        InvalidArgument,
+        InternalError,
+        StaleWorkspaceTransition,
+        Timeout,
+        PreviewTokenStale,
+        Disconnected,
+        RateLimited,
+        InvalidOperation,
+        WorkspaceReloadedDuringCall,
+    }
+
     /// <summary>
-    /// The canonical set of error-category strings this classifier emits. Every category the
+    /// Compatibility aliases for the canonical error-category enum this classifier emits. Every category the
     /// classification tables (and <see cref="ClassifyError"/>'s post-classification hooks)
     /// produce is declared here, and <c>ResourceReadResultFilter.MapErrorCode</c> gives each
     /// current category an explicit switch arm. Keep both surfaces synchronized when changing
@@ -49,20 +67,20 @@ internal static class ToolErrorHandler
     /// </summary>
     internal static class ErrorCategories
     {
-        public const string NotFound = "NotFound";
-        public const string FileNotFound = "FileNotFound";
-        public const string DirectoryNotFound = "DirectoryNotFound";
-        public const string PermissionDenied = "PermissionDenied";
-        public const string WorkspaceEvicted = "WorkspaceEvicted";
-        public const string InvalidArgument = "InvalidArgument";
-        public const string InternalError = "InternalError";
-        public const string StaleWorkspaceTransition = "StaleWorkspaceTransition";
-        public const string Timeout = "Timeout";
-        public const string PreviewTokenStale = "PreviewTokenStale";
-        public const string Disconnected = "Disconnected";
-        public const string RateLimited = "RateLimited";
-        public const string InvalidOperation = "InvalidOperation";
-        public const string WorkspaceReloadedDuringCall = "WorkspaceReloadedDuringCall";
+        public const ToolErrorCategory NotFound = ToolErrorCategory.NotFound;
+        public const ToolErrorCategory FileNotFound = ToolErrorCategory.FileNotFound;
+        public const ToolErrorCategory DirectoryNotFound = ToolErrorCategory.DirectoryNotFound;
+        public const ToolErrorCategory PermissionDenied = ToolErrorCategory.PermissionDenied;
+        public const ToolErrorCategory WorkspaceEvicted = ToolErrorCategory.WorkspaceEvicted;
+        public const ToolErrorCategory InvalidArgument = ToolErrorCategory.InvalidArgument;
+        public const ToolErrorCategory InternalError = ToolErrorCategory.InternalError;
+        public const ToolErrorCategory StaleWorkspaceTransition = ToolErrorCategory.StaleWorkspaceTransition;
+        public const ToolErrorCategory Timeout = ToolErrorCategory.Timeout;
+        public const ToolErrorCategory PreviewTokenStale = ToolErrorCategory.PreviewTokenStale;
+        public const ToolErrorCategory Disconnected = ToolErrorCategory.Disconnected;
+        public const ToolErrorCategory RateLimited = ToolErrorCategory.RateLimited;
+        public const ToolErrorCategory InvalidOperation = ToolErrorCategory.InvalidOperation;
+        public const ToolErrorCategory WorkspaceReloadedDuringCall = ToolErrorCategory.WorkspaceReloadedDuringCall;
     }
 
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
@@ -381,8 +399,11 @@ internal static class ToolErrorHandler
         var publicDetail = PublicExceptionDetailPolicy
             .ProjectUnexpected(ex, correlationId)
             .Public;
+        System.Diagnostics.Debug.Assert(
+            string.Equals(publicDetail.Category, ErrorCategories.InternalError.ToString(), StringComparison.Ordinal),
+            "Unexpected-exception policy must retain the InternalError wire category.");
         return new(
-            publicDetail.Category,
+            ErrorCategories.InternalError,
             $"{publicDetail.Summary} {publicDetail.Remediation}",
             CorrelationId: publicDetail.CorrelationId);
     }
@@ -600,7 +621,7 @@ internal static class ToolErrorHandler
         var envelope = new JsonObject
         {
             ["error"] = true,
-            ["category"] = info.Category,
+            ["category"] = info.Category.ToString(),
             ["tool"] = toolName,
             ["message"] = info.Message,
             ["exceptionType"] = ex.GetType().Name,
@@ -621,7 +642,7 @@ internal static class ToolErrorHandler
             return new JsonObject
             {
                 ["error"] = true,
-                ["category"] = info.Category,
+                ["category"] = info.Category.ToString(),
                 ["tool"] = toolName,
                 ["message"] = info.Message,
                 ["correlationId"] = info.CorrelationId ?? "unavailable",
@@ -708,7 +729,7 @@ internal static class ToolErrorHandler
     }
 
     internal readonly record struct ErrorInfo(
-        string Category,
+        ToolErrorCategory Category,
         string Message,
         string? ParamName = null,
         string? CorrelationId = null);

@@ -29,6 +29,11 @@ internal static class SurfaceRegistrationPolicy
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(selection);
 
+        ValidateCatalogSupportTiers(
+            ServerSurfaceCatalog.Tools,
+            ServerSurfaceCatalog.Resources,
+            ServerSurfaceCatalog.Prompts);
+
         var tools = options.ToolCollection
             ?? throw new InvalidOperationException("The MCP SDK did not initialize its tool collection.");
         var prompts = options.PromptCollection
@@ -84,6 +89,34 @@ internal static class SurfaceRegistrationPolicy
             }
 
             ProjectSelectedProfileDescription(resource, selection);
+        }
+    }
+
+    internal static void ValidateCatalogSupportTiers(
+        IReadOnlyList<SurfaceEntry> tools,
+        IReadOnlyList<SurfaceEntry> resources,
+        IReadOnlyList<SurfaceEntry> prompts)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(resources);
+        ArgumentNullException.ThrowIfNull(prompts);
+
+        foreach (var (entries, kind) in new[]
+                 {
+                     (tools, "tool"),
+                     (resources, "resource"),
+                     (prompts, "prompt"),
+                 })
+        {
+            foreach (var entry in entries)
+            {
+                if (!ToolTierSelection.IsSupportedTier(entry.SupportTier))
+                {
+                    throw new InvalidOperationException(
+                        $"Catalog {kind} '{entry.Name}' declares unsupported support tier '{entry.SupportTier}'. " +
+                        "Use 'stable' or 'experimental'.");
+                }
+            }
         }
     }
 

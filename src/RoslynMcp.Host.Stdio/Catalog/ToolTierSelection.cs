@@ -23,6 +23,9 @@ internal sealed class ToolTierSelection
 
     public bool Includes(string tier) => _tiers.Contains(tier);
 
+    internal static bool IsSupportedTier(string tier) =>
+        s_validTiers.Contains(tier, StringComparer.Ordinal);
+
     public static ToolTierSelection Parse(string? value)
     {
         if (value is null)

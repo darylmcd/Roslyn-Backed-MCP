@@ -93,6 +93,23 @@ public sealed class StartupDiagnosticsTests
     }
 
     [TestMethod]
+    public void EqualCountsWithSubstitutedIdentity_FlipParityAndSortDrift()
+    {
+        var drift = StartupDiagnostics.Compare(
+            ["zeta", "alpha"],
+            ["omega", "alpha"]);
+
+        CollectionAssert.AreEqual(new[] { "zeta" }, drift.Missing.ToArray());
+        CollectionAssert.AreEqual(new[] { "omega" }, drift.Unexpected.ToArray());
+
+        var report = new StartupDiagnostics.SurfaceRegistrationReport(2, 2, 2, 0, 0, 0, 0, 0, 0)
+        {
+            ToolRegistrationDrift = drift,
+        };
+        Assert.IsFalse(report.ToolParityOk, "Equal counts must not hide an identity substitution.");
+    }
+
+    [TestMethod]
     public void LogStartup_WhenAllParityOk_EmitsInformation_NotError()
     {
         var listLogger = new ListLogger();
@@ -209,6 +226,34 @@ public sealed class StartupDiagnosticsTests
         StringAssert.Contains(unknown.Message, "stable,experimental");
         Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse(" "));
         Assert.ThrowsExactly<ArgumentException>(() => ToolTierSelection.Parse("experimental"));
+    }
+
+    [TestMethod]
+    [DataRow("tool")]
+    [DataRow("resource")]
+    [DataRow("prompt")]
+    public void SurfaceRegistrationPolicy_RejectsUnsupportedCatalogTierForEveryPrimitive(string kind)
+    {
+        var invalid = new SurfaceEntry(
+            kind,
+            $"bad_{kind}",
+            "test",
+            "typo",
+            ReadOnly: true,
+            Destructive: false,
+            Summary: "test",
+            UriTemplate: null,
+            Parameters: null);
+
+        IReadOnlyList<SurfaceEntry> tools = kind == "tool" ? [invalid] : [];
+        IReadOnlyList<SurfaceEntry> resources = kind == "resource" ? [invalid] : [];
+        IReadOnlyList<SurfaceEntry> prompts = kind == "prompt" ? [invalid] : [];
+
+        var error = Assert.ThrowsExactly<InvalidOperationException>(
+            () => SurfaceRegistrationPolicy.ValidateCatalogSupportTiers(tools, resources, prompts));
+        StringAssert.Contains(error.Message, kind);
+        StringAssert.Contains(error.Message, invalid.Name);
+        StringAssert.Contains(error.Message, invalid.SupportTier);
     }
 
     [TestMethod]
@@ -330,6 +375,40 @@ public sealed class StartupDiagnosticsTests
             Assert.AreEqual(report.ResourcesRegistered, registered.GetProperty("resources").GetInt32());
             Assert.AreEqual(report.PromptsRegistered, registered.GetProperty("prompts").GetInt32());
             Assert.IsTrue(registered.GetProperty("parityOk").GetBoolean());
+            Assert.IsFalse(registered.TryGetProperty("identityDrift", out _),
+                "Healthy server_info must keep the startup surface block compact.");
+        }
+        finally
+        {
+            SurfaceRegistrationSnapshot.Value = prior;
+        }
+    }
+
+    [TestMethod]
+    public void ServerInfo_EmitsSortedIdentityDrift_WhenSnapshotParityFails()
+    {
+        var prior = SurfaceRegistrationSnapshot.Value;
+        try
+        {
+            SurfaceRegistrationSnapshot.Value = new StartupDiagnostics.SurfaceRegistrationReport(2, 2, 2, 0, 0, 0, 0, 0, 0)
+            {
+                ToolRegistrationDrift = StartupDiagnostics.Compare(["zeta", "alpha"], ["omega", "alpha"]),
+            };
+
+            var json = ServerTools.GetServerInfo(
+                new StubWorkspaceManager(),
+                new StubVersionProvider()).GetAwaiter().GetResult();
+
+            using var doc = JsonDocument.Parse(json.TextPayload());
+            var registered = doc.RootElement.GetProperty("surface").GetProperty("registered");
+            Assert.IsFalse(registered.GetProperty("parityOk").GetBoolean());
+            var drift = registered.GetProperty("identityDrift");
+            CollectionAssert.AreEqual(
+                new[] { "zeta" },
+                drift.GetProperty("toolsMissing").EnumerateArray().Select(static item => item.GetString()).ToArray());
+            CollectionAssert.AreEqual(
+                new[] { "omega" },
+                drift.GetProperty("toolsUnexpected").EnumerateArray().Select(static item => item.GetString()).ToArray());
         }
         finally
         {

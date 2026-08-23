@@ -11,6 +11,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -78,6 +79,21 @@ public sealed class ResourceReadWireContractTests
         ("2025-11-25", "2025-11-25", false),
         (null, "2026-07-28", true),
     ];
+
+    [TestMethod]
+    public void ErrorCodeMapping_CoversEveryDeclaredCategory_AndFailsClosedForUnknownValues()
+    {
+        foreach (var category in Enum.GetValues<ToolErrorHandler.ToolErrorCategory>())
+        {
+            Assert.IsTrue(
+                ResourceReadResultFilter.HasExplicitErrorCodeMapping(category),
+                $"Tool error category '{category}' needs an explicit resources/read wire-code decision.");
+        }
+
+        Assert.AreEqual(
+            McpErrorCode.InternalError,
+            ResourceReadResultFilter.MapErrorCode((ToolErrorHandler.ToolErrorCategory)int.MaxValue, false));
+    }
 
     private sealed record FailureCase(
         string Label,

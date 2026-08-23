@@ -45,16 +45,34 @@ public static class StartupDiagnostics
         internal int? SelectedResourcesExpected { get; init; }
         internal int? SelectedPromptsExpected { get; init; }
 
+        public SurfaceIdentityDelta ToolRegistrationDrift { get; init; } = SurfaceIdentityDelta.Empty;
+        public SurfaceIdentityDelta ToolReflectionDrift { get; init; } = SurfaceIdentityDelta.Empty;
+        public SurfaceIdentityDelta ResourceRegistrationDrift { get; init; } = SurfaceIdentityDelta.Empty;
+        public SurfaceIdentityDelta ResourceReflectionDrift { get; init; } = SurfaceIdentityDelta.Empty;
+        public SurfaceIdentityDelta PromptRegistrationDrift { get; init; } = SurfaceIdentityDelta.Empty;
+        public SurfaceIdentityDelta PromptReflectionDrift { get; init; } = SurfaceIdentityDelta.Empty;
+
         public int ToolsExpected => SelectedToolsExpected ?? ToolsInCatalog;
         public int ResourcesExpected => SelectedResourcesExpected ?? ResourcesInCatalog;
         public int PromptsExpected => SelectedPromptsExpected ?? PromptsInCatalog;
 
         public IReadOnlyList<string> ToolTiers { get; init; } = ["stable", "experimental"];
 
-        public bool ToolParityOk => ToolsRegistered == ToolsExpected && ToolsReflected == ToolsInCatalog;
-        public bool ResourceParityOk => ResourcesRegistered == ResourcesExpected && ResourcesReflected == ResourcesInCatalog;
-        public bool PromptParityOk => PromptsRegistered == PromptsExpected && PromptsReflected == PromptsInCatalog;
+        public bool ToolParityOk => ToolsRegistered == ToolsExpected && ToolsReflected == ToolsInCatalog
+            && ToolRegistrationDrift.IsEmpty && ToolReflectionDrift.IsEmpty;
+        public bool ResourceParityOk => ResourcesRegistered == ResourcesExpected && ResourcesReflected == ResourcesInCatalog
+            && ResourceRegistrationDrift.IsEmpty && ResourceReflectionDrift.IsEmpty;
+        public bool PromptParityOk => PromptsRegistered == PromptsExpected && PromptsReflected == PromptsInCatalog
+            && PromptRegistrationDrift.IsEmpty && PromptReflectionDrift.IsEmpty;
         public bool AllParityOk => ToolParityOk && ResourceParityOk && PromptParityOk;
+    }
+
+    public sealed record SurfaceIdentityDelta(
+        IReadOnlyList<string> Missing,
+        IReadOnlyList<string> Unexpected)
+    {
+        public static SurfaceIdentityDelta Empty { get; } = new([], []);
+        public bool IsEmpty => Missing.Count == 0 && Unexpected.Count == 0;
     }
 
     /// <summary>
@@ -70,31 +88,40 @@ public static class StartupDiagnostics
         ArgumentNullException.ThrowIfNull(toolAssembly);
 
         var serverOptions = services.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var toolsRegistered = serverOptions.ToolCollection?.Count ?? 0;
-        var resourcesRegistered = serverOptions.ResourceCollection?.Count ?? 0;
-        var promptsRegistered = serverOptions.PromptCollection?.Count ?? 0;
+        var registeredToolNames = serverOptions.ToolCollection?
+            .Select(static tool => tool.ProtocolTool.Name).ToArray() ?? [];
+        var registeredResourceNames = serverOptions.ResourceCollection?
+            .Select(static resource => resource.ProtocolResourceTemplate.Name).ToArray() ?? [];
+        var registeredPromptNames = serverOptions.PromptCollection?
+            .Select(static prompt => prompt.ProtocolPrompt.Name).ToArray() ?? [];
         var selection = services.GetService<ToolTierSelection>() ?? ToolTierSelection.All;
-        var toolsExpected = ServerSurfaceCatalog.SelectTools(selection).Count;
-        var resourcesExpected = ServerSurfaceCatalog.Resources.Count(entry => selection.Includes(entry.SupportTier));
-        var promptsExpected = ServerSurfaceCatalog.Prompts.Count(entry => selection.Includes(entry.SupportTier));
+        var expectedToolNames = ServerSurfaceCatalog.SelectTools(selection).Select(static entry => entry.Name).ToArray();
+        var expectedResourceNames = ServerSurfaceCatalog.Resources.Where(entry => selection.Includes(entry.SupportTier)).Select(static entry => entry.Name).ToArray();
+        var expectedPromptNames = ServerSurfaceCatalog.Prompts.Where(entry => selection.Includes(entry.SupportTier)).Select(static entry => entry.Name).ToArray();
 
-        var (toolsReflected, resourcesReflected, promptsReflected) = CountDecoratedMethods(toolAssembly);
+        var (reflectedToolNames, reflectedResourceNames, reflectedPromptNames) = GetDecoratedMethodNames(toolAssembly);
 
         return new SurfaceRegistrationReport(
-            ToolsRegistered: toolsRegistered,
-            ToolsReflected: toolsReflected,
+            ToolsRegistered: registeredToolNames.Length,
+            ToolsReflected: reflectedToolNames.Length,
             ToolsInCatalog: ServerSurfaceCatalog.Tools.Count,
-            ResourcesRegistered: resourcesRegistered,
-            ResourcesReflected: resourcesReflected,
+            ResourcesRegistered: registeredResourceNames.Length,
+            ResourcesReflected: reflectedResourceNames.Length,
             ResourcesInCatalog: ServerSurfaceCatalog.Resources.Count,
-            PromptsRegistered: promptsRegistered,
-            PromptsReflected: promptsReflected,
+            PromptsRegistered: registeredPromptNames.Length,
+            PromptsReflected: reflectedPromptNames.Length,
             PromptsInCatalog: ServerSurfaceCatalog.Prompts.Count)
         {
-            SelectedToolsExpected = toolsExpected,
-            SelectedResourcesExpected = resourcesExpected,
-            SelectedPromptsExpected = promptsExpected,
+            SelectedToolsExpected = expectedToolNames.Length,
+            SelectedResourcesExpected = expectedResourceNames.Length,
+            SelectedPromptsExpected = expectedPromptNames.Length,
             ToolTiers = selection.Tiers.OrderBy(static tier => tier, StringComparer.Ordinal).ToArray(),
+            ToolRegistrationDrift = Compare(expectedToolNames, registeredToolNames),
+            ToolReflectionDrift = Compare(ServerSurfaceCatalog.Tools.Select(static entry => entry.Name), reflectedToolNames),
+            ResourceRegistrationDrift = Compare(expectedResourceNames, registeredResourceNames),
+            ResourceReflectionDrift = Compare(ServerSurfaceCatalog.Resources.Select(static entry => entry.Name), reflectedResourceNames),
+            PromptRegistrationDrift = Compare(expectedPromptNames, registeredPromptNames),
+            PromptReflectionDrift = Compare(ServerSurfaceCatalog.Prompts.Select(static entry => entry.Name), reflectedPromptNames),
         };
     }
 
@@ -135,7 +162,7 @@ public static class StartupDiagnostics
             "Startup surface PARITY MISMATCH: pid={Pid} version={Version} toolTiers={ToolTiers} " +
             "tools registered={ToolsRegistered} expected={ToolsExpected} reflected={ToolsReflected} catalog={ToolsInCatalog} parityOk={ToolParityOk}; " +
             "resources registered={ResourcesRegistered} expected={ResourcesExpected} reflected={ResourcesReflected} catalog={ResourcesInCatalog} parityOk={ResourceParityOk}; " +
-            "prompts registered={PromptsRegistered} expected={PromptsExpected} reflected={PromptsReflected} catalog={PromptsInCatalog} parityOk={PromptParityOk}. " +
+            "prompts registered={PromptsRegistered} expected={PromptsExpected} reflected={PromptsReflected} catalog={PromptsInCatalog} parityOk={PromptParityOk}; identityDrift={IdentityDrift}. " +
             "A zero 'registered' count means WithToolsFromAssembly() failed to discover attributed methods in this process; " +
             "compare this process's stderr with the other MCP instances to isolate server-side registration from client presentation.",
             pid,
@@ -155,23 +182,49 @@ public static class StartupDiagnostics
             report.PromptsExpected,
             report.PromptsReflected,
             report.PromptsInCatalog,
-            report.PromptParityOk);
+            report.PromptParityOk,
+            FormatIdentityDrift(report));
     }
 
-    private static (int Tools, int Resources, int Prompts) CountDecoratedMethods(Assembly toolAssembly)
+    private static (string[] Tools, string[] Resources, string[] Prompts) GetDecoratedMethodNames(Assembly toolAssembly)
     {
-        var toolCount = 0;
-        var resourceCount = 0;
-        var promptCount = 0;
+        var tools = new List<string>();
+        var resources = new List<string>();
+        var prompts = new List<string>();
 
         foreach (var method in toolAssembly.GetTypes()
                      .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)))
         {
-            if (method.GetCustomAttribute<McpServerToolAttribute>() is not null) toolCount++;
-            if (method.GetCustomAttribute<McpServerResourceAttribute>() is not null) resourceCount++;
-            if (method.GetCustomAttribute<McpServerPromptAttribute>() is not null) promptCount++;
+            if (method.GetCustomAttribute<McpServerToolAttribute>()?.Name is { } toolName) tools.Add(toolName);
+            if (method.GetCustomAttribute<McpServerResourceAttribute>()?.Name is { } resourceName) resources.Add(resourceName);
+            if (method.GetCustomAttribute<McpServerPromptAttribute>()?.Name is { } promptName) prompts.Add(promptName);
         }
 
-        return (toolCount, resourceCount, promptCount);
+        return (tools.ToArray(), resources.ToArray(), prompts.ToArray());
     }
+
+    internal static SurfaceIdentityDelta Compare(IEnumerable<string> expected, IEnumerable<string> actual)
+    {
+        var expectedSet = expected.ToHashSet(StringComparer.Ordinal);
+        var actualSet = actual.ToHashSet(StringComparer.Ordinal);
+        return new(
+            expectedSet.Except(actualSet, StringComparer.Ordinal).OrderBy(static name => name, StringComparer.Ordinal).ToArray(),
+            actualSet.Except(expectedSet, StringComparer.Ordinal).OrderBy(static name => name, StringComparer.Ordinal).ToArray());
+    }
+
+    private static string FormatIdentityDrift(SurfaceRegistrationReport report) => string.Join(
+        ';',
+        new[]
+        {
+            Format("tools.registered", report.ToolRegistrationDrift),
+            Format("tools.reflected", report.ToolReflectionDrift),
+            Format("resources.registered", report.ResourceRegistrationDrift),
+            Format("resources.reflected", report.ResourceReflectionDrift),
+            Format("prompts.registered", report.PromptRegistrationDrift),
+            Format("prompts.reflected", report.PromptReflectionDrift),
+        }.OfType<string>());
+
+    private static string? Format(string label, SurfaceIdentityDelta delta) => delta.IsEmpty
+        ? null
+        : $"{label}[missing={string.Join(',', delta.Missing)}|unexpected={string.Join(',', delta.Unexpected)}]";
 }
