@@ -86,6 +86,44 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task WorkspaceTools_ReloadWorkspace_DefaultPreservesFullProjectResponse()
+    {
+        var json = await WorkspaceTools.ReloadWorkspace(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            DotnetCommandRunner,
+            WorkspaceId,
+            autoRestore: false,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var projects = doc.RootElement.GetProperty("projects");
+        Assert.IsTrue(projects.GetArrayLength() >= 1);
+        Assert.IsTrue(projects.EnumerateArray().All(project =>
+            !string.IsNullOrWhiteSpace(project.GetProperty("outputType").GetString())),
+            "Full reload responses must preserve per-project OutputType metadata.");
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_ReloadWorkspace_VerboseFalseReturnsCompactSummary()
+    {
+        var json = await WorkspaceTools.ReloadWorkspace(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            DotnetCommandRunner,
+            WorkspaceId,
+            autoRestore: false,
+            verbose: false,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(doc.RootElement.TryGetProperty("projects", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("workspaceVersion", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("projectCount", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("workspaceDiagnosticCount", out _));
+    }
+
+    [TestMethod]
     public async Task WorkspaceTools_ListWorkspaces_Default_Is_Summary()
     {
         var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false);

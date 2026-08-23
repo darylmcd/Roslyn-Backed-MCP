@@ -64,6 +64,34 @@ public sealed class DiagnosticService : IDiagnosticService
         _diagnosticCache.TryRemove(workspaceId, out _);
     }
 
+    public bool TryGetCachedWorkspaceDiagnostics(
+        string workspaceId,
+        out DiagnosticsResultDto? diagnostics)
+    {
+        diagnostics = null;
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        if (!_resultCache.TryGetValue(workspaceId, out var entry) || entry.Version != version)
+        {
+            return false;
+        }
+
+        foreach (var cached in entry.Results)
+        {
+            var key = cached.Key;
+            // Severity changes the returned rows but not aggregate totals. The support-bundle
+            // cache-only path consumes totals, so any current full-workspace severity entry is valid.
+            if (key.ProjectFilter is null
+                && key.FileFilter is null
+                && key.DiagnosticIdFilter is null)
+            {
+                diagnostics = cached.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
         string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct)
     {

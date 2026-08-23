@@ -17,7 +17,7 @@ internal static class WorkspaceSupportBundleBuilder
         IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
         WorkspaceStatusSummaryDto readiness,
         WorkspaceDriftResult drift,
-        DiagnosticsResultDto diagnostics,
+        DiagnosticsResultDto? diagnostics,
         IReadOnlyList<WorkspaceChangeDto> changes,
         int changeCap,
         int driftCap)
@@ -41,13 +41,15 @@ internal static class WorkspaceSupportBundleBuilder
                 ServerVersion: ResolveServerVersion(),
                 CatalogVersion: ServerSurfaceCatalog.CatalogVersion));
 
-        var diagnosticTotals = new WorkspaceSupportDiagnosticsTotalsDto(
-            TotalErrors: diagnostics.TotalErrors,
-            TotalWarnings: diagnostics.TotalWarnings,
-            TotalInfo: diagnostics.TotalInfo,
-            CompilerErrors: diagnostics.CompilerErrors,
-            AnalyzerErrors: diagnostics.AnalyzerErrors,
-            WorkspaceErrors: diagnostics.WorkspaceErrors);
+        var diagnosticTotals = diagnostics is null
+            ? null
+            : new WorkspaceSupportDiagnosticsTotalsDto(
+                TotalErrors: diagnostics.TotalErrors,
+                TotalWarnings: diagnostics.TotalWarnings,
+                TotalInfo: diagnostics.TotalInfo,
+                CompilerErrors: diagnostics.CompilerErrors,
+                AnalyzerErrors: diagnostics.AnalyzerErrors,
+                WorkspaceErrors: diagnostics.WorkspaceErrors);
 
         var ledger = new WorkspaceSupportChangeLedgerDto(
             TotalChanges: changes.Count,
@@ -127,7 +129,7 @@ internal static class WorkspaceSupportBundleBuilder
     private static IReadOnlyList<string> BuildSupportBundleNextActions(
         WorkspaceStatusSummaryDto readiness,
         WorkspaceDriftResult drift,
-        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
+        WorkspaceSupportDiagnosticsTotalsDto? diagnostics,
         WorkspaceSupportChangeLedgerDto ledger)
     {
         var actions = new List<string>();
@@ -151,7 +153,11 @@ internal static class WorkspaceSupportBundleBuilder
             actions.Add(readiness.RestoreHint);
         }
 
-        if (diagnostics.TotalErrors > 0)
+        if (diagnostics is null)
+        {
+            actions.Add("Diagnostic totals are not cached for this workspace version; run project_diagnostics when current totals are required.");
+        }
+        else if (diagnostics.TotalErrors > 0)
         {
             actions.Add("Run compile_check or project_diagnostics to inspect the error diagnostics.");
         }
@@ -180,7 +186,7 @@ internal static class WorkspaceSupportBundleBuilder
     private static string ResolveSupportBundleStatus(
         WorkspaceStatusSummaryDto readiness,
         WorkspaceDriftResult drift,
-        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
+        WorkspaceSupportDiagnosticsTotalsDto? diagnostics,
         WorkspaceSupportChangeLedgerDto ledger)
     {
         if (drift.Stale || readiness.IsStale)
@@ -188,7 +194,17 @@ internal static class WorkspaceSupportBundleBuilder
             return "stale";
         }
 
-        if (!readiness.IsReady || diagnostics.TotalErrors > 0 || diagnostics.TotalWarnings > 0 || diagnostics.TotalInfo > 0)
+        if (!readiness.IsReady)
+        {
+            return "attention-needed";
+        }
+
+        if (diagnostics is null)
+        {
+            return "diagnostics-limited";
+        }
+
+        if (diagnostics.TotalErrors > 0 || diagnostics.TotalWarnings > 0)
         {
             return "attention-needed";
         }

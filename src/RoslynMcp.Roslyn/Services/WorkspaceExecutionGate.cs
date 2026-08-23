@@ -508,22 +508,9 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     {
         queueStopwatch.Stop();
         var queuedMs = queueStopwatch.ElapsedMilliseconds;
-        var holdStopwatch = Stopwatch.StartNew();
-        try
-        {
-            return await body().ConfigureAwait(false);
-        }
-        finally
-        {
-            holdStopwatch.Stop();
-            var metrics = AmbientGateMetrics.Current;
-            if (metrics is not null)
-            {
-                metrics.GateMode ??= gateMode;
-                metrics.QueuedMs += queuedMs;
-                metrics.HeldMs += holdStopwatch.ElapsedMilliseconds;
-            }
-        }
+        var metrics = AmbientGateMetrics.Current;
+        using var gateTiming = metrics?.TrackGate(gateMode, queuedMs);
+        return await body().ConfigureAwait(false);
     }
 
     /// <summary>
