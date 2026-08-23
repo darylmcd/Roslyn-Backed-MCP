@@ -8,12 +8,12 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 |---|---:|---|---|
 | DiffPlex | 1.9.0 | Apache-2.0 | https://github.com/mmanela/diffplex |
 | Microsoft.Build.Locator | 1.11.2 | MIT | https://github.com/microsoft/MSBuildLocator |
-| Microsoft.CodeAnalysis.CSharp | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.CodeAnalysis.CSharp.Features | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.CodeAnalysis.CSharp.Scripting | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.CodeAnalysis.CSharp.Workspaces | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.CodeAnalysis.Features | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.CodeAnalysis.Workspaces.MSBuild | 5.6.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.CSharp | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.CSharp.Features | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.CSharp.Scripting | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.CSharp.Workspaces | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.Features | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
+| Microsoft.CodeAnalysis.Workspaces.MSBuild | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
 | Microsoft.Extensions.Hosting | 10.0.10 | MIT | https://github.com/dotnet/runtime |
 | Microsoft.Extensions.Http | 10.0.10 | MIT | https://github.com/dotnet/runtime |
 | Microsoft.Extensions.Logging | 10.0.10 | MIT | https://github.com/dotnet/runtime |
@@ -30,7 +30,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Build.Framework | 17.14.28 | MIT | https://github.com/dotnet/msbuild |
 | Microsoft.Build.Tasks.Core | 17.14.28 | MIT | https://github.com/dotnet/msbuild |
 | Microsoft.Build.Utilities.Core | 17.14.28 | MIT | https://github.com/dotnet/msbuild |
-| Microsoft.CodeAnalysis.Analyzers | 5.6.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
+| Microsoft.CodeAnalysis.Analyzers | 5.9.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
 | Microsoft.CodeAnalysis.BannedApiAnalyzers | 5.6.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
 | Microsoft.CodeAnalysis.NetAnalyzers | 10.0.302 | MIT | https://github.com/dotnet/sdk |
 | Microsoft.SourceLink.GitHub | 10.0.301 | MIT | https://github.com/dotnet/sourcelink |
