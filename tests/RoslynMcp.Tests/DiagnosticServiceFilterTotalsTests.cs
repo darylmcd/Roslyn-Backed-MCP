@@ -99,6 +99,23 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task TryGetCachedWorkspaceDiagnostics_ReturnsCurrentFullWorkspaceTotalsWithoutAnalyzerPass()
+    {
+        var analyzed = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error",
+            diagnosticIdFilter: null, CancellationToken.None);
+
+        var cacheHit = DiagnosticService.TryGetCachedWorkspaceDiagnostics(WorkspaceId, out var cached);
+
+        Assert.IsTrue(cacheHit);
+        Assert.IsNotNull(cached);
+        Assert.AreEqual(analyzed.TotalErrors, cached.TotalErrors);
+        Assert.AreEqual(analyzed.TotalWarnings, cached.TotalWarnings);
+        Assert.AreEqual(analyzed.TotalInfo, cached.TotalInfo,
+            "The cache-only support-bundle path must reuse current full-workspace totals.");
+    }
+
+    [TestMethod]
     public async Task ProjectDiagnostics_TotalDiagnosticsIsInvariantUnderSeverityFilter()
     {
         // BUG fix (project-diagnostics-totaldiagnostics-collapses-under-severity-filter):

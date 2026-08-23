@@ -20,6 +20,24 @@ public interface IDiagnosticService
         string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct);
 
     /// <summary>
+    /// Tries to read already-computed full-workspace diagnostic totals without starting a
+    /// compilation or analyzer pass. Incident and readiness surfaces use this cache-only path so
+    /// a cold diagnostic probe cannot monopolize the workspace read gate.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="diagnostics">
+    /// A current-version full-workspace result when available; otherwise <see langword="null"/>.
+    /// </param>
+    /// <returns><see langword="true"/> only when current cached totals were returned.</returns>
+    bool TryGetCachedWorkspaceDiagnostics(
+        string workspaceId,
+        out DiagnosticsResultDto? diagnostics)
+    {
+        diagnostics = null;
+        return false;
+    }
+
+    /// <summary>
     /// Returns detailed information for a specific diagnostic at a source location, including available code fixes.
     /// Returns <see langword="null"/> if no matching diagnostic is found.
     /// </summary>

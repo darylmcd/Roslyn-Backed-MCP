@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -16,6 +17,31 @@ public class WorkspaceExecutionGateTests
         return new WorkspaceExecutionGate(
             new ExecutionGateOptions(),
             manager ?? new FakeGateWorkspaceManager());
+    }
+
+    [TestMethod]
+    public async Task NestedLoadAndWorkspaceGates_ReportOneWallClockHoldInterval()
+    {
+        var gate = CreateGate();
+        using var scope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = Stopwatch.StartNew();
+
+        await gate.RunLoadGateAsync(outerCt =>
+            gate.RunWriteAsync(WorkspaceA, async innerCt =>
+            {
+                await Task.Delay(75, innerCt);
+                return 0;
+            }, outerCt), CancellationToken.None);
+
+        stopwatch.Stop();
+        AmbientGateMetrics.Current!.ElapsedMs = stopwatch.ElapsedMilliseconds;
+        var metrics = AmbientGateMetrics.Snapshot();
+
+        Assert.IsNotNull(metrics);
+        Assert.IsTrue(metrics.HeldMs >= 50,
+            $"The nested gate interval should include the inner work; heldMs={metrics.HeldMs}.");
+        Assert.IsTrue(metrics.HeldMs <= metrics.ElapsedMs,
+            $"Nested gate holds must not be double-counted; heldMs={metrics.HeldMs}, elapsedMs={metrics.ElapsedMs}.");
     }
 
     [TestMethod]

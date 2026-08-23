@@ -23,3 +23,10 @@
 173 tools is approaching small-model discovery saturation, but current evidence points to a routing/steering problem more than a raw-count problem. Now that `recommend_workflow` exists, wait for fresh post-router evidence before adding tool-set catalog resources (for example `roslyn://server/catalog/tool-sets` and `roslyn://server/catalog/tools/{toolSet}/{offset}/{limit}`) that expose bounded subsets such as `navigation`, `refactoring`, `validation`, and `analysis` without hiding tools from clients that can handle the full surface.
 
 **Weaker evidence — N until small-model discovery friction is reported after the router lands externally.**
+
+## 2026-08-23 Codex session evidence
+
+- Roslyn tools were absent from the initially materialized declarations, and the agent incorrectly reported the documented server unavailable before querying the deferred catalog.
+- Codex's deferred catalog exposed the complete Roslyn surface; server-info, workspace load, compilation, semantic analysis, catalog parity, and workspace cleanup then succeeded.
+- This is post-router external discovery-friction evidence, but it is confounded: the Codex session contract already documented deferred discovery, so the immediate failure was probe noncompliance rather than proof that raw tool count alone caused saturation.
+- Use this evidence when re-evaluating the row; do not create a duplicate discovery row or change default tool visibility without client-safety evidence.

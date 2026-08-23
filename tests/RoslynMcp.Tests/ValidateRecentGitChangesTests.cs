@@ -99,6 +99,44 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ValidateRecentGitChangesAsync_AmbientRepositoryOverrides_DoNotEscapeSolutionScope()
+    {
+        if (!IsGitAvailable())
+        {
+            Assert.Inconclusive($"git unavailable — cannot run the process-environment test. {_gitUnavailableReason}");
+            return;
+        }
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// ambient git override {Guid.NewGuid():N}{Environment.NewLine}");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var priorGitDir = Environment.GetEnvironmentVariable("GIT_DIR");
+        var priorGitWorkTree = Environment.GetEnvironmentVariable("GIT_WORK_TREE");
+        try
+        {
+            Environment.SetEnvironmentVariable("GIT_DIR", workspace.GetPath("missing-git-dir"));
+            Environment.SetEnvironmentVariable("GIT_WORK_TREE", workspace.GetPath("missing-work-tree"));
+
+            var result = await _validationService.ValidateRecentGitChangesAsync(
+                workspace.WorkspaceId, runTests: false, CancellationToken.None);
+
+            Assert.AreEqual(0, result.Warnings.Count,
+                $"Git scoping must ignore ambient repository overrides; got [{string.Join("; ", result.Warnings)}].");
+            Assert.AreEqual(1, result.ChangedFilePaths.Count);
+            Assert.AreEqual(Path.GetFullPath(touchedFile), Path.GetFullPath(result.ChangedFilePaths[0]));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GIT_DIR", priorGitDir);
+            Environment.SetEnvironmentVariable("GIT_WORK_TREE", priorGitWorkTree);
+        }
+    }
+
+    [TestMethod]
     public async Task ValidateRecentGitChangesAsync_SlowValidationPhase_ReturnsRetryableTimeoutWithGitScope()
     {
         if (!IsGitAvailable())

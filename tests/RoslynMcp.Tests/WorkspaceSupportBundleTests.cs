@@ -202,7 +202,7 @@ public sealed class WorkspaceSupportBundleTests
     }
 
     [TestMethod]
-    public async Task WorkspaceSupportBundle_InfoOnlyDiagnostics_ReturnsAttentionNeededWithAction()
+    public async Task WorkspaceSupportBundle_InfoOnlyDiagnostics_RemainsCleanWithOptionalAction()
     {
         var status = CreateStatus(isReady: true);
         var diagnostics = new DiagnosticsResultDto(
@@ -224,10 +224,34 @@ public sealed class WorkspaceSupportBundleTests
             new FakeDiagnosticService(diagnostics));
 
         using var doc = JsonDocument.Parse(json.TextPayload());
-        Assert.AreEqual("attention-needed", doc.RootElement.GetProperty("status").GetString());
+        Assert.AreEqual("clean", doc.RootElement.GetProperty("status").GetString());
+        Assert.AreEqual(3, doc.RootElement.GetProperty("diagnosticsTotals").GetProperty("totalInfo").GetInt32());
         StringAssert.Contains(
             string.Join(" ", doc.RootElement.GetProperty("nextActions").EnumerateArray().Select(a => a.GetString())),
             "Info");
+    }
+
+    [TestMethod]
+    public async Task WorkspaceSupportBundle_ColdDiagnostics_ReturnsExplicitLimitationWithoutStartingAnalyzerPass()
+    {
+        var status = CreateStatus(isReady: true);
+        var diagnosticService = new CacheMissDiagnosticService();
+
+        var json = await WorkspaceTools.GetWorkspaceSupportBundle(
+            new FakeGate(),
+            new FakeWorkspaceManager([status]),
+            new FakeDriftService(new WorkspaceDriftResult(false, [], "noop")),
+            new FakeChangeTracker([]),
+            diagnosticService);
+
+        using var doc = JsonDocument.Parse(json.TextPayload());
+        Assert.AreEqual("diagnostics-limited", doc.RootElement.GetProperty("status").GetString());
+        Assert.AreEqual(JsonValueKind.Null, doc.RootElement.GetProperty("diagnosticsTotals").ValueKind);
+        StringAssert.Contains(
+            string.Join(" ", doc.RootElement.GetProperty("nextActions").EnumerateArray().Select(a => a.GetString())),
+            "not cached");
+        Assert.AreEqual(0, diagnosticService.AnalyzerPassCount,
+            "A support bundle cache miss must not start a cold analyzer pass while the read gate is held.");
     }
 
     private static WorkspaceStatusDto CreateStatus(bool isReady, bool isStale = false, string workspaceId = "ws-1")
@@ -337,6 +361,14 @@ public sealed class WorkspaceSupportBundleTests
 
     private sealed class FakeDiagnosticService(DiagnosticsResultDto result) : IDiagnosticService
     {
+        public bool TryGetCachedWorkspaceDiagnostics(
+            string workspaceId,
+            out DiagnosticsResultDto? diagnostics)
+        {
+            diagnostics = result;
+            return true;
+        }
+
         public Task<DiagnosticsResultDto> GetDiagnosticsAsync(
             string workspaceId,
             string? projectFilter,
@@ -345,6 +377,41 @@ public sealed class WorkspaceSupportBundleTests
             string? diagnosticIdFilter,
             CancellationToken ct) =>
             Task.FromResult(result);
+
+        public Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
+            string workspaceId,
+            string diagnosticId,
+            string filePath,
+            int line,
+            int column,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class CacheMissDiagnosticService : IDiagnosticService
+    {
+        public int AnalyzerPassCount { get; private set; }
+
+        public bool TryGetCachedWorkspaceDiagnostics(
+            string workspaceId,
+            out DiagnosticsResultDto? diagnostics)
+        {
+            diagnostics = null;
+            return false;
+        }
+
+        public Task<DiagnosticsResultDto> GetDiagnosticsAsync(
+            string workspaceId,
+            string? projectFilter,
+            string? fileFilter,
+            string? severityFilter,
+            string? diagnosticIdFilter,
+            CancellationToken ct)
+        {
+            AnalyzerPassCount++;
+            return Task.FromException<DiagnosticsResultDto>(
+                new AssertFailedException("Cold analyzer pass must not start from workspace_support_bundle."));
+        }
 
         public Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
             string workspaceId,

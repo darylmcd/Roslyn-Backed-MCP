@@ -691,7 +691,6 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             startInfo = new ProcessStartInfo
             {
                 FileName = "git",
-                WorkingDirectory = solutionDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -699,6 +698,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
+            RemoveAmbientGitRepositoryOverrides(startInfo);
+            startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+            startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+            startInfo.ArgumentList.Add("-C");
+            startInfo.ArgumentList.Add(solutionDirectory);
             startInfo.ArgumentList.Add("status");
             startInfo.ArgumentList.Add("--porcelain=v1");
             startInfo.ArgumentList.Add("-z");
@@ -770,6 +774,24 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         }
 
         return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>(), false);
+    }
+
+    private static void RemoveAmbientGitRepositoryOverrides(ProcessStartInfo startInfo)
+    {
+        string[] repositoryOverrides =
+        [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        ];
+
+        foreach (var variable in repositoryOverrides)
+        {
+            startInfo.Environment.Remove(variable);
+        }
     }
 
     internal WorkspaceValidationFailureDetail CreateUnexpectedFailure(

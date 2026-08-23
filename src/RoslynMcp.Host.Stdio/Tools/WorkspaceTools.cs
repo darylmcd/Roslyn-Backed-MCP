@@ -90,7 +90,7 @@ public static class WorkspaceTools
         }, ct);
     }
 
-    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes. Set autoRestore=true to run dotnet restore and one follow-up reload when the reloaded status reports restoreRequired=true.")]
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes. Set autoRestore=true to run dotnet restore and one follow-up reload when the reloaded status reports restoreRequired=true. Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
@@ -99,6 +99,7 @@ public static class WorkspaceTools
         IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+        [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
         CancellationToken ct = default)
     {
         // Reload acquires both the global load gate AND the per-workspace write lock so that
@@ -108,7 +109,7 @@ public static class WorkspaceTools
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
                 status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
-                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
+                return SerializeWorkspaceLoadResult(status, verbose, prewarmResult: null);
             }, outerCt), ct);
     }
 
@@ -527,13 +528,9 @@ public static class WorkspaceTools
             var status = await workspace.GetStatusAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
             var readiness = WorkspaceStatusSummaryDto.From(status);
             var drift = await driftService.CheckDriftAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(
+            diagnosticService.TryGetCachedWorkspaceDiagnostics(
                 resolvedWorkspaceId,
-                projectFilter: null,
-                fileFilter: null,
-                severityFilter: "Warning",
-                diagnosticIdFilter: null,
-                c).ConfigureAwait(false);
+                out var diagnostics);
             var changes = changeTracker.GetChanges(resolvedWorkspaceId);
 
             var bundle = WorkspaceSupportBundleBuilder.Create(

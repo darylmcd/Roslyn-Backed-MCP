@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
@@ -53,6 +54,10 @@ public static class AmbientGateMetrics
 /// </summary>
 public sealed class GateMetricsBuilder
 {
+    private readonly object _gateTimingSync = new();
+    private int _activeGateDepth;
+    private long _gateHoldStartedAt;
+
     public string? GateMode { get; set; }
     public long QueuedMs { get; set; }
     public long HeldMs { get; set; }
@@ -124,6 +129,51 @@ public sealed class GateMetricsBuilder
     /// <c>auto-loaded</c>. <see langword="null"/> otherwise.
     /// </summary>
     public long? AutoLoadElapsedMs { get; set; }
+
+    /// <summary>
+    /// Starts a balanced gate-hold interval. Nested intervals contribute one wall-clock span.
+    /// </summary>
+    public IDisposable TrackGate(string gateMode, long queuedMs)
+    {
+        lock (_gateTimingSync)
+        {
+            GateMode ??= gateMode;
+            QueuedMs += queuedMs;
+            if (_activeGateDepth++ == 0)
+            {
+                _gateHoldStartedAt = Stopwatch.GetTimestamp();
+            }
+        }
+
+        return new GateTimingScope(this);
+    }
+
+    private void ExitGate()
+    {
+        lock (_gateTimingSync)
+        {
+            if (_activeGateDepth <= 0)
+            {
+                throw new InvalidOperationException("Gate timing exit did not have a matching entry.");
+            }
+
+            if (--_activeGateDepth == 0)
+            {
+                HeldMs += (long)Stopwatch.GetElapsedTime(_gateHoldStartedAt).TotalMilliseconds;
+                _gateHoldStartedAt = 0;
+            }
+        }
+    }
+
+    private sealed class GateTimingScope(GateMetricsBuilder owner) : IDisposable
+    {
+        private GateMetricsBuilder? _owner = owner;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.ExitGate();
+        }
+    }
 
     public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution, AutoLoadElapsedMs);
 }
