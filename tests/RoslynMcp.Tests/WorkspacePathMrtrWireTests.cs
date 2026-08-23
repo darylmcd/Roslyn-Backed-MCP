@@ -12,6 +12,7 @@ using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -807,7 +808,131 @@ public sealed class WorkspacePathMrtrWireTests
         }
     }
 
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task UniqueDiscovery_AutoLoadsThroughRegisteredTool_ThenDispatchesOriginalOnce()
+    {
+        var (root, solution, source) = CreateDiscoverableSolution();
+        SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
+            failureDetail: null,
+            expectedLoadPath: solution);
+        try
+        {
+            await using var harness = await CreateHarnessAsync(
+                protocolVersion: null,
+                elicitationHandler: (_, _) => ValueTask.FromResult(new ElicitResult { Action = "decline" }),
+                sanctionedRoot: root);
+
+            var result = await harness.Client.CallToolAsync(
+                _workspaceStatusToolName,
+                new Dictionary<string, object?> { ["filePath"] = source },
+                cancellationToken: CancellationToken.None);
+
+            Assert.IsFalse(result.IsError is true);
+            Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceLoadDispatchCount,
+                "Unique discovery must invoke the registered workspace_load primitive exactly once.");
+            Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount,
+                "The original tool must dispatch exactly once after its workspaceId is patched.");
+
+            var payload = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
+            Assert.AreEqual(_syntheticWorkspaceId, payload.GetProperty("workspaceId").GetString());
+            var meta = payload.GetProperty("_meta");
+            Assert.AreEqual("auto-loaded", meta.GetProperty("autoResolution").GetString());
+            var elapsed = meta.GetProperty("autoLoadElapsedMs").GetInt64();
+            Assert.IsTrue(elapsed >= 0 && elapsed < 30_000,
+                "Auto-load timing must be present and bounded by the wire-test timeout.");
+        }
+        finally
+        {
+            SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("missing-id")]
+    [DataRow("cancellation")]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task AutoLoadFailure_DoesNotDispatchOriginalOrPatchWorkspaceId(string outcome)
+    {
+        var (root, solution, source) = CreateDiscoverableSolution();
+        var behavior = outcome == "missing-id"
+            ? SyntheticLoadBehavior.MissingWorkspaceId
+            : SyntheticLoadBehavior.WaitForCancellation;
+        SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
+            failureDetail: null,
+            expectedLoadPath: solution,
+            loadBehavior: behavior);
+        try
+        {
+            await using var harness = await CreateHarnessAsync(
+                protocolVersion: null,
+                elicitationHandler: (_, _) => ValueTask.FromResult(new ElicitResult { Action = "decline" }),
+                sanctionedRoot: root,
+                enableElicitation: false);
+            using var cts = new CancellationTokenSource();
+            var call = harness.Client.CallToolAsync(
+                _workspaceStatusToolName,
+                new Dictionary<string, object?> { ["filePath"] = source },
+                cancellationToken: cts.Token);
+
+            if (behavior == SyntheticLoadBehavior.WaitForCancellation)
+            {
+                await SyntheticWorkspaceLoadTools.WaitForLoadStartAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(10));
+                await cts.CancelAsync();
+                await Assert.ThrowsAsync<OperationCanceledException>(async () => await call);
+            }
+            else
+            {
+                var result = await call;
+                Assert.IsTrue(result.IsError is true,
+                    "A load response without workspaceId must fall through without inventing identity.");
+                Assert.IsFalse(((TextContentBlock)result.Content![0]).Text.Contains(
+                    _syntheticWorkspaceId,
+                    StringComparison.Ordinal));
+            }
+
+            Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceLoadDispatchCount);
+            Assert.AreEqual(0, SyntheticWorkspaceLoadTools.WorkspaceStatusDispatchCount,
+                "Cancellation or a missing load id must not dispatch the original tool.");
+        }
+        finally
+        {
+            SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
+            TryDeleteDirectory(root);
+        }
+    }
+
     // ── plumbing ─────────────────────────────────────────────────────────────
+
+    private static (string Root, string Solution, string Source) CreateDiscoverableSolution()
+    {
+        var root = Path.Combine(TestTempRoot.Current, "autoload-wire-" + Guid.NewGuid().ToString("N"));
+        var sourceDirectory = Path.Combine(root, "src");
+        Directory.CreateDirectory(sourceDirectory);
+        var solution = Path.Combine(root, "AutoLoad.slnx");
+        var source = Path.Combine(sourceDirectory, "Class1.cs");
+        File.WriteAllText(solution, "<Solution />");
+        File.WriteAllText(source, "namespace AutoLoad; internal sealed class Class1;");
+        return (root, Path.GetFullPath(solution), Path.GetFullPath(source));
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            Directory.Delete(path, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Test cleanup is best-effort; the per-run temp root is reclaimed by the test harness.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Test cleanup is best-effort; the per-run temp root is reclaimed by the test harness.
+        }
+    }
 
     private static ElicitResult AcceptedPathResult(string path = _elicitedPath) => new()
     {
@@ -830,10 +955,16 @@ public sealed class WorkspacePathMrtrWireTests
     private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(
         string? protocolVersion,
         Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>> elicitationHandler,
-        IWorkspaceManager? workspaceManager = null)
+        IWorkspaceManager? workspaceManager = null,
+        string? sanctionedRoot = null,
+        bool enableElicitation = true)
     {
         var services = new ServiceCollection();
         services.AddSingleton(workspaceManager ?? new ConfigurableWorkspaceManager());
+        services.AddSingleton(new SecurityOptions
+        {
+            SanctionedRoots = sanctionedRoot is null ? [] : [sanctionedRoot],
+        });
         services
             .AddMcpServer(options =>
             {
@@ -851,7 +982,9 @@ public sealed class WorkspacePathMrtrWireTests
 
         return await InMemoryMcpClientServerHarness.CreateAsync(
             transportName: $"mrtr-wire-{protocolVersion ?? "modern"}",
-            clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
+            clientCapabilities: enableElicitation
+                ? new ClientCapabilities { Elicitation = new ElicitationCapability() }
+                : new ClientCapabilities(),
             clientHandlers: new McpClientHandlers { ElicitationHandler = elicitationHandler },
             disposalFailureContext: "mrtr-wire-contract",
             cancellationToken: CancellationToken.None,
@@ -905,6 +1038,9 @@ public sealed class WorkspacePathMrtrWireTests
         private static int _workspaceLoadDispatchCount;
         private static string? _workspaceStatusFailureDetail;
         private static string _expectedWorkspaceId = _syntheticWorkspaceId;
+        private static string _expectedLoadPath = _elicitedPath;
+        private static SyntheticLoadBehavior _loadBehavior;
+        private static TaskCompletionSource _loadStarted = NewLoadStartedSignal();
 
         public static int WorkspaceStatusDispatchCount =>
             Volatile.Read(ref _workspaceStatusDispatchCount);
@@ -913,21 +1049,40 @@ public sealed class WorkspacePathMrtrWireTests
 
         public static void ResetWorkspaceStatusProbe(
             string? failureDetail,
-            string expectedWorkspaceId = _syntheticWorkspaceId)
+            string expectedWorkspaceId = _syntheticWorkspaceId,
+            string expectedLoadPath = _elicitedPath,
+            SyntheticLoadBehavior loadBehavior = SyntheticLoadBehavior.Success)
         {
             Volatile.Write(ref _workspaceStatusFailureDetail, failureDetail);
             Volatile.Write(ref _expectedWorkspaceId, expectedWorkspaceId);
+            Volatile.Write(ref _expectedLoadPath, expectedLoadPath);
+            _loadBehavior = loadBehavior;
+            Volatile.Write(ref _loadStarted, NewLoadStartedSignal());
             Interlocked.Exchange(ref _workspaceStatusDispatchCount, 0);
             Interlocked.Exchange(ref _workspaceLoadDispatchCount, 0);
         }
 
+        public static Task WaitForLoadStartAsync() => Volatile.Read(ref _loadStarted).Task;
+
         [McpServerTool(Name = _toolName)]
-        public static string Load(string path)
+        public static async Task<string> Load(string path, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _workspaceLoadDispatchCount);
-            if (!string.Equals(path, _elicitedPath, StringComparison.Ordinal))
+            Volatile.Read(ref _loadStarted).TrySetResult();
+            if (!string.Equals(path, Volatile.Read(ref _expectedLoadPath), StringComparison.Ordinal))
             {
                 throw new UnauthorizedAccessException("The requested path is outside the sanctioned roots.");
+            }
+
+            var behavior = _loadBehavior;
+            if (behavior == SyntheticLoadBehavior.WaitForCancellation)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            if (behavior == SyntheticLoadBehavior.MissingWorkspaceId)
+            {
+                return JsonSerializer.Serialize(new { loadedPath = path });
             }
 
             return JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal)
@@ -936,6 +1091,9 @@ public sealed class WorkspacePathMrtrWireTests
                 ["loadedPath"] = path,
             });
         }
+
+        private static TaskCompletionSource NewLoadStartedSignal() =>
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         [McpServerTool(Name = _workspaceStatusToolName)]
         public static async Task<string> Status(
@@ -968,6 +1126,13 @@ public sealed class WorkspacePathMrtrWireTests
 
             return JsonSerializer.Serialize(new { workspaceId, filePath, choice, state = "ready" });
         }
+    }
+
+    private enum SyntheticLoadBehavior
+    {
+        Success,
+        MissingWorkspaceId,
+        WaitForCancellation,
     }
 
     private sealed class ConfigurableWorkspaceManager(params WorkspaceStatusDto[] workspaces) : IWorkspaceManager

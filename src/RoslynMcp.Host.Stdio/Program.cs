@@ -6,6 +6,7 @@ using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
@@ -124,23 +125,11 @@ HostProcessMetadataSnapshotProvider.Publish(previousHostMetadata);
 // structured WorkspaceEvictedException on workspace lookups for ids owned by the prior
 // process. Unlike HostProcessMetadataSnapshotProvider (consume-once for server_info),
 // the registry signal must persist for the lifetime of the process — every workspace
-// lookup miss in a recycled host needs to consult it. The serverStartedAt timestamp is
-// sourced from Process.StartTime to align with the value server_info / server_heartbeat
-// surface in their connection.serverStartedAt field.
-DateTimeOffset serverStartedAtUtc;
-try
-{
-    serverStartedAtUtc = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
-}
-catch
-{
-    // Some sandboxed hosts (containers without /proc, hardened Windows accounts) reject
-    // StartTime reads. Fall back to "now" — the registry's purpose is recycle detection,
-    // and a small drift in serverStartedAt does not undermine the WasHostRecycled signal.
-    serverStartedAtUtc = DateTime.UtcNow;
-}
+// lookup miss in a recycled host needs to consult it. ServerProcessMetadata is the single
+// process-start authority shared with server_info and server_heartbeat.
+var serverProcessMetadata = host.Services.GetRequiredService<ServerProcessMetadata>();
 RoslynMcp.Core.Services.WorkspaceEvictionRegistry.PublishRecycleContext(
-    serverStartedAtUtc,
+    serverProcessMetadata.StartedAtUtc,
     previousHostMetadata?.RecycleReason);
 
 // FLAG-D: Emit an Information event when the host starts with no loaded workspaces.
@@ -171,17 +160,13 @@ if (ServerTools.BuildPathBoundary(startupSecurityOptions)
     startupLogger.LogWarning("Filesystem boundary is not configured. {BoundaryHint}", boundaryHint);
 }
 
-// Register graceful shutdown to dispose all workspaces
+// Register graceful-shutdown side effects. DI/container disposal remains the sole owner of
+// IWorkspaceManager teardown after in-flight hosted work has completed.
 var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() =>
 {
     var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Shutdown");
-    logger.LogInformation("Shutting down — disposing all workspace sessions");
-    var workspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
-    if (workspaceManager is IDisposable disposable)
-    {
-        disposable.Dispose();
-    }
+    logger.LogInformation("Shutting down — persisting host metadata");
 
     // host-recycle-opacity: persist current-process exit metadata so the NEXT host process
     // can surface previousStdioPid / previousExitedAt / previousRecycleReason on its first

@@ -104,6 +104,7 @@ internal static class StructuredCallToolFilter
                 .CreateLogger("RoslynMcp.StructuredCallToolFilter");
 
             using var metricsScope = AmbientGateMetrics.BeginRequest();
+            using var serverScope = RequestMcpServerContext.Begin(context.Server);
             var stopwatch = Stopwatch.StartNew();
 
             try

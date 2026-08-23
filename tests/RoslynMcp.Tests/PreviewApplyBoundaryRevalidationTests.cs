@@ -158,6 +158,80 @@ public sealed class PreviewApplyBoundaryRevalidationTests
         }
     }
 
+    [TestMethod]
+    public async Task ApplyByToken_ClientRootsNarrowing_IsReappliedAtRedemption()
+    {
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-toctou-client-roots-" + Guid.NewGuid().ToString("N"));
+        var configuredRoot = Path.Combine(testRoot, "configured");
+        var clientRoot = Path.Combine(configuredRoot, "client");
+        var configuredOnly = Path.Combine(configuredRoot, "outside-client");
+        Directory.CreateDirectory(clientRoot);
+        Directory.CreateDirectory(configuredOnly);
+        var documentPath = Path.Combine(configuredOnly, "Program.cs");
+        File.WriteAllText(documentPath, "// configured-only target");
+
+        var previousSnapshot = SecurityOptionsSnapshot.Value;
+        try
+        {
+            SecurityOptionsSnapshot.Value = new SecurityOptions { SanctionedRoots = [configuredRoot] };
+            await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+                configuredRoot,
+                CancellationToken.None,
+                clientRootPaths: [clientRoot]);
+            using var serverScope = RequestMcpServerContext.Begin(session.Server);
+            var (store, token) = StagePreview(documentPath);
+            var serviceCallRan = false;
+
+            var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                    new FakeGate(),
+                    store,
+                    token,
+                    serviceCall: _ =>
+                    {
+                        serviceCallRan = true;
+                        return Task.FromResult(new FakeResultDto("must-not-run"));
+                    },
+                    ct: CancellationToken.None));
+
+            StringAssert.Contains(error.Message, "outside the configured sanctioned-root boundary");
+            Assert.IsFalse(serviceCallRan);
+        }
+        finally
+        {
+            SecurityOptionsSnapshot.Value = previousSnapshot;
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    [TestMethod]
+    public void PeekChangedPaths_RemovedProject_IncludesEveryDocumentPath()
+    {
+        var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("Removed", LanguageNames.CSharp);
+        var firstPath = Path.Combine(TestTempRoot.Current, "removed-project", "First.cs");
+        var secondPath = Path.Combine(TestTempRoot.Current, "removed-project", "Second.cs");
+        var first = workspace.AddDocument(DocumentInfo.Create(
+            DocumentId.CreateNewId(project.Id),
+            "First.cs",
+            loader: TextLoader.From(TextAndVersion.Create(SourceText.From("class First {}"), VersionStamp.Create())),
+            filePath: firstPath));
+        workspace.AddDocument(DocumentInfo.Create(
+            DocumentId.CreateNewId(project.Id),
+            "Second.cs",
+            loader: TextLoader.From(TextAndVersion.Create(SourceText.From("class Second {}"), VersionStamp.Create())),
+            filePath: secondPath));
+        var original = workspace.CurrentSolution;
+        var modified = original.RemoveProject(first.Project.Id);
+        var store = new PreviewStore();
+        var token = store.Store(WorkspaceId, original, modified, 1, "remove project", diffTruncated: false);
+
+        var paths = store.PeekChangedPaths(token);
+
+        Assert.IsNotNull(paths);
+        CollectionAssert.AreEquivalent(new[] { firstPath, secondPath }, paths.ToArray());
+    }
+
     /// <summary>
     /// Sibling half of the row: <c>apply_multi_file_edit</c> must pass the boundary-canonicalized
     /// (fully link-resolved) target the validator returned to the edit service — per the

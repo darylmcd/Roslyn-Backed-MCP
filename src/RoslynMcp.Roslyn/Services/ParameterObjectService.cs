@@ -675,14 +675,7 @@ public sealed class ParameterObjectService : IParameterObjectService
     }
 
     private static bool ImplementsInterfaceMember(IMethodSymbol target)
-    {
-        var containingType = target.ContainingType;
-        if (containingType is null) return false;
-        return containingType.AllInterfaces
-            .SelectMany(i => i.GetMembers().OfType<IMethodSymbol>())
-            .Any(m => SymbolEqualityComparer.Default.Equals(
-                containingType.FindImplementationForInterfaceMember(m), target));
-    }
+        => SymbolServiceHelpers.GetImplementedInterfaceMembers(target).Any();
 
     private static void EnforceParameterShapeRefusals(IMethodSymbol method, IReadOnlyList<IParameterSymbol> grouped)
     {

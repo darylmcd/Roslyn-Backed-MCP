@@ -518,59 +518,17 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
 
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)
     {
-        var containing = method.ContainingType;
-        if (containing is null || containing.TypeKind == TypeKind.Interface)
-            return null;
-
-        foreach (var iface in containing.AllInterfaces)
-        {
-            foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
-            {
-                var impl = containing.FindImplementationForInterfaceMember(member);
-                if (SymbolEqualityComparer.Default.Equals(impl, method))
-                    return member;
-            }
-        }
-
-        return null;
+        return SymbolServiceHelpers.GetImplementedInterfaceMembers(method).FirstOrDefault();
     }
 
     private static IPropertySymbol? TryFindImplicitlyImplementedInterfaceMember(IPropertySymbol property)
     {
-        var containing = property.ContainingType;
-        if (containing is null || containing.TypeKind == TypeKind.Interface)
-            return null;
-
-        foreach (var iface in containing.AllInterfaces)
-        {
-            foreach (var member in iface.GetMembers().OfType<IPropertySymbol>())
-            {
-                var impl = containing.FindImplementationForInterfaceMember(member);
-                if (SymbolEqualityComparer.Default.Equals(impl, property))
-                    return member;
-            }
-        }
-
-        return null;
+        return SymbolServiceHelpers.GetImplementedInterfaceMembers(property).FirstOrDefault();
     }
 
     private static IEventSymbol? TryFindImplicitlyImplementedInterfaceMember(IEventSymbol ev)
     {
-        var containing = ev.ContainingType;
-        if (containing is null || containing.TypeKind == TypeKind.Interface)
-            return null;
-
-        foreach (var iface in containing.AllInterfaces)
-        {
-            foreach (var member in iface.GetMembers().OfType<IEventSymbol>())
-            {
-                var impl = containing.FindImplementationForInterfaceMember(member);
-                if (SymbolEqualityComparer.Default.Equals(impl, ev))
-                    return member;
-            }
-        }
-
-        return null;
+        return SymbolServiceHelpers.GetImplementedInterfaceMembers(ev).FirstOrDefault();
     }
 
     public Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

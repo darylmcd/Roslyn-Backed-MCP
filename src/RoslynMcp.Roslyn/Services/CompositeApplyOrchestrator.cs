@@ -96,7 +96,8 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
                     mutation.UpdatedContent ?? string.Empty,
                     ct,
                     _logger,
-                    encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
+                    encoding: SourceFileEncoding.FromBytes(preApplyBytes),
+                    exceptionReporter: _exceptionReporter).ConfigureAwait(false);
                 appliedFiles.Add(mutation.FilePath);
             }
 
@@ -188,24 +189,33 @@ internal static class AtomicFileWriter
         string content,
         CancellationToken ct,
         ILogger? logger = null,
-        Encoding? encoding = null)
+        Encoding? encoding = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
         => await WriteAtomicAsync(
             path,
             tmp => encoding is null
                 ? File.WriteAllTextAsync(tmp, content, ct)
                 : File.WriteAllTextAsync(tmp, content, encoding, ct),
-            logger).ConfigureAwait(false);
+            logger,
+            exceptionReporter).ConfigureAwait(false);
 
-    public static async Task WriteAllBytesAsync(string path, byte[] content, CancellationToken ct, ILogger? logger = null)
+    public static async Task WriteAllBytesAsync(
+        string path,
+        byte[] content,
+        CancellationToken ct,
+        ILogger? logger = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
         => await WriteAtomicAsync(
             path,
             tmp => File.WriteAllBytesAsync(tmp, content, ct),
-            logger).ConfigureAwait(false);
+            logger,
+            exceptionReporter).ConfigureAwait(false);
 
     private static async Task WriteAtomicAsync(
         string path,
         Func<string, Task> writeTempAsync,
-        ILogger? logger)
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
     {
         var tmp = path + ".tmp";
         try
@@ -215,12 +225,16 @@ internal static class AtomicFileWriter
         }
         catch
         {
-            TryDeleteTemp(tmp, path, logger);
+            TryDeleteTemp(tmp, path, logger, exceptionReporter);
             throw;
         }
     }
 
-    private static void TryDeleteTemp(string tmp, string path, ILogger? logger)
+    private static void TryDeleteTemp(
+        string tmp,
+        string path,
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
     {
         try
         {
@@ -239,7 +253,10 @@ internal static class AtomicFileWriter
             // target's file name, and the shared secret-safe projection reach the sinks.
             if (logger is not null)
             {
-                var diagnostic = PublicExceptionDetailPolicy.ProjectUnexpected(ex, correlationId: null).Server;
+                var diagnostic = UnexpectedExceptionReporting.Report(
+                    exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.CompositeApply).Server;
                 logger.LogWarning(
                     "{CleanupCategory}: failed to delete orphaned temp file {TargetFile}.tmp after a failed write; a stray .tmp artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
                     TempCleanupCategory,

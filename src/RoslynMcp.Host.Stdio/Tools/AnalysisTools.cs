@@ -256,10 +256,10 @@ public static class AnalysisTools
         [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(0, callersLimit);
+        ParameterValidation.ValidatePagination(0, calleesLimit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(0, callersLimit);
-            ParameterValidation.ValidatePagination(0, calleesLimit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, locator, c);
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
@@ -302,10 +302,10 @@ public static class AnalysisTools
         [Description("When true, drops the per-reference and per-declaration arrays and returns only the targetSymbol, affectedProjects list, totals, and hasMore flags. Default false preserves the v1.18.x shape.")] bool summary = false,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
+        if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
-            if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
             var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await mutationAnalysisService.AnalyzeImpactAsync(
@@ -358,9 +358,9 @@ public static class AnalysisTools
         [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(0, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(0, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolCouldNotBeResolvedMessage(locator));
@@ -395,9 +395,9 @@ public static class AnalysisTools
         [Description("Number of usages to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(offset, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
             var paged = results.Skip(offset).Take(limit).ToList();
@@ -447,9 +447,9 @@ public static class AnalysisTools
         [Description("Number of hits to skip before returning results (default: 0).")] int offset = 0,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidatePagination(offset, limit);
             // Always collect up to the 500-hit hard cap so pagination can actually advance.
             // The user-facing `limit` is the page size, not the collection ceiling — see
             // SemanticGrepHardCap comment. Mirrors find_type_usages / find_reflection_usages
