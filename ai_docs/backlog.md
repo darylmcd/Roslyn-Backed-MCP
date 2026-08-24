@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-24T21:10:53Z
+**updated_at:** 2026-08-24T21:36:27Z
 
 ## Agent contract
 
@@ -82,6 +82,8 @@
 | `script-supervisor-cleanup-failure-observability` | Medium | — | **Make script-supervisor cleanup failures observable** — remove untyped timer-disposal catches and distinguish normal shutdown from semaphore invariant violations without masking a primary execution failure. [type: reliability] [source: 2026-08-24 adjacent review] | S | items/script-supervisor-cleanup-failure-observability.md |
 | `scripting-options-environment-validation` | Medium | — | Validate scripting environment timing values and timeout-plus-grace bounds at host startup with variable-specific safe diagnostics. [type: configuration correctness] [source: 2026-08-24 adjacent scripting review] | M | items/scripting-options-environment-validation.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
+| `third-party-license-verification-all-central-pins` | Medium | — | Verify every central package's restored identity, version, and SPDX license so notice attribution cannot drift outside the MCP special case. [type: supply-chain correctness] [source: 2026-08-24 dependency review] | S | items/third-party-license-verification-all-central-pins.md |
+| `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
 
 ## Low
 

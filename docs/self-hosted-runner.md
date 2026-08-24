@@ -20,7 +20,7 @@ GitHub warns that fork pull requests can modify workflow YAML and execute danger
 
 Runner id 22 (`darylmcd-windows-dev`) was deregistered on 2026-08-24. The repository runner API then reported zero registered runners, so public-repository workflow YAML can no longer select the local machine. Keep that inventory empty. See GitHub's [secure-use reference](https://docs.github.com/en/actions/reference/security/secure-use) and [runner-group access controls](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
 
-Remote deregistration stopped the corresponding Windows service, but the non-elevated session could not change its `Auto` startup mode or delete it. The retired installation was moved to `C:\Users\daryl\actions-runner.retired-20260824`, so the service's configured `C:\Users\daryl\actions-runner\bin\RunnerService.exe` path is absent and cannot launch in the observed filesystem state. The orphaned service record and quarantined installation still require elevated/local cleanup; that separate security task is tracked in `ai_docs/backlog.md`.
+Remote deregistration stopped the corresponding Windows service, but the non-elevated session could not change its delayed `Auto` startup mode or delete it. The configured `C:\Users\daryl\actions-runner\bin\RunnerService.exe` path remains absent. After verifying that the repository runner inventory and runner-process set were empty, the retired installation's two dangling junctions and its 1.21 GiB quarantine were removed. Only the orphaned service record and post-reboot proof still require elevated/local cleanup; that security task is tracked in `ai_docs/backlog.md`.
 
 ## Safe hybrid prerequisites
 
@@ -51,34 +51,68 @@ The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, s
 
 ## Residual local service removal
 
-Remote registration is already absent and the configured executable path no longer exists. From an elevated PowerShell session, remove the stopped orphaned service before deleting the quarantined installation:
+Remote registration, the configured executable path, and the quarantine are already absent. From an elevated PowerShell session, fail closed on any changed identity or active runner before removing the stopped orphaned service:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 $serviceName = 'actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'
-Stop-Service -Name $serviceName -Force -ErrorAction Stop
-Set-Service -Name $serviceName -StartupType Disabled
-sc.exe delete $serviceName
-if ($LASTEXITCODE -ne 0) {
-    throw "Service deletion failed with exit code $LASTEXITCODE."
+$expectedImage = '"C:\Users\daryl\actions-runner\bin\RunnerService.exe"'
+$originalRunnerRoot = 'C:\Users\daryl\actions-runner'
+$quarantineRoot = 'C:\Users\daryl\actions-runner.retired-20260824'
+
+$runnerInventory = gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $runnerInventory.total_count -ne 0) {
+    throw 'Repository runner inventory is not verifiably empty.'
+}
+
+$serviceRecord = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
+if ($null -ne $serviceRecord) {
+    if ($serviceRecord.PathName -ne $expectedImage -or
+        $serviceRecord.StartName -ne 'LocalSystem') {
+        throw 'Refusing to remove a service whose image path or account changed.'
+    }
+}
+
+$runnerProcesses = Get-CimInstance Win32_Process | Where-Object {
+    ($_.ExecutablePath -and
+        ($_.ExecutablePath.StartsWith($originalRunnerRoot, [StringComparison]::OrdinalIgnoreCase) -or
+         $_.ExecutablePath.StartsWith($quarantineRoot, [StringComparison]::OrdinalIgnoreCase))) -or
+    ($_.CommandLine -and
+        ($_.CommandLine.Contains($originalRunnerRoot, [StringComparison]::OrdinalIgnoreCase) -or
+         $_.CommandLine.Contains($quarantineRoot, [StringComparison]::OrdinalIgnoreCase)))
+}
+if ($runnerProcesses) {
+    throw 'Refusing service removal while a retired-runner process is active.'
+}
+
+if ($null -ne $serviceRecord) {
+    Stop-Service -Name $serviceName -Force -ErrorAction Stop
+    Set-Service -Name $serviceName -StartupType Disabled
+    sc.exe delete $serviceName
+    if ($LASTEXITCODE -ne 0) {
+        throw "Service deletion failed with exit code $LASTEXITCODE."
+    }
+
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        if ($null -eq (Get-CimInstance Win32_Service -Filter "Name='$serviceName'")) {
+            break
+        }
+
+        Start-Sleep -Seconds 1
+    }
 }
 ```
 
-Verify the service is absent and remote registration remains empty:
+Verify the service is absent before considering the machine retired:
 
 ```powershell
 $serviceRecord = Get-CimInstance Win32_Service -Filter "Name='actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'"
 if ($null -ne $serviceRecord) {
     throw "Retired runner service still exists."
 }
-
-$runnerInventory = gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $runnerInventory.total_count -ne 0) {
-    throw "Repository runner inventory is not verifiably empty."
-}
 ```
 
-Only after the service query returns no record, prove the original service path remains absent, then resolve and remove the exact quarantined installation:
+The quarantine is currently absent. If a recoverable quarantine is ever created again, validate the exact plain-directory root, reject unexpected reparse points, validate the only two known junctions and their absent targets, remove those links first, and only then recurse over the exact root:
 
 ```powershell
 $originalRunnerRoot = 'C:\Users\daryl\actions-runner'
@@ -87,15 +121,46 @@ if (Test-Path -LiteralPath $originalRunnerRoot) {
     throw "Refusing cleanup because the retired service path exists: $originalRunnerRoot"
 }
 
-$runnerRoot = (Resolve-Path -LiteralPath $expectedRunnerRoot).Path
-if ($runnerRoot -ne $expectedRunnerRoot) {
-    throw "Refusing to remove unexpected runner root: $runnerRoot"
-}
+if (Test-Path -LiteralPath $expectedRunnerRoot) {
+    $rootItem = Get-Item -LiteralPath $expectedRunnerRoot -Force
+    if (-not $rootItem.PSIsContainer -or
+        ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'Refusing cleanup because the quarantine root is not a plain directory.'
+    }
 
-Remove-Item -LiteralPath $runnerRoot -Recurse -Force
+    $runnerRoot = (Resolve-Path -LiteralPath $expectedRunnerRoot).Path.TrimEnd('\')
+    if ($runnerRoot -ne $expectedRunnerRoot.TrimEnd('\')) {
+        throw "Refusing to remove unexpected runner root: $runnerRoot"
+    }
+
+    $expectedLinks = @{
+        (Join-Path $runnerRoot 'bin') = 'C:\Users\daryl\actions-runner\bin.2.336.0'
+        (Join-Path $runnerRoot 'externals') = 'C:\Users\daryl\actions-runner\externals.2.336.0'
+    }
+    $reparsePoints = @(Get-ChildItem -LiteralPath $runnerRoot -Recurse -Force |
+        Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint })
+    $unexpectedLinks = @($reparsePoints | Where-Object {
+        -not $expectedLinks.ContainsKey($_.FullName)
+    })
+    if ($unexpectedLinks) {
+        throw 'Refusing cleanup because the quarantine contains an unexpected reparse point.'
+    }
+
+    foreach ($link in $reparsePoints) {
+        $target = [string]$link.Target
+        if ($target -ne $expectedLinks[$link.FullName] -or
+            (Test-Path -LiteralPath $target)) {
+            throw "Refusing to remove unverified junction: $($link.FullName)"
+        }
+
+        Remove-Item -LiteralPath $link.FullName -Force
+    }
+
+    Remove-Item -LiteralPath $runnerRoot -Recurse -Force
+}
 ```
 
-Service and directory deletion are destructive. Preserve any needed diagnostics and re-check both exact targets immediately before removal.
+Restart Windows, then rerun the inventory, service, process, original-root, and quarantine-root assertions. Service and directory deletion are destructive; preserve needed diagnostics and re-check exact targets immediately before removal.
 
 ## Troubleshooting
 
