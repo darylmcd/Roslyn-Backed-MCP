@@ -15,6 +15,7 @@ Rules:
 - Do not add a push-to-`main` trigger. Protected changes arrive through an already-validated pull request.
 - Cancel superseded pull-request runs. Never cancel dispatch or scheduled runs.
 - Route all public-repository pull-request code only to GitHub-hosted runners. A repository-level self-hosted runner is not protected by an in-workflow fork predicate because a fork can modify the workflow itself.
+- Keep the repository-level self-hosted runner inventory empty while this repository remains public under a personal account. Any future hybrid lane requires the infrastructure-enforced authorization and disposable-worker boundaries documented in `docs/self-hosted-runner.md` before registration.
 - Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
 - Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
 - Treat root `CHANGELOG.md` and behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix. Release assembly/version checks therefore cannot be bypassed by the policy-doc route.
