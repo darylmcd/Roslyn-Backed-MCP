@@ -281,22 +281,27 @@ jobs:
   # Bound the declared SDK floor independently of the latest-10.0 full matrix.
   # This lane restores/builds the product and loads one real MSBuildWorkspace;
   # repeating the complete suite here would add cost without another test shape.
-  sdk-floor:
+  sdk_floor:
     name: sdk-floor (10.0.400)
     needs: route
     if: github.event_name != 'pull_request' || needs.route.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # Keep the floor SDK out of the hosted image's shared /usr/share/dotnet tree;
-      # global.json intentionally permits later feature bands for normal development.
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-floor
-      DOTNET_MULTILEVEL_LOOKUP: "0"
       ROSLYNMCP_BUILD_TIMEOUT_SECONDS: "150"
       ROSLYNMCP_TEST_TIMEOUT_SECONDS: "300"
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      # Keep the floor SDK out of the hosted image's shared /usr/share/dotnet tree;
+      # global.json intentionally permits later feature bands for normal development.
+      # The runner context is available to steps, but not to job-level env expressions.
+      - name: Configure isolated SDK install root
+        shell: pwsh
+        run: |
+          "DOTNET_INSTALL_DIR=$($env:RUNNER_TEMP)/dotnet-floor" >> $env:GITHUB_ENV
+          "DOTNET_MULTILEVEL_LOOKUP=0" >> $env:GITHUB_ENV
 
       - name: Set up exact floor SDK
         uses: actions/setup-dotnet@v6
@@ -343,7 +348,7 @@ jobs:
     needs:
       - route
       - validate
-      - sdk-floor
+      - sdk_floor
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -353,7 +358,7 @@ jobs:
         run: |
           $routeResult = '${{ needs.route.result }}'
           $validateResult = '${{ needs.validate.result }}'
-          $sdkFloorResult = '${{ needs.sdk-floor.result }}'
+          $sdkFloorResult = '${{ needs.sdk_floor.result }}'
           $docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'
           $sdkFloorSucceeded = $sdkFloorResult -eq 'success' -or ($docsOnly -and $sdkFloorResult -eq 'skipped')
           if ($routeResult -ne 'success' -or $validateResult -ne 'success' -or -not $sdkFloorSucceeded) {

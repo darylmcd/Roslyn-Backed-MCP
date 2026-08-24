@@ -182,15 +182,15 @@ public sealed class CiRunnerParityContractTests
     public void DeclaredSdkFloor_HasAnExactBoundedCompatibilityJob()
     {
         var workflow = LoadCiWorkflow();
-        var floorJob = GetJobBlock(workflow, "sdk-floor");
+        var floorJob = GetJobBlock(workflow, "sdk_floor");
         var gate = GetJobBlock(workflow, "validate-gate");
         using var globalJson = System.Text.Json.JsonDocument.Parse(LoadRepositoryFile("global.json"));
         var declaredFloor = globalJson.RootElement.GetProperty("sdk").GetProperty("version").GetString();
 
         Assert.AreEqual("10.0.400", declaredFloor);
         StringAssert.Contains(floorJob, "name: sdk-floor (10.0.400)");
-        StringAssert.Contains(floorJob, "DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-floor");
-        StringAssert.Contains(floorJob, "DOTNET_MULTILEVEL_LOOKUP: \"0\"");
+        StringAssert.Contains(floorJob, "\"DOTNET_INSTALL_DIR=$($env:RUNNER_TEMP)/dotnet-floor\" >> $env:GITHUB_ENV");
+        StringAssert.Contains(floorJob, "\"DOTNET_MULTILEVEL_LOOKUP=0\" >> $env:GITHUB_ENV");
         StringAssert.Contains(floorJob, "dotnet-version: 10.0.400");
         StringAssert.Contains(
             floorJob,
@@ -203,8 +203,8 @@ public sealed class CiRunnerParityContractTests
             "FullyQualifiedName=RoslynMcp.Tests.IntegrationTests_WorkspaceCore.Workspace_Load_Returns_WorkspaceId_And_Metadata");
         StringAssert.Contains(floorJob, "--settings eng/ci.runsettings");
         Assert.AreEqual(1, CountOccurrences(floorJob, "dotnet test "));
-        StringAssert.Contains(gate, "- sdk-floor\n");
-        StringAssert.Contains(gate, "${{ needs.sdk-floor.result }}");
+        StringAssert.Contains(gate, "- sdk_floor\n");
+        StringAssert.Contains(gate, "${{ needs.sdk_floor.result }}");
         StringAssert.Contains(gate, "$docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'");
         StringAssert.Contains(
             gate,
@@ -248,7 +248,7 @@ public sealed class CiRunnerParityContractTests
             "name: ${{ github.event_name == 'pull_request' && 'validate' || 'validate-informational' }}");
         StringAssert.Contains(gate, "- route\n");
         StringAssert.Contains(gate, "- validate\n");
-        StringAssert.Contains(gate, "- sdk-floor\n");
+        StringAssert.Contains(gate, "- sdk_floor\n");
         StringAssert.Contains(gate, "if: always()");
         StringAssert.Contains(gate, "${{ needs.route.result }}");
         StringAssert.Contains(gate, "${{ needs.validate.result }}");
