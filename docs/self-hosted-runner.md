@@ -14,11 +14,13 @@ Each OS partition is complete and disjoint. `eng/get-test-shard-plan.ps1` derive
 
 The stable pull-request check remains `validate`. Dispatch and scheduled runs report `validate-informational`; they cannot substitute their single Linux leg for the event-specific routed pull-request matrix (six legs for code, two for policy-only documentation).
 
-## Why the repository runner is not eligible
+## Retired repository runner
 
 GitHub warns that fork pull requests can modify workflow YAML and execute dangerous code on a public repository's self-hosted runner. An `if` predicate or hosted router inside that same mutable workflow is not an enforceable trust boundary. Approval settings reduce automatic execution but do not make an approved fork safe.
 
-The registered `darylmcd-windows-dev` runner is repository-level and runs as `LocalSystem`. It must not accept jobs from this public repository. Keep its Windows service stopped and set to manual or disabled until the runner is deregistered or moved behind an infrastructure-enforced boundary. See GitHub's [secure-use reference](https://docs.github.com/en/actions/reference/security/secure-use) and [runner-group access controls](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
+Runner id 22 (`darylmcd-windows-dev`) was deregistered on 2026-08-24. The repository runner API then reported zero registered runners, so public-repository workflow YAML can no longer select the local machine. Keep that inventory empty. See GitHub's [secure-use reference](https://docs.github.com/en/actions/reference/security/secure-use) and [runner-group access controls](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
+
+Remote deregistration stopped the corresponding Windows service, but the non-elevated session could not change its `Auto` startup mode or delete it. The retired installation was moved to `C:\Users\daryl\actions-runner.retired-20260824`, so the service's configured `C:\Users\daryl\actions-runner\bin\RunnerService.exe` path is absent and cannot launch in the observed filesystem state. The orphaned service record and quarantined installation still require elevated/local cleanup; that separate security task is tracked in `ai_docs/backlog.md`.
 
 ## Safe hybrid prerequisites
 
@@ -47,34 +49,53 @@ The local machine exposes 24 logical processors and 32 GB RAM. GitHub's standard
 
 The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, so it did not beat the repository-level median. Its TRX durations drove the four-shard topology. Uploaded per-leg TRX files remain the source for future balancing; do not treat a static case-count estimate as measured performance.
 
-## Containment and removal
+## Residual local service removal
 
-From an elevated PowerShell session, contain the existing service before changing remote registration:
-
-```powershell
-Stop-Service -Name 'actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'
-Set-Service -Name 'actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev' -StartupType Manual
-```
-
-Verify both local and remote state:
+Remote registration is already absent and the configured executable path no longer exists. From an elevated PowerShell session, remove the stopped orphaned service before deleting the quarantined installation:
 
 ```powershell
-Get-CimInstance Win32_Service -Filter "Name='actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'" |
-  Select-Object Name, State, StartMode, StartName
-
-gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners `
-  --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}'
+$ErrorActionPreference = 'Stop'
+$serviceName = 'actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'
+Stop-Service -Name $serviceName -Force -ErrorAction Stop
+Set-Service -Name $serviceName -StartupType Disabled
+sc.exe delete $serviceName
+if ($LASTEXITCODE -ne 0) {
+    throw "Service deletion failed with exit code $LASTEXITCODE."
+}
 ```
 
-Contain the service immediately; this does not depend on merging the hosted-only workflow. To remove the runner permanently:
+Verify the service is absent and remote registration remains empty:
 
-1. Confirm the service is stopped and manual/disabled, and record its exact installation path.
-2. Generate a removal token through the repository runner API.
-3. Run `config.cmd remove --token <token>` from `C:\Users\daryl\actions-runner\`.
-4. Confirm the runner no longer appears in the repository API.
-5. Delete the exact runner installation directory only after deciding whether diagnostics must be retained.
+```powershell
+$serviceRecord = Get-CimInstance Win32_Service -Filter "Name='actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'"
+if ($null -ne $serviceRecord) {
+    throw "Retired runner service still exists."
+}
 
-Removal and directory deletion are destructive. Resolve exact targets and preserve any needed diagnostics first.
+$runnerInventory = gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $runnerInventory.total_count -ne 0) {
+    throw "Repository runner inventory is not verifiably empty."
+}
+```
+
+Only after the service query returns no record, prove the original service path remains absent, then resolve and remove the exact quarantined installation:
+
+```powershell
+$originalRunnerRoot = 'C:\Users\daryl\actions-runner'
+$expectedRunnerRoot = 'C:\Users\daryl\actions-runner.retired-20260824'
+if (Test-Path -LiteralPath $originalRunnerRoot) {
+    throw "Refusing cleanup because the retired service path exists: $originalRunnerRoot"
+}
+
+$runnerRoot = (Resolve-Path -LiteralPath $expectedRunnerRoot).Path
+if ($runnerRoot -ne $expectedRunnerRoot) {
+    throw "Refusing to remove unexpected runner root: $runnerRoot"
+}
+
+Remove-Item -LiteralPath $runnerRoot -Recurse -Force
+```
+
+Service and directory deletion are destructive. Preserve any needed diagnostics and re-check both exact targets immediately before removal.
 
 ## Troubleshooting
 

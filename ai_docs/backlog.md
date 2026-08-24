@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-24T18:01:41Z
+**updated_at:** 2026-08-24T19:30:01Z
 
 ## Agent contract
 
@@ -42,7 +42,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `public-repo-self-hosted-runner-isolation` | Critical | — | Isolate or deregister the public-repo LocalSystem Actions runner before re-enabling local PR shards; enforce a base-controlled workflow boundary and prove fork-authored YAML cannot select it. [type: CI security] [source: 2026-08-24 CI adversarial review] | M | items/public-repo-self-hosted-runner-isolation.md |
 
 ## High
 
@@ -51,6 +50,8 @@
 | `verify-release-owned-output-freshness` | High | — | Recreate exact verifier-owned publish outputs so stale local files cannot enter a release manifest or upload. [type: release correctness] [source: 2026-08-24 final diff review] | S | items/verify-release-owned-output-freshness.md |
 | `persistent-composite-token-atomic-redemption` | High | — | Atomically claim persistent composite preview tokens before mutation so separate hosts cannot redeem one-time work twice. [type: security correctness] [source: 2026-08-24 adjacent storage review] | M | items/persistent-composite-token-atomic-redemption.md |
 | `scripting-killable-worker-isolation-boundary` | High | — | Isolate C# script execution behind a killable worker boundary so hard deadlines reclaim CPU and capacity. [type: security] [source: 2026-08-24 CI hotspot audit] | M | items/scripting-killable-worker-isolation-boundary.md |
+| `modelcontextprotocol-license-attribution-correction` | High | — | Correct ModelContextProtocol license attribution from authoritative package metadata and make the notice gate detect stale hardcoded licenses. [type: legal release] [source: 2026-08-24 Dependabot review] | M | items/modelcontextprotocol-license-attribution-correction.md |
+| `retired-actions-runner-service-record-removal` | High | — | Delete the orphaned delayed-auto LocalSystem runner service and quarantined installation; prove service, paths, processes, and remote inventory are absent. [type: security] [source: 2026-08-24 runner retirement] | S | items/retired-actions-runner-service-record-removal.md |
 
 ## Medium
 
@@ -81,6 +82,12 @@
 | `verify-release-outer-cleanup-on-pretest-failure` | Medium | — | Move verifier-owned build-server and temporary-state cleanup into an outer finally covering restore, build, planning, test, validation, and publish failures. [type: CI reliability] [source: 2026-08-24 lifecycle review] | S | items/verify-release-outer-cleanup-on-pretest-failure.md |
 | `script-supervisor-cleanup-failure-observability` | Medium | — | **Make script-supervisor cleanup failures observable** — remove untyped timer-disposal catches and distinguish normal shutdown from semaphore invariant violations without masking a primary execution failure. [type: reliability] [source: 2026-08-24 adjacent review] | S | items/script-supervisor-cleanup-failure-observability.md |
 | `scripting-options-environment-validation` | Medium | — | Validate scripting environment timing values and timeout-plus-grace bounds at host startup with variable-specific safe diagnostics. [type: configuration correctness] [source: 2026-08-24 adjacent scripting review] | M | items/scripting-options-environment-validation.md |
+| `nuget-audit-script-root-independence` | Medium | — | Resolve the NuGet audit target from the verifier location rather than caller CWD so out-of-tree invocations cannot audit the wrong solution. [type: release correctness] [source: 2026-08-24 Dependabot review] | S | items/nuget-audit-script-root-independence.md |
+| `dependabot-msbuild-family-alignment` | Medium | — | Group and verify the compile-time Microsoft.Build package family so Dependabot cannot create a split major upgrade that fails MSBL001. [type: dependency correctness] [source: 2026-08-24 PR #1327 review] | M | items/dependabot-msbuild-family-alignment.md |
+| `ci-declared-sdk-floor-compatibility` | Medium | — | Exercise the exact global.json SDK floor in CI so latestFeature roll-forward cannot hide dependency incompatibility with the declared minimum. [type: CI compatibility] [source: 2026-08-24 PR #1327 review] | M | items/ci-declared-sdk-floor-compatibility.md |
+| `dependabot-contract-sensitive-package-routing` | Medium | — | Isolate MCP SDK upgrades from generic Dependabot groups so protocol ADR, wire-era, notice, and migration review cannot be bundled with routine servicing. [type: dependency policy] [source: 2026-08-24 PR #1326 review] | S | items/dependabot-contract-sensitive-package-routing.md |
+| `workspace-readiness-fixture-ready-state-isolation` | Medium | — | Make workspace-readiness integration cases establish their own build state so the ready verdict cannot depend on test order or leftover sample artifacts. [type: test correctness] [source: 2026-08-24 PR #1326 review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
+| `upgrade-matrix-package-family-parity` | Medium | — | Verify every documented upgrade-matrix package version against central pins so non-MCP families cannot drift while CI checks only a hardcoded subset. [type: dependency documentation] [source: 2026-08-24 PR #1326 review] | M | items/upgrade-matrix-package-family-parity.md |
 
 ## Low
 
@@ -178,6 +185,7 @@
 | `ci-process-tests-runner-adoption` | Low | powershell-script-test-runner-foundation | **Adopt the shared PowerShell runner in CI telemetry tests** — remove duplicate executable resolution, stream draining, timeout, kill, and result plumbing after the runner foundation lands. [type: test refactor] [source: 2026-08-24 adjacent review] | S | items/ci-process-tests-runner-adoption.md |
 | `workspace-fixture-load-amortization-wave-2` | Low | — | Amortize repeated isolated loads in cache and project-mutation tests with deterministic per-case state restoration. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/workspace-fixture-load-amortization-wave-2.md |
 | `workspace-fixture-load-amortization-wave-3` | Low | — | Amortize repeated isolated loads in scaffolding and cross-project refactoring tests with deterministic per-case state restoration. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/workspace-fixture-load-amortization-wave-3.md |
+| `cryptography-pin-rationale-deduplication` | Low | — | Single-source the security-pin rationale so project and central comments cannot retain conflicting System.Security.Cryptography.Xml versions. [type: documentation correctness] [source: 2026-08-24 PR #1326 review] | M | items/cryptography-pin-rationale-deduplication.md |
 
 ## Defer
 
