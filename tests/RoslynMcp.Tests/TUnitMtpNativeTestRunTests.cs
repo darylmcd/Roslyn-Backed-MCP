@@ -87,7 +87,10 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
             var service = new TestRunnerService(
-                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
 
             await service.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None);
 
@@ -115,14 +118,17 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
     {
         // Item 7: a happy-path executor regression for the translated-filter shape, not just the
         // unfiltered argv above. A single atom (no '|') needs neither a resolved TUnit.Engine
-        // version nor (with no ITestDiscoveryService wired here) discovery validation, so it
-        // translates deterministically without a real restore.
+        // version. Discovery still validates the atom against the loaded project so direct
+        // service construction cannot bypass the fail-closed filter contract.
         var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
         try
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
             var service = new TestRunnerService(
-                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
 
             await service.RunTestsAsync(
                 workspaceId, projectName: null,
@@ -134,6 +140,37 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
             Assert.AreNotEqual(-1, filterIndex, "--treenode-filter must be present in the final argv.");
             Assert.AreEqual("/*/MyNamespace/MyClass/MyMethod", argv[filterIndex + 1]);
             Assert.IsFalse(argv.Contains("--no-restore"), "A single atom's OR-version gate never applies.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunTestsAsync_DirectConstruction_AmbiguousContainsFilterFailsClosed()
+    {
+        var (workspaceId, _) = await LoadTUnitFixtureAsync(withGlobalJsonOptIn: true);
+        try
+        {
+            var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
+            var service = new TestRunnerService(
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
+
+            var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+                service.RunTestsAsync(
+                    workspaceId,
+                    projectName: null,
+                    filter: "FullyQualifiedName~MyNamespace.MyClass",
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "no discovered test in this project");
+            Assert.IsEmpty(
+                recordingExecutor.ExecutedArguments,
+                "An ambiguous class-like contains filter must fail before any process execution.");
         }
         finally
         {
@@ -190,7 +227,10 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
             var service = new TestRunnerService(
-                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
 
             // projectName: null relies on the directly-loaded-single-.csproj routing fix, which
             // avoids the fake executor needing to implement ResolveProject. The fixture is never
@@ -220,7 +260,10 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: false);
             var service = new TestRunnerService(
-                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
 
             var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
                 service.RunTestsAsync(
@@ -320,7 +363,19 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
               </ItemGroup>
             </Project>
             """);
-        File.WriteAllText(Path.Combine(root, "Program.cs"), "// MTP generates its own entry point.\n");
+        File.WriteAllText(
+            Path.Combine(root, "Program.cs"),
+            """
+            using TUnit.Core;
+
+            namespace MyNamespace;
+
+            public sealed class MyClass
+            {
+                [Test]
+                public void MyMethod() { }
+            }
+            """);
 
         if (withGlobalJsonOptIn)
         {
@@ -393,7 +448,10 @@ public sealed class TUnitMtpNativeTestRunTests : TestBase
         {
             var recordingExecutor = new RecordingGatedCommandExecutor(restoreSucceeds: true);
             var service = new TestRunnerService(
-                WorkspaceManager, recordingExecutor, NullLogger<TestRunnerService>.Instance);
+                WorkspaceManager,
+                recordingExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                TestDiscoveryService);
 
             await service.RunTestsAsync(workspaceId, projectName: null, filter: null, CancellationToken.None);
 

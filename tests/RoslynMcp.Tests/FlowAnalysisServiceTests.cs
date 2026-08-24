@@ -1,3 +1,5 @@
+using RoslynMcp.Tests.Helpers;
+
 namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
@@ -43,15 +45,18 @@ public class ExpressionBodiedSamples
     }
 
     [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        if (WorkspaceId is not null)
-        {
-            try { WorkspaceManager.Close(WorkspaceId); } catch { }
-        }
-        DeleteDirectoryIfExists(CopiedRoot);
-        DisposeServices();
-    }
+    public static async Task ClassCleanup() =>
+        await CleanupFailureCollector.RunAsync(
+            "Failed to dispose the flow-analysis fixture.",
+            CleanupFailureCollector.FromAction(() =>
+            {
+                if (WorkspaceId is not null)
+                {
+                    WorkspaceManager.Close(WorkspaceId);
+                }
+            }),
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)),
+            CleanupFailureCollector.FromAction(DisposeServices));
 
     [TestMethod]
     public async Task AnalyzeDataFlow_ExpressionBodiedMethod_LiftsAndReturnsParameters()

@@ -171,7 +171,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceList_EmptyFreshHostResult_ConformsToAdvertisedAnyOfSchema()
     {
-        var json = await WorkspaceTools.ListWorkspaces(new EmptyWorkspaceManager(), verbose: false);
+        var json = await WorkspaceTools.ListWorkspaces(new FailClosedWorkspaceManagerStub(), verbose: false);
         using var document = JsonDocument.Parse(json.TextPayload());
         Assert.AreEqual(0, document.RootElement.GetProperty("count").GetInt32());
         Assert.AreEqual(0, document.RootElement.GetProperty("workspaces").GetArrayLength());
@@ -484,30 +484,6 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         var loadLock = loadLockProperty.GetValue(session) as SemaphoreSlim;
         Assert.IsNotNull(loadLock, "WorkspaceSession.LoadLock must be a SemaphoreSlim instance.");
         return loadLock;
-    }
-
-    private sealed class EmptyWorkspaceManager : IWorkspaceManager
-    {
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
-
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }
 
     private static string FindProgramPath()

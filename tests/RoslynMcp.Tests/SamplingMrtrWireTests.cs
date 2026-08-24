@@ -516,7 +516,7 @@ public sealed class SamplingMrtrWireTests
     {
         var selection = ToolTierSelection.All;
         var services = new ServiceCollection();
-        services.AddSingleton<IWorkspaceExecutionGate, PassThroughGate>();
+        services.AddSingleton<IWorkspaceExecutionGate, PassThroughWorkspaceExecutionGate>();
         services.AddSingleton<IScaffoldingService>(scaffoldingService);
         services.AddSingleton(workspaceManager);
         services
@@ -670,29 +670,6 @@ public sealed class SamplingMrtrWireTests
             ScaffoldFirstTestFileDto request,
             CancellationToken ct) =>
             throw new NotSupportedException();
-    }
-
-    private sealed class PassThroughGate : IWorkspaceExecutionGate
-    {
-        public Task<T> RunReadAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct) =>
-            action(ct);
-
-        public Task<T> RunWriteAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct,
-            bool applyStalenessPolicy = true) =>
-            throw new NotSupportedException();
-
-        public Task<T> RunLoadGateAsync<T>(
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct) =>
-            throw new NotSupportedException();
-
-        public void RemoveGate(string workspaceId) => throw new NotSupportedException();
     }
 
     private sealed class SamplingWorkspaceManager(params WorkspaceStatusDto[] workspaces) : IWorkspaceManager

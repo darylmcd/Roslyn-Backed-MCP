@@ -30,22 +30,22 @@ public sealed partial class TestRunnerService : ITestRunnerService
     private readonly ILogger<TestRunnerService> _logger;
     private readonly ValidationServiceOptions _options;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
-    private readonly ITestDiscoveryService? _testDiscoveryService;
+    private readonly ITestDiscoveryService _testDiscoveryService;
 
     public TestRunnerService(
         IWorkspaceManager workspaceManager,
         IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
+        ITestDiscoveryService testDiscoveryService,
         ValidationServiceOptions? options = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null,
-        ITestDiscoveryService? testDiscoveryService = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspaceManager = workspaceManager;
         _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
         _exceptionReporter = exceptionReporter;
-        _testDiscoveryService = testDiscoveryService;
+        _testDiscoveryService = testDiscoveryService ?? throw new ArgumentNullException(nameof(testDiscoveryService));
     }
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
@@ -272,15 +272,11 @@ public sealed partial class TestRunnerService : ITestRunnerService
             // SynthesizeDotnetTestFilter) always name a real, complete test and pass by
             // construction; an ambiguous or mistyped caller-supplied filter is safely declined
             // instead of silently matching zero (or the wrong) tests.
-            IReadOnlyCollection<string>? knownFullyQualifiedTestNames = null;
-            if (_testDiscoveryService is not null)
-            {
-                var discovery = await _testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-                knownFullyQualifiedTestNames = discovery.TestProjects
-                    .Where(p => string.Equals(p.ProjectName, resolvedProject.Name, StringComparison.Ordinal))
-                    .SelectMany(p => p.Tests.Select(t => t.FullyQualifiedName))
-                    .ToList();
-            }
+            var discovery = await _testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
+            IReadOnlyCollection<string> knownFullyQualifiedTestNames = discovery.TestProjects
+                .Where(p => string.Equals(p.ProjectName, resolvedProject.Name, StringComparison.Ordinal))
+                .SelectMany(p => p.Tests.Select(t => t.FullyQualifiedName))
+                .ToList();
 
             treeNodeFilter = TreeNodeFilterTranslator.Translate(filter, resolvedTUnitEngineVersion, knownFullyQualifiedTestNames);
         }

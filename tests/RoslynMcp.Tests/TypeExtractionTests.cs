@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -10,11 +11,19 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 {
+    private readonly List<string> _directoriesToDelete = [];
+
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestCleanup]
+    public async Task TestCleanup() =>
+        await CleanupFailureCollector.DeleteDirectoriesAsync(
+            _directoriesToDelete,
+            TestFixtureFileSystem.DeleteDirectoryIfExists);
 
     [TestMethod]
     public async Task LegacyProtocol_ToolDispatch_UsesConfiguredSanctionedRoot()
@@ -43,8 +52,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
         finally
         {
-            TryDeleteDirectory(sanctionedRoot);
-            TryDeleteDirectory(outsideRoot);
+            QueueDirectoryForCleanup(sanctionedRoot);
+            QueueDirectoryForCleanup(outsideRoot);
         }
     }
 
@@ -90,8 +99,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
         finally
         {
-            TryDeleteDirectory(configuredRoot);
-            TryDeleteDirectory(clientOnlyRoot);
+            QueueDirectoryForCleanup(configuredRoot);
+            QueueDirectoryForCleanup(clientOnlyRoot);
         }
     }
 
@@ -120,7 +129,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         }
         finally
         {
-            TryDeleteDirectory(root);
+            QueueDirectoryForCleanup(root);
         }
     }
 
@@ -171,7 +180,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -229,8 +238,8 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
-            TryDeleteDirectory(sanctionedRoot);
+            QueueDirectoryForCleanup(solutionDir);
+            QueueDirectoryForCleanup(sanctionedRoot);
         }
     }
 
@@ -287,7 +296,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -410,7 +419,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -708,7 +717,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -770,7 +779,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -822,7 +831,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -870,7 +879,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -928,7 +937,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -983,7 +992,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1030,7 +1039,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
-            TryDeleteDirectory(solutionDir);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 
@@ -1093,7 +1102,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            TryDeleteDirectory(fixture.SolutionDirectory);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1137,7 +1146,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            TryDeleteDirectory(fixture.SolutionDirectory);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1188,7 +1197,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(loadResult.WorkspaceId);
-            TryDeleteDirectory(solutionDirectory);
+            QueueDirectoryForCleanup(solutionDirectory);
         }
     }
 
@@ -1239,7 +1248,7 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(fixture.WorkspaceId);
-            TryDeleteDirectory(fixture.SolutionDirectory);
+            QueueDirectoryForCleanup(fixture.SolutionDirectory);
         }
     }
 
@@ -1308,18 +1317,5 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             .ToArray();
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
+    private void QueueDirectoryForCleanup(string path) => _directoriesToDelete.Add(path);
 }

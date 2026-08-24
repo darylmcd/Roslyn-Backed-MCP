@@ -1,13 +1,12 @@
-using System.IO.Pipelines;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -17,45 +16,12 @@ namespace RoslynMcp.Tests;
 /// </summary>
 internal static class McpRootsTestServerFactory
 {
-    public sealed record Session(McpServer Server, McpClient Client, IHost Host) : IAsyncDisposable
+    public sealed record Session(InMemoryMcpClientServerHarness Harness) : IAsyncDisposable
     {
-        public async ValueTask DisposeAsync()
-        {
-            var failures = new List<Exception>();
-            try
-            {
-                // Stop the server receive loop before disposing the client. Client-first teardown
-                // can wait forever when a server-to-client compatibility request is in flight.
-                await Host.StopAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
+        public McpServer Server => Harness.Server;
+        public McpClient Client => Harness.Client;
 
-            try
-            {
-                await Client.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
-
-            try
-            {
-                Host.Dispose();
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
-
-            if (failures.Count > 0)
-            {
-                throw new AggregateException("Failed to dispose the MCP roots test session.", failures);
-            }
-        }
+        public ValueTask DisposeAsync() => Harness.DisposeAsync();
     }
 
     public static Task<Session> CreateWithSanctionedRootAsync(
@@ -83,37 +49,34 @@ internal static class McpRootsTestServerFactory
         IReadOnlyList<string>? clientRootPaths = null,
         bool allowRootExpansion = false)
     {
-        var clientToServer = new Pipe();
-        var serverToClient = new Pipe();
-
-        var hostBuilder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
-        hostBuilder.Logging.ClearProviders();
-        hostBuilder.Services.AddSingleton(new SecurityOptions
-        {
-            SanctionedRoots = sanctionedRootPaths,
-            AllowRootExpansion = allowRootExpansion,
-        });
-        hostBuilder.Services
-            .AddMcpServer()
-            .WithTools<McpRootsProbeTools>()
-            .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
-        var host = hostBuilder.Build();
-        await host.StartAsync(cancellationToken).ConfigureAwait(false);
-        var server = host.Services.GetRequiredService<McpServer>();
-
-        var clientTransport = new StreamClientTransport(
-            clientToServer.Writer.AsStream(),
-            serverToClient.Reader.AsStream(),
-            NullLoggerFactory.Instance);
         var clientOptions = CreateClientOptions(useLatestProtocol, clientRootPaths);
-
-        var client = await McpClient.CreateAsync(
-            clientTransport,
-            clientOptions,
-            NullLoggerFactory.Instance,
+        var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+            new InMemoryMcpHarnessOptions(
+                TransportName: "mcp-roots-test",
+                ClientCapabilities: clientOptions.Capabilities ?? new ClientCapabilities(),
+                ClientHandlers: clientOptions.Handlers ?? new McpClientHandlers(),
+                DisposalFailureContext: "MCP roots test session")
+            {
+                ProtocolVersion = clientOptions.ProtocolVersion,
+                ServerHostFactory = (serverInput, serverOutput) =>
+                {
+                    var hostBuilder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
+                    hostBuilder.Logging.ClearProviders();
+                    hostBuilder.Services.AddSingleton(new SecurityOptions
+                    {
+                        SanctionedRoots = sanctionedRootPaths,
+                        AllowRootExpansion = allowRootExpansion,
+                    });
+                    hostBuilder.Services
+                        .AddMcpServer()
+                        .WithTools<McpRootsProbeTools>()
+                        .WithStreamServerTransport(serverInput, serverOutput);
+                    return hostBuilder.Build();
+                },
+            },
             cancellationToken).ConfigureAwait(false);
 
-        return new Session(server, client, host);
+        return new Session(harness);
     }
 
     // The deprecated MCP Roots surface is intentionally isolated to this compatibility fixture,

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -44,15 +45,18 @@ public sealed class HintLocatorShapeProbe
     }
 
     [ClassCleanup]
-    public static void ClassCleanup()
-    {
-        if (WorkspaceId is not null)
-        {
-            try { WorkspaceManager.Close(WorkspaceId); } catch { }
-        }
-        DeleteDirectoryIfExists(CopiedRoot);
-        DisposeServices();
-    }
+    public static async Task ClassCleanup() =>
+        await CleanupFailureCollector.RunAsync(
+            "Failed to dispose the property-write locator fixture.",
+            CleanupFailureCollector.FromAction(() =>
+            {
+                if (WorkspaceId is not null)
+                {
+                    WorkspaceManager.Close(WorkspaceId);
+                }
+            }),
+            CleanupFailureCollector.FromAction(() => DeleteDirectoryIfExists(CopiedRoot)),
+            CleanupFailureCollector.FromAction(DisposeServices));
 
     /// <summary>
     /// metadataName + non-property resolution: caller passed only <c>metadataName</c>, the symbol
