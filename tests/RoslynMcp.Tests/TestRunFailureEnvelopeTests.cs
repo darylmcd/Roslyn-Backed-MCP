@@ -237,6 +237,8 @@ public sealed class TestRunFailureEnvelopeTests
             new SingleTestProjectWorkspaceManager(),
             new TimeoutThrowingExecutor(timeout),
             NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(
+                new InvalidOperationException("Test discovery is not expected for this non-MTP timeout path.")),
             new ValidationServiceOptions { TestTimeout = TimeSpan.FromMinutes(5) },
             new ServerObservabilityReporter(sink));
 

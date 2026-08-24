@@ -1,12 +1,26 @@
 using System.IO.Pipelines;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Tests.Helpers;
+
+internal sealed record InMemoryMcpHarnessOptions(
+    string TransportName,
+    ClientCapabilities ClientCapabilities,
+    McpClientHandlers ClientHandlers,
+    string DisposalFailureContext)
+{
+    public string? ProtocolVersion { get; init; }
+    public Func<ServiceProvider>? ServerServicesFactory { get; init; }
+    public McpServerOptions? ServerOptions { get; init; }
+    public bool CaptureServerMessages { get; init; }
+    public Func<Stream, Stream, IHost>? ServerHostFactory { get; init; }
+}
 
 /// <summary>
 /// Hosts a real MCP client/server pair over in-memory duplex pipes for integration tests that
@@ -51,27 +65,37 @@ namespace RoslynMcp.Tests.Helpers;
 /// <c>SymbolDisambiguationElicitationTests.ControllableElicitationHarness</c>, which enforces the
 /// ordering in its own <c>DisposeAsync</c>) rather than a handler that can never complete.</para>
 /// </remarks>
-internal sealed class InMemoryMcpClientServerHarness(
-    McpServer server,
-    McpClient client,
-    CancellationTokenSource serverCancellation,
-    Task serverRunTask,
-    IReadOnlyList<Stream> transportStreams,
-    ServiceProvider? serverServices,
-    Func<IReadOnlyList<string>>? serverMessageSnapshot,
-    string disposalFailureContext) : IAsyncDisposable
+internal sealed class InMemoryMcpClientServerHarness : IAsyncDisposable
 {
     private const string _legacyConnectionScopedProtocolVersion = "2025-11-25";
+    private readonly ServerRuntime _serverRuntime;
+    private readonly IReadOnlyList<Stream> _transportStreams;
+    private readonly Func<IReadOnlyList<string>>? _serverMessageSnapshot;
+    private readonly string _disposalFailureContext;
 
-    public McpServer Server { get; } = server;
-    public McpClient Client { get; } = client;
+    private InMemoryMcpClientServerHarness(
+        ServerRuntime serverRuntime,
+        McpClient client,
+        IReadOnlyList<Stream> transportStreams,
+        Func<IReadOnlyList<string>>? serverMessageSnapshot,
+        string disposalFailureContext)
+    {
+        _serverRuntime = serverRuntime;
+        Client = client;
+        _transportStreams = transportStreams;
+        _serverMessageSnapshot = serverMessageSnapshot;
+        _disposalFailureContext = disposalFailureContext;
+    }
+
+    public McpServer Server => _serverRuntime.Server;
+    public McpClient Client { get; }
 
     public IReadOnlyList<string> RawServerMessages =>
-        serverMessageSnapshot?.Invoke()
+        _serverMessageSnapshot?.Invoke()
         ?? throw new InvalidOperationException(
             "Raw server-message capture was not enabled for this harness.");
 
-    public static async Task<InMemoryMcpClientServerHarness> CreateAsync(
+    public static Task<InMemoryMcpClientServerHarness> CreateAsync(
         string transportName,
         ClientCapabilities clientCapabilities,
         McpClientHandlers clientHandlers,
@@ -80,25 +104,45 @@ internal sealed class InMemoryMcpClientServerHarness(
         string? protocolVersion = _legacyConnectionScopedProtocolVersion,
         Func<ServiceProvider>? serverServicesFactory = null,
         McpServerOptions? serverOptions = null,
-        bool captureServerMessages = false)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(transportName);
-        ArgumentNullException.ThrowIfNull(clientCapabilities);
-        ArgumentNullException.ThrowIfNull(clientHandlers);
-        ArgumentException.ThrowIfNullOrEmpty(disposalFailureContext);
+        bool captureServerMessages = false) =>
+        CreateAsync(
+            new InMemoryMcpHarnessOptions(
+                transportName,
+                clientCapabilities,
+                clientHandlers,
+                disposalFailureContext)
+            {
+                ProtocolVersion = protocolVersion,
+                ServerServicesFactory = serverServicesFactory,
+                ServerOptions = serverOptions,
+                CaptureServerMessages = captureServerMessages,
+            },
+            cancellationToken);
 
-        ServiceProvider? serverServices = null;
-        McpServer? server = null;
+    public static async Task<InMemoryMcpClientServerHarness> CreateAsync(
+        InMemoryMcpHarnessOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrEmpty(options.TransportName);
+        ArgumentNullException.ThrowIfNull(options.ClientCapabilities);
+        ArgumentNullException.ThrowIfNull(options.ClientHandlers);
+        ArgumentException.ThrowIfNullOrEmpty(options.DisposalFailureContext);
+        if (options.ServerHostFactory is not null &&
+            (options.ServerServicesFactory is not null || options.ServerOptions is not null))
+        {
+            throw new ArgumentException(
+                "A hosted server factory owns service composition and server options; do not supply either separately.",
+                nameof(options));
+        }
+
+        ServerRuntime? serverRuntime = null;
         McpClient? client = null;
-        CancellationTokenSource? serverCancellation = null;
-        Task? serverRunTask = null;
         var transportStreams = new List<Stream>(capacity: 4);
-        var serverWireCapture = captureServerMessages ? new ServerWireCapture() : null;
+        var serverWireCapture = options.CaptureServerMessages ? new ServerWireCapture() : null;
 
         try
         {
-            serverServices = serverServicesFactory?.Invoke();
-
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
             var clientToServerReadStream = clientToServer.Reader.AsStream();
@@ -113,18 +157,14 @@ internal sealed class InMemoryMcpClientServerHarness(
                 : new CapturingWriteStream(serverToClientPipeStream, serverWireCapture);
             transportStreams.Add(serverToClientWriteStream);
 
-            var serverTransport = new StreamServerTransport(
+            serverRuntime = await CreateServerRuntimeAsync(
+                options.TransportName,
                 clientToServerReadStream,
                 serverToClientWriteStream,
-                transportName,
-                NullLoggerFactory.Instance);
-            server = McpServer.Create(
-                serverTransport,
-                serverOptions ?? new McpServerOptions(),
-                NullLoggerFactory.Instance,
-                serverServices);
-            serverCancellation = new CancellationTokenSource();
-            serverRunTask = server.RunAsync(serverCancellation.Token);
+                options.ServerServicesFactory,
+                options.ServerOptions,
+                options.ServerHostFactory,
+                cancellationToken).ConfigureAwait(false);
 
             var clientTransport = new StreamClientTransport(
                 clientToServerWriteStream,
@@ -137,9 +177,9 @@ internal sealed class InMemoryMcpClientServerHarness(
                     // These tests directly invoke the connection-scoped server after the initialize
                     // handshake. Protocol revisions through 2025-11-25 expose capabilities there;
                     // modern request-scoped behavior is covered separately through tools/call.
-                    ProtocolVersion = protocolVersion,
-                    Capabilities = clientCapabilities,
-                    Handlers = clientHandlers,
+                    ProtocolVersion = options.ProtocolVersion,
+                    Capabilities = options.ClientCapabilities,
+                    Handlers = options.ClientHandlers,
                 },
                 NullLoggerFactory.Instance,
                 cancellationToken).ConfigureAwait(false);
@@ -149,29 +189,23 @@ internal sealed class InMemoryMcpClientServerHarness(
                 : serverWireCapture.Snapshot;
 
             return new InMemoryMcpClientServerHarness(
-                server,
+                serverRuntime,
                 client,
-                serverCancellation,
-                serverRunTask,
                 transportStreams,
-                serverServices,
                 serverMessageSnapshot,
-                disposalFailureContext);
+                options.DisposalFailureContext);
         }
         catch (Exception initializationFailure)
         {
             var cleanupFailures = await DisposeOwnedResourcesAsync(
                 client,
-                server,
-                serverCancellation,
-                serverRunTask,
-                transportStreams,
-                serverServices).ConfigureAwait(false);
+                serverRuntime,
+                transportStreams).ConfigureAwait(false);
             if (cleanupFailures.Count > 0)
             {
                 cleanupFailures.Insert(0, initializationFailure);
                 throw new AggregateException(
-                    $"Failed to initialize and dispose the {disposalFailureContext} MCP test harness.",
+                    $"Failed to initialize and dispose the {options.DisposalFailureContext} MCP test harness.",
                     cleanupFailures);
             }
 
@@ -183,53 +217,168 @@ internal sealed class InMemoryMcpClientServerHarness(
     {
         var failures = await DisposeOwnedResourcesAsync(
             Client,
-            Server,
-            serverCancellation,
-            serverRunTask,
-            transportStreams,
-            serverServices).ConfigureAwait(false);
+            _serverRuntime,
+            _transportStreams).ConfigureAwait(false);
 
         if (failures.Count > 0)
         {
             throw new AggregateException(
-                $"Failed to dispose the {disposalFailureContext} MCP test harness.",
+                $"Failed to dispose the {_disposalFailureContext} MCP test harness.",
                 failures);
+        }
+    }
+
+    private static async Task<ServerRuntime> CreateServerRuntimeAsync(
+        string transportName,
+        Stream serverInput,
+        Stream serverOutput,
+        Func<ServiceProvider>? serverServicesFactory,
+        McpServerOptions? serverOptions,
+        Func<Stream, Stream, IHost>? serverHostFactory,
+        CancellationToken cancellationToken)
+    {
+        if (serverHostFactory is not null)
+        {
+            var host = serverHostFactory(serverInput, serverOutput);
+            try
+            {
+                await host.StartAsync(cancellationToken).ConfigureAwait(false);
+                return new ServerRuntime(
+                    host.Services.GetRequiredService<McpServer>(),
+                    Host: host);
+            }
+            catch (Exception initializationFailure)
+            {
+                var cleanupFailures = new List<Exception>();
+                await StopAndDisposeHostAsync(host, cleanupFailures).ConfigureAwait(false);
+                if (cleanupFailures.Count > 0)
+                {
+                    cleanupFailures.Insert(0, initializationFailure);
+                    throw new AggregateException(
+                        "Failed to initialize and dispose the hosted MCP test server.",
+                        cleanupFailures);
+                }
+
+                throw;
+            }
+        }
+
+        ServiceProvider? services = null;
+        McpServer? server = null;
+        CancellationTokenSource? cancellation = null;
+        Task? runTask = null;
+        try
+        {
+            services = serverServicesFactory?.Invoke();
+            var transport = new StreamServerTransport(
+                serverInput,
+                serverOutput,
+                transportName,
+                NullLoggerFactory.Instance);
+            server = McpServer.Create(
+                transport,
+                serverOptions ?? new McpServerOptions(),
+                NullLoggerFactory.Instance,
+                services);
+            cancellation = new CancellationTokenSource();
+            runTask = server.RunAsync(cancellation.Token);
+            return new ServerRuntime(
+                server,
+                Cancellation: cancellation,
+                RunTask: runTask,
+                Services: services);
+        }
+        catch (Exception initializationFailure)
+        {
+            var cleanupFailures = new List<Exception>();
+            if (server is not null)
+            {
+                await StopDirectServerAsync(
+                    new ServerRuntime(server, cancellation, runTask),
+                    cleanupFailures).ConfigureAwait(false);
+            }
+
+            if (services is not null)
+            {
+                await DisposeCapturingAsync(services, cleanupFailures).ConfigureAwait(false);
+            }
+
+            cancellation?.Dispose();
+
+            if (cleanupFailures.Count > 0)
+            {
+                cleanupFailures.Insert(0, initializationFailure);
+                throw new AggregateException(
+                    "Failed to initialize and dispose the direct MCP test server.",
+                    cleanupFailures);
+            }
+
+            throw;
         }
     }
 
     private static async ValueTask<List<Exception>> DisposeOwnedResourcesAsync(
         McpClient? client,
-        McpServer? server,
-        CancellationTokenSource? serverCancellation,
-        Task? serverRunTask,
-        IReadOnlyList<Stream> transportStreams,
-        ServiceProvider? serverServices)
+        ServerRuntime? serverRuntime,
+        IReadOnlyList<Stream> transportStreams)
     {
         var failures = new List<Exception>();
+        if (serverRuntime?.Host is not null)
+        {
+            // Hosted roots fixtures may have a legacy server-to-client Roots request in flight.
+            // Stop the receive loop before disposing the client so teardown cannot wait forever.
+            await StopHostAsync(serverRuntime.Host, failures).ConfigureAwait(false);
+        }
+
         if (client is not null)
         {
             await DisposeCapturingAsync(client, failures).ConfigureAwait(false);
         }
 
-        if (serverCancellation is not null)
+        if (serverRuntime is not null && serverRuntime.Host is null)
         {
-            try
-            {
-                serverCancellation.Cancel();
-            }
-            catch (Exception ex)
-            {
-                failures.Add(ex);
-            }
+            await StopDirectServerAsync(serverRuntime, failures).ConfigureAwait(false);
         }
 
-        if (serverRunTask is not null)
+        foreach (var stream in transportStreams)
+        {
+            await DisposeCapturingAsync(stream, failures).ConfigureAwait(false);
+        }
+
+        if (serverRuntime?.Services is not null)
+        {
+            await DisposeCapturingAsync(serverRuntime.Services, failures).ConfigureAwait(false);
+        }
+
+        if (serverRuntime?.Host is IAsyncDisposable asyncHost)
+        {
+            await DisposeCapturingAsync(asyncHost, failures).ConfigureAwait(false);
+        }
+        else if (serverRuntime?.Host is not null)
+        {
+            Capture(() => serverRuntime.Host.Dispose(), failures);
+        }
+
+        serverRuntime?.Cancellation?.Dispose();
+        return failures;
+    }
+
+    private static async ValueTask StopDirectServerAsync(
+        ServerRuntime runtime,
+        List<Exception> failures)
+    {
+        if (runtime.Cancellation is not null)
+        {
+            Capture(runtime.Cancellation.Cancel, failures);
+        }
+
+        if (runtime.RunTask is not null)
         {
             try
             {
-                await serverRunTask.ConfigureAwait(false);
+                await runtime.RunTask.ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (serverCancellation?.IsCancellationRequested == true)
+            catch (OperationCanceledException) when (runtime.Cancellation?.IsCancellationRequested == true)
             {
                 // Expected — cancelling the server's receive loop surfaces as this.
             }
@@ -239,23 +388,44 @@ internal sealed class InMemoryMcpClientServerHarness(
             }
         }
 
-        if (server is not null)
-        {
-            await DisposeCapturingAsync(server, failures).ConfigureAwait(false);
-        }
+        await DisposeCapturingAsync(runtime.Server, failures).ConfigureAwait(false);
+    }
 
-        foreach (var stream in transportStreams)
+    private static async ValueTask StopAndDisposeHostAsync(IHost host, List<Exception> failures)
+    {
+        await StopHostAsync(host, failures).ConfigureAwait(false);
+        if (host is IAsyncDisposable asyncHost)
         {
-            await DisposeCapturingAsync(stream, failures).ConfigureAwait(false);
+            await DisposeCapturingAsync(asyncHost, failures).ConfigureAwait(false);
         }
-
-        if (serverServices is not null)
+        else
         {
-            await DisposeCapturingAsync(serverServices, failures).ConfigureAwait(false);
+            Capture(host.Dispose, failures);
         }
+    }
 
-        serverCancellation?.Dispose();
-        return failures;
+    private static async ValueTask StopHostAsync(IHost host, List<Exception> failures)
+    {
+        try
+        {
+            await host.StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            failures.Add(ex);
+        }
+    }
+
+    private static void Capture(Action action, List<Exception> failures)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            failures.Add(ex);
+        }
     }
 
     private static async ValueTask DisposeCapturingAsync(
@@ -271,6 +441,13 @@ internal sealed class InMemoryMcpClientServerHarness(
             failures.Add(ex);
         }
     }
+
+    private sealed record ServerRuntime(
+        McpServer Server,
+        CancellationTokenSource? Cancellation = null,
+        Task? RunTask = null,
+        ServiceProvider? Services = null,
+        IHost? Host = null);
 
     private sealed class ServerWireCapture
     {

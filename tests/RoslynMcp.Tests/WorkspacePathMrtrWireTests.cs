@@ -388,7 +388,7 @@ public sealed class WorkspacePathMrtrWireTests
     public async Task WorkspacePathRetry_WithConcurrentWorkspaceAndState_UsesAcceptedPathNotAmbientWorkspace()
     {
         var unrelatedWorkspaceId = Guid.NewGuid().ToString("N");
-        var manager = new ConfigurableWorkspaceManager(WorkspaceStatus(unrelatedWorkspaceId));
+        var manager = new FailClosedWorkspaceManagerStub(WorkspaceStatus(unrelatedWorkspaceId));
         var elicitationCount = 0;
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
@@ -510,7 +510,7 @@ public sealed class WorkspacePathMrtrWireTests
     {
         var encodedWorkspaceId = Guid.NewGuid().ToString("N");
         var ambientWorkspaceId = Guid.NewGuid().ToString("N");
-        var manager = new ConfigurableWorkspaceManager(WorkspaceStatus(ambientWorkspaceId));
+        var manager = new FailClosedWorkspaceManagerStub(WorkspaceStatus(ambientWorkspaceId));
         var elicitationCount = 0;
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
         try
@@ -575,7 +575,7 @@ public sealed class WorkspacePathMrtrWireTests
     {
         var originalWorkspaceId = Guid.NewGuid().ToString("N");
         var concurrentWorkspaceId = Guid.NewGuid().ToString("N");
-        var manager = new ConfigurableWorkspaceManager(WorkspaceStatus(originalWorkspaceId));
+        var manager = new FailClosedWorkspaceManagerStub(WorkspaceStatus(originalWorkspaceId));
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
             expectedWorkspaceId: originalWorkspaceId);
@@ -627,7 +627,7 @@ public sealed class WorkspacePathMrtrWireTests
     public async Task RequestState_PreservesPathRecoveredWorkspaceAcrossSecondMrtrStage()
     {
         var concurrentWorkspaceId = Guid.NewGuid().ToString("N");
-        var manager = new ConfigurableWorkspaceManager();
+        var manager = new FailClosedWorkspaceManagerStub();
         var promptCount = 0;
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
@@ -693,7 +693,7 @@ public sealed class WorkspacePathMrtrWireTests
     {
         var encodedWorkspaceId = Guid.NewGuid().ToString("N");
         var ambientWorkspaceId = Guid.NewGuid().ToString("N");
-        var manager = new ConfigurableWorkspaceManager(WorkspaceStatus(ambientWorkspaceId));
+        var manager = new FailClosedWorkspaceManagerStub(WorkspaceStatus(ambientWorkspaceId));
         SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
             failureDetail: null,
             expectedWorkspaceId: ambientWorkspaceId);
@@ -960,7 +960,7 @@ public sealed class WorkspacePathMrtrWireTests
         bool enableElicitation = true)
     {
         var services = new ServiceCollection();
-        services.AddSingleton(workspaceManager ?? new ConfigurableWorkspaceManager());
+        services.AddSingleton(workspaceManager ?? new FailClosedWorkspaceManagerStub());
         services.AddSingleton(new SecurityOptions
         {
             SanctionedRoots = sanctionedRoot is null ? [] : [sanctionedRoot],
@@ -1133,45 +1133,6 @@ public sealed class WorkspacePathMrtrWireTests
         Success,
         MissingWorkspaceId,
         WaitForCancellation,
-    }
-
-    private sealed class ConfigurableWorkspaceManager(params WorkspaceStatusDto[] workspaces) : IWorkspaceManager
-    {
-        private WorkspaceStatusDto[] _workspaces = workspaces;
-
-        public event Action<string>? WorkspaceClosed { add { } remove { } }
-        public event Action<string>? WorkspaceReloaded { add { } remove { } }
-
-        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Volatile.Read(ref _workspaces);
-        public void ReplaceWith(params WorkspaceStatusDto[] replacement) =>
-            Volatile.Write(ref _workspaces, replacement);
-        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
-            throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
-            throw new NotSupportedException();
-        public bool ContainsWorkspace(string workspaceId) => false;
-        public bool IsStale(string workspaceId) => false;
-        public bool Close(string workspaceId) => throw new NotSupportedException();
-        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> GetStatusAsync(
-            string workspaceId,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
-        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(
-            string workspaceId,
-            string? projectName,
-            CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> GetSourceTextAsync(
-            string workspaceId,
-            string filePath,
-            CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
-        public Project? GetProject(string workspaceId, string projectNameOrPath) =>
-            throw new NotSupportedException();
-        public bool TryApplyChanges(string workspaceId, Solution newSolution) =>
-            throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
     }
 
     private static WorkspaceStatusDto WorkspaceStatus(string workspaceId) => new(

@@ -187,9 +187,9 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 gatedCommandExecutor,
                 NullLogger<TestRunnerService>.Instance,
+                testDiscoveryService,
                 validationOptions,
-                exceptionReporter: null,
-                testDiscoveryService: testDiscoveryService),
+                exceptionReporter: null),
             TestDiscoveryService = testDiscoveryService,
             CompletionService = new CompletionService(workspaceManager),
             CodeActionService = new CodeActionService(

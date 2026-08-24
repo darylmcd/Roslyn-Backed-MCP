@@ -285,7 +285,7 @@ public sealed class ResourceReadWireContractTests
         string? requestedVersion, string expectedVersion)
     {
         var selection = ToolTierSelection.All;
-        var gate = new PassThroughGate();
+        var gate = new PassThroughWorkspaceExecutionGate();
         var manager = new ScriptedWorkspaceManager();
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
         var hostAssembly = typeof(RoslynMcp.Host.Stdio.HostAssemblyMarker).Assembly;
@@ -375,30 +375,6 @@ public sealed class ResourceReadWireContractTests
 
         Assert.AreEqual(1, responses.Count, $"{label}: expected exactly one new response frame.");
         return responses[0];
-    }
-
-    /// <summary>
-    /// Pass-through read gate: runs the action directly so handler-thrown exceptions reach the
-    /// read filter unmodified. Write/lifecycle verbs throw to fail loudly if a resource handler
-    /// ever routes through them.
-    /// </summary>
-    private sealed class PassThroughGate : IWorkspaceExecutionGate
-    {
-        public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
-            action(ct);
-
-        public Task<T> RunWriteAsync<T>(
-            string workspaceId,
-            Func<CancellationToken, Task<T>> action,
-            CancellationToken ct,
-            bool applyStalenessPolicy = true) =>
-            throw new NotSupportedException("Resource reads must not route through RunWriteAsync.");
-
-        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
-            throw new NotSupportedException("Resource reads must not route through RunLoadGateAsync.");
-
-        public void RemoveGate(string workspaceId) =>
-            throw new NotSupportedException("Resource reads must not call RemoveGate.");
     }
 
     /// <summary>
