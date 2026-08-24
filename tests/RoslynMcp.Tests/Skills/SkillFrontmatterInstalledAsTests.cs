@@ -17,10 +17,8 @@ namespace RoslynMcp.Tests.Skills;
 /// Valid values:
 ///   <c>installed_as: &lt;bare-name&gt;</c>          — bare kebab-case identifier (no namespace)
 ///   <c>installed_as: roslyn-mcp:&lt;bare-name&gt;</c> — plugin-namespaced identifier
-///
-/// This test is shipped <c>[Ignore]</c>-marked to avoid blocking CI until the bulk frontmatter
-/// migration (backlog row <c>skill-namespace-installed-as-bulk-frontmatter-migration</c>) is
-/// complete.  Once that row ships, remove the <c>[Ignore]</c> attribute.
+/// The migration is complete and this test is an active CI contract: a missing or malformed
+/// value fails the suite instead of silently weakening skill discovery.
 /// </summary>
 [TestClass]
 public sealed class SkillFrontmatterInstalledAsTests
@@ -80,8 +78,7 @@ public sealed class SkillFrontmatterInstalledAsTests
             0, failures.Count,
             $"{failures.Count} of {skillFiles.Count} SKILL.md file(s) are missing a valid `installed_as:` field:\n" +
             string.Join("\n", failures) + "\n\n" +
-            "Add `installed_as: <bare-name>` or `installed_as: roslyn-mcp:<bare-name>` to each frontmatter block. " +
-            "See backlog row `skill-namespace-installed-as-bulk-frontmatter-migration` for the migration plan.");
+            "Add `installed_as: <bare-name>` or `installed_as: roslyn-mcp:<bare-name>` to each frontmatter block.");
     }
 
     // -----------------------------------------------------------------------

@@ -3,7 +3,6 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
 [TestClass]
 public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
 {

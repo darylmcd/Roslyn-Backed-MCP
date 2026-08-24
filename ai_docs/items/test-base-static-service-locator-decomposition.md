@@ -18,3 +18,4 @@
 ## Evidence
 
 - `TestBase` currently mixes assembly initialization, environment binding, repository path discovery, MCP server ownership, disposal, and more than sixty mutable static service properties; every new service extends the assignment list and obscures ownership.
+2026-08-24 current evidence: `TestServiceContainer` resolves to `tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs`, not the stale root-level path implied by older notes. The pre-refactor Windows profile also measured a 10m17s serialized tail and 123 `[DoNotParallelize]` occurrences; use current semantic ownership rather than the stale anchor when planning.

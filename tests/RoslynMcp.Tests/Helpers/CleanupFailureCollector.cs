@@ -48,6 +48,23 @@ internal static class CleanupFailureCollector
         }
     }
 
+    internal static async ValueTask RunAfterFailureAsync(
+        string failureMessage,
+        Exception? primaryFailure,
+        params Func<ValueTask>[] cleanupSteps)
+    {
+        try
+        {
+            await RunAsync(failureMessage, cleanupSteps).ConfigureAwait(false);
+        }
+        catch (AggregateException cleanupFailure) when (primaryFailure is not null)
+        {
+            throw new AggregateException(
+                failureMessage,
+                [primaryFailure, .. cleanupFailure.InnerExceptions]);
+        }
+    }
+
     internal static Func<ValueTask> FromAction(Action action) => () =>
     {
         action();

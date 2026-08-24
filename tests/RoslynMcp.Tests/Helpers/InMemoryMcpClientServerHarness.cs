@@ -29,7 +29,7 @@ internal sealed record InMemoryMcpHarnessOptions(
 /// <remarks>
 /// <para><b>Disposal invariant — every client request handler this harness is given MUST be
 /// completable, and MUST be completed before <see cref="DisposeAsync"/> runs.</b>
-/// <see cref="DisposeOwnedResourcesAsync"/> disposes <see cref="Client"/> first (line ~155), and
+/// <see cref="DisposeOwnedResourcesAsync"/> disposes <see cref="Client"/> before the server runtime, and
 /// <c>McpClient.DisposeAsync</c> waits for outstanding inbound request handlers to finish. A
 /// handler that returns a never-completing task (e.g.
 /// <c>new TaskCompletionSource&lt;ElicitResult&gt;().Task</c>) therefore wedges teardown

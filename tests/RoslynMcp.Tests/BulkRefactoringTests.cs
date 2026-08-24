@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -94,6 +95,7 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
         var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
         var scopedWorkspaceId = loadResult.WorkspaceId;
 
+        Exception? primaryFailure = null;
         try
         {
             var preview = await BulkRefactoringService.PreviewBulkReplaceTypeAsync(
@@ -145,25 +147,20 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
                 addedText.Contains("IDrNineSixValidator<DrNineSixOldType>", StringComparison.Ordinal),
                 "Interface generic argument must no longer reference the old type after rewrite.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            WorkspaceManager.Close(scopedWorkspaceId);
-            TryDeleteDirectory(solutionDir);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Bulk-refactoring regression and fixture cleanup both failed.",
+                primaryFailure,
+                CleanupFailureCollector.FromAction(() => WorkspaceManager.Close(scopedWorkspaceId)),
+                CleanupFailureCollector.FromAction(
+                    () => TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir)));
         }
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
 }

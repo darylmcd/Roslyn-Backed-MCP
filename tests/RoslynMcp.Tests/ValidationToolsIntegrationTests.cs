@@ -57,14 +57,14 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         var result = await CompileCheckService.CheckAsync(WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
         Assert.IsNotNull(result, "CompileCheck should return a result.");
         Assert.IsNotNull(result.Diagnostics);
-        // On Linux CI, MSBuildWorkspace may have unresolved metadata references
-        // that produce CS0012/CS0246 errors even though the code is correct.
-        // Only assert zero errors on Windows where references resolve reliably.
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.IsTrue(result.Success, $"Sample solution should compile without errors. Got {result.ErrorCount} error(s).");
-            Assert.AreEqual(0, result.ErrorCount);
-        }
+        var errors = result.Diagnostics
+            .Where(diagnostic => string.Equals(diagnostic.Severity, "Error", StringComparison.OrdinalIgnoreCase))
+            .Select(diagnostic => $"{diagnostic.Id}: {diagnostic.Message}")
+            .ToArray();
+        Assert.IsTrue(result.Success,
+            $"Sample solution should compile without errors on every supported CI platform. " +
+            $"Got {result.ErrorCount} error(s): {string.Join(" | ", errors)}");
+        Assert.AreEqual(0, result.ErrorCount);
     }
 
     [TestMethod]
@@ -329,22 +329,25 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task FindRelatedTestsForFiles_DocumentResolvedButNoMatch_ReportsHeuristicsAndReason()
     {
-        // Find a document that is unlikely to share names with any test — pick the test
-        // discovery service's own implementation file path and then pass it under a fresh
-        // temp filename so it resolves to nothing.
-        var unresolvableFakePath = Path.Combine(Path.GetTempPath(), $"PhantomFile_{Guid.NewGuid():N}.cs");
+        var resolvedPath = FindDocumentPath("Program.cs");
 
         var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
             WorkspaceId,
-            new[] { unresolvableFakePath },
+            new[] { resolvedPath },
             maxResults: 100,
             CancellationToken.None);
 
-        // No document resolved => no heuristics attempted is the contract.
-        Assert.AreEqual(0, result.Diagnostics.HeuristicsAttempted.Count,
-            "When no input file resolves, no heuristic should be reported as attempted.");
-
-        // ScannedTestProjects is still reported even when no heuristic ran.
+        Assert.AreEqual(0, result.Tests.Count, "The resolved application entry point has no related sample tests.");
+        Assert.AreEqual(0, result.Pagination.Total);
+        Assert.AreEqual(string.Empty, result.DotnetTestFilter);
+        Assert.IsTrue(result.Diagnostics.HeuristicsAttempted.Contains("type-name"));
+        Assert.IsTrue(result.Diagnostics.HeuristicsAttempted.Contains("file-name"));
+        Assert.IsTrue(
+            result.Diagnostics.MissReasons.Any(reason =>
+                reason.Contains(resolvedPath, StringComparison.OrdinalIgnoreCase) &&
+                reason.Contains("resolved but no discovered test", StringComparison.OrdinalIgnoreCase)),
+            $"The miss reason must distinguish a resolved document from an invalid path. Got: " +
+            $"[{string.Join(" | ", result.Diagnostics.MissReasons)}]");
         Assert.IsTrue(result.Diagnostics.ScannedTestProjects > 0,
             "ScannedTestProjects must be populated regardless of resolution outcome.");
     }

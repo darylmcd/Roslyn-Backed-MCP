@@ -16,8 +16,42 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
     protected static async Task<IsolatedWorkspaceScope> CreateIsolatedWorkspaceAsync(CancellationToken ct = default)
     {
         var workspace = CreateIsolatedWorkspaceCopy();
-        await workspace.LoadAsync(ct).ConfigureAwait(false);
-        return workspace;
+        return await InitializeWithCleanupAsync(
+            workspace,
+            static async (scope, token) =>
+            {
+                _ = await scope.LoadAsync(token).ConfigureAwait(false);
+            },
+            ct).ConfigureAwait(false);
+    }
+
+    internal static async Task<TResource> InitializeWithCleanupAsync<TResource>(
+        TResource resource,
+        Func<TResource, CancellationToken, Task> initializeAsync,
+        CancellationToken ct = default)
+        where TResource : IAsyncDisposable
+    {
+        try
+        {
+            await initializeAsync(resource, ct).ConfigureAwait(false);
+            return resource;
+        }
+        catch (Exception initializationFailure)
+        {
+            try
+            {
+                await resource.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(
+                    "Resource initialization and cleanup both failed.",
+                    initializationFailure,
+                    cleanupFailure);
+            }
+
+            throw;
+        }
     }
 
     protected static void AddProjectToCopiedSolution(

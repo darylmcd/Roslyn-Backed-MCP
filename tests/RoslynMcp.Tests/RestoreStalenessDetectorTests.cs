@@ -13,7 +13,6 @@ namespace RoslynMcp.Tests;
 /// full SampleSolution — <see cref="RestoreStalenessDetector.IsRestoreRequired"/> only ever
 /// reads a project file and its sibling assets file from disk.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class RestoreStalenessDetectorTests
 {

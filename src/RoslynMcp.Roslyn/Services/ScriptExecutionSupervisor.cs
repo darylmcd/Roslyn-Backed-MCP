@@ -29,28 +29,44 @@ internal sealed class ScriptExecutionSupervisor
         ScriptExecutionSupervisorSettings settings,
         CancellationToken ct)
     {
-        var capacityFailure = await TryAcquireCapacityAsync(settings.EffectiveTimeoutSeconds, ct).ConfigureAwait(false);
+        ValidateSettings(settings);
+        var capacityFailure = await TryAcquireCapacityAsync(ct).ConfigureAwait(false);
         if (capacityFailure.HasValue)
         {
             return ScriptExecutionResult.ForCapacityFailure(capacityFailure.Value, settings);
         }
 
-        Interlocked.Increment(ref _activeEvaluations);
-
-        using var timeoutCts = CreateTimeoutTokenSource(ct, settings.Budget);
         var execution = CreateExecutionContext();
+        Interlocked.Increment(ref _activeEvaluations);
 
         try
         {
+            using var timeoutCts = CreateTimeoutTokenSource(ct, settings.Budget);
+            execution.DeadlineTimer = CreateDeadlineTimer(execution.Completion);
+            execution.HeartbeatTimer = CreateHeartbeatTimer(
+                onProgress,
+                execution.Stopwatch,
+                settings,
+                execution.RunState);
+
+            using var ctRegistration = RegisterOuterCancellation(ct, execution.Completion);
+            ct.ThrowIfCancellationRequested();
+
             var workerThread = StartWorkerThread(
                 executeWorker,
                 timeoutCts.Token,
+                ct,
                 execution.Completion,
                 execution.RunState);
-            execution.DeadlineTimer = CreateDeadlineTimer(execution.Completion, settings.HardDeadlineSeconds);
-            execution.HeartbeatTimer = CreateHeartbeatTimer(onProgress, execution.Stopwatch, settings, execution.RunState);
-
-            using var ctRegistration = RegisterOuterCancellation(ct, execution.Completion);
+            try
+            {
+                ArmTimers(execution, settings);
+            }
+            catch
+            {
+                MarkAbandonedIfWorkerStillRunning(timeoutCts, execution.RunState);
+                throw;
+            }
 
             var raceOutcome = await execution.Completion.Task.ConfigureAwait(false);
             execution.Stopwatch.Stop();
@@ -63,7 +79,36 @@ internal sealed class ScriptExecutionSupervisor
         }
     }
 
-    private async Task<ScriptExecutionCapacityFailure?> TryAcquireCapacityAsync(int effectiveTimeoutSeconds, CancellationToken ct)
+    private static void ValidateSettings(ScriptExecutionSupervisorSettings settings)
+    {
+        var maximumTimerDuration = TimeSpan.FromSeconds(ScriptingServiceOptions.MaxTimerDurationSeconds);
+        if (settings.EffectiveTimeoutSeconds < 1 ||
+            settings.Budget <= TimeSpan.Zero ||
+            settings.Budget > maximumTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings),
+                "Script budget must be positive and within the runtime timer range.");
+        }
+
+        if (settings.HardDeadlineSeconds < 0 ||
+            settings.HardDeadlineSeconds > ScriptingServiceOptions.MaxTimerDurationSeconds)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings),
+                "Hard deadline must be non-negative and within the runtime timer range.");
+        }
+
+        if (settings.HeartbeatInterval <= TimeSpan.Zero ||
+            settings.HeartbeatInterval > maximumTimerDuration)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings),
+                "Heartbeat interval must be positive and within the runtime timer range.");
+        }
+    }
+
+    private async Task<ScriptExecutionCapacityFailure?> TryAcquireCapacityAsync(CancellationToken ct)
     {
         var abandonedAtEntry = Interlocked.Read(ref _abandonedEvaluations);
         if (abandonedAtEntry >= _options.MaxAbandonedEvaluations)
@@ -158,6 +203,7 @@ internal sealed class ScriptExecutionSupervisor
     private Thread StartWorkerThread(
         Func<CancellationToken, ScriptExecutionOutcome> executeWorker,
         CancellationToken timeoutToken,
+        CancellationToken outerCancellationToken,
         TaskCompletionSource<ScriptExecutionOutcome> completion,
         ScriptRunState runState)
     {
@@ -169,7 +215,24 @@ internal sealed class ScriptExecutionSupervisor
 
         var workerThread = new Thread(() =>
         {
-            var outcome = executeWorker(timeoutToken);
+            ScriptExecutionOutcome outcome;
+            try
+            {
+                outcome = executeWorker(timeoutToken);
+            }
+            catch (OperationCanceledException) when (outerCancellationToken.IsCancellationRequested)
+            {
+                outcome = ScriptExecutionOutcome.OuterCancelled();
+            }
+            catch (OperationCanceledException) when (timeoutToken.IsCancellationRequested)
+            {
+                outcome = ScriptExecutionOutcome.TimedOut();
+            }
+            catch (Exception ex)
+            {
+                outcome = ScriptExecutionOutcome.Runtime(ex);
+            }
+
             CompleteWorkerThread(completion, outcome, runState);
         })
         {
@@ -201,14 +264,12 @@ internal sealed class ScriptExecutionSupervisor
         }
     }
 
-    private static Timer CreateDeadlineTimer(
-        TaskCompletionSource<ScriptExecutionOutcome> completion,
-        int hardDeadlineSeconds)
+    private static Timer CreateDeadlineTimer(TaskCompletionSource<ScriptExecutionOutcome> completion)
     {
         return new Timer(
             _ => completion.TrySetResult(ScriptExecutionOutcome.HardDeadline()),
             state: null,
-            dueTime: TimeSpan.FromSeconds(hardDeadlineSeconds),
+            dueTime: Timeout.InfiniteTimeSpan,
             period: Timeout.InfiniteTimeSpan);
     }
 
@@ -221,8 +282,20 @@ internal sealed class ScriptExecutionSupervisor
         return new Timer(
             _ => EmitHeartbeat(onProgress, sw, settings, runState),
             state: null,
-            dueTime: settings.HeartbeatInterval,
-            period: settings.HeartbeatInterval);
+            dueTime: Timeout.InfiniteTimeSpan,
+            period: Timeout.InfiniteTimeSpan);
+    }
+
+    private static void ArmTimers(
+        ScriptExecutionContext execution,
+        ScriptExecutionSupervisorSettings settings)
+    {
+        _ = execution.DeadlineTimer!.Change(
+            TimeSpan.FromSeconds(settings.HardDeadlineSeconds),
+            Timeout.InfiniteTimeSpan);
+        _ = execution.HeartbeatTimer!.Change(
+            settings.HeartbeatInterval,
+            settings.HeartbeatInterval);
     }
 
     private void EmitHeartbeat(
@@ -233,7 +306,27 @@ internal sealed class ScriptExecutionSupervisor
     {
         var index = Interlocked.Increment(ref runState.HeartbeatCount);
         var elapsed = sw.Elapsed;
-        onProgress?.Invoke(new ScriptEvaluationProgress(elapsed, settings.Budget, index));
+        if (onProgress is not null &&
+            Interlocked.CompareExchange(
+                ref runState.ProgressCallbackState,
+                ScriptRunState.ProgressCallbackClaimedOrDisabled,
+                ScriptRunState.ProgressCallbackReady) == ScriptRunState.ProgressCallbackReady)
+        {
+            try
+            {
+                onProgress(new ScriptEvaluationProgress(elapsed, settings.Budget, index));
+                Volatile.Write(ref runState.ProgressCallbackState, ScriptRunState.ProgressCallbackReady);
+            }
+            catch (Exception ex)
+            {
+                // Leave the claimed state in place so no later timer callback can invoke the
+                // failing sink. The CAS above also prevents overlapping progress delivery.
+                _logger.LogWarning(
+                    ex,
+                    "evaluate_csharp: progress callback failed; disabling further heartbeat callbacks for this evaluation.");
+            }
+        }
+
         if (index == 1)
         {
             _logger.LogInformation(
@@ -242,12 +335,12 @@ internal sealed class ScriptExecutionSupervisor
                 _options.HeartbeatIntervalMs);
         }
 
-        if (runState.SlowWarningEmitted || elapsed.TotalSeconds < _options.StuckWarningSeconds)
+        if (elapsed.TotalSeconds < _options.StuckWarningSeconds ||
+            Interlocked.CompareExchange(ref runState.SlowWarningEmitted, 1, 0) != 0)
         {
             return;
         }
 
-        runState.SlowWarningEmitted = true;
         _logger.LogWarning(
             "evaluate_csharp: still running after {ElapsedSeconds:F1}s - clients often show a static \"Evaluating C#\" step here; " +
             "large compile or synchronous script work may continue until timeout ({BudgetSeconds}s).",
@@ -298,10 +391,13 @@ internal sealed class ScriptExecutionSupervisor
         public const int WorkerRunning = 0;
         public const int WorkerFinished = 1;
         public const int WorkerAbandoned = 2;
+        public const int ProgressCallbackReady = 0;
+        public const int ProgressCallbackClaimedOrDisabled = 1;
 
         public int HeartbeatCount;
+        public int ProgressCallbackState;
         public int WorkerState;
-        public bool SlowWarningEmitted;
+        public int SlowWarningEmitted;
         public long SlotReleased;
     }
 

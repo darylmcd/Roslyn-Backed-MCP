@@ -67,11 +67,9 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// format-range-apply-preview-token-lifetime: previews survive a single auto-reload
-    /// (one workspace-version bump) inside the pinned range, but two reloads push past
-    /// <see cref="PreviewStore.DefaultMaxVersionSpan"/> = 1 and the token drops with the
-    /// "stale" error. Mirrors the create-file integration shape that this test originally
-    /// covered, updated to the post-bundle pinned-range contract.
+    /// Create-file previews survive one workspace-version bump, but two reloads exceed
+    /// <see cref="PreviewStore.DefaultMaxVersionSpan"/> and reject the token without writing
+    /// the requested file. This retains producer-specific stale-token and no-side-effect coverage.
     /// </summary>
     [TestMethod]
     public async Task File_Operation_Preview_Token_Is_Rejected_After_Two_Reloads()
@@ -81,19 +79,23 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
 
         var preview = await FileOperationService.PreviewCreateFileAsync(
             workspace.WorkspaceId,
-            new CreateFileDto("SampleLib", newFilePath, "namespace SampleLib.Generated;\n\npublic sealed class StaleBird { }\n"),
+            new CreateFileDto(
+                "SampleLib",
+                newFilePath,
+                "namespace SampleLib.Generated;\n\npublic sealed class StaleBird { }\n"),
             CancellationToken.None);
 
-        // Two reload bumps push past the pinned ceiling (V + 1) — token gets dropped on
-        // the second reload's InvalidateOnVersionBump.
-        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
-        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+        await workspace.ReloadAsync();
+        await workspace.ReloadAsync();
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken,
+            "test_apply",
+            CancellationToken.None);
 
-        Assert.IsFalse(applyResult.Success, "Stale previews (two reloads past pinned range) should be rejected.");
+        Assert.IsFalse(applyResult.Success, "Stale create-file previews must be rejected.");
         StringAssert.Contains(applyResult.Error ?? string.Empty, "stale");
-        Assert.IsFalse(File.Exists(newFilePath));
+        Assert.IsFalse(File.Exists(newFilePath), "A rejected stale create preview must not touch disk.");
     }
 
     [TestMethod]

@@ -13,11 +13,19 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
 {
+    private static IsolatedWorkspaceScope? _scope;
+    private static IsolatedWorkspaceScope Workspace =>
+        _scope ?? throw new InvalidOperationException("The class workspace has not been initialized.");
+
     [ClassInitialize]
-    public static void ClassInit(TestContext _) => InitializeServices();
+    public static async Task ClassInit(TestContext _)
+    {
+        InitializeServices();
+        _scope = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+    }
 
     [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
+    public static void ClassCleanup() => _scope?.Dispose();
 
     private static SuppressionService CreateService() =>
         new SuppressionService(EditorConfigService, EditService, WorkspaceManager, CompileCheckService);
@@ -45,7 +53,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Verify_ThenWiden_ThenVerify_CoversFireSite()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
 
         var filePath = workspace.GetPath("SampleLib", "Pragma_MisalignedPair.cs");
         var fixtureText = """
@@ -118,7 +126,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Verify_NoPragmaPair_ReturnsFalse()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_NoPair.cs");
         await File.WriteAllTextAsync(
             filePath,
@@ -154,7 +162,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Widen_NoPragmaPair_ReturnsFailureUntouched()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_WidenNoPair.cs");
         var originalText = """
             namespace SampleLib.PragmaFixture;
@@ -191,7 +199,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Widen_AlreadyCovered_IsNoOp()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_AlreadyCovered.cs");
         var originalText = """
             namespace SampleLib.PragmaFixture;
@@ -250,7 +258,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Widen_CrossingRegionBoundary_IsRefused()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_CrossingRegion.cs");
         var originalText = """
             namespace SampleLib.PragmaFixture;
@@ -312,7 +320,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Widen_NestingIntoAnotherDisable_IsRefused()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_NestedDisable.cs");
         var originalText = """
             namespace SampleLib.PragmaFixture;
@@ -357,7 +365,7 @@ public sealed class PragmaScopeManipulationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Verify_DiagnosticFiresAtLine_IsTrue_WhenCompilerReportsIt()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspace = Workspace;
         var filePath = workspace.GetPath("SampleLib", "Pragma_FireSite.cs");
         // CS0219 fires on the unused local at line 7.
         await File.WriteAllTextAsync(

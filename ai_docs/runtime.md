@@ -39,7 +39,8 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
-  - `pwsh ./eng/run-tests-sliced.ps1` — runs the MSTest suite as per-class `dotnet test` invocations to fit the 40-minute CI budget; supports `-Filter`, `-MaxSlices`, and `-ResumeFrom` for targeted re-runs.
+  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 2` — reproduce one CI non-owner class shard without duplicate policy/publish work; use the complementary zero-based index for the other half. Omit `-TestShardOnly` for a standalone full release gate. The unsharded `just ci` default remains authoritative locally.
+  - `pwsh ./eng/get-test-shard-plan.ps1 -TestAssemblyPath <RoslynMcp.Tests.dll> -TestShardCount 2 -TestShardIndex 0` — inspect the deterministic complete/disjoint class manifest as JSON. Discovery and integrity failures exit nonzero.
 
 ## Package Identity
 

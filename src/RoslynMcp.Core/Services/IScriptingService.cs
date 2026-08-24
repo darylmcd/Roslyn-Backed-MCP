@@ -21,7 +21,8 @@ public interface IScriptingService
     /// <param name="timeoutSecondsOverride">
     /// Optional per-call timeout in seconds (UX-002). When supplied, overrides the
     /// <c>ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS</c> environment-default for this single invocation. Must be a
-    /// positive value; <see langword="null"/> falls back to the configured default.
+    /// positive value within the implementation's supported timer range; <see langword="null"/>
+    /// falls back to the configured default.
     /// </param>
     Task<ScriptEvaluationDto> EvaluateAsync(
         string code,

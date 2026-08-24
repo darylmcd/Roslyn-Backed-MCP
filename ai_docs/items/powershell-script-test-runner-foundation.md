@@ -18,3 +18,4 @@
 ## Evidence
 
 - The breaking-version and release-child fixtures duplicate the full PowerShell process harness already present in `PluginPackageAllowlistTests` and several skill-script suites; those copies can drift on quoting, stream draining, and timeout cleanup. The separate plugin-test hygiene row can adopt the foundation after it lands.
+2026-08-24 adjacent evidence: the new shard-plan and TRX-summary contract suites repeat the same pwsh resolution/stream/timeout/result plumbing; dependent row `ci-process-tests-runner-adoption` now bounds their migration. `PluginPackageAllowlistTests`' dead identical OS branches were fixed, while skill-script consumers remain evidence for later bounded adoption.

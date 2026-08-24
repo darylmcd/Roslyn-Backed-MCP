@@ -26,15 +26,36 @@ public sealed class PersistentCompositeStorage
     private readonly string _rootDirectory;
     private readonly TimeSpan _ttl;
     private readonly ILogger<PersistentCompositeStorage>? _logger;
+    private readonly Func<string, IEnumerable<string>> _enumerateDirectoriesForRead;
+    private readonly Func<string, DateTime> _getLastWriteTimeUtc;
 
     public PersistentCompositeStorage(
         string rootDirectory,
         TimeSpan ttl,
         ILogger<PersistentCompositeStorage>? logger = null)
+        : this(
+            rootDirectory,
+            ttl,
+            logger,
+            Directory.EnumerateDirectories,
+            File.GetLastWriteTimeUtc)
+    {
+    }
+
+    internal PersistentCompositeStorage(
+        string rootDirectory,
+        TimeSpan ttl,
+        ILogger<PersistentCompositeStorage>? logger,
+        Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
+        Func<string, DateTime> getLastWriteTimeUtc)
     {
         _rootDirectory = rootDirectory ?? throw new ArgumentNullException(nameof(rootDirectory));
         _ttl = ttl > TimeSpan.Zero ? ttl : TimeSpan.FromMinutes(5);
         _logger = logger;
+        _enumerateDirectoriesForRead = enumerateDirectoriesForRead
+            ?? throw new ArgumentNullException(nameof(enumerateDirectoriesForRead));
+        _getLastWriteTimeUtc = getLastWriteTimeUtc
+            ?? throw new ArgumentNullException(nameof(getLastWriteTimeUtc));
         Directory.CreateDirectory(_rootDirectory);
     }
 
@@ -93,13 +114,13 @@ public sealed class PersistentCompositeStorage
         // not and is intentionally left to propagate (a genuine permissions problem, not a race).
         try
         {
-            foreach (var subdir in Directory.EnumerateDirectories(_rootDirectory))
+            foreach (var subdir in _enumerateDirectoriesForRead(_rootDirectory))
             {
                 var path = Path.Combine(subdir, token + ".json");
                 if (!File.Exists(path)) continue;
 
                 // TTL check based on file write time so cross-process readers honor expiry.
-                var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(path);
+                var age = DateTime.UtcNow - _getLastWriteTimeUtc(path);
                 if (age > _ttl)
                 {
                     TryDelete(path);

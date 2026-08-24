@@ -44,4 +44,21 @@ public sealed class CleanupFailureCollectorTests
         Assert.HasCount(1, aggregate.InnerExceptions);
         Assert.AreSame(cleanupFailure, aggregate.InnerExceptions[0]);
     }
+
+    [TestMethod]
+    public async Task RunAfterFailureAsync_PrimaryAndCleanupFailuresRemainObservable()
+    {
+        var primaryFailure = new InvalidOperationException("injected assertion failure");
+        var cleanupFailure = new UnauthorizedAccessException("injected cleanup failure");
+
+        var aggregate = await Assert.ThrowsExactlyAsync<AggregateException>(async () =>
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "operation and cleanup failed",
+                primaryFailure,
+                CleanupFailureCollector.FromAction(() => throw cleanupFailure)));
+
+        CollectionAssert.AreEqual(
+            new Exception[] { primaryFailure, cleanupFailure },
+            aggregate.InnerExceptions.ToArray());
+    }
 }

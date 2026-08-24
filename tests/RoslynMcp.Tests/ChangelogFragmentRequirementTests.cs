@@ -18,24 +18,39 @@ public sealed class ChangelogFragmentRequirementTests
     };
 
     [TestMethod]
-    public void CiWorkflow_FetchesBaseHistoryAndRunsGateBeforeDocsOnlyShortcut()
+    public void CiWorkflow_FetchesBaseHistoryAndRunsGateOnPolicyDocsShards()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"));
         var checkoutIndex = workflow.IndexOf("uses: actions/checkout@v7", StringComparison.Ordinal);
         var historyIndex = workflow.IndexOf("fetch-depth: 0", checkoutIndex, StringComparison.Ordinal);
-        var changelogIndex = workflow.IndexOf(
-            "run: ./eng/verify-changelog-fragments.ps1",
+        var changelogStepIndex = workflow.IndexOf(
+            "- name: Verify changelog contract",
             historyIndex,
             StringComparison.Ordinal);
-        var docsOnlyIndex = workflow.IndexOf("- name: Detect docs-only pull request", StringComparison.Ordinal);
+        var changelogOwnerConditionIndex = workflow.IndexOf(
+            "if: matrix.leg.artifact_owner == true",
+            changelogStepIndex,
+            StringComparison.Ordinal);
+        var changelogIndex = workflow.IndexOf(
+            "run: ./eng/verify-changelog-fragments.ps1",
+            changelogOwnerConditionIndex,
+            StringComparison.Ordinal);
+        var docsOnlyOutputIndex = workflow.IndexOf(
+            "docs_only: ${{ steps.decide.outputs.docs_only }}",
+            StringComparison.Ordinal);
+        var docsLegIndex = workflow.IndexOf("New-Leg -Name 'docs-linux-1-of-2'", StringComparison.Ordinal);
 
         Assert.IsTrue(checkoutIndex >= 0, "CI must check out the repository.");
         Assert.IsTrue(historyIndex > checkoutIndex, "Changelog comparison requires full base history.");
+        Assert.IsTrue(changelogStepIndex > historyIndex, "CI must declare the changelog verifier after checkout.");
+        Assert.IsTrue(changelogOwnerConditionIndex > changelogStepIndex);
         Assert.IsTrue(changelogIndex > historyIndex, "CI must run the changelog verifier after checkout.");
+        Assert.IsTrue(docsOnlyOutputIndex >= 0 && docsLegIndex > docsOnlyOutputIndex,
+            "The router must expose docs-only state and emit a dedicated hosted docs leg.");
         Assert.IsTrue(
-            docsOnlyIndex > changelogIndex,
-            "The changelog verifier must run before the docs-only release-validation shortcut.");
+            changelogOwnerConditionIndex < changelogIndex,
+            "The changelog verifier must run on the sole artifact-owning leg, including docs-only PRs.");
 
         var publishWorkflow = File.ReadAllText(
             Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml"));
