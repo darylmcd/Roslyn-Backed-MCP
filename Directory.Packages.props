@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="ModelContextProtocol" Version="2.1.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <!-- Ships the RS* release-tracking rules used by ServerSurfaceCatalogAnalyzer.
          Keep aligned with the Microsoft.CodeAnalysis.CSharp family to avoid NU1605. -->

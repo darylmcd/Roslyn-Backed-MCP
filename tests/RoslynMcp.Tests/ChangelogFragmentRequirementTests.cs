@@ -94,9 +94,11 @@ public sealed class ChangelogFragmentRequirementTests
             try
             {
                 var result = await RunVerifierAsync(fixtureRoot);
-                var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
+                var allOutput = PowerShellOutputNormalizer.Normalize(
+                    result.StdOut + Environment.NewLine + result.StdErr);
+                var diagnostic = $"{testCase.Name}: output={allOutput}";
                 Assert.AreEqual(testCase.ExpectedExitCode, result.ExitCode, diagnostic);
-                StringAssert.Contains(result.StdOut + result.StdErr, testCase.ExpectedText, diagnostic);
+                StringAssert.Contains(allOutput, testCase.ExpectedText, diagnostic);
             }
             finally
             {
@@ -139,6 +141,12 @@ public sealed class ChangelogFragmentRequirementTests
                 1,
                 "repeats a leading category"),
             new GrammarCase(
+                "multiple body bullets",
+                "fixture-entry.md",
+                Fragment("Maintenance", "- **Maintenance:** Fixture servicing.\n- **Fixed:** Unrelated correction."),
+                1,
+                "exactly one nonblank bullet line"),
+            new GrammarCase(
                 "empty body",
                 "fixture-entry.md",
                 "---\ncategory: Fixed\n---\n",
@@ -167,9 +175,11 @@ public sealed class ChangelogFragmentRequirementTests
                     Path.Combine(fixtureRoot, "changelog.d", testCase.FileName),
                     testCase.Contents);
                 var result = await RunVerifierAsync(fixtureRoot);
-                var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
+                var allOutput = PowerShellOutputNormalizer.Normalize(
+                    result.StdOut + Environment.NewLine + result.StdErr);
+                var diagnostic = $"{testCase.Name}: output={allOutput}";
                 Assert.AreEqual(testCase.ExpectedExitCode, result.ExitCode, diagnostic);
-                StringAssert.Contains(result.StdOut + result.StdErr, testCase.ExpectedText, diagnostic);
+                StringAssert.Contains(allOutput, testCase.ExpectedText, diagnostic);
             }
             finally
             {

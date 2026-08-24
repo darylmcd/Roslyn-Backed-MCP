@@ -24,9 +24,8 @@ internal static partial class DotnetOutputParser
     // with the failure count and per-failure text size.
     //
     // Measured ceiling (see RunTests_WorstCasePayload_StaysWithinTheMeasuredCeiling in
-    // TestRunFailureEnvelopeTests): neither this repo nor the pinned ModelContextProtocol 2.1.0
-    // SDK declares ANY response-size constant — verified by grep over src/ and by symbol search
-    // over the shipped SDK assemblies. There is no protocol-level ceiling to point at; the real
+    // TestRunFailureEnvelopeTests): a source and restored-assembly audit found no repository or
+    // SDK response-size constant. There is no protocol-level ceiling to point at; the real
     // ceiling is the consuming client's context budget. So the caps below are sized against that
     // budget rather than a protocol constant: with both halves of the fix in place, a worst-case
     // page (25 failures, every Message/StackTrace at the caps) measures 56,923 chars of indented

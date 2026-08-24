@@ -23,6 +23,9 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `decisions/0001-locationdto-nested-field-migration.md` | ADR: additive nested `Location` field on `SymbolDto`/`DiagnosticDto`/`TypeUsageDto`, legacy-flat-field deprecation window, and the bounded producer/consumer migration stages |
 | `decisions/0002-configured-sanctioned-root-boundary.md` | ADR: server-owned sanctioned-root security boundary, canonical path resolution, and migration from client Roots authority |
 | `decisions/0003-sdk-2x-wire-compatibility.md` | ADR: SDK 1.4.1→2.1.0 lineage, dual-protocol wire contract, correction classification, and consumer migration |
+| `decisions/0004-public-command-diagnostic-path-projection.md` | ADR: secret-safe public projection of child-process diagnostic paths across Windows, UNC, and POSIX forms |
+| `decisions/0005-stable-profile-preview-apply-closure.md` | ADR: stable-profile preview/apply closure, registration invariants, and token redemption |
+| `decisions/0006-modelcontextprotocol-2-2-servicing.md` | ADR: ModelContextProtocol 2.1.0→2.2.0 servicing, stdio-only scope, and non-breaking compatibility disposition |
 
 ## Claude Code Plugin
 

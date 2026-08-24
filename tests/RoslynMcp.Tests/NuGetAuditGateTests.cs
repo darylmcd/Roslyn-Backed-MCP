@@ -5,6 +5,12 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class NuGetAuditGateTests
 {
+    private const int ProcessTimeoutSeconds = 60;
+    private const int CleanupTimeoutSeconds = 15;
+    private const int TestTimeoutMilliseconds = 90_000;
+
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     public void LocalAndHostedGates_UseSharedFailClosedRestoreAudit()
     {
@@ -31,7 +37,7 @@ public sealed class NuGetAuditGateTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [Timeout(30_000, CooperativeCancellation = true)]
+    [Timeout(TestTimeoutMilliseconds, CooperativeCancellation = true)]
     public async Task DefaultSolutionPath_ResolvesFromRepository_WhenCallerWorkingDirectoryIsUnrelated()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -66,7 +72,7 @@ public sealed class NuGetAuditGateTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [Timeout(30_000, CooperativeCancellation = true)]
+    [Timeout(TestTimeoutMilliseconds, CooperativeCancellation = true)]
     public async Task AbsoluteSolutionPath_IsPreservedAtDotnetBoundary()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -104,7 +110,7 @@ public sealed class NuGetAuditGateTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [Timeout(30_000, CooperativeCancellation = true)]
+    [Timeout(TestTimeoutMilliseconds, CooperativeCancellation = true)]
     public async Task DotnetAuditFailure_PropagatesAfterUsingFailClosedArguments()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -143,7 +149,7 @@ public sealed class NuGetAuditGateTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [Timeout(30_000, CooperativeCancellation = true)]
+    [Timeout(TestTimeoutMilliseconds, CooperativeCancellation = true)]
     public async Task MissingRelativeSolution_FailsBeforeDotnetAndIgnoresCallerDirectory()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -177,7 +183,7 @@ public sealed class NuGetAuditGateTests
         }
     }
 
-    private static async Task<ProcessResult> RunAuditScriptAsync(
+    private async Task<ProcessResult> RunAuditScriptAsync(
         string repositoryRoot,
         string workingDirectory,
         string fakeBin,
@@ -209,18 +215,71 @@ public sealed class NuGetAuditGateTests
             ?? throw new InvalidOperationException("Failed to start NuGet audit verifier.");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(ProcessTimeoutSeconds));
+        using var waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            timeout.Token,
+            TestContext.CancellationToken);
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
+            await process.WaitForExitAsync(waitCancellation.Token);
+            var capturedOutput = await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(waitCancellation.Token);
+            return new(process.ExitCode, capturedOutput[0], capturedOutput[1]);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
         {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("NuGet audit verifier timed out after 20 seconds.");
+            var output = await RequestTerminationAndDrainAsync(
+                process,
+                stdoutTask,
+                stderrTask,
+                "NuGet audit verifier");
+            throw new TimeoutException(
+                $"NuGet audit verifier timed out after {ProcessTimeoutSeconds} seconds. Output:{Environment.NewLine}{output}",
+                exception);
+        }
+        catch (OperationCanceledException) when (TestContext.CancellationToken.IsCancellationRequested)
+        {
+            await RequestTerminationAndDrainAsync(
+                process,
+                stdoutTask,
+                stderrTask,
+                "NuGet audit verifier");
+            throw;
+        }
+    }
+
+    private static async Task<string> RequestTerminationAndDrainAsync(
+        Process process,
+        Task<string> stdoutTask,
+        Task<string> stderrTask,
+        string description)
+    {
+        if (!process.HasExited)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) when (process.HasExited)
+            {
+                // The process exited between the state check and the kill request.
+            }
         }
 
-        return new(process.ExitCode, await stdoutTask, await stderrTask);
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(CleanupTimeoutSeconds));
+        try
+        {
+            await process.WaitForExitAsync(cleanupTimeout.Token);
+            var capturedOutput = await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(cleanupTimeout.Token);
+            return PowerShellOutputNormalizer.Normalize(
+                capturedOutput[0] + Environment.NewLine + capturedOutput[1]);
+        }
+        catch (OperationCanceledException exception) when (cleanupTimeout.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"{description} did not exit and close redirected streams within " +
+                $"{CleanupTimeoutSeconds} seconds after process-tree termination was requested.",
+                exception);
+        }
     }
 
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr)

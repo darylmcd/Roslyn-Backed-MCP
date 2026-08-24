@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-24T21:36:27Z
+**updated_at:** 2026-08-24T23:01:31Z
 
 ## Agent contract
 
@@ -183,6 +183,8 @@
 | `workspace-fixture-load-amortization-wave-3` | Low | — | Amortize repeated isolated loads in scaffolding and cross-project refactoring tests with deterministic per-case state restoration. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/workspace-fixture-load-amortization-wave-3.md |
 | `isolated-workspace-restore-helper-deduplication` | Low | — | **Share isolated-workspace restore** — centralize cancellation-aware restore execution and complete failure diagnostics across both duplicate suites. [type: test infrastructure] [source: 2026-08-24 adjacent review] | S | items/isolated-workspace-restore-helper-deduplication.md |
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
+| `dependency-gate-process-tests-runner-adoption` | Low | powershell-script-test-runner-foundation | Adopt shared process runner in dependency gate tests — replace duplicated PowerShell launch, timeout, process-tree termination, root-reap, and output-drain plumbing without weakening fail-closed assertions. [type: test-refactor] [source: 2026-08-24 loaded-machine gate failure] | S | items/dependency-gate-process-tests-runner-adoption.md |
+| `mstest-cooperative-timeout-token-flow` | Low | — | Make cooperative test timeouts cancel owned work — flow MSTest cancellation through the third-party notice verifier and elicitation coordinator so hung work cannot outlive the advertised ceiling. [type: test-correctness] [source: 2026-08-24 adjacent review] | S | items/mstest-cooperative-timeout-token-flow.md |
 
 ## Defer
 

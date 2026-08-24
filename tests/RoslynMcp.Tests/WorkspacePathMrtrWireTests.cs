@@ -19,7 +19,7 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Raw-wire contract for the <c>mcp-mrtr-dispatch-contract</c> initiative: server-driven input
-/// through <see cref="RequestScopedInputAdapter"/> must be portable across both SDK 2.1 session
+/// through <see cref="RequestScopedInputAdapter"/> must be portable across both supported SDK session
 /// eras. Mirrors the dual-protocol harness pattern of
 /// <see cref="ProtocolVersionResultShapeWireTests"/> (negotiated <c>2025-11-25</c> vs
 /// <c>2026-07-28</c>, asserting against <c>harness.RawServerMessages</c>). Pins:
