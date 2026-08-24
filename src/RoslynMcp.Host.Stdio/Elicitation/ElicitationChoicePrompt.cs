@@ -195,7 +195,7 @@ internal static class ElicitationChoicePrompt
         }
         catch (InvalidOperationException ex)
         {
-            // ModelContextProtocol.Core 2.1's ElicitAsync XML contract declares only
+            // The SDK's public ElicitAsync XML contract declares only
             // InvalidOperationException (unsupported) and McpException (request/client error)
             // beyond caller-precondition failures. IOException/ObjectDisposedException are not
             // declared transport outcomes and intentionally remain hard failures. Keep this

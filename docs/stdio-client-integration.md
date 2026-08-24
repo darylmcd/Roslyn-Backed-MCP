@@ -9,7 +9,7 @@ If you're using Claude Code (via the `/plugin install roslyn-mcp@roslyn-mcp-mark
 - **Transport:** NDJSON (newline-delimited JSON) on stdin/stdout. Each message is a single JSON object followed by `\n`. **Do not** use LSP-style `Content-Length:` framing — the server ignores headers and treats the first non-JSON byte as a parse error.
 - **Stderr** is for operational logging. Do not parse it as protocol traffic.
 - **Spec:** [Model Context Protocol](https://modelcontextprotocol.io). The server implements the stdio transport; the public MCP SDKs speak it natively.
-- **Protocol eras:** MCP SDK 2.1 serves modern `2026-07-28` requests and initialize-capable `2025-11-25` and earlier clients. Prefer an official SDK so discovery and fallback remain correct.
+- **Protocol eras:** MCP SDK 2.2 serves modern `2026-07-28` requests and initialize-capable `2025-11-25` and earlier clients. Prefer an official SDK so discovery and fallback remain correct.
 
 ## Connection bootstrap
 

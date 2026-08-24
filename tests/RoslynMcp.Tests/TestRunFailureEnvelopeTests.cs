@@ -310,9 +310,9 @@ public sealed class TestRunFailureEnvelopeTests
     // a payload that grew linearly with the failure count.
     //
     // Cap investigation (the row's acceptance criterion — measured, not assumed): there is NO
-    // response-size constant anywhere to guard against. `rg` over src/ finds no
-    // MaximumResponseSize/MaxResponseSize/ResponseSizeLimit/OutputSizeLimit, and a symbol sweep
-    // over the pinned ModelContextProtocol 2.1.0 assemblies finds no
+    // response-size constant anywhere to guard against. A source audit found no
+    // MaximumResponseSize/MaxResponseSize/ResponseSizeLimit/OutputSizeLimit, and a restored-
+    // assembly symbol audit found no
     // MaxMessageSize/MaximumMessageSize/MaxResponseSize/SizeLimit either. The MCP protocol
     // imposes no ceiling; the real ceiling is the consuming client's context budget. The tests
     // below therefore MEASURE the serialized payload rather than comparing it to a constant, and
@@ -448,8 +448,8 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task RunTests_WorstCasePayload_StaysWithinTheMeasuredCeiling()
     {
         // Acceptance criterion for test-run-failures-pagination-truncation: no MCP/SDK/in-repo
-        // response-size constant exists (verified by grep over src/ and a symbol sweep over the
-        // pinned ModelContextProtocol 2.1.0 assemblies), so the guard has to be an explicitly
+        // response-size constant exists (verified by a source and symbol audit over the restored
+        // ModelContextProtocol assemblies), so the guard has to be an explicitly
         // MEASURED budget rather than a comparison against a protocol constant.
         //
         // This drives the true worst case at the shipped defaults: every returned failure carries

@@ -17,7 +17,7 @@ internal static class RequestProtocolFeatureGate
 
         var protocolVersion = context.JsonRpcRequest.Context?.ProtocolVersion
             ?? context.Server.NegotiatedProtocolVersion;
-        // MCP revision identifiers are ISO-8601 dates. Mirror the SDK 2.1 gate exactly; its
+        // MCP revision identifiers are ISO-8601 dates. Mirror the SDK's gate exactly; its
         // McpProtocolVersions helper is internal and therefore unavailable to server filters.
         return !string.IsNullOrEmpty(protocolVersion)
             && StringComparer.Ordinal.Compare(protocolVersion, July2026ProtocolVersion) >= 0;

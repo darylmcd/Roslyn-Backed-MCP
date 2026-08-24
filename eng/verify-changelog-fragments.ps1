@@ -203,7 +203,13 @@ foreach ($file in $fragments) {
         continue
     }
 
-    $firstBodyLine = @($bodyLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })[0].Trim()
+    $nonBlankBodyLines = @($bodyLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($nonBlankBodyLines.Count -ne 1) {
+        $errors.Add("$($file.Name): body must contain exactly one nonblank bullet line")
+        continue
+    }
+
+    $firstBodyLine = $nonBlankBodyLines[0].Trim()
     $expectedPrefix = "- **$category`:**"
     if (-not $firstBodyLine.StartsWith($expectedPrefix, [System.StringComparison]::Ordinal)) {
         $errors.Add(

@@ -31,7 +31,7 @@ internal enum RequestScopedInputOutcome
 
 /// <summary>
 /// The single request-scoped boundary through which the <c>tools/call</c> recovery pipeline asks
-/// the user for input, portable across both SDK 2.1 session modes (SEP-2322 MRTR on the
+/// the user for input, portable across both supported SDK session modes (SEP-2322 MRTR on the
 /// <c>2026-07-28</c> revision, and the <c>2025-11-25</c>-and-earlier initialize-handshake
 /// sessions).
 ///

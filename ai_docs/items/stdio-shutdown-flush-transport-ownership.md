@@ -21,3 +21,4 @@
 - SDK 2.1 stdio transport constructs its own `BufferedStream(Console.OpenStandardOutput())` and flushes that stream after each send.
 - Current production shutdown code flushes `Console.Out` instead, while tests explicitly admit they do not exercise a real process or transport.
 - The current transport-disconnect catch writes `ex.Message` directly to stderr; removal of the ineffective flusher must not preserve that separate disclosure.
+2026-08-24 SDK 2.2 servicing review: the stdio transport ownership and per-send flush behavior above are unchanged; acceptance now targets the pinned SDK 2.2.0 assemblies.

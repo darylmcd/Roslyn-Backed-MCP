@@ -1,6 +1,6 @@
 # MCP Client Compatibility Matrix
 
-The Roslyn-Backed MCP server uses the standard MCP stdio transport and explicitly supports the protocol eras recorded in [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md). A client must support both stdio and one of those protocol contracts; this matrix records the install paths actually exercised plus known gotchas. PRs welcome to flip rows from *Likely* to *Tested* with evidence.
+The Roslyn-Backed MCP server uses the standard MCP stdio transport and explicitly supports the protocol eras recorded in [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md). [ADR 0006](decisions/0006-modelcontextprotocol-2-2-servicing.md) records the non-breaking SDK 2.2 servicing review and confirms that the separate ASP.NET Core hybrid-session feature is not part of this stdio product. A client must support both stdio and one of those protocol contracts; this matrix records the install paths actually exercised plus known gotchas. PRs welcome to flip rows from *Likely* to *Tested* with evidence.
 
 ## Status legend
 

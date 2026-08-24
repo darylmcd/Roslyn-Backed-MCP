@@ -18,7 +18,7 @@ Per-PR-per-file fragments are merge-safe by construction: no two PRs ever touch 
 ## File shape
 
 - **Filename:** `<backlog-row-id>.md` — kebab-case, matches the backlog row the change closes. If a single PR closes multiple rows, pick one id as the filename; cite all closed rows in the bullet body.
-- **Format:** YAML frontmatter carrying the CHANGELOG category; body is a single bullet in the shipping `**<Category>:**` prose style.
+- **Format:** YAML frontmatter carrying the CHANGELOG category; body is exactly one nonblank bullet line in the shipping `**<Category>:**` prose style. Keep the complete entry on that line.
 
 Example fragment, filename `changelog.d/release-cut-atomic-skill-bump-ship-tag-reinstall.md`:
 
@@ -55,6 +55,7 @@ Malformed fragments fail the bump skill loudly — no silent skip. Failure modes
 - Missing `category` key in frontmatter.
 - Unknown category value (not one of the five listed above).
 - Empty body (frontmatter-only file).
+- More than one nonblank body line, including a wrapped continuation or a second bullet.
 - Filename is not lowercase kebab-case.
 - The bold category prefix on the first body bullet does not exactly match the
   YAML `category` value.

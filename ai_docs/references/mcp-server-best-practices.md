@@ -33,7 +33,7 @@ Concretely: if a caller omits a required parameter or supplies an unknown parame
 
 ## 2. .NET SDK native pattern: request filters
 
-This repo pins `ModelContextProtocol` 2.1.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
+This repo pins `ModelContextProtocol` 2.2.0. The SDK exposes a first-class decorator/middleware pipeline for each MCP method:
 
 - Entrypoint: `IMcpServerBuilder.WithRequestFilters(Action<IMcpRequestFilterBuilder>)`
 - Tool-call slot: `IMcpRequestFilterBuilder.AddCallToolFilter(McpRequestFilter<CallToolRequestParams, CallToolResult>)`
@@ -64,7 +64,7 @@ Canonical example from the [Microsoft SDK filters docs](https://csharp.sdk.model
 
 ### 2.1 Filters see pre-binding exceptions (as of SDK 0.4.0-preview.3+)
 
-The SDK originally swallowed reflection-binding exceptions inside the invocation wrapper, returning a bare `"An error occurred invoking '<tool>'."` string. That defect is tracked in [csharp-sdk#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820) and [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830), and fixed in [PR #844 "Propagate tool call exceptions through filters"](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (shipped 0.4.0-preview.3 and retained in 2.1.0). Filters observe:
+The SDK originally swallowed reflection-binding exceptions inside the invocation wrapper, returning a bare `"An error occurred invoking '<tool>'."` string. That defect is tracked in [csharp-sdk#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820) and [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830), and fixed in [PR #844 "Propagate tool call exceptions through filters"](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (shipped 0.4.0-preview.3 and retained through 2.2.0). Filters observe:
 
 - `ArgumentException` / `ArgumentNullException` from parameter binding (missing or unknown required argument)
 - `JsonException` from `arguments` deserialization
@@ -93,7 +93,7 @@ Don't invent middleware; use the filter slots the SDK provides (`AddCallToolFilt
 | Metrics / `_meta` injection | The same filter (cross-cutting, not per-tool) | Prevents per-tool duplication; guarantees coverage |
 | Validation of domain inputs (file paths, symbol handles, etc.) | Inside the tool body, throwing typed exceptions that the filter classifies | Keeps business logic local; the filter provides the envelope |
 
-**Anti-pattern:** wrapping tool bodies with `ToolErrorHandler.ExecuteAsync(...)` as the primary error boundary. This is the pre-filter legacy pattern that misses pre-binding failures entirely. New tools must not adopt it; existing usages should migrate to the filter.
+**Anti-pattern:** wrapping tool bodies with `ToolErrorHandler.ExecuteAsync(...)` as the primary error boundary. This is the pre-filter legacy pattern that misses pre-binding failures entirely. All legacy usages have been retired; do not reintroduce it.
 
 ---
 
@@ -142,7 +142,7 @@ Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC 
 - **Every public parameter must carry `[Description(...)]`.** Agents introspect these via `ToolSearch` / `tools/list`; undocumented parameters lead to the exact failure mode that triggered this doc's creation.
 - **Prefer required non-nullable types over optional-with-sentinel-null** for parameters the tool truly cannot proceed without. The filter will surface a clean `InvalidArgument` envelope naming the parameter when it's missing.
 - **Read-only annotations** (`[McpServerTool(ReadOnly = true)]`) matter — clients gate what a tool can do based on these. Get them right.
-- **DI-register services against the interface that tool methods inject**, not only the concrete type. [`di-register-latest-version-provider`](../backlog.md) recorded the failure mode: if the SDK's parameter binder can't resolve a service-typed parameter, it leaks that parameter into the tool schema as a required user-supplied argument.
+- **DI-register services against the interface that tool methods inject**, not only the concrete type. If the SDK's parameter binder can't resolve a service-typed parameter, it leaks that parameter into the tool schema as a required user-supplied argument.
 
 ---
 
@@ -157,7 +157,7 @@ This section is the live log of decisions derived from the above principles. Upd
 | `ClassifyError` handles pre-binding failures in BOTH shapes: wrapped in `TargetInvocationException` / `InvalidOperationException` AND raw-unwrapped as the SDK filter pipeline delivers them | § 4.1 | [`ToolErrorHandler.TryClassifyBindingLike`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) — single helper invoked against both the inner exception (wrapped) and the exception itself (unwrapped). Resolves [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830) for this repo's filter path. Regression coverage: [`ToolErrorHandlerParameterValidationTests`](../../tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs), [`StructuredCallToolFilterTests.BuildErrorResult_MissingRequiredParameter_*`](../../tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs). |
 | `_meta` block on every response with gate-metrics snapshot | § 5 | The filter opens the [`AmbientGateMetrics`](../../src/RoslynMcp.Core/Services/AmbientGateMetrics.cs) scope on entry and injects the snapshot via [`ToolErrorHandler.InjectMetaIfPossible`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) on both success (into the first `TextContentBlock` of the returned `CallToolResult`) and error (into the envelope text). Array-rooted responses pass through unchanged — see `StructuredCallToolFilter.InjectMetaIntoContent`. |
 | Stdio transport writes framed JSON-RPC only; operational and opt-in structured diagnostics use stderr | § 4.4, § 5 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), [`ServerObservability`](../../src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs), [`McpLoggingLifecycleWireTests`](../../tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs) |
-| Services registered against interface + concrete type for SDK binder compatibility | § 6 | [Program.cs:47-49](../../src/RoslynMcp.Host.Stdio/Program.cs) with `di-register-latest-version-provider` comment |
+| Services registered against interface + concrete type for SDK binder compatibility | § 6 | [`ServiceCollectionExtensions.AddRoslynMcpHostServices`](../../src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs) bridges `NuGetVersionChecker` to `ILatestVersionProvider`; [`ServiceCollectionExtensionsTests`](../../tests/RoslynMcp.Tests/ServiceCollectionExtensionsTests.cs) and [`ToolDiResolutionTests`](../../tests/RoslynMcp.Tests/ToolDiResolutionTests.cs) guard the composition root. |
 
 ---
 

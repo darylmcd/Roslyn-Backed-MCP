@@ -42,6 +42,10 @@ A release is production-ready when all of the following are true:
 - [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md) records the direct
   `ModelContextProtocol` 1.4.1→2.1.0 adoption, evaluated intervening releases, dual-era wire
   decisions, breaking-correction migrations, and the distinction between SDK and RoslynMcp versions.
+- [ADR 0006](decisions/0006-modelcontextprotocol-2-2-servicing.md) records the
+  `ModelContextProtocol` 2.1.0→2.2.0 servicing review, confirms that the separate ASP.NET Core
+  hybrid-session feature is outside this stdio product, and retains both supported protocol eras
+  without a consumer migration.
 - Future SDK major upgrades must add or supersede an ADR before release. The record must include the
   exact package lineage, supported protocol eras, public-change classification, raw-wire evidence,
   and consumer migration for each breaking correction.

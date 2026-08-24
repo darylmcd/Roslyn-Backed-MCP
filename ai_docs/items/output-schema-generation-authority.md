@@ -21,3 +21,4 @@
 
 - SDK 2.1 generates a schema from `McpServerToolAttribute.OutputSchemaType`, then `SurfaceRegistrationPolicy` overwrites it from `ToolOutputSchemaIndex`; fixed schemas can drift even though variant unions require a deliberate custom contract.
 2026-08-20 adjacent review: JsonDefaults now includes custom public-projection converters and ToolOutputSchemaIndex clones those serializer options. .NET 10 JsonSchemaExporter can emit boolean true for a custom-converted type, erasing its DTO shape. Extend this row's fixed-versus-union matrix with BuildResultDto/TestRunResultDto projection parity or separate schema-export options before either type gains an advertised structured schema.
+2026-08-24 SDK 2.2 servicing review: the SDK-generated output-schema behavior above is unchanged; treat 2.2.0 as the current pin for implementation and regression evidence.
