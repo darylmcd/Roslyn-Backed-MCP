@@ -10,34 +10,61 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// Direct coverage for <see cref="StructuredCallContentProjector"/>, the structured-content /
 /// <c>_meta</c> projection layer extracted from <see cref="StructuredCallToolFilter"/> by the
-/// <c>structuredcalltoolfilter-hotspot-decomposition-followup</c> initiative. These tests call the
-/// projector directly (not through the filter's thin delegate) so the extracted collaborator is
+/// filter. These tests call the projector directly (not through the filter's thin delegate) so the
+/// extracted collaborator is
 /// exercised on its own surface. The delegate-forwarded behavior stays pinned by
 /// <see cref="StructuredCallToolFilterTests"/> and <see cref="StructuredContentRoundTripTests"/>.
 /// </summary>
 [TestClass]
 public sealed class StructuredCallContentProjectorTests
 {
-    // ── _meta injection on the success path (mirrors StructuredCallToolFilterTests) ──
-
     [TestMethod]
-    public void InjectMetaIntoContent_ObjectRootedJson_InjectsMetaField()
+    public void InjectMetaIntoContent_PascalCaseDtoSerialization_EmitsCamelCaseBodyAndMeta()
     {
         using var scope = AmbientGateMetrics.BeginRequest();
+        var bodyJson = JsonSerializer.Serialize(
+            new
+            {
+                WorkspaceId = "ws-1",
+                LineCount = 42,
+                ProjectCount = 3,
+                IsLoaded = true,
+            },
+            JsonDefaults.Indented);
         var input = new CallToolResult
         {
             IsError = false,
-            Content = [new TextContentBlock { Text = """{"result":"ok"}""" }],
+            Content = [new TextContentBlock { Text = bodyJson }],
         };
 
-        var result = StructuredCallContentProjector.InjectMetaIntoContent(input, "test_tool");
+        var result = StructuredCallContentProjector.InjectMetaIntoContent(input, "workspace_status");
 
         var text = ((TextContentBlock)result.Content![0]).Text;
         using var document = JsonDocument.Parse(text);
         var payload = document.RootElement;
+
+        foreach (var property in payload.EnumerateObject())
+        {
+            if (property.Name != "_meta")
+            {
+                Assert.IsTrue(char.IsLower(property.Name[0]),
+                    $"Top-level response key '{property.Name}' must be camelCase.");
+            }
+        }
+
         Assert.IsTrue(payload.TryGetProperty("_meta", out var meta),
             "Object-rooted success responses must carry a _meta block for observability.");
-        Assert.IsTrue(meta.TryGetProperty("queuedMs", out _));
+        foreach (var property in meta.EnumerateObject())
+        {
+            Assert.IsTrue(char.IsLower(property.Name[0]),
+                $"_meta key '{property.Name}' must be camelCase.");
+        }
+
+        foreach (var requiredField in new[] { "queuedMs", "heldMs", "elapsedMs" })
+        {
+            Assert.IsTrue(meta.TryGetProperty(requiredField, out _),
+                $"_meta.{requiredField} is part of the documented gate-metrics surface.");
+        }
     }
 
     [TestMethod]

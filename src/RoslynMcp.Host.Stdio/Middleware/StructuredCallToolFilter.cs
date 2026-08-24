@@ -727,7 +727,7 @@ internal static class StructuredCallToolFilter
     /// Thin delegate preserving the historical static call surface. The structured-content /
     /// <c>_meta</c> projection lives in
     /// <see cref="StructuredCallContentProjector.InjectMetaIntoContent(CallToolResult, string)"/>;
-    /// kept here so <see cref="Create"/> and the existing filter/content test suites compile unchanged.
+    /// kept here to preserve the historical internal call surface used by <see cref="Create"/>.
     /// </summary>
     internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName) =>
         StructuredCallContentProjector.InjectMetaIntoContent(result, toolName);

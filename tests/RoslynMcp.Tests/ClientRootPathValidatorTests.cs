@@ -765,7 +765,10 @@ public class ClientRootPathValidatorTests
         // Windows filesystem semantics — root casing should not matter.
         // Linux filesystems are case-sensitive, so this test is Windows-only.
         if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Case-insensitive path containment is a Windows-specific contract.");
             return;
+        }
 
         var roots = new[] { @"C:\Repo\Main" };
         Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
@@ -777,6 +780,7 @@ public class ClientRootPathValidatorTests
     {
         if (OperatingSystem.IsWindows())
         {
+            Assert.Inconclusive("Case-sensitive path containment is a non-Windows contract.");
             return;
         }
 

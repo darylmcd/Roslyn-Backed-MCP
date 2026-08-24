@@ -12,6 +12,22 @@
 - Baseline numbers and test-priority notes: `docs/coverage-baseline.md`.
 - CI artifact: `code-coverage` (see `CI_POLICY.md`).
 
+## CI Shards And Timing Evidence
+
+| Contract | Location |
+|---|---|
+| Deterministic compiled-class planner | `eng/get-test-shard-plan.ps1` |
+| Empty-filter failure | `eng/ci.runsettings` (`TreatNoTestsAsError=true`) |
+| Shard entry point | `eng/verify-release.ps1 -TestShardIndex <zero-based> -TestShardCount <count>` |
+| CI non-owner shard lane | Add `-TestShardOnly` to skip platform-neutral policy checks and publish/hash; do not use it as the standalone release gate |
+| Per-leg duration/failure evidence | `artifacts/test-results/*.trx`; hosted artifact `test-results-<leg>` |
+| Bounded job-summary renderer | `eng/summarize-test-results.ps1 -ResultsPath artifacts/test-results` |
+
+- Keep local `just ci` unsharded; it proves the complete suite in one invocation.
+- For CI, require nonempty shards whose class sets are disjoint and whose union equals discovery.
+- Use exact `ClassName` filters. Do not revive per-source-regex or `FullyQualifiedName~` slicing.
+- Diagnose slow tests from repeated TRX durations. A timeout attribute or method count is not runtime evidence.
+
 ## Build + Test Baseline
 
 1. `dotnet build RoslynMcp.slnx --nologo`
@@ -26,3 +42,5 @@
 - Prefer integration coverage for end-to-end workspace and tool behavior.
 - For docs-only changes, run lightweight link/reference checks at minimum.
 - For contract/surface changes, include or update tests in the same branch.
+- Report unsupported-platform cases as inconclusive/skipped, never as a passing early return.
+- Release any deliberately blocked/non-cooperative worker before the test returns; otherwise isolate it in a disposable child process.

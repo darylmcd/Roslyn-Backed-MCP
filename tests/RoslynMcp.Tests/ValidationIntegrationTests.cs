@@ -62,24 +62,21 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task SelfHostedWorkspace_AnalyzerReference_Loads_From_Shadow_Copy()
+    public async Task ReleaseConfiguration_AnalyzerReference_Loads_From_Shadow_Copy()
     {
         if (!OperatingSystem.IsWindows())
         {
+            Assert.Inconclusive("Analyzer shadow-copy loading relies on Windows file-lock semantics.");
             return;
         }
 
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
 
-        // selfhosted-shadow-copy-analyzer-reference-test-fails: detect the host's actual
-        // build configuration from AppContext.BaseDirectory and pass it to MSBuildWorkspace
-        // as a Configuration global property. Without this, MSBuildWorkspace defaults to
-        // Configuration=Debug evaluation; on the self-hosted Windows runner CI builds only
-        // Release, so the analyzer ProjectReference resolves to a Debug TargetPath that
-        // does not exist on disk and Roslyn drops the AnalyzerFileReference. Passing
-        // global properties also opts the load out of session deduplication, guaranteeing
-        // a fresh evaluation even if another test has already cached a session for the
-        // same path under default globals.
+        // Match the testhost's actual build configuration. Otherwise MSBuildWorkspace
+        // defaults to Debug evaluation even when CI built only Release; the analyzer
+        // ProjectReference then resolves to a missing Debug TargetPath and Roslyn drops
+        // the AnalyzerFileReference. Explicit globals also force a fresh evaluation rather
+        // than reusing a session cached under different properties.
         var configuration = AppContext.BaseDirectory.Contains(
             Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
@@ -119,7 +116,7 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             Assert.IsTrue(build.Execution.Succeeded, build.Execution.StdErr);
             Assert.IsFalse(
                 (build.Execution.StdOut + build.Execution.StdErr).Contains("MSB3027", StringComparison.OrdinalIgnoreCase),
-                "The self-hosted build must not hit the analyzer DLL file-lock retry path.");
+                "The Release-configured build must not hit the analyzer DLL file-lock retry path.");
 
             using var stream = new FileStream(
                 analyzerReference.FullPath!,

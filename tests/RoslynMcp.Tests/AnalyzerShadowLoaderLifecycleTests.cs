@@ -42,6 +42,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     {
         if (!OperatingSystem.IsWindows())
         {
+            Assert.Inconclusive("Analyzer shadow-file lifecycle relies on Windows file-lock semantics.");
             return;
         }
 
@@ -80,6 +81,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     {
         if (!OperatingSystem.IsWindows())
         {
+            Assert.Inconclusive("Analyzer shadow-file lifecycle relies on Windows file-lock semantics.");
             return;
         }
 
@@ -154,6 +156,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     {
         if (!OperatingSystem.IsWindows())
         {
+            Assert.Inconclusive("Analyzer shadow-file lifecycle relies on Windows file-lock semantics.");
             return;
         }
 

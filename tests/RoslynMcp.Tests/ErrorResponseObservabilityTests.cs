@@ -13,7 +13,6 @@ namespace RoslynMcp.Tests;
 // workspace flagged stale, causing the gate to auto-reload mid-call and
 // classify the KeyNotFoundException as WorkspaceReloadedDuringCall instead.
 // The isolated copy has no such cross-class pressure.
-[DoNotParallelize]
 [TestClass]
 public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
 {

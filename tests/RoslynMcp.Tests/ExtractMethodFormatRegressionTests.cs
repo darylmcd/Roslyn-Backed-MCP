@@ -1,3 +1,5 @@
+using RoslynMcp.Tests.Helpers;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -51,6 +53,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
             }
             """);
 
+        Exception? primaryFailure = null;
         try
         {
             // Extract the two `var` declarations into ComputeIntermediate. `doubled` flows
@@ -91,9 +94,14 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 updated.Contains("    private int ComputeIntermediate", StringComparison.Ordinal),
                 $"Synthesized method must be indented to class scope. Got:\n{updated}");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            await CleanupAsync(workspaceId, solutionDir);
+            await CleanupAsync(workspaceId, solutionDir, primaryFailure);
         }
     }
 
@@ -122,6 +130,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
             }
             """);
 
+        Exception? primaryFailure = null;
         try
         {
             // Extract the three statements that compute `combined` (lines 7-9).
@@ -168,9 +177,14 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 trimmed.EndsWith("}", StringComparison.Ordinal),
                 $"File must end cleanly with the class brace. Got tail: {trimmed[^Math.Min(20, trimmed.Length)..]}");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            await CleanupAsync(workspaceId, solutionDir);
+            await CleanupAsync(workspaceId, solutionDir, primaryFailure);
         }
     }
 
@@ -198,6 +212,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
             }
             """);
 
+        Exception? primaryFailure = null;
         try
         {
             // Extract the two `var` decls — `doubled` is the single flowsOut variable
@@ -224,9 +239,14 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 post,
                 "Extract method output is not idempotent under Roslyn's Formatter — this is the dr-9-7 / dr-9-9 regression shape.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            await CleanupAsync(workspaceId, solutionDir);
+            await CleanupAsync(workspaceId, solutionDir, primaryFailure);
         }
     }
 
@@ -243,11 +263,17 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
         return (loadResult.WorkspaceId, fixturePath, solutionDir);
     }
 
-    private static async Task CleanupAsync(string workspaceId, string solutionDir)
+    private static async Task CleanupAsync(
+        string workspaceId,
+        string solutionDir,
+        Exception? primaryFailure)
     {
-        WorkspaceManager.Close(workspaceId);
-        await Task.Yield();
-        TryDeleteDirectory(solutionDir);
+        await CleanupFailureCollector.RunAfterFailureAsync(
+            "Extract-method regression and fixture cleanup both failed.",
+            primaryFailure,
+            CleanupFailureCollector.FromAction(() => WorkspaceManager.Close(workspaceId)),
+            CleanupFailureCollector.FromAction(
+                () => TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir)));
     }
 
     private static async Task<string> FormatViaRoslynAsync(string source)
@@ -260,18 +286,4 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
         return formatted.ToFullString();
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
-        }
-    }
 }

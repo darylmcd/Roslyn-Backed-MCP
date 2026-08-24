@@ -100,15 +100,7 @@ public sealed class PluginPackageAllowlistTests
         return new PwshResult(process.ExitCode, stdout, stderr);
     }
 
-    private static string ResolvePwsh()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return "pwsh";
-        }
-
-        return "pwsh";
-    }
+    private static string ResolvePwsh() => OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
 
     private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
 }

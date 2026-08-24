@@ -12,8 +12,7 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Direct coverage for <see cref="StructuredCallElicitationCoordinator"/>, the elicitation/retry
-/// orchestration layer extracted from <see cref="StructuredCallToolFilter"/> by the
-/// <c>structuredcalltoolfilter-hotspot-decomposition-followup</c> initiative. These tests call the
+/// orchestration layer extracted from <see cref="StructuredCallToolFilter"/>. These tests call the
 /// coordinator directly so the extracted collaborator is exercised on its own surface. Live
 /// filter composition and transport behavior are pinned by <c>WorkspacePathMrtrWireTests</c>.
 /// </summary>

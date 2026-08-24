@@ -1,197 +1,168 @@
 name: ci
 
-# Trigger model (see CI_POLICY.md § Repository Evidence):
-#   - pull_request        — primary merge gate for every PR
-#   - workflow_dispatch   — manual re-run (keeps coverage + artifacts)
-#   - schedule (weekly)   — keeps coverage trend data and artifact freshness on main
-#
-# push-to-main was removed to eliminate the duplicate run that immediately follows
-# a squash-merge (the PR head commit was already validated seconds earlier).
+# Trigger model (see CI_POLICY.md): pull requests are the merge gate; manual
+# dispatch and the weekly schedule retain coverage and live-network canaries.
+# Push-to-main is intentionally absent because protected changes arrive through
+# an already-validated pull request.
 on:
   pull_request:
   workflow_dispatch:
   schedule:
     - cron: "45 5 * * 1"
 
-# Cancel superseded PR runs so a rapid push sequence doesn't leave zombie runs
-# burning a runner slot. Workflow-dispatch and scheduled runs never cancel.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  # Hosted-fallback router — see docs/self-hosted-runner.md
-  # § Hosted fallback for an offline runner.
-  #
-  # runs-on is evaluated before any job executes, so routing around an
-  # offline/wedged self-hosted runner requires a job that runs first and
-  # feeds its decision through `needs.route.outputs`. This job always
-  # completes (never skipped) so `validate`'s implicit `needs: route`
-  # success() gate is never itself the reason validate gets skipped.
-  #
-  # Security boundary (must not change): fork PRs and dependabot PRs are
-  # routed to ubuntu-latest unconditionally, without ever calling the
-  # runners API — this job replicates the exact maintainer-PR predicate
-  # from the original runs-on conditional and only probes runner status on
-  # that branch. See docs/self-hosted-runner.md § Security model.
+  # Compute the complete validation topology before any platform job is queued.
+  # Public pull-request code is always routed to ephemeral GitHub-hosted
+  # runners. Every code PR receives four concurrent Windows shards and two
+  # concurrent Linux shards; policy-only documentation PRs use two Linux
+  # shards so every documentation contract test still executes.
   route:
-    name: Route runner
+    name: Route validation
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
+      docs_only: ${{ steps.decide.outputs.docs_only }}
       runner_matrix: ${{ steps.decide.outputs.runner_matrix }}
     steps:
-      - name: Decide target runner
+      - name: Decide validation topology
         id: decide
         shell: pwsh
         env:
-          # Fine-grained PAT with Administration:read on this repo, stored
-          # as the RUNNER_STATUS_PAT secret. The workflow GITHUB_TOKEN
-          # cannot read the runners API (repo-admin scope). Operator setup
-          # is documented in docs/self-hosted-runner.md § Availability;
-          # until the secret is added this always falls back to the
-          # current self-hosted routing (never blocks CI).
-          GH_TOKEN: ${{ secrets.RUNNER_STATUS_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Single source of truth for the runner labels. Both matrix payloads
-          # below AND the online-runner filter further down derive from these
-          # variables, so each label literal appears exactly once in this job
-          # (drift between two hardcoded copies silently disables the fallback).
-          $selfHostedLabels = @('self-hosted', 'roslynmcp-dev')
-          $selfHostedRunnerLabel = $selfHostedLabels[-1]
-          $hostedLabel = 'ubuntu-latest'
+          $ErrorActionPreference = 'Stop'
 
-          # runner_matrix drives validate's job matrix (one leg per entry).
-          # Every self-hosted route carries a non-primary ubuntu-latest leg so
-          # a maintainer PR is ALSO validated on the OS the publish gate uses
-          # (merge/publish OS parity — the v3.0.1 tag failed on Linux with a
-          # suite that had passed pre-merge on Windows only; see CI_POLICY.md
-          # § Merge Gating Expectations). Hosted routes stay single-leg so the
-          # Linux leg is never duplicated. Exactly one leg has primary=true;
-          # artifact uploads run only there to keep artifact names unique.
-          # -AsArray keeps the single-leg hosted payload a JSON array (fromJSON
-          # would otherwise receive a bare object); piping (not -InputObject)
-          # is required so the outer @() is not itself serialized as an element.
-          $selfHostedMatrix = @(
-            [ordered]@{ runs_on = $selfHostedLabels; os = 'windows'; primary = $true },
-            [ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $false }
-          ) | ConvertTo-Json -Compress -Depth 5 -AsArray
-          $hostedMatrix = @(
-            [ordered]@{ runs_on = $hostedLabel;      os = 'linux';   primary = $true }
-          ) | ConvertTo-Json -Compress -Depth 5 -AsArray
+          function New-Leg {
+            param(
+              [Parameter(Mandatory)][string] $Name,
+              [Parameter(Mandatory)]
+              [ValidateSet('ubuntu-latest', 'windows-latest')]
+              [string] $RunsOn,
+              [Parameter(Mandatory)][bool] $ArtifactOwner,
+              [Parameter(Mandatory)][int] $TimeoutMinutes,
+              [Parameter(Mandatory)][int] $TestShardIndex,
+              [Parameter(Mandatory)][int] $TestShardCount
+            )
 
-          $isMaintainerPr = "${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' }}"
-          if ($isMaintainerPr -ne 'true') {
-            # Fork PRs, dependabot PRs, workflow_dispatch, and schedule runs
-            # never reach the self-hosted runner regardless of router
-            # output or runner status — preserves the security boundary in
-            # docs/self-hosted-runner.md § Security model. No API call is
-            # made on this branch.
-            Write-Host "Not a maintainer pull_request event - hosted routing (unconditional)."
-            "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            exit 0
-          }
-
-          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-            Write-Host "::notice title=Router::RUNNER_STATUS_PAT secret is not set - defaulting to self-hosted routing (current behavior)."
-            "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            exit 0
-          }
-
-          $apiErr = [System.IO.Path]::GetTempFileName()
-          try {
-            $apiJson = gh api "repos/${{ github.repository }}/actions/runners" 2>$apiErr | Out-String
-            $apiStderr = Get-Content -Raw -LiteralPath $apiErr -ErrorAction SilentlyContinue
-            if (-not [string]::IsNullOrWhiteSpace($apiStderr)) {
-              Write-Host "gh api stderr (non-fatal unless the call also failed):`n$apiStderr"
+            [ordered]@{
+              name = $Name
+              runs_on = $RunsOn
+              artifact_owner = $ArtifactOwner
+              timeout_minutes = $TimeoutMinutes
+              test_shard_index = $TestShardIndex
+              test_shard_count = $TestShardCount
             }
+          }
+
+          function Write-Route {
+            param(
+              [Parameter(Mandatory)][object[]] $Matrix,
+              [Parameter(Mandatory)][string] $Reason
+            )
+
+            $json = @($Matrix) | ConvertTo-Json -Compress -Depth 6 -AsArray
+            "runner_matrix=$json" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "::notice title=Validation route::$Reason"
+            exit 0
+          }
+
+          $codePullRequest = @(
+            New-Leg -Name 'windows-hosted-1-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
+            New-Leg -Name 'windows-hosted-2-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
+            New-Leg -Name 'windows-hosted-3-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
+            New-Leg -Name 'windows-hosted-4-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
+            New-Leg -Name 'linux-1-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 2
+            New-Leg -Name 'linux-2-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 2
+          )
+          $docsOnlyPullRequest = @(
+            New-Leg -Name 'docs-linux-1-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 2
+            New-Leg -Name 'docs-linux-2-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 2
+          )
+          $scheduledValidation = @(
+            New-Leg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 1
+          )
+
+          $isPullRequest = '${{ github.event_name == 'pull_request' }}' -eq 'true'
+          $docsOnly = $false
+          if ($isPullRequest) {
+            $pullRequestNumber = '${{ github.event.pull_request.number }}'
+            $changedPagesJson = gh api `
+              --paginate `
+              --slurp `
+              "repos/${{ github.repository }}/pulls/$pullRequestNumber/files?per_page=100" |
+              Out-String
             if ($LASTEXITCODE -ne 0) {
-              throw "gh api exited $LASTEXITCODE"
+              throw "Could not enumerate pull-request files and rename origins (gh exit $LASTEXITCODE)."
             }
 
-            $data = $apiJson | ConvertFrom-Json -ErrorAction Stop
-            $online = @($data.runners) | Where-Object {
-              $_.status -eq 'online' -and (@($_.labels | ForEach-Object { $_.name }) -contains $selfHostedRunnerLabel)
+            $changedPages = $changedPagesJson | ConvertFrom-Json -ErrorAction Stop
+            $reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'
+            $enumeratedFileCount = 0
+            $changedSet = [System.Collections.Generic.HashSet[string]]::new(
+              [System.StringComparer]::Ordinal)
+            foreach ($page in @($changedPages)) {
+              foreach ($file in @($page)) {
+                $enumeratedFileCount++
+                foreach ($path in @($file.filename, $file.previous_filename)) {
+                  if (-not [string]::IsNullOrWhiteSpace($path)) {
+                    [void]$changedSet.Add($path)
+                  }
+                }
+              }
             }
-            if ($online.Count -gt 0) {
-              Write-Host "Self-hosted runner (label $selfHostedRunnerLabel) is online - routing to self-hosted."
-              "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            } else {
-              Write-Host "::notice title=Router::No online self-hosted runner with label $selfHostedRunnerLabel - routing to $hostedLabel fallback."
-              "runner_matrix=$hostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+            $changed = @($changedSet)
+            Write-Host "Enumerated $enumeratedFileCount pull-request file records and $($changed.Count) unique current/original paths."
+            $documentationPattern = '^(.*\.md|ai_docs/.*\.json)$'
+            $behaviorBearingMarkdownPattern = `
+              '(^CHANGELOG\.md$|^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/)'
+            $nonDocs = @($changed | Where-Object {
+              $_ -notmatch $documentationPattern -or
+              $_ -match $behaviorBearingMarkdownPattern
+            })
+            if ($enumeratedFileCount -ge 3000 -or $enumeratedFileCount -ne $reportedChangedFileCount) {
+              Write-Warning (
+                "GitHub reported $reportedChangedFileCount changed files but the files API returned " +
+                "$enumeratedFileCount; route full validation because the API result may be capped or incomplete.")
             }
-          } catch {
-            # Missing secret is handled above; this branch is an invalid
-            # PAT, an API/schema failure, or a transient outage. Per
-            # acceptance criterion 3, degrade to the known-working current
-            # behavior (self-hosted) rather than guessing offline.
-            Write-Host "::notice title=Router::Runner status probe failed ($($_.Exception.Message)) - defaulting to self-hosted routing (current behavior)."
-            "runner_matrix=$selfHostedMatrix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            # Without this, $LASTEXITCODE stays non-zero from the failed `gh api`
-            # call above, and GitHub's pwsh step wrapper appends
-            # `if ($LASTEXITCODE) { exit $LASTEXITCODE }` after this script - which
-            # would fail this step (and therefore `route`) even though we degraded
-            # gracefully. `finally` below still runs before this exit takes effect
-            # (PowerShell guarantees finally runs even when exit unwinds a try/catch).
-            exit 0
-          } finally {
-            Remove-Item -LiteralPath $apiErr -Force -ErrorAction SilentlyContinue
+            else {
+              $docsOnly = $changed.Count -gt 0 -and $nonDocs.Count -eq 0
+            }
           }
+
+          "docs_only=$($docsOnly.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          if ($docsOnly) {
+            Write-Route -Matrix $docsOnlyPullRequest -Reason 'Policy-only docs PR: two hosted Linux test shards.'
+          }
+
+          if (-not $isPullRequest) {
+            Write-Route -Matrix $scheduledValidation -Reason 'Dispatch/schedule: one unsharded Linux coverage leg.'
+          }
+
+          Write-Route -Matrix $codePullRequest -Reason 'Code PR: four hosted Windows and two hosted Linux shards.'
 
   validate:
-    name: validate-leg (${{ matrix.leg.os }})
+    name: validate-leg (${{ matrix.leg.name }})
     needs: route
-    # Hybrid runner model — see docs/self-hosted-runner.md.
-    # Maintainer pull_request events run on the self-hosted Windows runner
-    # (faster wall-clock than hosted Linux) when it is online; the `route`
-    # job above probes runner status and falls back to hosted Linux when it
-    # is offline/wedged so PRs stop queueing indefinitely (see
-    # docs/self-hosted-runner.md § Hosted fallback for an offline runner).
-    # Fork PRs, dependabot PRs, workflow_dispatch, and scheduled runs always
-    # stay on GitHub-hosted Linux regardless of router output: fork/dependabot
-    # PRs execute third-party-selected code in tests, which must not run on
-    # the maintainer's box, and routing dependabot to hosted also stops its
-    # PR waves from queueing behind the single self-hosted slot. The `route`
-    # job encodes this same predicate and never calls the runners API for
-    # those events, so the security boundary is unchanged.
-    #
-    # Merge/publish OS parity — validate fans out over route's runner_matrix.
-    # When routing is self-hosted the matrix carries a second, non-primary
-    # ubuntu-latest leg running the IDENTICAL eng/verify-release.ps1 entry
-    # point, so an OS-sensitive test can no longer pass on Windows, merge,
-    # and then fail the Linux publish gate at tag time (the v3.0.1 hole).
-    # fail-fast is off so a Windows-only failure and a Linux-only failure
-    # both surface in one run. These legs report as `validate-leg (windows)` /
-    # `validate-leg (linux)`; the aggregator job below carries the stable
-    # `validate` check name that branch protection already requires.
     strategy:
       fail-fast: false
       matrix:
         leg: ${{ fromJSON(needs.route.outputs.runner_matrix) }}
     runs-on: ${{ matrix.leg.runs_on }}
-    # Self-hosted validation currently completes in ~10-15 min, but hosted Linux
-    # is materially slower: a July dependabot run needed 17m49s, and two fresh
-    # August dependabot runs reached the former 20-min cap without reporting a
-    # test failure. The per-command timeouts below still fail a wedged dotnet
-    # child well before the job cap.
-    #
-    # Per-leg caps, NOT a shared 30. This leg is now a member of the matrix the
-    # required `validate` context aggregates, so a leg timeout blocks merge for
-    # the whole repo rather than merely informing. The hosted leg took 22m43s on
-    # PR #1293 -- only 7 minutes under a shared 30 -- on the same runner class
-    # that hit the 20-min cap twice in August. Give the slow hosted leg real
-    # headroom (45) and keep the fast self-hosted primary tight (30) so a genuine
-    # wedge there still surfaces quickly.
-    timeout-minutes: ${{ matrix.leg.primary && 30 || 45 }}
+    timeout-minutes: ${{ matrix.leg.timeout_minutes }}
     env:
-      # Fail-fast command timeouts for the integration tests (TestBase binds these
-      # ROSLYNMCP_*_TIMEOUT_SECONDS vars). Production defaults (5/10/5 min) are
-      # sized for arbitrary user solutions; the pre-restored sample fixtures here
-      # build in seconds, so a wedged child should fail its test in minutes, not
-      # stack 5-minute timeouts into the job budget.
+      # CI fixtures are pre-restored and should fail a wedged child command
+      # promptly; production defaults remain larger for arbitrary solutions.
       ROSLYNMCP_BUILD_TIMEOUT_SECONDS: "150"
       ROSLYNMCP_TEST_TIMEOUT_SECONDS: "300"
       ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS: "120"
@@ -202,64 +173,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Platform-neutral policy and release-artifact work executes on the sole
+      # hosted Linux artifact owner. Other PR legs restore/build/test only.
       - name: Verify changelog contract
+        if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'
         shell: pwsh
         run: ./eng/verify-changelog-fragments.ps1
 
-      # Doc-only PRs (any **/*.md + ai_docs/**/*.json plan-state) don't change
-      # compiled code, so skipping verify-release.ps1 and artifact uploads saves
-      # ~12 minutes per reconcile-PR wave. The regex `^(.*\.md|ai_docs/.*\.json)$`
-      # covers every .md file regardless of directory — including skills/**/*.md
-      # (shipped plugin surface) and docs/**/*.md — plus ai_docs/*.json plan state.
-      # verify-ai-docs.ps1 still runs unconditionally and now invokes
-      # verify-skills-are-generic.ps1, so a skills/**/SKILL.md edit that introduces
-      # a banned pattern is still caught even when verify-release.ps1 is skipped.
-      # workflow_dispatch and schedule always run the full pipeline. See
-      # CI_POLICY.md § Repository Evidence for the authoritative excluded-paths list.
-      - name: Detect docs-only pull request
-        id: detect
-        if: github.event_name == 'pull_request'
-        # Was shell: bash. Switched to pwsh because the self-hosted Windows
-        # runner under LocalSystem can't invoke C:\Windows\System32\bash.EXE
-        # (WSL refuses LocalSystem). pwsh is available on both hosted ubuntu
-        # and self-hosted Windows; same script body works on both.
+      - name: Validate AI docs
+        if: matrix.leg.artifact_owner == true
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $pr = "${{ github.event.pull_request.number }}"
-          $changed = (gh pr diff $pr --name-only) -split "`n" | Where-Object { $_ -ne '' }
-          Write-Host "Changed files:"
-          $changed | ForEach-Object { Write-Host "  $_" }
-          if ($changed.Count -eq 0) {
-            Write-Host "Empty diff - treating as non-docs-only."
-            "docs_only=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            exit 0
-          }
-          $nonDocs = $changed | Where-Object { $_ -notmatch '^(.*\.md|ai_docs/.*\.json)$' }
-          if (-not $nonDocs) {
-            "docs_only=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Host "::notice title=Docs-only PR::All changed files match **/*.md or ai_docs/**/*.json - skipping verify-release.ps1 and artifact uploads."
-          } else {
-            "docs_only=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          }
+        run: ./eng/verify-ai-docs.ps1
 
       - name: Set up .NET
-        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
-      # Cache the NuGet global-packages folder so repeated CI runs skip the ~5s
-      # download of unchanged packages. The cache key keys off only the files
-      # that actually drive the package graph (central version pin + root build
-      # props + SDK version). Project-file edits no longer create a new cache
-      # entry, which keeps the repo under the 10 GB Actions cache cap instead
-      # of producing a fresh ~33 MB entry on every csproj tweak.
-      # Hosted runners only: the self-hosted runner's ~/.nuget/packages persists
-      # between runs, so cache save/restore there is pure transfer overhead.
       - name: Cache NuGet packages
-        if: steps.detect.outputs.docs_only != 'true' && runner.environment == 'github-hosted'
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
@@ -267,53 +198,64 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Validate AI docs
+      - name: Verify release build (pull request)
+        if: github.event_name == 'pull_request'
         shell: pwsh
-        run: ./eng/verify-ai-docs.ps1
+        run: |
+          $parameters = @{
+            Configuration = 'Release'
+            NoCoverage = $true
+            ExcludeNetworkTests = $true
+            TestShardIndex = ${{ matrix.leg.test_shard_index }}
+            TestShardCount = ${{ matrix.leg.test_shard_count }}
+          }
+          if ('${{ matrix.leg.artifact_owner }}' -ne 'true' -or
+              '${{ needs.route.outputs.docs_only }}' -eq 'true') {
+            $parameters.TestShardOnly = $true
+          }
+          ./eng/verify-release.ps1 @parameters
 
-      # Coverage collection adds ~60-90s per run via coverlet IL-rewrite on every test
-      # assembly, and CI_POLICY.md treats coverage as informational — not a merge gate.
-      # Pass -NoCoverage on pull_request to skip the collection + HTML summary + upload;
-      # workflow_dispatch and the weekly schedule keep full collection so the artifact
-      # is still published and trend data continues.
-      # -ExcludeNetworkTests: PR CI gates vulnerabilities via the dedicated audit
-      # step below; the live api.nuget.org integration tests are redundant here and
-      # network-flaky on the self-hosted runner. Dispatch/schedule stay unfiltered
-      # so the live scan still runs weekly as a canary.
-      - name: Verify release build (pull request — no coverage)
-        if: steps.detect.outputs.docs_only != 'true' && github.event_name == 'pull_request'
-        shell: pwsh
-        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage -ExcludeNetworkTests
-
-      - name: Verify release build (dispatch / schedule — with coverage)
+      - name: Verify release build (dispatch / schedule)
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
-      # Coverage HTML + all artifact uploads are scoped to the primary matrix
-      # leg: upload-artifact v4+ fails on duplicate artifact names within one
-      # run, and the names (host-stdio-publish / release-manifests /
-      # code-coverage) are cited by several docs, so they must stay unsuffixed.
-      - name: Generate coverage HTML summary
-        if: github.event_name != 'pull_request' && matrix.leg.primary == true
-        shell: pwsh
-        run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
-          $tools = Join-Path $env:HOME ".dotnet/tools"
-          $env:PATH = "$tools$([IO.Path]::PathSeparator)$env:PATH"
-          $files = Get-ChildItem -Path "artifacts/coverage" -Recurse -Filter "coverage.cobertura.xml" -ErrorAction SilentlyContinue
-          if (-not $files) { throw "No coverage.cobertura.xml under artifacts/coverage" }
-          $reports = ($files | ForEach-Object { $_.FullName }) -join ";"
-          $target = Join-Path $PWD "artifacts/coverage/report"
-          reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
-
       - name: Audit packages for known vulnerabilities
-        if: steps.detect.outputs.docs_only != 'true'
+        if: needs.route.outputs.docs_only != 'true' && matrix.leg.artifact_owner == true
         shell: pwsh
         run: ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx
 
+      - name: Summarize test timings
+        if: always()
+        shell: pwsh
+        run: ./eng/summarize-test-results.ps1 -ResultsPath artifacts/test-results -OutputPath $env:GITHUB_STEP_SUMMARY
+
+      # Upload every TRX even when its release step fails. Per-leg names prevent
+      # artifact collisions and make slow-test evidence available on both OSes.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.leg.name }}
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Generate coverage HTML summary
+        if: github.event_name != 'pull_request' && matrix.leg.artifact_owner == true
+        shell: pwsh
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
+          $tools = Join-Path $env:HOME '.dotnet/tools'
+          $env:PATH = "$tools$([IO.Path]::PathSeparator)$env:PATH"
+          $files = Get-ChildItem -Path 'artifacts/coverage' -Recurse -Filter 'coverage.cobertura.xml' -ErrorAction Stop
+          if (-not $files) { throw 'No coverage.cobertura.xml under artifacts/coverage' }
+          $reports = ($files | ForEach-Object { $_.FullName }) -join ';'
+          $target = Join-Path $PWD 'artifacts/coverage/report'
+          reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
+
       - name: Upload published host artifact
-        if: steps.detect.outputs.docs_only != 'true' && matrix.leg.primary == true
+        if: needs.route.outputs.docs_only != 'true' && matrix.leg.artifact_owner == true
         uses: actions/upload-artifact@v7
         with:
           name: host-stdio-publish
@@ -321,7 +263,7 @@ jobs:
           retention-days: 14
 
       - name: Upload release manifest
-        if: steps.detect.outputs.docs_only != 'true' && matrix.leg.primary == true
+        if: needs.route.outputs.docs_only != 'true' && matrix.leg.artifact_owner == true
         uses: actions/upload-artifact@v7
         with:
           name: release-manifests
@@ -329,34 +271,33 @@ jobs:
           retention-days: 14
 
       - name: Upload code coverage
-        if: github.event_name != 'pull_request' && matrix.leg.primary == true
+        if: github.event_name != 'pull_request' && matrix.leg.artifact_owner == true
         uses: actions/upload-artifact@v7
         with:
           name: code-coverage
           path: artifacts/coverage
           retention-days: 30
 
-  # Stable aggregator for branch protection. The validate matrix legs report
-  # check names that vary with the routing decision ("validate-leg (windows)" /
-  # "validate-leg (linux)"), which cannot be pinned as a required status check.
-  # This job carries the name `validate` — the context the default-branch
-  # ruleset ALREADY requires — so the matrix fan-out needs zero ruleset
-  # surgery. It fails unless EVERY matrix leg succeeded (needs.validate.result
-  # is 'success' only when all legs passed; any failed, cancelled, or skipped
-  # leg yields 'failure'/'cancelled'/'skipped'). Do NOT rename it without
-  # updating the ruleset's required_status_checks in the same change.
+  # Stable branch-protection context. Dynamic leg names are intentionally not
+  # required individually; this aggregator fails unless the complete matrix did.
   validate-gate:
-    name: validate
-    needs: validate
+    # A dispatch/schedule run may target a feature-branch SHA but validates only
+    # one informational Linux leg. Give it a different check context so it can
+    # never satisfy the pull-request ruleset's required `validate` context.
+    name: ${{ github.event_name == 'pull_request' && 'validate' || 'validate-informational' }}
+    needs:
+      - route
+      - validate
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every validate leg green
+      - name: Require routing and every validate leg green
         shell: pwsh
         run: |
-          $result = "${{ needs.validate.result }}"
-          if ($result -ne 'success') {
-            throw "validate matrix did not fully succeed (result: $result)."
+          $routeResult = '${{ needs.route.result }}'
+          $validateResult = '${{ needs.validate.result }}'
+          if ($routeResult -ne 'success' -or $validateResult -ne 'success') {
+            throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult)."
           }
-          Write-Host "All validate legs succeeded."
+          Write-Host 'Routing and all validate legs succeeded.'

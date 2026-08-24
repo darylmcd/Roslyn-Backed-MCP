@@ -63,53 +63,48 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public async Task TryRead_ConcurrentDirectoryDeletion_ReturnsNull_DoesNotThrow()
+    public void TryRead_DirectoryEnumerationThrowsIOException_ReturnsNull()
     {
-        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var store = CreateStore(
+            _ => ThrowOnMoveNext(new IOException("Injected enumeration race.")),
+            File.GetLastWriteTimeUtc);
 
-        // Repeatedly race TryRead's lazy Directory.EnumerateDirectories walk against a concurrent
-        // recursive deletion of the whole root. Before the fix this threw an uncaught
-        // DirectoryNotFoundException/IOException from the enumerator's MoveNext (or from the
-        // File.GetLastWriteTimeUtc TTL stat). The assertion is timing-independent: every iteration
-        // must return null without throwing, whichever way the race resolves.
-        for (var iteration = 0; iteration < 200; iteration++)
-        {
-            Directory.CreateDirectory(_root);
-            for (var version = 0; version < 40; version++)
-            {
-                var versionDir = Path.Combine(_root, version.ToString());
-                Directory.CreateDirectory(versionDir);
-                // A decoy file so the enumeration + per-subdir File.Exists probes take real time,
-                // widening the window in which the background delete lands mid-walk.
-                File.WriteAllText(Path.Combine(versionDir, "decoy.json"), "{}");
-            }
+        Assert.IsNull(
+            store.TryRead(Guid.NewGuid().ToString("N")),
+            "A directory removed during lazy enumeration must be treated as a cache miss.");
+    }
 
-            var deleter = Task.Run(() =>
+    [TestMethod]
+    public void TryRead_LastWriteTimeThrowsIOException_ReturnsNull()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var versionDirectory = Path.Combine(_root, "1");
+        Directory.CreateDirectory(versionDirectory);
+        File.WriteAllText(Path.Combine(versionDirectory, token + ".json"), "{}");
+        var timestampRead = false;
+        var store = CreateStore(
+            Directory.EnumerateDirectories,
+            _ =>
             {
-                try
-                {
-                    Directory.Delete(_root, recursive: true);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // The delete itself may race the reader (sharing violation); irrelevant to
-                    // what we're asserting, which is that the READER never throws.
-                }
+                timestampRead = true;
+                throw new IOException("Injected last-write-time race.");
             });
 
-            CompositePreviewStore.Entry? result = null;
-            try
-            {
-                result = store.TryRead(Guid.NewGuid().ToString("N"));
-            }
-            catch (Exception ex)
-            {
-                Assert.Fail($"TryRead threw during a concurrent directory deletion race: {ex}");
-            }
+        Assert.IsNull(
+            store.TryRead(token),
+            "A file removed between existence and timestamp checks must be treated as a cache miss.");
+        Assert.IsTrue(timestampRead, "The test must reach the timestamp operation before asserting the race policy.");
+    }
 
-            Assert.IsNull(result, "A token that was never written must read as a miss, even mid-race.");
-            await deleter;
-        }
+    [TestMethod]
+    public void TryRead_DirectoryEnumerationThrowsUnauthorizedAccess_Propagates()
+    {
+        var store = CreateStore(
+            _ => ThrowOnMoveNext(new UnauthorizedAccessException("Injected permissions failure.")),
+            File.GetLastWriteTimeUtc);
+
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
+            store.TryRead(Guid.NewGuid().ToString("N")));
     }
 
     [TestMethod]
@@ -188,4 +183,21 @@ public sealed class PersistentCompositeStorageTests
             File.Exists(destinationPath + ".tmp"),
             "A failed atomic move must not leave an orphaned temporary payload.");
     }
+
+    private PersistentCompositeStorage CreateStore(
+        Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
+        Func<string, DateTime> getLastWriteTimeUtc) =>
+        new(
+            _root,
+            TimeSpan.FromMinutes(5),
+            logger: null,
+            enumerateDirectoriesForRead: enumerateDirectoriesForRead,
+            getLastWriteTimeUtc: getLastWriteTimeUtc);
+
+    private static IEnumerable<string> ThrowOnMoveNext(Exception exception)
+    {
+        yield return Throw(exception);
+    }
+
+    private static string Throw(Exception exception) => throw exception;
 }

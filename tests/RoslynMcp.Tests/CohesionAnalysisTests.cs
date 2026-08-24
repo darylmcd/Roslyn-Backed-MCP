@@ -4,21 +4,32 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
 [TestClass]
 public sealed class CohesionAnalysisTests : IsolatedWorkspaceTestBase
 {
-    private static string WorkspaceId { get; set; } = null!;
+    private static IsolatedWorkspaceScope? _scope;
+    private static string WorkspaceId => _scope?.WorkspaceId
+        ?? throw new InvalidOperationException("Cohesion workspace has not been initialized.");
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        _scope = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]
-    public static void ClassCleanup() => DisposeServices();
+    public static void ClassCleanup()
+    {
+        try
+        {
+            _scope?.Dispose();
+        }
+        finally
+        {
+            _scope = null;
+        }
+    }
 
     [TestMethod]
     public async Task GetCohesionMetrics_WhenExcludeTestProjects_OmitsTestProjectSources()

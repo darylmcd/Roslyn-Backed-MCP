@@ -241,7 +241,7 @@ public sealed class ArchiveOldReportsScriptTests
 
     private static string ResolvePwshExecutable()
     {
-        // Prefer pwsh (PowerShell 7+) on PATH; fall back to Windows PowerShell on Windows-only test hosts.
+        // Use the platform's conventional PowerShell 7 executable name.
         if (OperatingSystem.IsWindows())
         {
             return "pwsh.exe";

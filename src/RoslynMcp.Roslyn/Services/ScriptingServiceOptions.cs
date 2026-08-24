@@ -6,7 +6,14 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed record ScriptingServiceOptions
 {
     /// <summary>
-    /// Default script evaluation timeout in seconds. Defaults to 10.
+    /// Largest whole-second duration supported by the runtime timer APIs.
+    /// The effective script budget plus watchdog grace must not exceed this value.
+    /// </summary>
+    public const int MaxTimerDurationSeconds = 4_294_967;
+
+    /// <summary>
+    /// Default script evaluation timeout in seconds. Defaults to 10. The timeout plus
+    /// <see cref="WatchdogGraceSeconds"/> must not exceed <see cref="MaxTimerDurationSeconds"/>.
     /// </summary>
     public int TimeoutSeconds { get; init; } = 10;
 

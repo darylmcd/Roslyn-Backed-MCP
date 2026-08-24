@@ -75,7 +75,8 @@ public sealed class VerifyReleaseChildScriptTests
             {
                 var fixture = WriteFixture(repositoryRoot, fixtureRoot, testCase);
                 var result = await RunVerifyReleaseAsync(fixture, testCase.RequireConsumedFragments);
-                var combinedOutput = result.StdOut + result.StdErr;
+                var combinedOutput = PowerShellOutputNormalizer.Normalize(
+                    result.StdOut + result.StdErr);
                 var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
 
                 if (testCase.ShouldReachDotnet)
@@ -114,6 +115,115 @@ public sealed class VerifyReleaseChildScriptTests
             {
                 TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
             }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_FailsWhenSuccessfulTestCommandDoesNotProduceValidTrxAsync()
+    {
+        var cases = new[]
+        {
+            new TrxCase("missing", "without producing the required TRX result"),
+            new TrxCase("malformed", "produced an unreadable TRX result"),
+            new TrxCase("empty", "does not prove any tests executed"),
+            new TrxCase("zero", "does not prove any tests executed"),
+        };
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+
+        foreach (var testCase in cases)
+        {
+            var fixtureRoot = Path.Combine(
+                TestTempRoot.Current,
+                nameof(VerifyReleaseChildScriptTests),
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                var releaseCase = new ReleaseCase(
+                    $"{testCase.Mode} TRX",
+                    FailingScript: null,
+                    FailureMode.None,
+                    RequireConsumedFragments: false,
+                    ExpectedText: null,
+                    ShouldReachDotnet: true);
+                var fixture = WriteFixture(repositoryRoot, fixtureRoot, releaseCase);
+
+                var result = await RunVerifyReleaseAsync(
+                    fixture,
+                    requireConsumedFragments: false,
+                    trxMode: testCase.Mode);
+                var combinedOutput = PowerShellOutputNormalizer.Normalize(
+                    result.StdOut + result.StdErr);
+                var diagnostic = $"stdout={result.StdOut} stderr={result.StdErr}";
+
+                Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                StringAssert.Contains(combinedOutput, testCase.ExpectedText, diagnostic);
+                Assert.IsFalse(
+                    File.Exists(Path.Combine(
+                        fixtureRoot,
+                        "artifacts",
+                        "manifests",
+                        "host-stdio-sha256.txt")),
+                    "Publishing must not continue without trustworthy test evidence.");
+            }
+            finally
+            {
+                TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_TestShardOnlySkipsPolicyAndPublishAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(VerifyReleaseChildScriptTests),
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var releaseCase = new ReleaseCase(
+                "test shard only",
+                FailingScript: "verify-version-drift.ps1",
+                FailureMode.Throw,
+                RequireConsumedFragments: false,
+                ExpectedText: null,
+                ShouldReachDotnet: true);
+            var fixture = WriteFixture(repositoryRoot, fixtureRoot, releaseCase);
+            WriteFakeShardPlanner(fixtureRoot);
+
+            var result = await RunVerifyReleaseAsync(
+                fixture,
+                requireConsumedFragments: false,
+                testShardOnly: true,
+                testShardIndex: 0,
+                testShardCount: 2);
+            var diagnostic = $"stdout={result.StdOut} stderr={result.StdErr}";
+
+            Assert.AreEqual(0, result.ExitCode, diagnostic);
+            Assert.IsTrue(File.Exists(fixture.DotnetSentinelPath), diagnostic);
+            var dotnetArguments = await File.ReadAllTextAsync(fixture.DotnetArgumentsPath);
+            StringAssert.Contains(dotnetArguments, "--filter", diagnostic);
+            StringAssert.Contains(
+                dotnetArguments,
+                "(ClassName=RoslynMcp.Tests.ShardSentinel)&TestCategory!=Benchmark",
+                "The verifier must pass the selected exact class filter into dotnet test.");
+            StringAssert.Contains(
+                dotnetArguments,
+                "TMPDIR=",
+                "Linux testhosts must receive the same private temp root as Windows testhosts.");
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts", "publish")),
+                "A test-only shard must not publish release output.");
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts", "manifests")),
+                "A test-only shard must not create release manifests.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
     }
 
@@ -250,9 +360,7 @@ public sealed class VerifyReleaseChildScriptTests
         ReleaseCase testCase)
     {
         var fixtureEngDirectory = Path.Combine(fixtureRoot, "eng");
-        var fakeBinDirectory = Path.Combine(fixtureRoot, "fake-bin");
         Directory.CreateDirectory(fixtureEngDirectory);
-        Directory.CreateDirectory(fakeBinDirectory);
 
         File.Copy(
             Path.Combine(repositoryRoot, "eng", "verify-release.ps1"),
@@ -272,12 +380,14 @@ public sealed class VerifyReleaseChildScriptTests
         }
 
         var dotnetSentinelPath = Path.Combine(fixtureRoot, "dotnet-invoked.txt");
-        WriteFakeDotnet(fakeBinDirectory);
+        var dotnetArgumentsPath = Path.Combine(fixtureRoot, "dotnet-arguments.jsonl");
+        WriteFakeDotnetFunction(fixtureRoot);
+        var wrapperPath = WriteVerifyReleaseWrapper(fixtureRoot);
 
         return new ReleaseFixture(
-            Path.Combine(fixtureEngDirectory, "verify-release.ps1"),
-            fakeBinDirectory,
+            wrapperPath,
             dotnetSentinelPath,
+            dotnetArgumentsPath,
             fixtureRoot);
     }
 
@@ -304,33 +414,107 @@ public sealed class VerifyReleaseChildScriptTests
             """;
     }
 
-    private static void WriteFakeDotnet(string fakeBinDirectory)
+    private static void WriteFakeDotnetFunction(string fixtureRoot)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            File.WriteAllText(
-                Path.Combine(fakeBinDirectory, "dotnet.cmd"),
-                "@echo off\r\n> \"%ROSLYNMCP_DOTNET_SENTINEL%\" echo invoked\r\n" +
-                "if /I \"%1\"==\"test\" if \"%ROSLYNMCP_DOTNET_TEST_FAIL%\"==\"1\" exit /b 23\r\n" +
-                "exit /b 0\r\n");
-            return;
-        }
-
-        var fakeDotnetPath = Path.Combine(fakeBinDirectory, "dotnet");
         File.WriteAllText(
-            fakeDotnetPath,
-            "#!/bin/sh\nprintf 'invoked\\n' > \"$ROSLYNMCP_DOTNET_SENTINEL\"\n" +
-            "if [ \"$1\" = \"test\" ] && [ \"$ROSLYNMCP_DOTNET_TEST_FAIL\" = \"1\" ]; then exit 23; fi\n" +
-            "exit 0\n");
-        File.SetUnixFileMode(
-            fakeDotnetPath,
-            UnixFileMode.UserRead |
-            UnixFileMode.UserWrite |
-            UnixFileMode.UserExecute |
-            UnixFileMode.GroupRead |
-            UnixFileMode.GroupExecute |
-            UnixFileMode.OtherRead |
-            UnixFileMode.OtherExecute);
+            Path.Combine(fixtureRoot, "fake-dotnet.ps1"),
+            """
+            function global:dotnet {
+                $arguments = @($args)
+                [System.IO.File]::WriteAllText($env:ROSLYNMCP_DOTNET_SENTINEL, 'invoked')
+                [System.IO.File]::AppendAllText(
+                    $env:ROSLYNMCP_DOTNET_ARGUMENTS,
+                    (($arguments | ConvertTo-Json -Compress) + [System.Environment]::NewLine))
+                $global:LASTEXITCODE = 0
+
+                if ($arguments.Count -gt 0 -and $arguments[0] -eq 'msbuild') {
+                    Write-Output 'C:/fixture/RoslynMcp.Tests.dll'
+                    return
+                }
+                if ($arguments.Count -eq 0 -or $arguments[0] -ne 'test') {
+                    return
+                }
+                if ($env:ROSLYNMCP_DOTNET_TEST_FAIL -eq '1') {
+                    $global:LASTEXITCODE = 23
+                    return
+                }
+                if ($env:ROSLYNMCP_DOTNET_TRX_MODE -eq 'missing') {
+                    return
+                }
+
+                $trxArgument = $arguments |
+                    Where-Object { $_ -is [string] -and $_.StartsWith('trx;LogFileName=', [System.StringComparison]::Ordinal) } |
+                    Select-Object -Last 1
+                if ([string]::IsNullOrWhiteSpace($trxArgument)) {
+                    return
+                }
+
+                $trxPath = $trxArgument.Substring('trx;LogFileName='.Length)
+                $contents = switch ($env:ROSLYNMCP_DOTNET_TRX_MODE) {
+                    'malformed' { '<TestRun><broken>'; break }
+                    'empty' { '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010" />'; break }
+                    'zero' {
+                        '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary outcome="Completed"><Counters total="0" executed="0" passed="0" failed="0" /></ResultSummary></TestRun>'
+                        break
+                    }
+                    default {
+                        '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><ResultSummary outcome="Completed"><Counters total="1" executed="1" passed="1" failed="0" /></ResultSummary></TestRun>'
+                    }
+                }
+                [System.IO.File]::WriteAllText($trxPath, $contents)
+            }
+            """);
+    }
+
+    private static string WriteVerifyReleaseWrapper(string fixtureRoot)
+    {
+        var wrapperPath = Path.Combine(fixtureRoot, "verify-release-fixture.ps1");
+        File.WriteAllText(
+            wrapperPath,
+            """
+            param(
+                [switch]$NoCoverage,
+                [switch]$RequireConsumedFragments,
+                [switch]$TestShardOnly,
+                [int]$TestShardIndex = 0,
+                [int]$TestShardCount = 1
+            )
+
+            . (Join-Path $PSScriptRoot 'fake-dotnet.ps1')
+            & (Join-Path $PSScriptRoot 'eng/verify-release.ps1') `
+                -NoCoverage:$NoCoverage `
+                -RequireConsumedFragments:$RequireConsumedFragments `
+                -TestShardOnly:$TestShardOnly `
+                -TestShardIndex $TestShardIndex `
+                -TestShardCount $TestShardCount
+            """);
+        return wrapperPath;
+    }
+
+    private static void WriteFakeShardPlanner(string fixtureRoot)
+    {
+        File.WriteAllText(
+            Path.Combine(fixtureRoot, "eng", "get-test-shard-plan.ps1"),
+            """
+            param(
+                [Parameter(Mandatory)][string]$TestAssemblyPath,
+                [Parameter(Mandatory)][int]$TestShardCount,
+                [Parameter(Mandatory)][int]$TestShardIndex
+            )
+
+            if ($TestShardCount -ne 2 -or $TestShardIndex -ne 0) {
+                throw "Unexpected shard selection $TestShardIndex/$TestShardCount."
+            }
+
+            [pscustomobject]@{
+                SchemaVersion = 1
+                SelectedFilter = 'ClassName=RoslynMcp.Tests.ShardSentinel'
+                Shards = @(
+                    [pscustomobject]@{ Index = 0; ClassCount = 1; StaticCaseWeight = 1 },
+                    [pscustomobject]@{ Index = 1; ClassCount = 1; StaticCaseWeight = 1 }
+                )
+            } | ConvertTo-Json -Depth 4
+            """);
     }
 
     private static string WriteCleanupDenialWrapper(string fixtureRoot)
@@ -341,9 +525,13 @@ public sealed class VerifyReleaseChildScriptTests
             """
             param(
                 [switch]$NoCoverage,
-                [switch]$RequireConsumedFragments
+                [switch]$RequireConsumedFragments,
+                [switch]$TestShardOnly,
+                [int]$TestShardIndex = 0,
+                [int]$TestShardCount = 1
             )
 
+            . (Join-Path $PSScriptRoot 'fake-dotnet.ps1')
             $script:cleanupAttempts = 0
             function global:Remove-Item {
                 [CmdletBinding()]
@@ -373,7 +561,10 @@ public sealed class VerifyReleaseChildScriptTests
 
             & (Join-Path $PSScriptRoot 'eng/verify-release.ps1') `
                 -NoCoverage:$NoCoverage `
-                -RequireConsumedFragments:$RequireConsumedFragments
+                -RequireConsumedFragments:$RequireConsumedFragments `
+                -TestShardOnly:$TestShardOnly `
+                -TestShardIndex $TestShardIndex `
+                -TestShardCount $TestShardCount
             """);
         return wrapperPath;
     }
@@ -392,7 +583,11 @@ public sealed class VerifyReleaseChildScriptTests
         ReleaseFixture fixture,
         bool requireConsumedFragments,
         string? cleanupMode = null,
-        bool failDotnetTest = false)
+        bool failDotnetTest = false,
+        string? trxMode = null,
+        bool testShardOnly = false,
+        int testShardIndex = 0,
+        int testShardCount = 1)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -411,12 +606,17 @@ public sealed class VerifyReleaseChildScriptTests
         {
             startInfo.ArgumentList.Add("-RequireConsumedFragments");
         }
+        if (testShardOnly)
+        {
+            startInfo.ArgumentList.Add("-TestShardOnly");
+        }
+        startInfo.ArgumentList.Add("-TestShardIndex");
+        startInfo.ArgumentList.Add(testShardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add("-TestShardCount");
+        startInfo.ArgumentList.Add(testShardCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-        var inheritedPath = Environment.GetEnvironmentVariable("PATH");
-        startInfo.Environment["PATH"] = string.IsNullOrEmpty(inheritedPath)
-            ? fixture.FakeBinDirectory
-            : fixture.FakeBinDirectory + Path.PathSeparator + inheritedPath;
         startInfo.Environment["ROSLYNMCP_DOTNET_SENTINEL"] = fixture.DotnetSentinelPath;
+        startInfo.Environment["ROSLYNMCP_DOTNET_ARGUMENTS"] = fixture.DotnetArgumentsPath;
         if (cleanupMode is not null)
         {
             startInfo.Environment["ROSLYNMCP_CLEANUP_MODE"] = cleanupMode;
@@ -431,6 +631,10 @@ public sealed class VerifyReleaseChildScriptTests
         if (failDotnetTest)
         {
             startInfo.Environment["ROSLYNMCP_DOTNET_TEST_FAIL"] = "1";
+        }
+        if (trxMode is not null)
+        {
+            startInfo.Environment["ROSLYNMCP_DOTNET_TRX_MODE"] = trxMode;
         }
 
         using var process = Process.Start(startInfo)
@@ -470,8 +674,8 @@ public sealed class VerifyReleaseChildScriptTests
 
     private sealed record ReleaseFixture(
         string ScriptPath,
-        string FakeBinDirectory,
         string DotnetSentinelPath,
+        string DotnetArgumentsPath,
         string RepositoryRoot);
 
     private sealed record CleanupCase(
@@ -481,6 +685,8 @@ public sealed class VerifyReleaseChildScriptTests
         int ExpectedAttempts,
         bool ShouldPublish,
         bool FailDotnetTest);
+
+    private sealed record TrxCase(string Mode, string ExpectedText);
 
     private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
 }

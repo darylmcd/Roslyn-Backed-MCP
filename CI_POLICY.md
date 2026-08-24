@@ -1,50 +1,130 @@
 # CI Policy
 
-This document is the single canonical source for validation requirements and merge-gating expectations.
+This document is the canonical validation and merge-gating contract.
 
-## Repository Evidence
+## Trigger And Routing Contract
 
-- `.github/workflows/ci.yml` runs on pull requests, manual dispatch, and a weekly schedule (Mon 05:45 UTC). Push-to-`main` is intentionally not a trigger: the default-branch ruleset requires merges to arrive via PR, so every commit on `main` was validated seconds earlier on its PR head. Coverage trend data is kept fresh by the weekly `schedule` run instead of per-merge collection. The `validate` legs set a PER-LEG cap, `timeout-minutes: ${{ matrix.leg.primary && 30 || 45 }}` — 30 for the fast self-hosted primary leg, 45 for the slower hosted leg. Current self-hosted runs complete in about 10–15 minutes, while a hosted Dependabot run needed 17m49s in July 2026, two fresh hosted runs reached the former 20-minute cap in August without reporting a test failure, and the hosted parity leg took 22m43s on PR #1293. The split matters because the legs now feed the required `validate` context: under a shared 30-minute cap, ordinary hosted-runner variance would block merge for the whole repository rather than merely delaying an informational leg. The tight primary cap keeps a genuine wedge on the self-hosted box surfacing quickly; neither cap reverts to GitHub's 6-hour default; fail-fast `ROSLYNMCP_BUILD_TIMEOUT_SECONDS=150` / `ROSLYNMCP_TEST_TIMEOUT_SECONDS=300` / `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS=120` still make integration tests fail a wedged child command before it can absorb the job budget (production defaults are sized for arbitrary user solutions, not the pre-restored sample fixtures). A `concurrency:` group cancels superseded PR runs (`cancel-in-progress` is gated on `github.event_name == 'pull_request'` so dispatch / schedule runs never cancel). Maintainer PRs run on the self-hosted Windows runner when it is online; a `route` job ahead of `validate` falls maintainer PRs back to hosted `ubuntu-latest` when the self-hosted runner is offline (see docs/self-hosted-runner.md § Hosted fallback for an offline runner). Fork PRs AND Dependabot PRs run on hosted `ubuntu-latest` unconditionally regardless of router output (both execute third-party-selected code in tests, which must not run on the maintainer's box — see docs/self-hosted-runner.md § Security model). `route` publishes its decision as a runner **matrix** (`runner_matrix` output), and `validate` fans out over it with `fail-fast: false`: whenever routing targets the self-hosted Windows runner, the matrix carries a second, non-primary `ubuntu-latest` leg that runs the identical `eng/verify-release.ps1` entry point, so every merge candidate is validated on the same OS the publish gate uses (merge/publish OS parity — the v3.0.1 tag failed on Linux with a suite that had passed pre-merge on Windows only). Hosted routes stay single-leg so the Linux leg is never duplicated. Artifact uploads and the coverage HTML summary run only on the leg with `primary: true`, keeping the artifact names (`host-stdio-publish`, `release-manifests`, `code-coverage`) unique per run. The per-leg jobs report as `validate-leg (windows)` / `validate-leg (linux)`, and the `validate-gate` aggregator job (`needs: validate`, `if: always()`) is **named `validate`** — the exact context the default-branch ruleset already requires — so it fails unless every matrix leg succeeded and the fan-out needs no branch-protection change. `tests/RoslynMcp.Tests/CiRunnerParityContractTests.cs` guards this contract.
-- CI currently runs `./eng/verify-ai-docs.ps1`. This script enforces AI-doc stale-reference and broken-link checks and also invokes `./eng/verify-skills-are-generic.ps1`, which blocks a PR whose `./skills/**/*.md` files — every shipped markdown file, not just `SKILL.md`, since prompt bodies and READMEs ship to installers verbatim — reference repo-only markers (`ai_docs/`, `backlog.md`, `state.json`, `backlog-sweep`, `eng/`, `just verify-`, `Directory.Build.props`, `BannedSymbols.txt`). URLs and placeholder-rooted paths (`<audited-repo-root>/…`) are stripped before the scan, so deliberate cross-repo pointers are allowed. The skills-generic check runs unconditionally on every PR, including docs-only PRs where `verify-release.ps1` is skipped, so shipped-plugin surface validation is never bypassed.
-- CI currently runs `./eng/verify-release.ps1 -Configuration Release`. The script applies `--filter "TestCategory!=Benchmark"` to the `dotnet test` invocation so the opt-in `WorkspaceReadConcurrencyBenchmark` stays out of the default run (run it explicitly via `dotnet test --filter "TestCategory=Benchmark"`). It also gives every testhost invocation a unique `TEMP`/`TMP` root under the operating system's temp parent (`RoslynMcpTestRuns/<guid>`), shuts down child build servers that may still hold that tree, and removes the exact root in `finally`; this prevents Microsoft.CodeAnalysis.Testing's `Path.GetTempPath()/test-packages` reference-assembly cache from leaking a partial extraction across self-hosted CI jobs without placing solution-discovery fixtures beneath the repository. The pull_request step additionally passes `-ExcludeNetworkTests` (filter becomes `TestCategory!=Benchmark&TestCategory!=Network`): PR CI gates vulnerabilities via the dedicated audit step, so the live api.nuget.org integration tests are redundant there and network-flaky on the self-hosted runner; dispatch/schedule stay unfiltered so the live scan runs weekly as a canary. Coverage collection is gated on event type: pull requests run with `-NoCoverage` (skips `dotnet test --collect:"XPlat Code Coverage"`, the ReportGenerator HTML summary step, and the `code-coverage` artifact upload — coverage is informational, not a merge gate, and the coverlet IL-rewrite cost is ~60–90s per PR). Manual dispatches (`workflow_dispatch`) and the weekly schedule run full coverage collection with **XPlat Code Coverage** to `artifacts/coverage`, then **ReportGenerator** HTML summary under `artifacts/coverage/report`, then upload the `code-coverage` artifact. The gate is `github.event_name != 'pull_request'`.
-- The test assembly sets `[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.ClassLevel)]` so different test classes run concurrently (one worker per CPU). Classes that share mutable state through `TestBase`'s static services opt out with a class-level `[DoNotParallelize]` attribute: every class inheriting `SharedWorkspaceTestBase` (they read from a single cached sample workspace and would corrupt each other under concurrent reloads/edits), `WorkspaceReloadedEventTests` (exercises the shared `WorkspaceManager` reload path directly), `Top10V2RegressionTests` / `Top10V3RegressionTests` (inherit `IsolatedWorkspaceTestBase` but resolve against the shared `SampleSolutionPath`), and `ScriptingServiceTests` (wall-clock timer assertions that distort under CPU contention). Tests inheriting `IsolatedWorkspaceTestBase` use per-class temp copies of the sample solution and are safe to parallelize. Wall-clock drops from ~8 min (sequential) to ~3.5 min (parallel) on a 4-core runner.
-- CI's `detect-docs-only` step (pull requests only) matches the regex `^(.*\.md|ai_docs/.*\.json)$` against every changed file. When every file in the diff matches, `verify-release.ps1`, the NuGet vulnerability audit, and both artifact uploads are skipped — saving ~12 minutes of wall time per doc-only PR. Because `.*\.md` has no directory anchor, the pattern covers **every** `.md` path in the tree: top-level (`README.md`, `CHANGELOG.md`, `CI_POLICY.md`, `CLAUDE.md`, `AGENTS.md`), `ai_docs/**/*.md`, `docs/**/*.md`, `skills/**/*.md` (shipped plugin surface), `.claude/**/*.md` (gitignored — never appears in PR diffs, listed for completeness), `.github/**/*.md`, and any future `**/*.md` additions. The `ai_docs/.*\.json` alternative additionally covers plan-state and reconcile-state JSON files under `ai_docs/plans/` and `ai_docs/reports/`, which are orchestrator state files never consumed by the build. `verify-ai-docs.ps1` always runs on PRs regardless of the gate, so documentation stale-reference, broken-link, and shipped-skill-genericity validation still gate doc-only PRs. `workflow_dispatch` and the weekly `schedule` run the full pipeline regardless of file changes.
-- The NuGet-packages cache (`actions/cache@v6` against `~/.nuget/packages`) keys on `Directory.Packages.props`, `Directory.Build.props`, and `global.json`. Project-file edits no longer invalidate the cache because the package graph is owned by the central-version pin, not individual csproj files — this keeps the repo under the 10 GB Actions-cache cap. The step runs only when `runner.environment == 'github-hosted'`: the self-hosted runner's packages folder persists between runs, so cache save/restore there is pure transfer overhead.
-- Published artifacts (`host-stdio-publish`, `release-manifests`) use a 14-day retention; the `code-coverage` artifact uses 30-day retention. Both are set explicitly on the upload step so the default 90-day retention does not silently consume the Actions storage quota.
-- CI and `just vuln-audit` invoke `eng/verify-nuget-audit.ps1`. The shared verifier forces a solution restore with `NuGetAuditMode=all` and promotes NU1900–NU1904 to errors, so advisory-source failures and vulnerable top-level or transitive packages all fail closed without depending on the crash-prone `dotnet package list` registration-metadata walk.
-- CodeQL static analysis uses GitHub's **default setup** for C# and GitHub Actions workflows (configured via the repository's *Security → Code scanning → Set up* page; the checks appear on every PR as **Analyze (csharp)** and **Analyze (actions)**). A previous `.github/workflows/codeql.yml` advanced configuration was removed because it duplicated the default setup and, once its SARIF upload was enabled, GitHub rejected the custom upload with the message *"CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled."* Default setup runs the `default` query suite on every PR plus a weekly schedule, is maintained by GitHub (auto-updating the scanner version), and uploads to the Security tab.
+| Event / trust state | Validation topology | Coverage / network |
+|---|---|---|
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json`, excluding behavior-bearing paths) | Two hosted Linux class shards | Coverage and `Network` tests skipped; publish/audit skipped |
+| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards | Coverage and `Network` tests skipped |
+| Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite | Coverage and live `Network` tests enabled |
+
+Rules:
+
+- Do not add a push-to-`main` trigger. Protected changes arrive through an already-validated pull request.
+- Cancel superseded pull-request runs. Never cancel dispatch or scheduled runs.
+- Route all public-repository pull-request code only to GitHub-hosted runners. A repository-level self-hosted runner is not protected by an in-workflow fork predicate because a fork can modify the workflow itself.
+- Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
+- Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
+- Treat root `CHANGELOG.md` and behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix. Release assembly/version checks therefore cannot be bypassed by the policy-doc route.
+- Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
+
+The router emits typed leg fields. Keep their concerns separate:
+
+| Field | Meaning |
+|---|---|
+| `runs_on` | GitHub-hosted runner label |
+| `artifact_owner` | Sole policy/release-artifact owner |
+| `timeout_minutes` | Explicit per-leg job cap |
+| `test_shard_index`, `test_shard_count` | Complete class partition passed to `verify-release.ps1` |
+
+## Pull-Request Test Partition
+
+- Windows runs four concurrent class shards; Linux runs two.
+- All six code pull-request shards run on separate GitHub-hosted runners.
+- Policy-only documentation PRs run the same complete class partition as two Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically.
+- `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
+- Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
+- `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
+- Keep pull-request coverage disabled. Keep dispatch/schedule coverage unsharded until coverage merge semantics are explicitly implemented.
+- Keep matrix `fail-fast: false` so independent OS/shard failures remain visible in one run.
+
+## Required Checks And Artifacts
+
+| Concern | Owner / condition |
+|---|---|
+| Release policy checks (version, skills, package allowlist, changelog, breaking version, registry readiness) | Artifact-owning code leg through the full release verifier |
+| Changelog-fragment validation | Explicit artifact-owning policy-doc leg; otherwise included in the full release verifier |
+| AI-doc and shipped-skill validation | Artifact-owning leg; includes policy-doc PRs |
+| Restore, Release build, test | Every pull-request/test leg |
+| Publish/hash | Artifact-owning non-doc leg |
+| Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
+| `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
+| Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
+| Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
+
+`eng/verify-release.ps1` remains a standalone release gate. It restores the main and sample solutions, builds Release, runs tests in a private per-invocation `TEMP`/`TMP`/`TMPDIR`, shuts down child build servers, removes the exact temp root, publishes the stdio host, and writes the hash manifest. Test and cleanup failures are aggregated rather than hidden. CI passes `-TestShardOnly` on non-owner code legs and both policy-doc legs, so platform-neutral policy and publish/hash work execute once where required; the default remains the complete standalone gate.
+
+CI and `just vuln-audit` invoke `eng/verify-nuget-audit.ps1`. It forces restore with `NuGetAuditMode=all` and promotes NU1900-NU1904 to errors, covering advisory-source failure plus vulnerable direct/transitive packages.
+
+## Current Timing Evidence
+
+Measured from the five most recent successful PR legs before this refactor:
+
+| Metric | Repository-level Windows | Hosted Linux |
+|---|---:|---:|
+| Median job | 16m09s | 25m10s |
+| Median `verify-release` | 15m42s | 24m33s |
+| Median `dotnet test` | 15m23s | 23m40s |
+| Tests as release-step share | about 98% | about 97% |
+
+Fresh Windows TRX baseline: 2,536 cases (2,530 passed, 6 skipped) in 16m30s. MSTest spent about 6m13s in the parallelizable phase and 10m17s in the serialized `[DoNotParallelize]` tail. The same run proved that scripting watchdog tests left eight CPU-bound background threads alive for the remainder of the testhost. Treat this baseline as pre-refactor evidence; use uploaded per-leg TRX from the merged workflow for the new steady state.
+
+The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, with cumulative per-test TRX durations of 2,549s and 1,764s. Because that did not improve the prior 16m09s repository-level median, code pull requests use four hosted Windows shards. Use complete green four-shard hosted runs as the next calibration and rebalance only from repeated uploaded TRX evidence.
+
+GitHub's public-repository `ubuntu-latest` and `windows-latest` standard runners currently provide 4 CPUs and 16 GB RAM. Do not retain the retired 2-vCPU assumption in repository documentation.
+
+## Test Execution Contract
+
+- Assembly default: `[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.ClassLevel)]`.
+- Apply `[DoNotParallelize]` only for a documented process-global/shared-workspace dependency. An isolated per-class workspace is not, by itself, justification for serialization.
+- Platform-specific tests must report `Assert.Inconclusive` (or an equivalent explicit skip) on unsupported operating systems. A bare early `return` is a false pass.
+- Tests that abandon non-cooperative work must release it before returning or isolate it in a disposable child process. Never contaminate the shared testhost with a permanent busy thread.
+- Preserve distinct behavioral cases even when setup/shape is structurally similar. Remove only genuine same-entry-point, same-input, same-assertion duplication.
+- Treat TRX duration as evidence; method counts and timeout ceilings are prioritization signals only.
+- Keep `eng/summarize-test-results.ps1` path-safe: job summaries may contain bounded class/method names and timings, never TRX `codeBase` or source-path metadata.
+
+## Test Category Lanes
+
+| Lane | Meaning | Default CI behavior | Sample filter |
+|---|---|---|---|
+| `Benchmark` | Opt-in wall-clock benchmark | Always excluded | `TestCategory=Benchmark` |
+| `Network` | Live external-service calls | Excluded on PR; included weekly/manual | `TestCategory!=Network` |
+| `RepoSolution` | Loads this repository solution / another large workspace | Included | `TestCategory!=RepoSolution` |
+| `Process` | Starts an external process | Included | `TestCategory!=Process` |
+| `Performance` | Wall-clock budget assertions | Included | `TestCategory!=Performance` |
+
+Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 
 ## Local Validation
 
-- For AI-doc changes, run `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1`.
-- For release-impacting or code changes, run the required PR-equivalent `just ci` gate.
-- `eng/verify-release.ps1` performs restore, build, test (with Cobertura coverage under `artifacts/coverage`), publish, and hash-manifest generation. Pass `-NoCoverage` to skip the `--collect:"XPlat Code Coverage"` IL-rewrite step for faster iteration when you don't need the coverage artifact (matches the CI pull-request path).
-- `just ci` is the required pull-request-equivalent local gate: docs, shipped skills, `verify-release.ps1 -NoCoverage -ExcludeNetworkTests`, and the fail-closed vulnerability audit. Coverage and live network tests are informational in this lane, matching pull-request CI.
-- `just full` retains the explicit full local lane: coverage, live network tests, publish/hash verification, docs, shipped skills, and the vulnerability audit.
+| Scope | Command |
+|---|---|
+| AI-doc changes | `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1` |
+| Required PR-equivalent gate | `just ci` |
+| Informational coverage/live-network gate | `just full` |
+| One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 
-### Test Category Lanes
-
-Tests are tagged with `[TestCategory(...)]` to enable selective execution. `Benchmark` is excluded from every CI run, and `Network` is excluded on the pull_request path (`eng/verify-release.ps1 -ExcludeNetworkTests`; dispatch/schedule keep it as a weekly live canary); all other lanes execute in the default pipeline and are available for local opt-in filtering when you want to isolate or skip heavy lanes during iteration.
-
-| Lane | Meaning | Sample opt-in / opt-out filter |
-|---|---|---|
-| `Benchmark` | Wall-clock micro-benchmarks (e.g. `WorkspaceReadConcurrencyBenchmark`). Excluded from default CI. | Opt-in: `dotnet test --filter "TestCategory=Benchmark"` |
-| `Network` | Live calls to external services (e.g. `api.nuget.org` from `NuGetVulnerabilityScanIntegrationTests`). | Opt-out: `dotnet test --filter "TestCategory!=Network"` |
-| `RepoSolution` | Loads the repository's own `RoslynMcp.slnx` (or a second large workspace) rather than the small sample fixture; high memory + warm-up cost. | Opt-out: `dotnet test --filter "TestCategory!=RepoSolution"` |
-| `Process` | Shells out to an external process (e.g. `dotnet test` via `IDotnetCommandRunner.RunAsync`); requires the .NET SDK and is sensitive to process-startup variance. | Opt-out: `dotnet test --filter "TestCategory!=Process"` |
-| `Performance` | Wall-clock budget assertions (the `PerformanceBaselineTests` class); pass/fail depends on CPU contention and is flaky under heavy parallel load. | Opt-out: `dotnet test --filter "TestCategory!=Performance"` |
-
-Combine filters with `&` (AND) or `\|` (OR) per `dotnet test --filter` syntax — e.g. `dotnet test --filter "TestCategory!=Network&TestCategory!=Performance"` to skip both lanes while iterating on a normal change.
+`just ci` composes docs, shipped skills, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
 
 ## Merge Gating Expectations
 
-- Treat the documented CI workflow as the required merge gate.
-- `validate` is the required status check in the default-branch ruleset, and it is reported by the `validate-gate` aggregator job (whose `name:` is `validate`): it aggregates every matrix leg and fails unless all legs succeeded. The per-leg check names (`validate-leg (windows)`, `validate-leg (linux)`) vary with the routing decision and must not be pinned. Renaming the aggregator would leave the required context unreported and make every PR permanently unmergeable — change the ruleset in the same edit or not at all.
-- Merge and publish now share Linux test-surface coverage: the pre-merge gate runs `eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests` on `ubuntu-latest` (alongside the routed self-hosted Windows leg when applicable), the same OS `publish-nuget.yml` validates on at tag time. Coverage collection and live-network tests remain documented informational lanes; an OS-sensitive product-test failure surfaces pre-merge, not at publish.
-- Do not declare work merge-ready while required CI is failing.
-- If branch synchronization is required by repository protection settings, synchronize before merge.
+- Do not declare merge-ready while any required validation leg is failing, cancelled, skipped, or pending.
+- `validate-gate` depends on both `route` and the complete `validate` matrix and reports `validate` only when both succeeded.
+- Dispatch/schedule runs report `validate-informational`, never the required pull-request context.
+- Do not pin dynamic per-leg names in branch protection.
+- Preserve Linux pre-merge coverage because NuGet publication validates on Linux; this closes the prior Windows-pass/Linux-publish-fail gap.
+- Synchronize the branch before merge when repository protection requires it.
+
+## Other Repository Evidence
+
+- CodeQL uses GitHub default setup for C# and GitHub Actions (`Analyze (csharp)`, `Analyze (actions)`). Do not add a duplicate advanced workflow while default setup is active.
+- NuGet caching keys on `Directory.Packages.props`, `Directory.Build.props`, and `global.json`.
 
 ## Ownership
 
-- Branch, worktree, and pull-request workflow belongs to `ai_docs/workflow.md`.
-- Runtime assumptions and execution constraints belong to `ai_docs/runtime.md`.
+- Workflow implementation: `.github/workflows/ci.yml`
+- Human self-hosted operations: `docs/self-hosted-runner.md`
+- Runtime and local commands: `ai_docs/runtime.md`
+- Branch/worktree/PR workflow: `ai_docs/workflow.md`

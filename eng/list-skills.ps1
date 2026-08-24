@@ -10,18 +10,15 @@
         name | installed_as | path
 
     When `installed_as:` is absent from the frontmatter, the column shows `[missing]`.
-    This is the discovery tool for the `installed_as:` contract established by the
-    `skill-namespace-and-semantic-search-discoverability` initiative.  Bulk migration of the
-    `installed_as:` field across all SKILL.md files is tracked in the follow-on backlog row
-    `skill-namespace-installed-as-bulk-frontmatter-migration`.
+    This audits the required `installed_as:` discovery contract. Missing values are reported
+    for repair; the repository's active contract test rejects them in CI.
 
 .PARAMETER RepoRoot
     Path to the repository root.  Defaults to the parent of the directory containing this script.
 
 .EXAMPLE
     pwsh -NoProfile -File eng/list-skills.ps1
-    # Emits one row per skill.  All `installed_as:` entries will show [missing] until the
-    # bulk migration is complete.
+    # Emits one row per skill and identifies any missing contract values.
 
 .EXAMPLE
     pwsh -NoProfile -File eng/list-skills.ps1 -RepoRoot C:/Code-Repo/Roslyn-Backed-MCP
@@ -124,6 +121,10 @@ $missingCount = ($sorted | Where-Object { $_.installed_as -eq '[missing]' }).Cou
 $totalCount   = $sorted.Count
 
 Write-Host "$totalCount skill(s) found.  $missingCount missing `installed_as:` (shown in yellow)."
-Write-Host "To fix: add `installed_as: <bare-name>` or `installed_as: roslyn-mcp:<bare-name>` to each SKILL.md frontmatter."
-Write-Host "Bulk migration tracked in: skill-namespace-installed-as-bulk-frontmatter-migration"
+if ($missingCount -gt 0) {
+    Write-Host "To fix: add `installed_as: <bare-name>` or `installed_as: roslyn-mcp:<bare-name>` to each SKILL.md frontmatter."
+}
+else {
+    Write-Host "All skill frontmatter entries satisfy the installed_as contract."
+}
 Write-Host ""

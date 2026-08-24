@@ -21,6 +21,7 @@ public sealed class ScriptingService : IScriptingService
 {
     private readonly ScriptingServiceOptions _options;
     private readonly ScriptExecutionSupervisor _executionSupervisor;
+    private readonly Func<string, ScriptOptions, CancellationToken, ScriptExecutionOutcome> _executeScript;
 
     private static readonly string[] DefaultImports =
     [
@@ -34,9 +35,18 @@ public sealed class ScriptingService : IScriptingService
     ];
 
     public ScriptingService(ILogger<ScriptingService> logger, ScriptingServiceOptions options)
+        : this(logger, options, ExecuteScript)
+    {
+    }
+
+    internal ScriptingService(
+        ILogger<ScriptingService> logger,
+        ScriptingServiceOptions options,
+        Func<string, ScriptOptions, CancellationToken, ScriptExecutionOutcome> executeScript)
     {
         _options = options;
         _executionSupervisor = new ScriptExecutionSupervisor(logger, options);
+        _executeScript = executeScript ?? throw new ArgumentNullException(nameof(executeScript));
     }
 
     internal long ActiveEvaluationCount => _executionSupervisor.ActiveEvaluationCount;
@@ -52,7 +62,7 @@ public sealed class ScriptingService : IScriptingService
         var settings = CreateExecutionSettings(timeoutSecondsOverride);
         var scriptOptions = BuildScriptOptions(imports);
         var result = await _executionSupervisor.ExecuteAsync(
-            timeoutToken => ExecuteScript(code, scriptOptions, timeoutToken),
+            timeoutToken => _executeScript(code, scriptOptions, timeoutToken),
             onProgress,
             settings,
             ct).ConfigureAwait(false);
@@ -62,16 +72,37 @@ public sealed class ScriptingService : IScriptingService
 
     private ScriptExecutionSupervisorSettings CreateExecutionSettings(int? timeoutSecondsOverride)
     {
-        // UX-002: per-call timeout override; null/<=0 falls back to env-configured default.
-        var effectiveTimeoutSeconds = timeoutSecondsOverride is > 0
-            ? timeoutSecondsOverride.Value
-            : _options.TimeoutSeconds;
+        // UX-002: a supplied per-call timeout is an explicit contract, not a fallback hint.
+        if (timeoutSecondsOverride is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeoutSecondsOverride),
+                timeoutSecondsOverride,
+                "Script timeout must be greater than zero when supplied.");
+        }
+
+        var effectiveTimeoutSeconds = timeoutSecondsOverride ?? _options.TimeoutSeconds;
         var graceSeconds = Math.Max(0, _options.WatchdogGraceSeconds);
+        var maximumBudgetSeconds = ScriptingServiceOptions.MaxTimerDurationSeconds - graceSeconds;
+        if (maximumBudgetSeconds < 1)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(ScriptingServiceOptions.WatchdogGraceSeconds)} must be less than " +
+                $"{ScriptingServiceOptions.MaxTimerDurationSeconds} seconds.");
+        }
+
+        if (effectiveTimeoutSeconds is < 1 || effectiveTimeoutSeconds > maximumBudgetSeconds)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeoutSecondsOverride),
+                effectiveTimeoutSeconds,
+                $"Script timeout must be between 1 and {maximumBudgetSeconds} seconds after watchdog grace.");
+        }
 
         return new ScriptExecutionSupervisorSettings(
             EffectiveTimeoutSeconds: effectiveTimeoutSeconds,
             GraceSeconds: graceSeconds,
-            HardDeadlineSeconds: effectiveTimeoutSeconds + graceSeconds,
+            HardDeadlineSeconds: checked(effectiveTimeoutSeconds + graceSeconds),
             HeartbeatInterval: TimeSpan.FromMilliseconds(Math.Max(100, _options.HeartbeatIntervalMs)),
             Budget: TimeSpan.FromSeconds(effectiveTimeoutSeconds));
     }
@@ -140,7 +171,7 @@ public sealed class ScriptingService : IScriptingService
             ProgressHeartbeatCount: result.HeartbeatCount > 0 ? result.HeartbeatCount : null);
     }
 
-    private static ScriptExecutionOutcome ExecuteScript(
+    internal static ScriptExecutionOutcome ExecuteScript(
         string code,
         ScriptOptions scriptOptions,
         CancellationToken timeoutToken)
@@ -161,7 +192,7 @@ public sealed class ScriptingService : IScriptingService
         }
         catch (OperationCanceledException)
         {
-            return ScriptExecutionOutcome.TimedOut();
+            throw;
         }
         catch (Exception ex)
         {
