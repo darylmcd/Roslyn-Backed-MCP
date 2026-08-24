@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; license and project fields are reviewed attribution metadata maintained by `eng/update-third-party-notices.ps1`.
+Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; attribution fields are reviewed in `eng/update-third-party-notices.ps1`, and MCP SDK license data is regression-checked against the exact restored NuGet package metadata.
 
 ## Runtime Dependencies
 
@@ -18,7 +18,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Extensions.Http | 10.0.10 | MIT | https://github.com/dotnet/runtime |
 | Microsoft.Extensions.Logging | 10.0.10 | MIT | https://github.com/dotnet/runtime |
 | Microsoft.Extensions.Logging.Console | 10.0.10 | MIT | https://github.com/dotnet/runtime |
-| ModelContextProtocol | 2.1.0 | MIT | https://github.com/modelcontextprotocol/csharp-sdk |
+| ModelContextProtocol | 2.1.0 | Apache-2.0 | https://github.com/modelcontextprotocol/csharp-sdk |
 | Nito.AsyncEx | 5.1.2 | MIT | https://github.com/StephenCleary/AsyncEx |
 | System.Security.Cryptography.Xml | 10.0.10 | MIT | https://github.com/dotnet/runtime |
 

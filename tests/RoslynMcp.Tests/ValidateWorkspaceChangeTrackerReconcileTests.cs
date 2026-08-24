@@ -54,7 +54,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
@@ -120,7 +120,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
@@ -211,7 +211,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
@@ -245,23 +245,6 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
 
     private static bool IsGitAvailable()
         => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
-
-    private static void InitializeGitRepo(string directory)
-    {
-        // `-b main` forces an initial branch name — mirrors the helper in
-        // ValidateRecentGitChangesTests; see comments there for rationale.
-        GitFixtureRunner.RunGit(directory, "init", "-q", "-b", "main");
-        if (!Directory.Exists(Path.Combine(directory, ".git")))
-        {
-            throw new InvalidOperationException(
-                $"git init appeared to succeed but '.git' is missing in '{directory}'.");
-        }
-        File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "user.name", "CI");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "commit.gpgsign", "false");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "core.autocrlf", "false");
-    }
 
     private static void RemoveGitEntry(string directory)
     {

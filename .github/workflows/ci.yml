@@ -278,6 +278,61 @@ jobs:
           path: artifacts/coverage
           retention-days: 30
 
+  # Bound the declared SDK floor independently of the latest-10.0 full matrix.
+  # This lane restores/builds the product and loads one real MSBuildWorkspace;
+  # repeating the complete suite here would add cost without another test shape.
+  sdk-floor:
+    name: sdk-floor (10.0.400)
+    needs: route
+    if: github.event_name != 'pull_request' || needs.route.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Keep the floor SDK out of the hosted image's shared /usr/share/dotnet tree;
+      # global.json intentionally permits later feature bands for normal development.
+      DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-floor
+      DOTNET_MULTILEVEL_LOOKUP: "0"
+      ROSLYNMCP_BUILD_TIMEOUT_SECONDS: "150"
+      ROSLYNMCP_TEST_TIMEOUT_SECONDS: "300"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up exact floor SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Require exact floor selection
+        shell: pwsh
+        run: |
+          $actual = (dotnet --version).Trim()
+          if ($actual -cne '10.0.400') {
+            throw "Expected exact SDK floor 10.0.400 but dotnet selected '$actual'."
+          }
+
+      - name: Restore and build at the SDK floor
+        shell: pwsh
+        run: |
+          dotnet restore RoslynMcp.slnx --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK solution restore failed with exit code $LASTEXITCODE." }
+          dotnet restore samples/SampleSolution/SampleSolution.slnx --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK sample restore failed with exit code $LASTEXITCODE." }
+          dotnet build RoslynMcp.slnx -c Release --no-restore --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK build failed with exit code $LASTEXITCODE." }
+
+      - name: Load a representative MSBuild workspace at the SDK floor
+        shell: pwsh
+        run: |
+          dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj `
+            -c Release `
+            --no-build `
+            --nologo `
+            --filter "FullyQualifiedName=RoslynMcp.Tests.IntegrationTests_WorkspaceCore.Workspace_Load_Returns_WorkspaceId_And_Metadata" `
+            --settings eng/ci.runsettings `
+            --logger "console;verbosity=minimal"
+          if ($LASTEXITCODE -ne 0) { throw "Floor-SDK workspace-load probe failed with exit code $LASTEXITCODE." }
+
   # Stable branch-protection context. Dynamic leg names are intentionally not
   # required individually; this aggregator fails unless the complete matrix did.
   validate-gate:
@@ -288,6 +343,7 @@ jobs:
     needs:
       - route
       - validate
+      - sdk-floor
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -297,7 +353,10 @@ jobs:
         run: |
           $routeResult = '${{ needs.route.result }}'
           $validateResult = '${{ needs.validate.result }}'
-          if ($routeResult -ne 'success' -or $validateResult -ne 'success') {
-            throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult)."
+          $sdkFloorResult = '${{ needs.sdk-floor.result }}'
+          $docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'
+          $sdkFloorSucceeded = $sdkFloorResult -eq 'success' -or ($docsOnly -and $sdkFloorResult -eq 'skipped')
+          if ($routeResult -ne 'success' -or $validateResult -ne 'success' -or -not $sdkFloorSucceeded) {
+            throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult; SDK floor: $sdkFloorResult)."
           }
-          Write-Host 'Routing and all validate legs succeeded.'
+          Write-Host 'Routing, all validate legs, and the required SDK-floor probe succeeded.'

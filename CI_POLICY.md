@@ -6,9 +6,9 @@ This document is the canonical validation and merge-gating contract.
 
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json`, excluding behavior-bearing paths) | Two hosted Linux class shards | Coverage and `Network` tests skipped; publish/audit skipped |
-| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards | Coverage and `Network` tests skipped |
-| Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite | Coverage and live `Network` tests enabled |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json`, excluding behavior-bearing paths) | Two hosted Linux class shards; exact-floor probe skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe | Coverage and `Network` tests skipped |
+| Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe | Coverage and live `Network` tests enabled |
 
 Rules:
 
@@ -40,6 +40,7 @@ The router emits typed leg fields. Keep their concerns separate:
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
 - Keep pull-request coverage disabled. Keep dispatch/schedule coverage unsharded until coverage merge semantics are explicitly implemented.
 - Keep matrix `fail-fast: false` so independent OS/shard failures remain visible in one run.
+- Keep the exact SDK-floor lane isolated from hosted-image SDKs and bounded to restore, Release build, and one real MSBuildWorkspace load. The latest-`10.0.x` matrix owns the complete suite.
 
 ## Required Checks And Artifacts
 
@@ -49,6 +50,7 @@ The router emits typed leg fields. Keep their concerns separate:
 | Changelog-fragment validation | Explicit artifact-owning policy-doc leg; otherwise included in the full release verifier |
 | AI-doc and shipped-skill validation | Artifact-owning leg; includes policy-doc PRs |
 | Restore, Release build, test | Every pull-request/test leg |
+| Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load |
 | Publish/hash | Artifact-owning non-doc leg |
 | Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
@@ -112,7 +114,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 ## Merge Gating Expectations
 
 - Do not declare merge-ready while any required validation leg is failing, cancelled, skipped, or pending.
-- `validate-gate` depends on both `route` and the complete `validate` matrix and reports `validate` only when both succeeded.
+- `validate-gate` depends on `route`, the complete `validate` matrix, and `sdk-floor`; it reports `validate` only when all required jobs succeeded (the floor job is intentionally skipped for policy-only docs).
 - Dispatch/schedule runs report `validate-informational`, never the required pull-request context.
 - Do not pin dynamic per-leg names in branch protection.
 - Preserve Linux pre-merge coverage because NuGet publication validates on Linux; this closes the prior Windows-pass/Linux-publish-fail gap.

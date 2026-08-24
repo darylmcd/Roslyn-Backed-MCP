@@ -19,3 +19,4 @@
 
 These fixtures copy the same recursive-delete helper and swallow every exception. The current session removed the first two copies from `BulkRefactoringTests` and `ExtractMethodFormatRegressionTests`; this bounded wave prevents the remaining pattern from staying silent.
 2026-08-24 adjacent review: also include tests/RoslynMcp.Tests/ThirdPartyNoticeDriftTests.cs. Its raw Directory.Delete in finally can replace a primary assertion failure. Keep this wave within the three-test-file limit by swapping it for one listed fixture or split a later wave.
+2026-08-24 dependency guardrails: ThirdPartyNoticeDriftTests now roots state under TestTempRoot.Current and uses TestFixtureFileSystem.DeleteDirectoryIfExists; remove it from this wave's remaining scope.
