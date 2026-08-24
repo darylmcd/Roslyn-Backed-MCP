@@ -52,7 +52,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath); // seed HEAD so only our edits appear as Modified
 
         // Edit three existing `.cs` files so porcelain reports them as Modified — the
@@ -108,7 +108,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// ambient git override {Guid.NewGuid():N}{Environment.NewLine}");
@@ -146,7 +146,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
@@ -200,7 +200,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         // Dirty the tree so a `clean` verdict would be provably wrong.
@@ -312,7 +312,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         }
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        InitializeGitRepo(workspace.RootPath);
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
@@ -333,26 +333,6 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
     private static bool IsGitAvailable()
         => GitFixtureRunner.IsAvailable(out _gitUnavailableReason);
-
-    private static void InitializeGitRepo(string directory)
-    {
-        // `-b main` forces an initial branch name (avoids the "hint: Using 'master'" chatter
-        // and the 'unborn HEAD' state that breaks `git config` on some git versions where
-        // config discovery walks from HEAD rather than the worktree root).
-        GitFixtureRunner.RunGit(directory, "init", "-q", "-b", "main");
-        if (!Directory.Exists(Path.Combine(directory, ".git")))
-        {
-            throw new InvalidOperationException(
-                $"git init appeared to succeed but '.git' is missing in '{directory}'.");
-        }
-        File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
-        // `--local` targets the repo just initialized explicitly so git doesn't fall back
-        // to searching an ancestor when CWD discovery is flaky.
-        GitFixtureRunner.RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "user.name", "CI");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "commit.gpgsign", "false");
-        GitFixtureRunner.RunGit(directory, "config", "--local", "core.autocrlf", "false");
-    }
 
     /// <summary>
     /// Removes only the owned fixture's <c>.git</c> entry. Never walk into ancestors:

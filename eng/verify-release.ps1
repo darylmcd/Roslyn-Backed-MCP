@@ -172,6 +172,12 @@ if (-not $NoCoverage) {
 }
 
 if (-not $TestShardOnly) {
+    # Coordinated package families fail before restore so a split Dependabot update cannot
+    # publish artifacts or reach MSBuildLocator's later runtime-asset failure.
+    Invoke-ChildScriptStep `
+        -Description 'Package family parity validation' `
+        -ScriptPath (Join-Path $PSScriptRoot 'verify-package-family-parity.ps1')
+
     # Version-string drift check across all seven version files.
     # Runs before build so a drift-only mistake fails fast without waiting for compilation.
     Invoke-ChildScriptStep `

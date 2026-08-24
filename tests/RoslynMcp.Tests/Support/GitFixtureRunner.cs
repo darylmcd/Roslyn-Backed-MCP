@@ -56,6 +56,29 @@ internal static class GitFixtureRunner
         }
     }
 
+    public static void InitializeRepository(string directory, string? originUrl = null)
+    {
+        // Force a named initial branch so fixtures never inherit machine-specific
+        // init.defaultBranch settings or remain on an ambiguous unborn HEAD.
+        RunGit(directory, "init", "-q", "-b", "main");
+        if (!Directory.Exists(Path.Combine(directory, ".git")))
+        {
+            throw new InvalidOperationException(
+                $"git init appeared to succeed but '.git' is missing in '{directory}'.");
+        }
+
+        File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
+        RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
+        RunGit(directory, "config", "--local", "user.name", "CI");
+        RunGit(directory, "config", "--local", "commit.gpgsign", "false");
+        RunGit(directory, "config", "--local", "core.autocrlf", "false");
+
+        if (!string.IsNullOrWhiteSpace(originUrl))
+        {
+            RunGit(directory, "remote", "add", "origin", originUrl);
+        }
+    }
+
     public static void StageAndCommitAll(string directory)
     {
         StageFixtureBaseline(directory);

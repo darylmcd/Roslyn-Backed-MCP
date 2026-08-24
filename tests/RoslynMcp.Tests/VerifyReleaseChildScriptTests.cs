@@ -9,6 +9,7 @@ public sealed class VerifyReleaseChildScriptTests
 
     private static readonly ChildScript[] _childScripts =
     [
+        new("verify-package-family-parity.ps1", "Package family parity validation"),
         new("verify-version-drift.ps1", "Version drift validation"),
         new("verify-skills-are-generic.ps1", "Shipped skill validation"),
         new("verify-plugin-package-files.ps1", "Plugin package allowlist validation"),

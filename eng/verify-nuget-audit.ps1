@@ -4,12 +4,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$resolvedSolutionPath = if ([System.IO.Path]::IsPathFullyQualified($SolutionPath)) {
+    [System.IO.Path]::GetFullPath($SolutionPath)
+}
+else {
+    [System.IO.Path]::GetFullPath((Join-Path $repoRoot $SolutionPath))
+}
+if (-not [System.IO.File]::Exists($resolvedSolutionPath)) {
+    throw "NuGet vulnerability audit solution does not exist: '$resolvedSolutionPath'."
+}
+
 # NuGet's restore audit covers direct and transitive packages when NuGetAuditMode=all.
 # Promote both advisory-source failures and every vulnerability severity to errors so
 # an unavailable audit service or a finding can never produce a successful gate.
 $auditWarningCodes = "NU1900%3BNU1901%3BNU1902%3BNU1903%3BNU1904"
 
-dotnet restore $SolutionPath `
+dotnet restore $resolvedSolutionPath `
     --force-evaluate `
     --verbosity minimal `
     "-p:NuGetAudit=true" `

@@ -4,7 +4,7 @@ Thank you for your interest in contributing. This guide covers the essentials.
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) — `10.0.100` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any compatible 10.0.x patch works)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — `10.0.400` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any compatible later 10.0.x feature band works)
 - Git
 
 ## Build and Test

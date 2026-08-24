@@ -27,7 +27,7 @@ Local-first MCP (Model Context Protocol) server for semantic C# analysis, naviga
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) — pinned to `10.0.100` in [`global.json`](global.json) (`rollForward: latestFeature`)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — source builds use the `10.0.400` floor in [`global.json`](global.json) (`rollForward: latestFeature`); published install paths retain their own package/runtime requirements
 
 ### Option A — Install As A Global Tool
 

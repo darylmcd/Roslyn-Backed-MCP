@@ -1,5 +1,7 @@
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
 
@@ -7,32 +9,60 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspaceTestBase
 {
-    private static string WorkspaceId { get; set; } = null!;
+    private static readonly TimeSpan ReadinessBuildTimeout = TimeSpan.FromSeconds(90);
 
     [ClassInitialize]
-    public static async Task ClassInit(TestContext _)
-    {
-        InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
-    }
+    public static void ClassInit(TestContext _) => InitializeServices();
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    [TestCategory("Process")]
     public async Task SampleSolution_ReadinessReport_ReturnsReadyVerdict()
     {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await BuildWorkspaceFixtureAsync(workspace, CancellationToken.None);
+        var workspaceId = await workspace.LoadAsync();
         var json = await WorkspaceTools.GetWorkspaceReadinessReport(
             WorkspaceExecutionGate,
             WorkspaceManager,
-            WorkspaceId,
+            workspaceId,
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json.TextPayload());
+        var status = await WorkspaceManager.GetStatusAsync(workspaceId, CancellationToken.None);
+        var diagnosticSummary = string.Join(
+            Environment.NewLine,
+            status.WorkspaceDiagnostics.Select(diagnostic => $"{diagnostic.Id}: {diagnostic.Message}"));
         Assert.AreEqual("first-run-readiness", doc.RootElement.GetProperty("reportKind").GetString());
-        Assert.AreEqual("ready", GetVerdict(doc));
+        Assert.AreEqual(
+            "ready",
+            GetVerdict(doc),
+            doc.RootElement + Environment.NewLine + diagnosticSummary);
         Assert.IsTrue(doc.RootElement.GetProperty("workspace").GetProperty("testProjectCount").GetInt32() >= 1);
         StringAssert.Contains(ReadLimitations(doc), "No tests");
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task SampleSolutionWithoutAssets_ReadinessReport_ReturnsRestoreNeededVerdict()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        RemoveBuildArtifacts(workspace.RootPath);
+        InitializeGitFixture(workspace.RootPath);
+
+        var workspaceId = await workspace.LoadAsync();
+        var json = await WorkspaceTools.GetWorkspaceReadinessReport(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            workspaceId,
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json.TextPayload());
+        Assert.AreEqual("restore-needed", GetVerdict(doc));
+        StringAssert.Contains(ReadSignals(doc), "restoreRequired=true");
+        StringAssert.Contains(ReadWorkflows(doc), "dotnet restore");
     }
 
     [TestMethod]
@@ -64,9 +94,11 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
     }
 
     [TestMethod]
+    [TestCategory("Process")]
     public async Task UnresolvedAnalyzerFixture_ReadinessReport_ReturnsBuildNeededVerdict()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
+        await BuildWorkspaceFixtureAsync(workspace, CancellationToken.None);
         InjectUnresolvedAnalyzerReference(workspace.GetPath("SampleLib", "SampleLib.csproj"));
 
         var workspaceId = await workspace.LoadAsync();
@@ -80,6 +112,56 @@ public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspace
         Assert.AreEqual("build-needed", GetVerdict(doc));
         StringAssert.Contains(ReadSignals(doc), "buildRequired=true");
         StringAssert.Contains(ReadWorkflows(doc), "dotnet build");
+    }
+
+    private static async Task BuildWorkspaceFixtureAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
+    {
+        RemoveBuildArtifacts(workspace.RootPath);
+        InitializeGitFixture(workspace.RootPath);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(ReadinessBuildTimeout);
+        CommandExecutionDto execution;
+        try
+        {
+            execution = await DotnetCommandRunner.RunAsync(
+                workingDirectory: workspace.RootPath,
+                targetPath: workspace.SolutionPath,
+                arguments: ["build", workspace.SolutionPath, "--nologo"],
+                timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"dotnet build did not complete within {ReadinessBuildTimeout.TotalSeconds:F0} seconds for readiness fixture '{workspace.SolutionPath}'.",
+                ex);
+        }
+
+        Assert.IsTrue(
+            execution.Succeeded,
+            $"dotnet build failed for readiness fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
+    }
+
+    private static void RemoveBuildArtifacts(string rootPath)
+    {
+        var buildDirectories = Directory.EnumerateDirectories(rootPath, "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetFileName(path) is "bin" or "obj")
+            .OrderByDescending(path => path.Length)
+            .ToArray();
+        foreach (var path in buildDirectories)
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(path);
+        }
+    }
+
+    private static void InitializeGitFixture(string rootPath)
+    {
+        if (!GitFixtureRunner.IsAvailable(out var failureReason))
+        {
+            Assert.Inconclusive($"git is required to exercise the SourceLink-ready fixture: {failureReason}");
+        }
+
+        GitFixtureRunner.InitializeRepository(rootPath, "https://example.invalid/fixture.git");
+        GitFixtureRunner.StageAndCommitAll(rootPath);
     }
 
     private static bool IsKnownVerdict(string? verdict) =>

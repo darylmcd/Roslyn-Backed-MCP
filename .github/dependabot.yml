@@ -24,9 +24,54 @@ updates:
       mstest:
         patterns:
           - "MSTest*"
+      # These compile-time references must remain version-identical and use
+      # PrivateAssets/ExcludeAssets together. Include scheduled majors so
+      # version-update PRs cannot repeat PR #1327's split Microsoft.Build shape;
+      # a split security PR remains fail-closed at package-family validation.
+      msbuild-compile-family:
+        patterns:
+          - "Microsoft.Build"
+          - "Microsoft.Build.Framework"
+          - "Microsoft.Build.Tasks.Core"
+          - "Microsoft.Build.Utilities.Core"
+      # Production and analyzer projects share one Roslyn ABI. Exact patterns
+      # avoid pulling independently versioned analyzer/testing packages along.
+      roslyn-api-family:
+        patterns:
+          - "Microsoft.CodeAnalysis.CSharp"
+          - "Microsoft.CodeAnalysis.Analyzers"
+          - "Microsoft.CodeAnalysis.CSharp.Workspaces"
+          - "Microsoft.CodeAnalysis.CSharp.Features"
+          - "Microsoft.CodeAnalysis.Features"
+          - "Microsoft.CodeAnalysis.Workspaces.MSBuild"
+          - "Microsoft.CodeAnalysis.CSharp.Scripting"
+      extensions-runtime-family:
+        patterns:
+          - "Microsoft.Extensions.Hosting"
+          - "Microsoft.Extensions.Http"
+          - "Microsoft.Extensions.Logging"
+          - "Microsoft.Extensions.Logging.Console"
       nuget-minor-patch:
         update-types:
           - "minor"
           - "patch"
         exclude-patterns:
           - "MSTest*"
+          - "Microsoft.Build"
+          - "Microsoft.Build.Framework"
+          - "Microsoft.Build.Tasks.Core"
+          - "Microsoft.Build.Utilities.Core"
+          - "Microsoft.CodeAnalysis.CSharp"
+          - "Microsoft.CodeAnalysis.Analyzers"
+          - "Microsoft.CodeAnalysis.CSharp.Workspaces"
+          - "Microsoft.CodeAnalysis.CSharp.Features"
+          - "Microsoft.CodeAnalysis.Features"
+          - "Microsoft.CodeAnalysis.Workspaces.MSBuild"
+          - "Microsoft.CodeAnalysis.CSharp.Scripting"
+          - "Microsoft.Extensions.Hosting"
+          - "Microsoft.Extensions.Http"
+          - "Microsoft.Extensions.Logging"
+          - "Microsoft.Extensions.Logging.Console"
+          # MCP SDK updates require a dedicated ADR/wire/notices review and
+          # therefore must never share the routine servicing PR.
+          - "ModelContextProtocol"

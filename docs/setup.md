@@ -4,7 +4,7 @@
 
 | Requirement | Notes |
 |---------------|--------|
-| [.NET 10 SDK](https://dotnet.microsoft.com/download) | Pin: `10.0.100` in `global.json` (rollForward `latestFeature`); any 10.0.x patch generally works. |
+| [.NET 10 SDK](https://dotnet.microsoft.com/download) | Repository build floor: `10.0.400` in `global.json` (rollForward `latestFeature`); CI also verifies that exact floor. |
 | Git | For clone and CI artifact workflows. |
 | Docker (optional) | Only if you build or run the container image (`Dockerfile`). |
 

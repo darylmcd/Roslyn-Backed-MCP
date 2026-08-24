@@ -1,6 +1,6 @@
 # workspace-readiness-fixture-ready-state-isolation — Establish readiness fixtures explicitly
 
-**row:** `workspace-readiness-fixture-ready-state-isolation` · **pri:** `Medium` · **size:** `S`
+**row:** `workspace-readiness-fixture-ready-state-isolation` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 
@@ -17,3 +17,4 @@
 ## Evidence
 
 PR #1326's correctly prepared full run observed `SampleSolution_ReadinessReport_ReturnsReadyVerdict` returning `build-needed`. The same one-of-three class failure reproduced on untouched base SHA `a518151b` in a fresh clone, proving a pre-existing order-dependent fixture rather than a dependency regression: the ready case relies on another test having built the sample first.
+2026-08-24 dependency guardrails: each verdict now owns an isolated fixture, ready/build-needed build before load, Git/SourceLink state is deterministic, and child builds are bounded. A 41-case slice plus explicit reverse-order execution passed; the remaining deliverable is a persistent repeated-order/residue regression.
