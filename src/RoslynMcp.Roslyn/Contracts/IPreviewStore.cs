@@ -42,6 +42,28 @@ public interface IPreviewStore
         IReadOnlyList<FileChangeDto> changes);
 
     /// <summary>
+    /// <b>preview-token-apply-route-provenance:</b> same as the <paramref name="changes"/>-shaped
+    /// overload, but additionally records a machine-checkable <paramref name="kind"/> discriminator
+    /// identifying which producer family created the token, so an apply route can verify provenance
+    /// before mutating the workspace.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation drops <paramref name="kind"/> and delegates to the untagged overload,
+    /// so existing test fakes (and any out-of-tree implementations) keep compiling; only stores that
+    /// actually persist provenance override it. Producers that do not pass a kind are recorded as
+    /// <see cref="PreviewKind.Unspecified"/>, which every apply route must accept.
+    /// </remarks>
+    /// <param name="kind">The producer family that created this preview.</param>
+    string Store(
+        string workspaceId,
+        Solution modifiedSolution,
+        int workspaceVersion,
+        string description,
+        IReadOnlyList<FileChangeDto> changes,
+        PreviewKind kind)
+        => Store(workspaceId, modifiedSolution, workspaceVersion, description, changes);
+
+    /// <summary>
     /// Retrieves the stored solution pair for the given token, or <see langword="null"/>
     /// if the token is expired or not found.
     /// </summary>
@@ -117,4 +139,20 @@ public interface IPreviewStore
     /// snapshot pair override it.
     /// </remarks>
     IReadOnlyList<string>? PeekChangedPaths(string token) => null;
+
+    /// <summary>
+    /// <b>preview-token-apply-route-provenance:</b> returns the producer family that created the
+    /// stored preview, without consuming or TTL-refreshing the entry. Returns
+    /// <see cref="PreviewKind.Unspecified"/> when the token is expired/not found, when the producer
+    /// did not record a kind, or when the store does not track provenance — callers treat
+    /// <see cref="PreviewKind.Unspecified"/> as "permissive, no provenance claim", never as proof of
+    /// a mismatch.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation returns <see cref="PreviewKind.Unspecified"/> so existing test fakes
+    /// (and any out-of-tree implementations) keep compiling; only stores that actually persist
+    /// provenance override it. Mirrors the non-consuming contract of
+    /// <see cref="PeekChangedPaths(string)"/>.
+    /// </remarks>
+    PreviewKind PeekKind(string token) => PreviewKind.Unspecified;
 }
