@@ -8,11 +8,11 @@
     "WHITESPACE"
   ],
   "totals": {
-    "findingCount": 400,
-    "fileCount": 226,
+    "findingCount": 418,
+    "fileCount": 232,
     "countsByDiagnosticId": {
       "FINALNEWLINE": 1,
-      "IDE1006": 288,
+      "IDE1006": 306,
       "IMPORTS": 108,
       "WHITESPACE": 3
     }
@@ -1845,6 +1845,16 @@
       }
     },
     {
+      "path": "tests/RoslynMcp.Tests/MethodDescriptionDietScaffoldingMutationTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
       "path": "tests/RoslynMcp.Tests/MsBuildEvaluationCacheTests.cs",
       "findingCount": 1,
       "diagnosticIds": [
@@ -1882,6 +1892,26 @@
       ],
       "countsByDiagnosticId": {
         "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ParamDescriptionCanonicalFormCodeActionSuppressionTests.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ParameterDescriptionCanonicalizationTests.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 5
       }
     },
     {
@@ -1987,6 +2017,16 @@
       }
     },
     {
+      "path": "tests/RoslynMcp.Tests/RefactoringCoreDescriptionBudgetTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
       "path": "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs",
       "findingCount": 2,
       "diagnosticIds": [
@@ -2074,6 +2114,16 @@
       ],
       "countsByDiagnosticId": {
         "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Skills/SkillPrefixGenericityTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
       }
     },
     {
@@ -2194,6 +2244,16 @@
       ],
       "countsByDiagnosticId": {
         "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ToolDescriptionDietWorkspaceValidationTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
       }
     },
     {
