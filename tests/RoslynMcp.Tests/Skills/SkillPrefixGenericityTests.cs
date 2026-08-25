@@ -32,10 +32,11 @@ public sealed class SkillPrefixGenericityTests
     /// <summary>
     /// Shrink ratchet. Five shipped skills still carried the pre-fix bare-prefix precheck when this
     /// gate landed (<c>semantic-find</c>, <c>test-coverage</c>, <c>trace-flow</c>,
-    /// <c>version-bump</c>, <c>workspace-health</c>). The allowlist may only ever get SMALLER —
+    /// <c>version-bump</c>, <c>workspace-health</c>). Batch c1 swept the first three, leaving
+    /// <c>version-bump</c> and <c>workspace-health</c>. The allowlist may only ever get SMALLER —
     /// lowering this constant as the sweep batches land is the intended edit; raising it is not.
     /// </summary>
-    private const int ResidualUnsweptRatchet = 5;
+    private const int ResidualUnsweptRatchet = 2;
 
     [TestMethod]
     public void PrefixAgnosticPolicy_IsPopulated()

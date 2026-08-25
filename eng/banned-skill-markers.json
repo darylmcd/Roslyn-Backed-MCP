@@ -30,9 +30,6 @@
       "never itself grounds to halt"
     ],
     "residualUnsweptAllowlist": [
-      "skills/semantic-find/SKILL.md",
-      "skills/test-coverage/SKILL.md",
-      "skills/trace-flow/SKILL.md",
       "skills/version-bump/SKILL.md",
       "skills/workspace-health/SKILL.md"
     ]
