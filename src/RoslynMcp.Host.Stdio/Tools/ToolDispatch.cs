@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Security;
@@ -18,7 +19,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <para>
 /// <b>Dispatch shapes</b> — one helper method per workspace-gating pattern:
 /// <list type="bullet">
-///   <item><see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+///   <item><see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
 ///     — <c>*_apply</c> tools that receive an opaque preview token; resolves the
 ///     workspaceId via the store's <c>PeekWorkspaceId</c> peek and runs under the
 ///     per-workspace write gate. Also has a delegate-peek overload for preview stores
@@ -99,6 +100,17 @@ internal static class ToolDispatch
     /// can emit a parameter-less lambda identical to the existing hand-written body.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
+    /// <param name="expectedKind">
+    /// preview-token-apply-route-provenance: the producer family this route accepts. Defaults to
+    /// <see cref="PreviewKind.Unspecified"/> — "route not bound", no enforcement — so the ~10 apply
+    /// families that have not yet declared a producer set keep their existing behavior without an
+    /// edit. See <see cref="RequireCompatibleProducer"/> for the fail-open/fail-closed semantics.
+    /// </param>
+    /// <param name="applyRoute">
+    /// preview-token-apply-route-provenance: this route's tool name, used only to make the mismatch
+    /// error name the route the caller actually invoked. Falls back to the canonical route for
+    /// <paramref name="expectedKind"/> when omitted.
+    /// </param>
     /// <returns>
     /// The DTO serialized with <see cref="JsonDefaults.Indented"/>.
     /// </returns>
@@ -116,11 +128,18 @@ internal static class ToolDispatch
         IPreviewStore previewStore,
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
-        CancellationToken ct)
+        CancellationToken ct,
+        PreviewKind expectedKind = PreviewKind.Unspecified,
+        string? applyRoute = null)
     {
         var wsId = RequirePreviewWorkspaceId(previewStore.PeekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
         {
+            // preview-token-apply-route-provenance: refuse a token minted by a different producer
+            // family BEFORE any mutation — and before the boundary revalidation below, so a
+            // wrong-route redemption never reaches RevalidateChangedPathsAsync or TryApplyChanges.
+            RequireCompatibleProducer(previewStore, previewToken, expectedKind, applyRoute);
+
             // preview-apply-token-write-path-toctou: revalidate the preview's write set against
             // the sanctioned-root boundary AT REDEMPTION TIME, under the same write gate that
             // holds until the persistence write. The only boundary check before this ran in the
@@ -131,6 +150,83 @@ internal static class ToolDispatch
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: binds a redeeming <c>*_apply</c> route to the producer
+    /// family that minted the token, using the non-consuming
+    /// <see cref="IPreviewStore.PeekKind(string)"/> peek. Fails OPEN on unknown provenance and
+    /// CLOSED only on a present-and-incompatible one — mirroring the
+    /// <see cref="IPreviewStore.PeekChangedPaths(string)"/> "null means unknown, skip, never
+    /// verified" convention:
+    /// <list type="bullet">
+    ///   <item><paramref name="expectedKind"/> is <see cref="PreviewKind.Unspecified"/> — the route
+    ///     has not declared a producer set, so no enforcement (the ~10 other
+    ///     <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
+    ///     apply families are still in this state; binding them is a follow-up row).</item>
+    ///   <item>The stored kind is <see cref="PreviewKind.Unspecified"/> — an untagged producer or an
+    ///     out-of-tree store that does not track provenance. Permissive by the enum's own documented
+    ///     contract; every apply route MUST accept it.</item>
+    ///   <item>Both are concrete and differ — throw before mutation.</item>
+    /// </list>
+    /// The guard does not consume or TTL-refresh the entry.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the token's recorded producer is concrete and incompatible with the route. The
+    /// message names BOTH the actual producer's <c>*_preview</c> tool and the <c>*_apply</c> route
+    /// the token should be redeemed through, so the caller can correct the call without guessing.
+    /// Surfaces through <c>ToolErrorHandler</c>'s generic envelope.
+    /// </exception>
+    internal static void RequireCompatibleProducer(
+        IPreviewStore previewStore,
+        string previewToken,
+        PreviewKind expectedKind,
+        string? applyRoute)
+    {
+        if (expectedKind == PreviewKind.Unspecified)
+        {
+            return;
+        }
+
+        var actualKind = previewStore.PeekKind(previewToken);
+        if (actualKind == PreviewKind.Unspecified || actualKind == expectedKind)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Preview token '{previewToken}' was produced by `{PreviewToolFor(actualKind)}`; " +
+            $"redeem it via `{ApplyRouteFor(actualKind)}` (or the generic `apply_with_verify`), " +
+            $"not `{applyRoute ?? ApplyRouteFor(expectedKind)}`, which only accepts " +
+            $"`{PreviewToolFor(expectedKind)}` tokens. No workspace changes were made.");
+    }
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: the <c>*_preview</c> tool name that mints each
+    /// <see cref="PreviewKind"/>, for the actionable half of the mismatch message.
+    /// </summary>
+    private static string PreviewToolFor(PreviewKind kind) => kind switch
+    {
+        PreviewKind.SymbolRename => "rename_preview",
+        PreviewKind.FormatDocument => "format_document_preview",
+        PreviewKind.FormatRange => "format_range_preview",
+        PreviewKind.OrganizeUsings => "organize_usings_preview",
+        PreviewKind.CodeFix => "code_fix_preview",
+        _ => "an untagged *_preview tool",
+    };
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: the named <c>*_apply</c> route bound to each
+    /// <see cref="PreviewKind"/>, for the recovery half of the mismatch message.
+    /// </summary>
+    private static string ApplyRouteFor(PreviewKind kind) => kind switch
+    {
+        PreviewKind.SymbolRename => "rename_apply",
+        PreviewKind.FormatDocument => "format_document_apply",
+        PreviewKind.FormatRange => "format_range_apply",
+        PreviewKind.OrganizeUsings => "organize_usings_apply",
+        PreviewKind.CodeFix => "code_fix_apply",
+        _ => "apply_with_verify",
+    };
 
     /// <summary>
     /// preview-apply-token-write-path-toctou: runs every path in the preview's write set through
@@ -205,7 +301,7 @@ internal static class ToolDispatch
     /// A closure that invokes the service method with the <paramref name="previewToken"/>
     /// and the gate-provided <see cref="CancellationToken"/>. Kept as
     /// <c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c> for the same reason as the
-    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
     /// overload: closure capture matches the existing hand-written shim bodies byte-for-byte.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>

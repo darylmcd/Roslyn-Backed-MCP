@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
@@ -231,6 +232,61 @@ public sealed class ApplyUndoWorkflowServiceTests
         }
     }
 
+    /// <summary>
+    /// preview-token-apply-route-provenance: <c>apply_with_verify</c> is the generic verified
+    /// route and its documented supported set is "every token held by <see cref="IPreviewStore"/>".
+    /// This pins that the tool matches its own <c>[Description]</c>: a token carrying a CONCRETE,
+    /// unrelated producer kind (one that <c>rename_apply</c> would refuse) still redeems here.
+    /// Guards against a future edit copying the named routes' producer binding onto this route.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyWithVerify_IsProducerAgnostic_AcceptsAnyPreviewStoreKind()
+    {
+        var compile = new FakeCompileCheck(CleanCheck(), CleanCheck());
+        var undo = new FakeUndo();
+        var refactoring = new FakeRefactoring { Result = new ApplyResultDto(true, new[] { "A.cs" }, null) };
+        var gate = new PassThroughGate();
+        var store = new FakePreviewStore("ws") { Kind = PreviewKind.CodeFix };
+        var service = Create(compile, undo, refactoring);
+
+        var json = await ApplyWithVerifyTool.ApplyWithVerify(
+            gate,
+            service,
+            store,
+            previewToken: "tok-any-producer",
+            rollbackOnError: true,
+            CancellationToken.None);
+
+        StringAssert.Contains(json, "\"applied\"",
+            "apply_with_verify must accept a token from any IPreviewStore producer family.");
+        Assert.AreEqual(1, gate.WriteCallCount, "The route still runs under the per-workspace write gate.");
+    }
+
+    /// <summary>
+    /// Pass-through <see cref="IWorkspaceExecutionGate"/> so the tool shim can be exercised without
+    /// a live workspace. Load-gate and gate-removal verbs throw: <c>apply_with_verify</c> must not
+    /// route through them.
+    /// </summary>
+    private sealed class PassThroughGate : IWorkspaceExecutionGate
+    {
+        public int WriteCallCount { get; private set; }
+
+        public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
+            => action(ct);
+
+        public Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct, bool applyStalenessPolicy = true)
+        {
+            WriteCallCount++;
+            return action(ct);
+        }
+
+        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
+            => throw new NotSupportedException("apply_with_verify must not route through RunLoadGateAsync.");
+
+        public void RemoveGate(string workspaceId)
+            => throw new NotSupportedException("apply_with_verify must not call RemoveGate.");
+    }
+
     private sealed class FakeRefactoring : IRefactoringService
     {
         public ApplyResultDto Result = new(true, new[] { "A.cs" }, null);
@@ -291,7 +347,15 @@ public sealed class ApplyUndoWorkflowServiceTests
 
         public FakePreviewStore(string workspaceId) => _workspaceId = workspaceId;
 
+        /// <summary>
+        /// preview-token-apply-route-provenance: producer family the fake reports. The generic
+        /// verified route is producer-agnostic, so a concrete value here must NOT block redemption.
+        /// </summary>
+        public PreviewKind Kind { get; init; } = PreviewKind.Unspecified;
+
         public string? PeekWorkspaceId(string token) => _workspaceId;
+
+        public PreviewKind PeekKind(string token) => Kind;
 
         // Retrieve returns null → project-filter derivation is skipped (full-solution compile).
         public (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token)
