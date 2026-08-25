@@ -59,10 +59,15 @@ public static class SuppressionTools
             },
             ct);
 
+    /// <remarks>
+    /// The classic cosmetic-pragma shape is a pair that wraps line 68 while the diagnostic
+    /// actually fires at line 78: the suppression looks present in review but suppresses nothing.
+    /// This tool performs no edits; widen a mis-scoped pair with <c>pragma_scope_widen</c>.
+    /// </remarks>
     [McpServerTool(Name = "verify_pragma_suppresses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "stable", true, false,
         "Verify an existing #pragma warning disable/restore pair covers a fire line."),
-     Description("Check whether a '#pragma warning disable/restore' pair for the given diagnostic id actually covers the specified 1-based line. Detects 'cosmetic pragma' bugs where the pragma pair wraps the wrong span (e.g. pair wraps line 68 but the diagnostic actually fires at line 78). Read-only — no edits.")]
+     Description("Check whether a '#pragma warning disable/restore' pair for a diagnostic id actually covers the given 1-based line. Detects 'cosmetic pragma' bugs where the pair wraps the wrong span. Read-only.")]
     public static Task<string> VerifyPragmaSuppresses(
         IWorkspaceExecutionGate gate,
         ISuppressionService suppressionService,
@@ -78,10 +83,17 @@ public static class SuppressionTools
                 workspaceId, filePath, line, diagnosticId, c),
             ct);
 
+    /// <remarks>
+    /// Both refusal conditions exist because relocating the restore across a
+    /// <c>#region</c>/<c>#endregion</c> boundary, or into another
+    /// <c>#pragma warning disable</c> for the same id, would silently change the effective scope
+    /// of other suppressions. When the existing pair already covers the target line the call is an
+    /// idempotent no-op.
+    /// </remarks>
     [McpServerTool(Name = "pragma_scope_widen", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "stable", false, false,
         "Extend an existing #pragma warning restore past a target line."),
-     Description("Extend a matching '#pragma warning restore &lt;id&gt;' down to cover a previously-uncovered fire site. Refuses the edit when relocating the restore would cross a #region/#endregion boundary or nest into another '#pragma warning disable &lt;id&gt;' for the same id (both would silently change the effective scope of other suppressions). Idempotent no-op when the existing pair already covers the target.")]
+     Description("Extend a matching '#pragma warning restore &lt;id&gt;' to cover an uncovered fire site. Refuses when the move would cross a #region/#endregion boundary or nest into another disable for the same id.")]
     public static Task<string> PragmaScopeWiden(
         McpServer server,
         IWorkspaceExecutionGate gate,

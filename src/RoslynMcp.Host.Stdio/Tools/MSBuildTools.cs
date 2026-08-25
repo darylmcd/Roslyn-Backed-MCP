@@ -30,10 +30,16 @@ public static class MSBuildTools
             c => msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c),
             ct);
 
+    /// <remarks>
+    /// DocumentCount discrepancy note: when comparing an <c>evaluate_msbuild_items Compile</c>
+    /// count of N to the DocumentCount reported by <c>workspace_load</c>, the latter may be N+3
+    /// because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that
+    /// are not in the explicit <c>Compile</c> item list.
+    /// </remarks>
     [McpServerTool(Name = "evaluate_msbuild_items", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "List MSBuild items of a type with evaluated includes and metadata."),
-     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata. DocumentCount discrepancy note: when comparing 'evaluate_msbuild_items Compile' count N to workspace_load's DocumentCount, the latter may be N+3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that are not in the explicit <Compile> item list.")]
+     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata.")]
     public static Task<string> EvaluateMsbuildItems(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
@@ -47,10 +53,15 @@ public static class MSBuildTools
             c => msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c),
             ct);
 
+    /// <remarks>
+    /// The unfiltered set is frequently 60KB+ of mostly internal MSBuild state. The response
+    /// includes <c>totalCount</c>, <c>returnedCount</c>, and <c>appliedFilter</c> so the caller can
+    /// see how much the filter it supplied elided.
+    /// </remarks>
     [McpServerTool(Name = "get_msbuild_properties", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Dump evaluated MSBuild properties for a project."),
-     Description("Dump evaluated MSBuild properties for a project. The full set is large (frequently 60KB+ of mostly internal MSBuild state); always pass a propertyNameFilter substring or an explicit includedNames allowlist unless you really need everything. The response includes totalCount/returnedCount/appliedFilter for visibility.")]
+     Description("Dump evaluated MSBuild properties for a project. The full set is large (frequently 60KB+); always pass a propertyNameFilter substring or an includedNames allowlist unless you need everything.")]
     public static Task<string> GetMsbuildProperties(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,

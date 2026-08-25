@@ -12,10 +12,19 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class EditTools
 {
 
+    /// <remarks>
+    /// Each edit specifies a range (start/end line and column) and the replacement text. The
+    /// workspace is updated in-place and a diff is returned. The undo snapshot is one slot per
+    /// workspace, written once per call. When <c>verify</c> is true, <c>compile_check</c> runs
+    /// scoped to the owning project after the edit and the new-error set is attached as
+    /// Verification (pre-existing errors are filtered out via a pre-vs-post fingerprint diff).
+    /// When <c>autoRevertOnError</c> is true AND new errors appeared, the edit is rolled back
+    /// through the same single-slot undo path this call just populated.
+    /// </remarks>
     [McpServerTool(Name = "apply_text_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "stable", false, true,
         "Apply direct text edits to a single file; optional verify + auto-revert on new compile errors."),
-     Description("Apply one or more text edits to a source file in the workspace. Each edit specifies a range (start/end line and column) and the replacement text. The workspace is updated in-place and a diff is returned. Revertible via revert_last_apply (one snapshot per call, single-slot per workspace). When verify=true, runs compile_check scoped to the owning project after the edit and attaches the new-error set as Verification (pre-existing errors are filtered out via a pre-vs-post fingerprint diff). When autoRevertOnError=true AND new errors appeared, the edit is rolled back through the same single-slot undo path this call just populated. Prefer a semantic preview/apply Roslyn tool whenever one exists; only fall back to apply_text_edit when no semantic equivalent is available.")]
+     Description("Apply one or more text edits to a source file in the workspace. Revertible via revert_last_apply. Prefer a semantic preview/apply Roslyn tool whenever one exists; fall back here only when none does.")]
     public static Task<string> ApplyTextEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
