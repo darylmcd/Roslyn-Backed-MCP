@@ -76,11 +76,34 @@ public static class ServerTools
             PreviousRecycleReason: previous?.RecycleReason);
     }
 
+    /// <remarks>
+    /// <para>
+    /// <c>workspaceCount</c> reflects sessions at call time and may briefly lag if invoked in
+    /// parallel with — or immediately after — <c>workspace_load</c>; <c>workspace_list</c> is
+    /// the authoritative session enumeration.
+    /// </para>
+    /// <para>
+    /// Prompts tier note: the response carries <c>prompts.stable</c> and
+    /// <c>prompts.experimental</c> from the live catalog. All currently-exposed prompts are
+    /// experimental until promoted, so <c>stable=0</c> alongside a nonzero experimental count
+    /// is expected — it is NOT a missing-surface bug.
+    /// </para>
+    /// <para>
+    /// The <c>connection</c> subfield (state / loadedWorkspaceCount / stdioPid /
+    /// serverStartedAt) distinguishes transport-reachable from workspace-loaded before calling
+    /// workspace-scoped tools; <c>server_heartbeat</c> returns that block alone. The
+    /// idle/ready/degraded state machine — including the guidance that prompts meaning "server
+    /// responsive" should gate on <c>state in {idle, ready}</c> rather than
+    /// <c>state==ready</c> — is documented canonically on
+    /// <see cref="BuildConnection(IWorkspaceManager, ServerProcessMetadata)"/>; do not restate
+    /// it here.
+    /// </para>
+    /// </remarks>
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(ServerInfoDto)),
      McpToolMetadata("server", "stable", true, false,
         "Inspect server capabilities, versions, and support tiers."),
-     Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug. Connection readiness: the response includes a `connection` subfield with state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt — use this (or the lighter `server_heartbeat` tool) to distinguish transport-reachable from workspace-loaded before calling workspace-scoped tools. State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Prompts that previously gated on `state==ready` to mean 'server responsive' should gate on `state in {idle, ready}`; prompts that genuinely require a loaded workspace should continue to gate on `state==ready`.")]
+     Description("Server version, capabilities, runtime, and workspace count plus a `connection` readiness block (state=idle|ready|degraded). workspace_list is authoritative for sessions; server_heartbeat is cheaper.")]
     public static Task<CallToolResult> GetServerInfo(
         IWorkspaceManager workspace,
         ILatestVersionProvider versionChecker,
@@ -289,11 +312,20 @@ public static class ServerTools
     /// startup — calling <c>server_info</c> on every poll needlessly ships ~2 KB of
     /// catalog summary each time.
     /// </summary>
+    /// <remarks>
+    /// Returns <c>state=idle|ready|degraded</c> plus <c>loadedWorkspaceCount</c>,
+    /// <c>stdioPid</c>, and <c>serverStartedAt</c> — no version, catalog, or update metadata.
+    /// The idle/ready/degraded state machine is documented canonically on
+    /// <see cref="BuildConnection(IWorkspaceManager, ServerProcessMetadata)"/>. Poll this to
+    /// observe "at least one workspace loaded" before calling workspace-scoped tools, but
+    /// never poll waiting for <c>idle</c> to transition off on its own: pre-load is a terminal
+    /// state and only a <c>workspace_load</c> call advances it to <c>ready</c>.
+    /// </remarks>
     [McpServerTool(Name = "server_heartbeat", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(ServerHeartbeatDto)),
      McpToolMetadata("server", "stable", true, false,
         "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
-     Description("Return the connection readiness block only — state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt. Cheaper than server_info (no version, catalog, or update metadata). State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Use this to poll for 'at least one workspace loaded' before calling workspace-scoped tools; do NOT poll waiting for `idle` to transition off its own — a `workspace_load` call is required.")]
+     Description("Connection readiness block only (state/loadedWorkspaceCount/stdioPid/serverStartedAt); cheaper than server_info. Do not poll waiting for `idle` to self-advance — a workspace_load call is required.")]
     public static Task<CallToolResult> GetServerHeartbeat(
         IWorkspaceManager workspace,
         ServerProcessMetadata processMetadata)

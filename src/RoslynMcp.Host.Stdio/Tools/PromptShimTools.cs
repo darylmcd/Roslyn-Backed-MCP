@@ -42,10 +42,16 @@ public static class PromptShimTools
 
     internal static int PromptIndexBuildCount => Volatile.Read(ref _promptIndexBuildCount);
 
+    /// <remarks>
+    /// Example <c>promptName</c> values: <c>explain_error</c>, <c>refactor_and_validate</c>.
+    /// Enumerate the full set with <c>list_prompts</c> on the resources channel or by reading
+    /// <c>roslyn://server/catalog</c>. The response shape is
+    /// <c>{ messages: [{role, text}], promptName, parameterCount }</c>.
+    /// </remarks>
     [McpServerTool(Name = "get_prompt_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("prompts", "experimental", true, false,
         "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
-     Description("Render any registered MCP prompt as plain text via the regular tool channel. Useful for clients that cannot invoke prompts via prompts/get directly. Pass `promptName` (e.g. \"explain_error\", \"refactor_and_validate\") and a `parametersJson` object containing the prompt's named parameters. Returns the rendered message list as JSON.")]
+     Description("Render any registered MCP prompt as plain text via the tool channel, for clients that cannot use the prompts/get channel. Pass `promptName` plus a `parametersJson` object; returns messages as JSON.")]
     public static async Task<string> GetPromptText(
         IServiceProvider services,
         [Description("The name of the prompt as registered with [McpServerPrompt(Name = \"...\")]. Use list_prompts on the resources channel or read roslyn://server/catalog for the full list.")] string promptName,

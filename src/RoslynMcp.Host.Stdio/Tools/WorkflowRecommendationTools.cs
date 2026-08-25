@@ -8,10 +8,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class WorkflowRecommendationTools
 {
+    /// <remarks>
+    /// Intended as the discovery front door: call this when the task is known but the tool
+    /// sequence is not, instead of reading the full catalog. <c>requiredWorkspaceState</c>
+    /// tells the caller whether a <c>workspace_load</c> must precede the recommended hops, and
+    /// <c>avoid</c> names the tools that look plausible for the task but are the wrong fit.
+    /// </remarks>
     [McpServerTool(Name = "recommend_workflow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("orchestration", "experimental", true, false,
         "Recommend first-hop Roslyn MCP tools for a natural-language task."),
-     Description("Recommend a compact first-hop workflow for a task. Returns primaryTools, followUpTools, avoid, why, and requiredWorkspaceState so agents can choose focused Roslyn tools without reading the full catalog.")]
+     Description("Recommend a compact first-hop workflow for a task. Returns primaryTools, followUpTools, avoid, why, and requiredWorkspaceState so agents pick focused Roslyn tools without reading the full catalog.")]
     public static Task<string> RecommendWorkflow(
         [Description("Natural-language task, e.g. 'find callers', 'outline this file', 'compile sanity', 'run related tests', or 'rename this symbol'.")] string task,
         [Description("Optional absolute file path relevant to the task.")] string? filePath = null,
