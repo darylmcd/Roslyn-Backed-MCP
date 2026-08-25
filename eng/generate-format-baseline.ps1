@@ -38,16 +38,11 @@ without writing. Exits 1 when they differ. CI and the contract test share this p
 .PARAMETER NoRestore
 Skip the `dotnet restore` precondition. Only safe when the caller has already
 restored the solution in this working tree.
-
-.PARAMETER OutputPath
-Override the tracked artifact location. Defaults to eng/format-baseline.json.
 #>
 param(
     [switch]$Check,
 
-    [switch]$NoRestore,
-
-    [string]$OutputPath
+    [switch]$NoRestore
 )
 
 Set-StrictMode -Version Latest
@@ -64,9 +59,9 @@ if (-not (Test-Path -LiteralPath $solutionPath -PathType Leaf)) {
     throw "Solution not found: $solutionPath"
 }
 
-if (-not $OutputPath) {
-    $OutputPath = Join-Path -Path $PSScriptRoot -ChildPath 'format-baseline.json'
-}
+# Fixed artifact location, resolved from the script's own directory so the script
+# behaves identically no matter which directory it is invoked from.
+$OutputPath = Join-Path -Path $PSScriptRoot -ChildPath 'format-baseline.json'
 
 function ConvertTo-RepositoryRelativePath {
     param(
