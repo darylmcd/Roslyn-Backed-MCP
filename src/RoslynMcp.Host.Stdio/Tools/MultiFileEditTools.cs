@@ -35,7 +35,7 @@ public static class MultiFileEditTools
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", false, true,
         "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
-     Description("Apply text edits to multiple files under one atomic pre-apply snapshot; revert_last_apply rolls back the whole batch. Prefer preview_multi_file_edit + apply_composite_preview for review workflows.")]
+     Description("Apply text edits to multiple files under one atomic pre-apply snapshot. Prefer preview_multi_file_edit + apply_composite_preview for review workflows.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -69,10 +69,14 @@ public static class MultiFileEditTools
         }, ct);
     }
 
+    /// <remarks>
+    /// Diffs are returned per file in unified format; nothing is written until the returned
+    /// token is redeemed.
+    /// </remarks>
     [McpServerTool(Name = "preview_multi_file_edit", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", true, false,
         "Preview a multi-file edit batch; returns per-file diffs and a preview token."),
-     Description("Preview applying text edits to multiple files against a single Roslyn Solution snapshot. Returns per-file unified diffs plus a preview token. Redeem via preview_multi_file_edit_apply.")]
+     Description("Preview text edits to multiple files against a single Solution snapshot; returns per-file diffs plus a token redeemed via preview_multi_file_edit_apply.")]
     public static Task<string> PreviewMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,

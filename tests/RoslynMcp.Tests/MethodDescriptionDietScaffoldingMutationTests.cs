@@ -19,12 +19,12 @@ public sealed class MethodDescriptionDietScaffoldingMutationTests
     private const int MaxDescriptionCharacters = 200;
 
     /// <summary>
-    /// Aggregate ceiling for the slice. Measured 4,384 chars across 23 tools before the diet
-    /// and 2,754 after. The floor is not free: the 17 already-compliant tools contribute 1,594
-    /// chars on their own, so the theoretical minimum with every outlier at the per-tool
-    /// ceiling is ~2,794 - this 2,800 bound is a real ratchet, not slack.
+    /// Aggregate ceiling for the slice, per the initiative spec. Measured 4,384 chars across
+    /// 23 tools before the diet and 2,019 after. <see cref="MaxDescriptionCharacters"/> is a
+    /// per-tool CEILING, not a target: most tools in this slice state their capability in well
+    /// under 100 chars, so the aggregate is not bounded below by 23 x 200.
     /// </summary>
-    private const int MaxAggregateDescriptionCharacters = 2_800;
+    private const int MaxAggregateDescriptionCharacters = 2_200;
 
     private static readonly Type[] SliceToolTypes =
     [

@@ -25,7 +25,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "add_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview adding a PackageReference to a project file."),
-     Description("Preview adding a PackageReference to a project file in the loaded workspace.")]
+     Description("Preview adding a PackageReference to a project file.")]
     public static Task<string> PreviewAddPackageReference(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -46,7 +46,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "remove_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview removing a PackageReference from a project file."),
-     Description("Preview removing a PackageReference from a project file in the loaded workspace.")]
+     Description("Preview removing a PackageReference from a project file.")]
     public static Task<string> PreviewRemovePackageReference(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -66,7 +66,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "add_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview adding a ProjectReference to a project file."),
-     Description("Preview adding a ProjectReference to a project file in the loaded workspace.")]
+     Description("Preview adding a ProjectReference to a project file.")]
     public static Task<string> PreviewAddProjectReference(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -86,7 +86,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "remove_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview removing a ProjectReference from a project file."),
-     Description("Preview removing a ProjectReference from a project file in the loaded workspace.")]
+     Description("Preview removing a ProjectReference from a project file.")]
     public static Task<string> PreviewRemoveProjectReference(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -103,10 +103,14 @@ public static class ProjectMutationTools
                 c),
             ct);
 
+    /// <remarks>
+    /// When the property value is already inherited from <c>Directory.Build.props</c>, the
+    /// response carries a warning annotation instead of silently duplicating the value.
+    /// </remarks>
     [McpServerTool(Name = "set_project_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview setting an allowlisted property in a project file."),
-     Description("Preview setting an allowlisted property in a project file in the loaded workspace. When the property value is already inherited from Directory.Build.props, the response includes a warning annotation.")]
+     Description("Preview setting an allowlisted property in a project file.")]
     public static Task<string> PreviewSetProjectProperty(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -127,7 +131,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "add_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview adding a target framework to a project file."),
-     Description("Preview adding a target framework to a project file in the loaded workspace.")]
+     Description("Preview adding a target framework to a project file.")]
     public static Task<string> PreviewAddTargetFramework(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -147,7 +151,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "remove_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview removing a target framework from a project file."),
-     Description("Preview removing a target framework from a project file in the loaded workspace.")]
+     Description("Preview removing a target framework from a project file.")]
     public static Task<string> PreviewRemoveTargetFramework(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -189,7 +193,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "add_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "experimental", true, false,
         "Preview adding a PackageVersion entry to Directory.Packages.props."),
-     Description("Preview adding a PackageVersion entry to Directory.Packages.props for the loaded workspace.")]
+     Description("Preview adding a PackageVersion entry to Directory.Packages.props.")]
     public static Task<string> PreviewAddCentralPackageVersion(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
@@ -209,7 +213,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "remove_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview removing a PackageVersion entry from Directory.Packages.props."),
-     Description("Preview removing a PackageVersion entry from Directory.Packages.props for the loaded workspace.")]
+     Description("Preview removing a PackageVersion entry from Directory.Packages.props.")]
     public static Task<string> PreviewRemoveCentralPackageVersion(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,

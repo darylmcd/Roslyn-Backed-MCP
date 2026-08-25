@@ -29,7 +29,7 @@ public static class ScaffoldingTools
     [McpServerTool(Name = "scaffold_type_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", true, false,
         "Preview scaffolding a new type file in a project."),
-     Description("Preview scaffolding a new type file in a project. When baseType or interfaces resolve to an interface and implementInterface is true (default), members are emitted as NotImplementedException stubs.")]
+     Description("Preview scaffolding a new type file in a project; interface members are stubbed unless implementInterface is false.")]
     public static Task<string> PreviewScaffoldType(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
@@ -56,12 +56,13 @@ public static class ScaffoldingTools
 
     /// <remarks>
     /// Reusing one snapshot avoids the per-target compilation cost of calling
-    /// <c>scaffold_test_preview</c> once per type.
+    /// <c>scaffold_test_preview</c> once per type. The composite is redeemed through
+    /// <c>apply_composite_preview</c> or the returned token.
     /// </remarks>
     [McpServerTool(Name = "scaffold_test_batch_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", true, false,
         "Preview scaffolding multiple test files for related target types in one composite preview."),
-     Description("Preview scaffolding test files for multiple target types in one composite preview. Reuses a single workspace snapshot across targets. Apply via apply_composite_preview or the returned token.")]
+     Description("Preview scaffolding test files for multiple target types in one composite preview; apply via apply_composite_preview.")]
     public static Task<string> PreviewScaffoldTestBatch(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
@@ -107,7 +108,7 @@ public static class ScaffoldingTools
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "stable", true, false,
         "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
-     Description("Preview scaffolding a new test file for a target type. MSTest, xUnit, and NUnit are auto-detected from the test project's packages or set via testFramework. Replicates a sibling fixture's scaffolding.")]
+     Description("Preview scaffolding a new test file for a target type; MSTest/xUnit/NUnit auto-detected and a sibling fixture's conventions replicated.")]
     public static Task<string> PreviewScaffoldTest(
         RequestContext<CallToolRequestParams> requestContext,
         IWorkspaceExecutionGate gate,
@@ -250,7 +251,7 @@ public static class ScaffoldingTools
     [McpServerTool(Name = "scaffold_first_test_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", true, false,
         "Preview scaffolding the first <Service>Tests.cs fixture for a service that has no existing test file."),
-     Description("Preview scaffolding the FIRST <Service>Tests.cs fixture for a service with no existing test file. Errors when the destination file already exists — use scaffold_test_preview for follow-on tests.")]
+     Description("Preview scaffolding the FIRST <Service>Tests.cs fixture for a service. Errors when the destination file already exists — use scaffold_test_preview for follow-on tests.")]
     public static Task<string> PreviewScaffoldFirstTestFile(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
