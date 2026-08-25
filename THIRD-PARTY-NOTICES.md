@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; attribution fields are reviewed in `eng/update-third-party-notices.ps1`, and MCP SDK license data is regression-checked against the exact restored NuGet package metadata.
+Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; every reviewed license is verified against the exact restored NuGet package metadata.
 
 ## Runtime Dependencies
 
@@ -49,4 +49,4 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 
 ---
 
-Run `pwsh eng/update-third-party-notices.ps1` after changing central package pins. Verification fails closed when a package lacks reviewed attribution metadata.
+Run `pwsh eng/update-third-party-notices.ps1` after changing central package pins. The release gate verifies every reviewed license against restored metadata and fails closed on drift.

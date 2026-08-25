@@ -16,6 +16,7 @@ public sealed class VerifyReleaseChildScriptTests
         new("verify-changelog-fragments.ps1", "Changelog fragment validation"),
         new("verify-breaking-version-bump.ps1", "Breaking version validation"),
         new("verify-registry-readiness.ps1", "Registry readiness validation"),
+        new("update-third-party-notices.ps1", "Restored third-party license validation", RunsAfterRestore: true),
     ];
 
     [TestMethod]
@@ -29,7 +30,7 @@ public sealed class VerifyReleaseChildScriptTests
                 FailureMode.Exit,
                 RequireConsumedFragments: false,
                 child.Description,
-                ShouldReachDotnet: false))
+                ShouldReachDotnet: child.RunsAfterRestore))
             .Concat(
             [
                 new ReleaseCase(
@@ -80,7 +81,7 @@ public sealed class VerifyReleaseChildScriptTests
                     result.StdOut + result.StdErr);
                 var diagnostic = $"{testCase.Name}: stdout={result.StdOut} stderr={result.StdErr}";
 
-                if (testCase.ShouldReachDotnet)
+                if (testCase.ShouldReachDotnet && testCase.FailingScript is null)
                 {
                     Assert.AreEqual(0, result.ExitCode, diagnostic);
                     Assert.IsTrue(
@@ -90,6 +91,19 @@ public sealed class VerifyReleaseChildScriptTests
                 }
 
                 Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                if (testCase.ShouldReachDotnet)
+                {
+                    Assert.IsTrue(
+                        File.Exists(fixture.DotnetSentinelPath),
+                        $"{testCase.Name}: the post-restore verifier failed before fake dotnet ran.");
+                    StringAssert.Contains(combinedOutput, testCase.ExpectedText!, diagnostic);
+                    StringAssert.Contains(
+                        combinedOutput,
+                        $"exit code {_childFailureExitCode}",
+                        diagnostic);
+                    continue;
+                }
+
                 var failedPreflightDotnetArguments = File.Exists(fixture.DotnetArgumentsPath)
                     ? await File.ReadAllTextAsync(fixture.DotnetArgumentsPath)
                     : string.Empty;
@@ -591,14 +605,21 @@ public sealed class VerifyReleaseChildScriptTests
 
         return $$"""
             param(
+                [string]$RepoRoot,
                 [switch]$RequireConsumedFragments,
-                [switch]$Quiet
+                [switch]$Quiet,
+                [switch]$Verify,
+                [switch]$VerifyRestoredLicenses
             )
 
             {{failure}}
 
             if ($MyInvocation.MyCommand.Name -eq 'verify-registry-readiness.ps1' -and -not $Quiet) {
                 throw 'registry quiet switch missing'
+            }
+            if ($MyInvocation.MyCommand.Name -eq 'update-third-party-notices.ps1' -and
+                (-not $Verify -or -not $VerifyRestoredLicenses -or [string]::IsNullOrWhiteSpace($RepoRoot))) {
+                throw 'restored license verification switches missing'
             }
             """;
     }
@@ -891,7 +912,10 @@ public sealed class VerifyReleaseChildScriptTests
         Throw,
     }
 
-    private sealed record ChildScript(string FileName, string Description);
+    private sealed record ChildScript(
+        string FileName,
+        string Description,
+        bool RunsAfterRestore = false);
 
     private sealed record ReleaseCase(
         string Name,

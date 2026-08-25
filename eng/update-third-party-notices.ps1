@@ -2,14 +2,15 @@
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$PackageMetadataRoot,
-    [switch]$Verify
+    [switch]$Verify,
+    [switch]$VerifyRestoredLicenses
 )
 
 $ErrorActionPreference = 'Stop'
 
 $categoryOrder = @('Runtime Dependencies', 'Build-Time Dependencies', 'Test Dependencies')
 $attributions = @{
-    'ModelContextProtocol' = @{ Category = 'Runtime Dependencies'; License = 'Apache-2.0'; VerifyLicenseFromNuGet = $true; Project = 'https://github.com/modelcontextprotocol/csharp-sdk' }
+    'ModelContextProtocol' = @{ Category = 'Runtime Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/modelcontextprotocol/csharp-sdk' }
     'Microsoft.CodeAnalysis.CSharp' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn' }
     'Microsoft.CodeAnalysis.CSharp.Workspaces' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn' }
     'Microsoft.CodeAnalysis.CSharp.Features' = @{ Category = 'Runtime Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn' }
@@ -42,6 +43,98 @@ $attributions = @{
     'Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest' = @{ Category = 'Test Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn-sdk' }
     'NuGet.Frameworks' = @{ Category = 'Test Dependencies'; License = 'Apache-2.0'; Project = 'https://github.com/NuGet/NuGet.Client' }
 }
+$script:noticeAssetRecords = $null
+
+function Get-RestoredAssetRecords {
+    if ($null -ne $script:noticeAssetRecords) {
+        return @($script:noticeAssetRecords)
+    }
+
+    $assetsFiles = @(Get-ChildItem -LiteralPath $RepoRoot -Recurse -Filter 'project.assets.json' -File |
+        Where-Object { $_.FullName -match '[\\/]obj[\\/]project\.assets\.json\z' })
+    if ($assetsFiles.Count -eq 0) {
+        throw "No project.assets.json files exist under '$RepoRoot'. Run restore first."
+    }
+
+    $records = [System.Collections.Generic.List[object]]::new()
+    foreach ($assetsFile in $assetsFiles) {
+        $assets = Get-Content -LiteralPath $assetsFile.FullName -Raw | ConvertFrom-Json -Depth 100
+        $libraries = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($library in $assets.libraries.PSObject.Properties.Name) {
+            [void]$libraries.Add($library)
+        }
+        $records.Add([pscustomobject]@{
+            Path = $assetsFile.FullName
+            Libraries = $libraries
+            PackageRoots = @($assets.packageFolders.PSObject.Properties.Name)
+        })
+    }
+
+    $script:noticeAssetRecords = @($records)
+    return @($script:noticeAssetRecords)
+}
+
+function Get-RestoredNuspecPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$PackageId,
+
+        [Parameter(Mandatory)]
+        [string]$Version
+    )
+
+    function Resolve-FromRoots {
+        param([Parameter(Mandatory)][string[]]$Roots)
+
+        foreach ($root in $Roots) {
+            $canonicalRoot = if ([System.IO.Path]::IsPathFullyQualified($root)) {
+                [System.IO.Path]::GetFullPath($root)
+            }
+            else {
+                [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $root))
+            }
+            $candidate = Join-Path $canonicalRoot "$($PackageId.ToLowerInvariant())/$($Version.ToLowerInvariant())/$($PackageId.ToLowerInvariant()).nuspec"
+            if ([System.IO.File]::Exists($candidate)) {
+                return [System.IO.Path]::GetFullPath($candidate)
+            }
+        }
+
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PackageMetadataRoot)) {
+        $explicitPath = Resolve-FromRoots -Roots @($PackageMetadataRoot)
+        if ($null -eq $explicitPath) {
+            throw "Unable to read authoritative restored package metadata for $PackageId ${Version}: no exact nuspec exists under '$PackageMetadataRoot'."
+        }
+        return $explicitPath
+    }
+
+    $libraryKey = "$PackageId/$Version"
+    $selectedPaths = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($assetRecord in @(Get-RestoredAssetRecords)) {
+        if (-not $assetRecord.Libraries.Contains($libraryKey)) {
+            continue
+        }
+
+        $selected = Resolve-FromRoots -Roots $assetRecord.PackageRoots
+        if ($null -eq $selected) {
+            throw "Assets file '$($assetRecord.Path)' restores $libraryKey but none of its effective package roots contains the exact nuspec."
+        }
+        [void]$selectedPaths.Add($selected)
+    }
+
+    if ($selectedPaths.Count -eq 0) {
+        throw "Unable to verify restored package metadata for ${libraryKey}: no assets file restores the exact central pin."
+    }
+    if ($selectedPaths.Count -gt 1) {
+        throw "Ambiguous restored package metadata for ${libraryKey}: assets files resolve more than one exact nuspec path: $(@($selectedPaths) -join ', ')."
+    }
+
+    return @($selectedPaths)[0]
+}
 
 function Read-NuspecDocument {
     param(
@@ -52,24 +145,8 @@ function Read-NuspecDocument {
         [string]$Version
     )
 
-    $packageIdLower = $PackageId.ToLowerInvariant()
-    $versionLower = $Version.ToLowerInvariant()
-    if ([string]::IsNullOrWhiteSpace($PackageMetadataRoot)) {
-        throw 'PackageMetadataRoot is required when validating restored NuGet license metadata.'
-    }
-
-    $metadataRoot = if ([System.IO.Path]::IsPathFullyQualified($PackageMetadataRoot)) {
-        [System.IO.Path]::GetFullPath($PackageMetadataRoot)
-    }
-    else {
-        [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $PackageMetadataRoot))
-    }
-    $nuspecPath = Join-Path $metadataRoot "$packageIdLower/$versionLower/$packageIdLower.nuspec"
+    $nuspecPath = Get-RestoredNuspecPath -PackageId $PackageId -Version $Version
     $sourceDescription = "restored package metadata for $PackageId $Version"
-    if (-not [System.IO.File]::Exists($nuspecPath)) {
-        throw "Unable to read authoritative ${sourceDescription}: '$nuspecPath' does not exist."
-    }
-
     $content = [System.IO.File]::ReadAllText($nuspecPath)
 
     $settings = [System.Xml.XmlReaderSettings]::new()
@@ -130,7 +207,7 @@ function Get-NuGetLicenseExpression {
         throw "Authoritative package metadata for '$PackageId $Version' must declare a non-empty SPDX license expression."
     }
 
-    return $license.InnerText.Trim()
+    return [System.Text.RegularExpressions.Regex]::Replace($license.InnerText.Trim(), '\s+', ' ')
 }
 
 $packagesPath = Join-Path $RepoRoot 'Directory.Packages.props'
@@ -140,10 +217,10 @@ $packages = @($packagesDocument.Project.ItemGroup.PackageVersion | ForEach-Objec
     [pscustomobject]@{ Id = [string]$_.Include; Version = [string]$_.Version }
 })
 
-if (-not [string]::IsNullOrWhiteSpace($PackageMetadataRoot)) {
+if ($VerifyRestoredLicenses) {
     foreach ($package in $packages) {
         $attribution = $attributions[$package.Id]
-        if ($null -ne $attribution -and $attribution.VerifyLicenseFromNuGet) {
+        if ($null -ne $attribution) {
             $declaredLicense = Get-NuGetLicenseExpression -PackageId $package.Id -Version $package.Version
             if ($declaredLicense -cne $attribution.License) {
                 throw "Authoritative package metadata for '$($package.Id) $($package.Version)' declares license '$declaredLicense', but reviewed attribution declares '$($attribution.License)'."
@@ -164,7 +241,7 @@ if ($unknownPackages.Count -gt 0 -or $unusedAttributions.Count -gt 0) {
 $lines = [System.Collections.Generic.List[string]]::new()
 $lines.Add('# Third-Party Notices')
 $lines.Add('')
-$lines.Add('Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; attribution fields are reviewed in `eng/update-third-party-notices.ps1`, and MCP SDK license data is regression-checked against the exact restored NuGet package metadata.')
+$lines.Add('Roslyn-Backed MCP Server uses the following open-source packages. Versions come from `Directory.Packages.props`; every reviewed license is verified against the exact restored NuGet package metadata.')
 
 foreach ($category in $categoryOrder) {
     $lines.Add('')
@@ -181,7 +258,7 @@ foreach ($category in $categoryOrder) {
 $lines.Add('')
 $lines.Add('---')
 $lines.Add('')
-$lines.Add('Run `pwsh eng/update-third-party-notices.ps1` after changing central package pins. Verification fails closed when a package lacks reviewed attribution metadata.')
+$lines.Add('Run `pwsh eng/update-third-party-notices.ps1` after changing central package pins. The release gate verifies every reviewed license against restored metadata and fails closed on drift.')
 $lines.Add('')
 # Repository markdown uses canonical LF on every runner. Environment.NewLine would make
 # verify-only mode disagree across Windows and Linux even when the package inventory matches.

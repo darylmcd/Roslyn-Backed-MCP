@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
 
 namespace RoslynMcp.Tests;
@@ -74,15 +75,35 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
         solutionDocument.Save(solutionFilePath, SaveOptions.DisableFormatting);
     }
 
-    protected sealed class IsolatedWorkspaceScope : IAsyncDisposable, IDisposable
+    protected internal sealed class IsolatedWorkspaceScope : IAsyncDisposable, IDisposable
     {
-        private bool _disposed;
+        private readonly Func<string, bool> _closeWorkspace;
+        private readonly Action<string> _deleteRoot;
+        private int _disposeState;
         private string? _workspaceId;
 
         internal IsolatedWorkspaceScope(string rootPath, string solutionPath)
+            : this(
+                rootPath,
+                solutionPath,
+                workspaceId: null,
+                WorkspaceManager.Close,
+                DeleteDirectoryIfExists)
+        {
+        }
+
+        internal IsolatedWorkspaceScope(
+            string rootPath,
+            string solutionPath,
+            string? workspaceId,
+            Func<string, bool> closeWorkspace,
+            Action<string> deleteRoot)
         {
             RootPath = rootPath;
             SolutionPath = solutionPath;
+            _workspaceId = workspaceId;
+            _closeWorkspace = closeWorkspace;
+            _deleteRoot = deleteRoot;
         }
 
         public string RootPath { get; }
@@ -120,23 +141,58 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposeState, 1) != 0)
             {
                 return;
             }
 
-            _disposed = true;
-            if (_workspaceId is not null)
+            Exception? closeFailure = null;
+            Exception? deleteFailure = null;
+            try
             {
-                WorkspaceManager.Close(_workspaceId);
+                if (_workspaceId is not null)
+                {
+                    _closeWorkspace(_workspaceId);
+                }
             }
-            DeleteDirectoryIfExists(RootPath);
+            catch (Exception ex)
+            {
+                closeFailure = ex;
+            }
+
+            try
+            {
+                _deleteRoot(RootPath);
+            }
+            catch (Exception ex)
+            {
+                deleteFailure = ex;
+            }
+
+            ThrowCleanupFailures(closeFailure, deleteFailure);
         }
 
         public ValueTask DisposeAsync()
         {
             Dispose();
             return ValueTask.CompletedTask;
+        }
+
+        private static void ThrowCleanupFailures(Exception? closeFailure, Exception? deleteFailure)
+        {
+            if (closeFailure is not null && deleteFailure is not null)
+            {
+                throw new AggregateException(
+                    "Workspace close and fixture deletion both failed.",
+                    closeFailure,
+                    deleteFailure);
+            }
+
+            var failure = closeFailure ?? deleteFailure;
+            if (failure is not null)
+            {
+                ExceptionDispatchInfo.Capture(failure).Throw();
+            }
         }
     }
 }
