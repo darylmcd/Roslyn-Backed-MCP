@@ -31,9 +31,9 @@ public static class FileOperationTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         IFileOperationService fileOperationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Project name or project file path within the loaded workspace")] string projectName,
-        [Description("Absolute path to the source file to create")] string filePath,
+        [Description("Absolute path to the file to create.")] string filePath,
         [Description("Initial file contents")] string content,
         CancellationToken ct = default)
     {
@@ -53,7 +53,7 @@ public static class FileOperationTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by create_file_preview")] string previewToken,
+        [Description("Preview token from create_file_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -70,8 +70,8 @@ public static class FileOperationTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         IFileOperationService fileOperationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file to delete")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the file to delete.")] string filePath,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -90,7 +90,7 @@ public static class FileOperationTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by delete_file_preview")] string previewToken,
+        [Description("Preview token from delete_file_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -107,9 +107,9 @@ public static class FileOperationTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         IFileOperationService fileOperationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the existing source file")] string sourceFilePath,
-        [Description("Absolute path to the destination source file")] string targetFilePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file.")] string sourceFilePath,
+        [Description("Absolute path to the destination file.")] string targetFilePath,
         [Description("Optional: destination project name or project file path; defaults to the source project")] string? destinationProjectName = null,
         [Description("When true, updates the namespace declaration in the moved file to match the destination folder")] bool updateNamespace = false,
         CancellationToken ct = default)
@@ -134,7 +134,7 @@ public static class FileOperationTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by move_file_preview")] string previewToken,
+        [Description("Preview token from move_file_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,

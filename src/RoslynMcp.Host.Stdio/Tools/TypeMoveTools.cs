@@ -27,8 +27,8 @@ public static class TypeMoveTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         ITypeMoveService typeMoveService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file containing the type")] string sourceFilePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file containing the type.")] string sourceFilePath,
         [Description("Name of the type to move")] string typeName,
         [Description("Optional: target file path. If omitted, defaults to {TypeName}.cs in the same directory")] string? targetFilePath = null,
         CancellationToken ct = default)
@@ -49,7 +49,7 @@ public static class TypeMoveTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by move_type_to_file_preview")] string previewToken,
+        [Description("Preview token from move_type_to_file_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -65,7 +65,7 @@ public static class TypeMoveTools
     public static Task<string> PreviewChangeTypeNamespace(
         IWorkspaceExecutionGate gate,
         INamespaceRelocationService relocationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Name of the type to relocate (must be unique within fromNamespace)")] string typeName,
         [Description("Fully-qualified namespace currently containing the type")] string fromNamespace,
         [Description("Fully-qualified destination namespace inside the same project")] string toNamespace,
