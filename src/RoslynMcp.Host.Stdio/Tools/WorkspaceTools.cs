@@ -25,7 +25,14 @@ public static class WorkspaceTools
     private const int _maxSupportBundleDriftCap = 100;
     private static readonly TimeSpan s_processDrainTimeout = TimeSpan.FromSeconds(10);
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error. Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.")]
+    /// <remarks>
+    /// <para>Set autoRestore=true to run dotnet restore plus one follow-up reload when the loaded status reports restoreRequired=true.</para>
+    /// <para>Set prewarm=true to run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, solutions with more than 50 projects are prewarmed automatically. The response includes a prewarm result block only when warming ran.</para>
+    /// <para>DocumentCount note: the per-project DocumentCount often exceeds the Compile item count reported by evaluate_msbuild_items by about 3, because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit Compile items.</para>
+    /// <para>Sessions persist for the lifetime of the stdio host process - there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns "Workspace was not found", call workspace_load again rather than treating it as an error.</para>
+    /// <para>Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj into a Roslyn workspace session for semantic analysis. Idempotent by path: loading an already-loaded file returns the existing workspaceId. Returns a lean summary; pass verbose=true for the full project tree.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
     public static Task<string> LoadWorkspace(
@@ -90,7 +97,10 @@ public static class WorkspaceTools
         }, ct);
     }
 
-    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes. Set autoRestore=true to run dotnet restore and one follow-up reload when the reloaded status reports restoreRequired=true. Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.")]
+    /// <remarks>
+    /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload a loaded workspace from disk to pick up file changes. Set autoRestore=true to run dotnet restore plus one follow-up reload when the reloaded status reports restoreRequired=true.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
@@ -113,7 +123,10 @@ public static class WorkspaceTools
             }, outerCt), ct);
     }
 
-    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to run `dotnet build-server shutdown` AND terminate any detached test-runner processes (testhost / vstest.console) whose executable lives under the loaded path's directory, after session removal — this releases MSBuild build-server and test-host file-system locks on Windows, which is required before `git worktree remove` in sweep teardown sequences.")]
+    /// <remarks>
+    /// <para>drainProcesses=true runs `dotnet build-server shutdown` AND terminates any detached test-runner processes (testhost / vstest.console) whose executable lives under the loaded path directory, after session removal. On Windows this is what releases the MSBuild build-server and test-host file-system locks.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to also release MSBuild build-server and test-host file locks - required before `git worktree remove` in sweep teardown sequences.")]
     [McpToolMetadata("workspace", "stable", false, true,
         "Close a loaded workspace session and release resources.")]
     public static Task<string> CloseWorkspace(
@@ -364,11 +377,11 @@ public static class WorkspaceTools
         return Task.FromResult(StructuredToolResult.Create(payload));
     }
 
+    /// <remarks>
+    /// <para>Pass verbose=true for the full per-project tree and workspace diagnostics.</para>
+    /// </remarks>
     [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description(
-        "Cheap health check after workspace_load — call this first before compile_check or heavy tools. " +
-        "Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts. " +
-        "Pass verbose=true for the full per-project tree and workspace diagnostics.")]
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description("Cheap health check after workspace_load - call this first before compile_check or heavy tools. Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts.")]
     [McpToolMetadata("workspace", "stable", true, false,
         "Inspect status, diagnostics, and stale-state information for a workspace.")]
     public static Task<CallToolResult> GetWorkspaceStatus(
@@ -399,12 +412,12 @@ public static class WorkspaceTools
         CancellationToken ct = default) =>
         GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
 
+    /// <remarks>
+    /// <para>Uses existing read-side workspace probes only; it does not run tests or dotnet build by default.</para>
+    /// <para>If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.</para>
+    /// </remarks>
     [McpServerTool(Name = "workspace_readiness_report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceReadinessReportDto)), Description(
-        "First-run/onboarding readiness report for a loaded workspace, distinct from the incident-focused workspace_support_bundle. " +
-        "Uses existing read-side workspace probes only; it does not run tests or dotnet build by default. " +
-        "Returns one compact verdict: ready, restore-needed, build-needed, or analyzer-limited, plus limitations and next recommended workflows. " +
-        "If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.")]
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceReadinessReportDto)), Description("First-run/onboarding readiness report for a loaded workspace, distinct from the incident-focused workspace_support_bundle. Returns one verdict - ready, restore-needed, build-needed, or analyzer-limited - plus limitations and next workflows.")]
     [McpToolMetadata("workspace", "stable", true, false,
         "First-run workspace readiness report with verdict, limitations, and next workflows.")]
     public static Task<CallToolResult> GetWorkspaceReadinessReport(
@@ -474,11 +487,12 @@ public static class WorkspaceTools
         }, ct);
     }
 
+    /// <remarks>
+    /// <para>Also reports the loaded path and workspace/surface version. Does not include source snippets.</para>
+    /// <para>If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.</para>
+    /// </remarks>
     [McpServerTool(Name = "workspace_support_bundle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
-        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceSupportBundleDto)), Description(
-        "Incident-diagnosis bundle for an existing workspace session, distinct from first-run readiness reporting. " +
-        "Composes loaded path, readiness summary, drift status, capped change ledger, workspace/surface version, diagnostics totals, and next-action hints. " +
-        "Does not include source snippets. If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.")]
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceSupportBundleDto)), Description("Incident-diagnosis bundle for an existing workspace session, distinct from the first-run workspace_readiness_report. Composes readiness, drift status, a capped change ledger, versions, diagnostics totals, and next-action hints.")]
     [McpToolMetadata("workspace", "stable", true, false,
         "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.")]
     public static Task<CallToolResult> GetWorkspaceSupportBundle(
@@ -578,7 +592,11 @@ public static class WorkspaceTools
             c => workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c),
             ct);
 
-    [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read source text of a document in the loaded workspace. By default returns the full file. Pass startLine/endLine (1-based, inclusive) to slice. Output is capped at maxChars (default 65536); set Truncated=true marker indicates the response was clipped — re-request a narrower line range. Always returns RequestedStartLine/RequestedEndLine, ReturnedStartLine/ReturnedEndLine, TotalLineCount so callers can verify the slice.")]
+    /// <remarks>
+    /// <para>maxChars defaults to 65536; a Truncated=true marker indicates the response was clipped - re-request a narrower line range.</para>
+    /// <para>The response always returns RequestedStartLine/RequestedEndLine, ReturnedStartLine/ReturnedEndLine, and TotalLineCount so callers can verify the slice.</para>
+    /// </remarks>
+    [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read source text of a document as the loaded Roslyn workspace currently sees it (may differ from disk until reload). Returns the full file by default; pass startLine/endLine (1-based, inclusive) to slice. Output is capped at maxChars.")]
     [McpToolMetadata("workspace", "stable", true, false,
         "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded).")]
     public static Task<string> GetSourceText(

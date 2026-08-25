@@ -84,7 +84,10 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter. The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
+    /// <remarks>
+    /// <para>Use returnedCount/totalCount/hasMore to tell when more pages exist.</para>
+    /// </remarks>
+    [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to stay within MCP context budgets - filter large suites with projectName and/or nameFilter. The response includes returnedCount/totalCount/hasMore.")]
     [McpToolMetadata("validation", "stable", true, false,
         "Discover tests in the loaded workspace.")]
     public static Task<string> DiscoverTests(
@@ -188,7 +191,12 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source. The `failures` array is paginated (failuresOffset/failuresLimit, default limit 25) and each entry's Message/StackTrace is head-truncated to 500/1500 chars with a trailing '... [truncated]' marker — a broad/unfiltered run over a large suite would otherwise produce an unbounded payload. Aggregate total/passed/failed/skipped always reflect the full run; failuresTotal/hasMoreFailures tell you when more failure detail exists.")]
+    /// <remarks>
+    /// <para>FailureEnvelope carries ErrorKind (FileLock | BuildFailure | Timeout | Unknown), IsRetryable, Summary, and tails of StdOut/StdErr.</para>
+    /// <para>Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source.</para>
+    /// <para>The failures array is paginated via failuresOffset/failuresLimit (default limit 25) and each entry Message/StackTrace is head-truncated to 500/1500 chars with a trailing "... [truncated]" marker - a broad, unfiltered run over a large suite would otherwise produce an unbounded payload. Aggregate total/passed/failed/skipped always reflect the full run; failuresTotal/hasMoreFailures tell you when more failure detail exists.</para>
+    /// </remarks>
+    [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured results. When TRX output cannot be produced the result carries a classified FailureEnvelope instead of throwing; the failures array is paginated.")]
     [McpToolMetadata("validation", "stable", false, false,
         "Run dotnet test for the workspace or a selected project.")]
     public static Task<string> RunTests(
@@ -374,7 +382,11 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Three mutually-exclusive locator modes: (1) symbolHandle alone — pass the stable handle returned by other semantic tools; (2) metadataName alone — pass a fully-qualified metadata name such as Namespace.TypeName; (3) source-location — pass filePath, line, AND column all together (all three are required when using this mode). Two-pass match: (1) heuristic name overlap (substring of the symbol name in test methods/classes — fast, catches the common case), plus (2) reference sweep via SymbolFinder.FindReferencesAsync over the symbol + its overrides/implementations (covers interface-dispatch tests that don't mention the interface name). An empty result set usually means: (a) the symbol's simple name doesn't appear in any test method/class name AND no test file references the symbol (or any implementation) by position, (b) the target symbol is a local/anonymous construct that isn't reachable by name. For file-based impact, use `test_related_files` instead.")]
+    /// <remarks>
+    /// <para>Two-pass match: (1) heuristic name overlap (substring of the symbol name in test methods/classes - fast, catches the common case), plus (2) a reference sweep via SymbolFinder.FindReferencesAsync over the symbol and its overrides/implementations (covers interface-dispatch tests that do not mention the interface name).</para>
+    /// <para>An empty result set usually means: (a) the symbol simple name does not appear in any test method/class name AND no test file references the symbol (or any implementation) by position, or (b) the target symbol is a local/anonymous construct that is not reachable by name.</para>
+    /// </remarks>
+    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol via three mutually-exclusive locators: symbolHandle alone, metadataName alone, or filePath plus line plus column together. For file-based impact use test_related_files instead.")]
     [McpToolMetadata("validation", "stable", true, false,
         "Find tests related to a symbol.")]
     public static Task<string> FindRelatedTests(

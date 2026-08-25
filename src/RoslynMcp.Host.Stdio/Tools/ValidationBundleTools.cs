@@ -13,10 +13,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ValidationBundleTools
 {
+    /// <remarks>
+    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | timeout.</para>
+    /// <para>test-zero-run indicates runTests=true but the discovered filter matched zero tests - re-run test_run standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass.</para>
+    /// <para>timeout indicates a validation phase exceeded the 25-second internal cap; the response carries compileResult.cancelled=true plus a warnings entry naming the phase and is safe to retry.</para>
+    /// <para>Pass summary=true on multi-project solutions where the default response (per-diagnostic detail plus per-test rows) exceeds the MCP cap. Pass responseFormat="markdown" for a compact summary table; the verdict is preserved across both shapes.</para>
+    /// </remarks>
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
         "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
-     Description("One-call post-edit validation bundle. Runs an in-memory compile_check, harvests Error-severity compiler+analyzer diagnostics, discovers tests related to the changed file set, and (when runTests=true) executes those tests. Returns an aggregate envelope with overallStatus = clean | compile-error | analyzer-error | test-failure | test-zero-run | timeout. `test-zero-run` indicates runTests=true but the discovered filter matched zero tests — re-run `test_run` standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass. `timeout` indicates a validation phase exceeded the 25-second internal cap; the response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase and is safe to retry. Pass `summary=true` on multi-project solutions where the default response (per-diagnostic detail + per-test rows) exceeds the MCP cap (Jellyfin: 135 KB). Pass `responseFormat=\"markdown\"` for a compact ~30-line summary table when the JSON envelope is overkill — verdict (overallStatus) is preserved across both shapes.")]
+     Description("One-call post-edit validation bundle over an explicit changed-file set: in-memory compile_check, Error-severity compiler and analyzer diagnostics, related-test discovery, and optional test_run. Returns an aggregate overallStatus envelope.")]
     public static Task<string> ValidateWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
@@ -34,10 +40,15 @@ public static class ValidationBundleTools
             return RenderValidationResponse(dto, responseFormat);
         }, ct);
 
+    /// <remarks>
+    /// <para>Falls back to full-workspace scope and surfaces the fallback via the Warnings field when git is unavailable (not on PATH, solution outside a git repo, git exited non-zero).</para>
+    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | git-status-unknown | timeout.</para>
+    /// <para>git-status-unknown is unique to this tool: it fires when the git status scope-collection itself timed out, so a would-be clean verdict was computed over an untrustworthy fallback scope rather than the real working tree - retry, or raise ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS if git status is slow on this repo.</para>
+    /// </remarks>
     [McpServerTool(Name = "validate_recent_git_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
         "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo."),
-     Description("Post-edit validation bundle that auto-derives the changed-file set from `git status --porcelain` in the solution directory, eliminating the manual path-enumeration step. Internally forwards to validate_workspace with the derived list. Falls back to full-workspace scope and surfaces the fallback via the Warnings field when git is unavailable (not on PATH, solution outside a git repo, git exited non-zero). Prefer this over validate_workspace when you have uncommitted edits and want the bundle scoped to the touched-file set. Returns an aggregate envelope with overallStatus = clean | compile-error | analyzer-error | test-failure | test-zero-run | git-status-unknown | timeout. `git-status-unknown` is unique to this tool: it fires when the `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope rather than the real working tree — retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` if `git status` is slow on this repo (scope defaulted to full-workspace because the touched-file set could not be determined).")]
+     Description("Post-edit validation bundle that auto-derives the changed-file set from `git status --porcelain` and forwards to validate_workspace. Prefer this over validate_workspace when you have uncommitted edits and want touched-file scope.")]
     public static Task<string> ValidateRecentGitChanges(
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
@@ -51,10 +62,14 @@ public static class ValidationBundleTools
             c => validationService.ValidateRecentGitChangesAsync(workspaceId, runTests, c, summary),
             ct);
 
+    /// <remarks>
+    /// <para>The fork is created under .roslynmcp/forks beneath the workspace root and loaded as its own workspace.</para>
+    /// <para>retention values: drop-on-success (default), drop-on-failure, drop-always, keep.</para>
+    /// </remarks>
     [McpServerTool(Name = "workspace_fork_apply", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("validation", "experimental", false, false,
         "Fork a loaded workspace, replay a preview token into the fork, validate it, and retain/drop the fork by policy."),
-     Description("Experimental validation-bundle tool. Creates a server-owned fork under <workspace>/.roslynmcp/forks, replays an existing preview token into that fork without mutating the source workspace, loads the fork as a workspace, runs validate_workspace, and retains or deletes the fork according to retention. retention values: drop-on-success (default), drop-on-failure, drop-always, keep.")]
+     Description("Experimental: fork a loaded workspace, replay an existing preview token into the fork without mutating the source workspace, run validate_workspace against the fork, then retain or delete the fork per the retention policy.")]
     public static Task<string> WorkspaceForkApply(
         IWorkspaceExecutionGate gate,
         IWorkspaceForkApplyService forkApplyService,
