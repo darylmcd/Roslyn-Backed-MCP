@@ -33,21 +33,7 @@ public sealed class CompositeApplyOrchestratorTests
     [TestCleanup]
     public void Cleanup()
     {
-        try
-        {
-            if (Directory.Exists(_tempDir))
-            {
-                Directory.Delete(_tempDir, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort temp cleanup.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Best-effort temp cleanup.
-        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_tempDir);
     }
 
     [TestMethod]
@@ -188,7 +174,8 @@ public sealed class CompositeApplyOrchestratorTests
         // The workspace must NOT be reloaded on a failed apply.
         Assert.IsFalse(workspace.ReloadCalled, "ReloadAsync must not run when the apply failed.");
 
-        // Regression guard: the preview token is intentionally left valid (not invalidated) on failure.
+        // The in-memory-only store preserves its existing retry contract. Persistent stores claim
+        // before mutation and therefore fail closed instead of making a partial operation replayable.
         Assert.IsNotNull(store.Retrieve(token), "The preview token must remain valid after a partial failure.");
 
         Assert.HasCount(1, sink.Events);

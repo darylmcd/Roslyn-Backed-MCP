@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-24T23:01:31Z
+**updated_at:** 2026-08-25T00:01:10Z
 
 ## Agent contract
 
@@ -47,8 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `verify-release-owned-output-freshness` | High | — | Recreate exact verifier-owned publish outputs so stale local files cannot enter a release manifest or upload. [type: release correctness] [source: 2026-08-24 final diff review] | S | items/verify-release-owned-output-freshness.md |
-| `persistent-composite-token-atomic-redemption` | High | — | Atomically claim persistent composite preview tokens before mutation so separate hosts cannot redeem one-time work twice. [type: security correctness] [source: 2026-08-24 adjacent storage review] | M | items/persistent-composite-token-atomic-redemption.md |
 | `scripting-killable-worker-isolation-boundary` | High | — | Isolate C# script execution behind a killable worker boundary so hard deadlines reclaim CPU and capacity. [type: security] [source: 2026-08-24 CI hotspot audit] | M | items/scripting-killable-worker-isolation-boundary.md |
 | `retired-actions-runner-service-record-removal` | High | — | Delete the orphaned delayed-auto LocalSystem runner service and quarantined installation; prove service, paths, processes, and remote inventory are absent. [type: security] [source: 2026-08-24 runner retirement] | S | items/retired-actions-runner-service-record-removal.md |
 
@@ -78,12 +76,11 @@
 | `isolated-workspace-scope-cleanup-composition` | Medium | — | Compose isolated workspace close and fixture deletion so both are attempted exactly once and single/dual cleanup failures remain diagnosable. [type: test infrastructure] [source: 2026-08-24 adjacent lifecycle review] | S | items/isolated-workspace-scope-cleanup-composition.md |
 | `ci-router-pure-decision-and-actionlint` | Medium | — | Extract the CI topology into a pure decision contract and gate workflow syntax with repository-pinned actionlint. [type: CI refactor] [source: 2026-08-24 final CI review] | M | items/ci-router-pure-decision-and-actionlint.md |
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
-| `verify-release-outer-cleanup-on-pretest-failure` | Medium | — | Move verifier-owned build-server and temporary-state cleanup into an outer finally covering restore, build, planning, test, validation, and publish failures. [type: CI reliability] [source: 2026-08-24 lifecycle review] | S | items/verify-release-outer-cleanup-on-pretest-failure.md |
 | `script-supervisor-cleanup-failure-observability` | Medium | — | **Make script-supervisor cleanup failures observable** — remove untyped timer-disposal catches and distinguish normal shutdown from semaphore invariant violations without masking a primary execution failure. [type: reliability] [source: 2026-08-24 adjacent review] | S | items/script-supervisor-cleanup-failure-observability.md |
-| `scripting-options-environment-validation` | Medium | — | Validate scripting environment timing values and timeout-plus-grace bounds at host startup with variable-specific safe diagnostics. [type: configuration correctness] [source: 2026-08-24 adjacent scripting review] | M | items/scripting-options-environment-validation.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
 | `third-party-license-verification-all-central-pins` | Medium | — | Verify every central package's restored identity, version, and SPDX license so notice attribution cannot drift outside the MCP special case. [type: supply-chain correctness] [source: 2026-08-24 dependency review] | S | items/third-party-license-verification-all-central-pins.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
+| `composite-apply-orchestrator-decomposition` | Medium | — | Decompose composite apply orchestration into bounded mutation and failure-projection helpers without changing partial-apply semantics. [type: maintainability] [source: 2026-08-24 adjacent code-quality review] | S | items/composite-apply-orchestrator-decomposition.md |
 
 ## Low
 
@@ -175,7 +172,6 @@
 | `mutation-analysis-property-write-orchestrator-decomposition` | Low | analysis-services-dedup-reference-classifiers | **Decompose property-write analysis orchestration** — extract reference traversal and positional-record projection from the 95-line hotspot while preserving write classifications. [type: refactor] [source: 2026-08-23 LocationDto Stage 1 adjacent review] | S | items/mutation-analysis-property-write-orchestrator-decomposition.md |
 | `wire-contract-minimal-workspace-fixture` | Low | — | **Use a minimal workspace for protocol-only wire tests** — retain both protocol eras and every payload/notification assertion without repeatedly loading the full sample solution. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/wire-contract-minimal-workspace-fixture.md |
 | `edit-integration-fixture-load-amortization-wave-1` | Low | — | **Amortize isolated workspace loads in the first edit-test wave** — reuse one class-private fixture only with deterministic byte and preview/undo-state restoration before every case. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/edit-integration-fixture-load-amortization-wave-1.md |
-| `persistent-composite-storage-delete-toctou-idempotence` | Low | — | **Make persistent preview deletion idempotent under directory races** — handle root enumeration disappearance as a cache-delete miss while preserving propagation of genuine permission failures. [type: bug] [source: 2026-08-24 adjacent storage review] | S | items/persistent-composite-storage-delete-toctou-idempotence.md |
 | `test-temp-cleanup-helper-adoption-wave-2` | Low | — | **Remove the next wave of swallowed test cleanup failures** — adopt the bounded shared directory helper in three fixtures and let cleanup defects retain actionable evidence. [type: test hygiene] [source: 2026-08-24 adjacent review] | S | items/test-temp-cleanup-helper-adoption-wave-2.md |
 | `test-document-path-helper-consolidation-wave-1` | Low | test-base-static-service-locator-decomposition | **Share the first wave of test document-path lookup** — replace copied workspace scans with one explicit helper that fails clearly on zero or ambiguous matches. [type: test refactor] [source: 2026-08-24 adjacent review] | S | items/test-document-path-helper-consolidation-wave-1.md |
 | `ci-process-tests-runner-adoption` | Low | powershell-script-test-runner-foundation | **Adopt the shared PowerShell runner in CI telemetry tests** — remove duplicate executable resolution, stream draining, timeout, kill, and result plumbing after the runner foundation lands. [type: test refactor] [source: 2026-08-24 adjacent review] | S | items/ci-process-tests-runner-adoption.md |

@@ -90,9 +90,16 @@ public sealed class VerifyReleaseChildScriptTests
                 }
 
                 Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                var failedPreflightDotnetArguments = File.Exists(fixture.DotnetArgumentsPath)
+                    ? await File.ReadAllTextAsync(fixture.DotnetArgumentsPath)
+                    : string.Empty;
                 Assert.IsFalse(
-                    File.Exists(fixture.DotnetSentinelPath),
+                    failedPreflightDotnetArguments.Contains("restore", StringComparison.Ordinal),
                     $"{testCase.Name}: restore began after a failed preflight.");
+                StringAssert.Contains(
+                    failedPreflightDotnetArguments,
+                    "build-server",
+                    $"{testCase.Name}: outer cleanup did not attempt build-server shutdown.");
                 StringAssert.Contains(combinedOutput, testCase.ExpectedText!, diagnostic);
                 if (testCase.FailureMode == FailureMode.Exit)
                 {
@@ -230,6 +237,187 @@ public sealed class VerifyReleaseChildScriptTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task VerifyRelease_RecreatesOwnedOutputsAndRejectsEmptyPublishAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        foreach (var publishMode in new string?[] { null, "empty" })
+        {
+            var fixtureRoot = Path.Combine(
+                TestTempRoot.Current,
+                nameof(VerifyReleaseChildScriptTests),
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                var fixture = WriteFixture(
+                    repositoryRoot,
+                    fixtureRoot,
+                    new ReleaseCase(
+                        "owned output freshness",
+                        FailingScript: null,
+                        FailureMode.None,
+                        RequireConsumedFragments: false,
+                        ExpectedText: null,
+                        ShouldReachDotnet: true));
+                var publishDirectory = Path.Combine(fixtureRoot, "artifacts", "publish", "host-stdio");
+                var manifestDirectory = Path.Combine(fixtureRoot, "artifacts", "manifests");
+                Directory.CreateDirectory(publishDirectory);
+                Directory.CreateDirectory(manifestDirectory);
+                var stalePublishPath = Path.Combine(publishDirectory, "stale-from-prior-run.bin");
+                var staleManifestPath = Path.Combine(manifestDirectory, "stale-manifest.txt");
+                await File.WriteAllTextAsync(stalePublishPath, "stale");
+                await File.WriteAllTextAsync(staleManifestPath, "stale");
+
+                var result = await RunVerifyReleaseAsync(
+                    fixture,
+                    requireConsumedFragments: false,
+                    publishMode: publishMode);
+                var diagnostic = $"stdout={result.StdOut} stderr={result.StdErr}";
+                var hashManifestPath = Path.Combine(manifestDirectory, "host-stdio-sha256.txt");
+
+                Assert.IsFalse(File.Exists(stalePublishPath), diagnostic);
+                Assert.IsFalse(File.Exists(staleManifestPath), diagnostic);
+                if (publishMode is null)
+                {
+                    Assert.AreEqual(0, result.ExitCode, diagnostic);
+                    Assert.IsTrue(File.Exists(Path.Combine(publishDirectory, "RoslynMcp.Host.Stdio.dll")));
+                    var manifest = await File.ReadAllTextAsync(hashManifestPath);
+                    StringAssert.Contains(manifest, "RoslynMcp.Host.Stdio.dll");
+                    Assert.IsFalse(manifest.Contains("stale-from-prior-run", StringComparison.Ordinal));
+                }
+                else
+                {
+                    Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                    StringAssert.Contains(
+                        PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
+                        "dotnet publish succeeded without producing any files.",
+                        diagnostic);
+                    Assert.IsFalse(File.Exists(hashManifestPath), diagnostic);
+                }
+
+                var dotnetArguments = await File.ReadAllTextAsync(fixture.DotnetArgumentsPath);
+                Assert.AreEqual(
+                    1,
+                    dotnetArguments.Split("build-server", StringSplitOptions.None).Length - 1,
+                    "Verifier cleanup must attempt build-server shutdown exactly once.");
+            }
+            finally
+            {
+                TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_DotnetPhaseFailure_AlwaysRunsOuterCleanupAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        foreach (var failingStep in new[] { "restore", "build", "test", "publish" })
+        {
+            var fixtureRoot = Path.Combine(
+                TestTempRoot.Current,
+                nameof(VerifyReleaseChildScriptTests),
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                var fixture = WriteFixture(
+                    repositoryRoot,
+                    fixtureRoot,
+                    new ReleaseCase(
+                        $"dotnet {failingStep} failure",
+                        FailingScript: null,
+                        FailureMode.None,
+                        RequireConsumedFragments: false,
+                        ExpectedText: null,
+                        ShouldReachDotnet: true));
+
+                var result = await RunVerifyReleaseAsync(
+                    fixture,
+                    requireConsumedFragments: false,
+                    failDotnetStep: failingStep);
+                var diagnostic = $"step={failingStep} stdout={result.StdOut} stderr={result.StdErr}";
+
+                Assert.AreNotEqual(0, result.ExitCode, diagnostic);
+                var dotnetArguments = await File.ReadAllTextAsync(fixture.DotnetArgumentsPath);
+                Assert.AreEqual(
+                    1,
+                    dotnetArguments.Split("build-server", StringSplitOptions.None).Length - 1,
+                    $"{diagnostic}: build-server shutdown must run exactly once.");
+                var tempRootPrefix = "Testhost temp root: ";
+                var tempRootLine = result.StdOut
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .SingleOrDefault(line => line.StartsWith(tempRootPrefix, StringComparison.Ordinal));
+                if (tempRootLine is not null)
+                {
+                    var privateTestRoot = tempRootLine[tempRootPrefix.Length..].Trim();
+                    AssertPrivateTestRoot(privateTestRoot);
+                    Assert.IsFalse(
+                        Directory.Exists(privateTestRoot),
+                        $"{diagnostic}: verifier-owned test root survived cleanup.");
+                }
+
+                Assert.IsFalse(
+                    File.Exists(Path.Combine(
+                        fixtureRoot,
+                        "artifacts",
+                        "manifests",
+                        "host-stdio-sha256.txt")),
+                    $"{diagnostic}: a failed phase must not leave a publish manifest.");
+            }
+            finally
+            {
+                TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyRelease_RejectsOutputRootOutsideRepositoryAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(VerifyReleaseChildScriptTests),
+            Guid.NewGuid().ToString("N"));
+        var outsideRoot = Path.GetFullPath(Path.Combine(fixtureRoot, "..", "outside-artifacts"));
+        Directory.CreateDirectory(outsideRoot);
+        var sentinel = Path.Combine(outsideRoot, "preserve.txt");
+        await File.WriteAllTextAsync(sentinel, "preserve");
+        try
+        {
+            var fixture = WriteFixture(
+                repositoryRoot,
+                fixtureRoot,
+                new ReleaseCase(
+                    "output boundary",
+                    FailingScript: null,
+                    FailureMode.None,
+                    RequireConsumedFragments: false,
+                    ExpectedText: null,
+                    ShouldReachDotnet: false));
+
+            var result = await RunVerifyReleaseAsync(
+                fixture,
+                requireConsumedFragments: false,
+                outputRoot: outsideRoot);
+
+            Assert.AreNotEqual(0, result.ExitCode);
+            StringAssert.Contains(
+                PowerShellOutputNormalizer.Normalize(result.StdOut + result.StdErr),
+                "OutputRoot must be an exact descendant",
+                $"stdout={result.StdOut} stderr={result.StdErr}");
+            Assert.IsTrue(File.Exists(sentinel), "A refused output root must remain untouched.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(outsideRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task VerifyRelease_RetriesTransientCleanupAndFailsClosedOnPersistentCleanupAsync()
     {
         var cases = new[]
@@ -335,7 +523,7 @@ public sealed class VerifyReleaseChildScriptTests
                 {
                     StringAssert.Contains(
                         normalizedOutput,
-                        "dotnet test failed and test-environment cleanup also failed.",
+                        "Release verification failed and verifier-owned cleanup also failed.",
                         diagnostic);
                     StringAssert.Contains(
                         normalizedOutput,
@@ -428,8 +616,30 @@ public sealed class VerifyReleaseChildScriptTests
                     (($arguments | ConvertTo-Json -Compress) + [System.Environment]::NewLine))
                 $global:LASTEXITCODE = 0
 
+                if ($arguments.Count -gt 0 -and $arguments[0] -eq $env:ROSLYNMCP_DOTNET_FAIL_STEP) {
+                    $global:LASTEXITCODE = 23
+                    return
+                }
+
                 if ($arguments.Count -gt 0 -and $arguments[0] -eq 'msbuild') {
                     Write-Output 'C:/fixture/RoslynMcp.Tests.dll'
+                    return
+                }
+                if ($arguments.Count -gt 0 -and $arguments[0] -eq 'publish') {
+                    if ($env:ROSLYNMCP_DOTNET_PUBLISH_MODE -eq 'empty') {
+                        return
+                    }
+
+                    $outputIndex = [Array]::IndexOf($arguments, '-o')
+                    if ($outputIndex -lt 0 -or $outputIndex + 1 -ge $arguments.Count) {
+                        $global:LASTEXITCODE = 24
+                        return
+                    }
+                    $publishDirectory = $arguments[$outputIndex + 1]
+                    [System.IO.Directory]::CreateDirectory($publishDirectory) | Out-Null
+                    [System.IO.File]::WriteAllText(
+                        (Join-Path $publishDirectory 'RoslynMcp.Host.Stdio.dll'),
+                        'fresh publish output')
                     return
                 }
                 if ($arguments.Count -eq 0 -or $arguments[0] -ne 'test') {
@@ -478,7 +688,8 @@ public sealed class VerifyReleaseChildScriptTests
                 [switch]$RequireConsumedFragments,
                 [switch]$TestShardOnly,
                 [int]$TestShardIndex = 0,
-                [int]$TestShardCount = 1
+                [int]$TestShardCount = 1,
+                [string]$OutputRoot = 'artifacts'
             )
 
             . (Join-Path $PSScriptRoot 'fake-dotnet.ps1')
@@ -487,7 +698,8 @@ public sealed class VerifyReleaseChildScriptTests
                 -RequireConsumedFragments:$RequireConsumedFragments `
                 -TestShardOnly:$TestShardOnly `
                 -TestShardIndex $TestShardIndex `
-                -TestShardCount $TestShardCount
+                -TestShardCount $TestShardCount `
+                -OutputRoot $OutputRoot
             """);
         return wrapperPath;
     }
@@ -585,7 +797,10 @@ public sealed class VerifyReleaseChildScriptTests
         bool requireConsumedFragments,
         string? cleanupMode = null,
         bool failDotnetTest = false,
+        string? failDotnetStep = null,
         string? trxMode = null,
+        string? publishMode = null,
+        string? outputRoot = null,
         bool testShardOnly = false,
         int testShardIndex = 0,
         int testShardCount = 1)
@@ -615,6 +830,11 @@ public sealed class VerifyReleaseChildScriptTests
         startInfo.ArgumentList.Add(testShardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("-TestShardCount");
         startInfo.ArgumentList.Add(testShardCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (outputRoot is not null)
+        {
+            startInfo.ArgumentList.Add("-OutputRoot");
+            startInfo.ArgumentList.Add(outputRoot);
+        }
 
         startInfo.Environment["ROSLYNMCP_DOTNET_SENTINEL"] = fixture.DotnetSentinelPath;
         startInfo.Environment["ROSLYNMCP_DOTNET_ARGUMENTS"] = fixture.DotnetArgumentsPath;
@@ -633,9 +853,17 @@ public sealed class VerifyReleaseChildScriptTests
         {
             startInfo.Environment["ROSLYNMCP_DOTNET_TEST_FAIL"] = "1";
         }
+        if (failDotnetStep is not null)
+        {
+            startInfo.Environment["ROSLYNMCP_DOTNET_FAIL_STEP"] = failDotnetStep;
+        }
         if (trxMode is not null)
         {
             startInfo.Environment["ROSLYNMCP_DOTNET_TRX_MODE"] = trxMode;
+        }
+        if (publishMode is not null)
+        {
+            startInfo.Environment["ROSLYNMCP_DOTNET_PUBLISH_MODE"] = publishMode;
         }
 
         using var process = Process.Start(startInfo)

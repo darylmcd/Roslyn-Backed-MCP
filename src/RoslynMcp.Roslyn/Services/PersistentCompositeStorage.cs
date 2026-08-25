@@ -13,7 +13,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// <remarks>
 /// Layout: <c>{root}/{workspaceVersion}/{token}.json</c>. Atomic writes via
 /// <c>{token}.json.tmp</c> + <c>File.Move</c>. TTL enforced at retrieve-time via the file's
-/// last-write timestamp.
+/// last-write timestamp. Redemption atomically creates a per-token lock before renaming the
+/// payload to a claim file, so only one host can receive a one-time token.
 /// </remarks>
 public sealed class PersistentCompositeStorage
 {
@@ -28,6 +29,7 @@ public sealed class PersistentCompositeStorage
     private readonly ILogger<PersistentCompositeStorage>? _logger;
     private readonly Func<string, IEnumerable<string>> _enumerateDirectoriesForRead;
     private readonly Func<string, DateTime> _getLastWriteTimeUtc;
+    private readonly Action<string> _deleteFile;
 
     public PersistentCompositeStorage(
         string rootDirectory,
@@ -38,7 +40,8 @@ public sealed class PersistentCompositeStorage
             ttl,
             logger,
             Directory.EnumerateDirectories,
-            File.GetLastWriteTimeUtc)
+            File.GetLastWriteTimeUtc,
+            File.Delete)
     {
     }
 
@@ -47,7 +50,8 @@ public sealed class PersistentCompositeStorage
         TimeSpan ttl,
         ILogger<PersistentCompositeStorage>? logger,
         Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
-        Func<string, DateTime> getLastWriteTimeUtc)
+        Func<string, DateTime> getLastWriteTimeUtc,
+        Action<string> deleteFile)
     {
         _rootDirectory = rootDirectory ?? throw new ArgumentNullException(nameof(rootDirectory));
         _ttl = ttl > TimeSpan.Zero ? ttl : TimeSpan.FromMinutes(5);
@@ -56,7 +60,9 @@ public sealed class PersistentCompositeStorage
             ?? throw new ArgumentNullException(nameof(enumerateDirectoriesForRead));
         _getLastWriteTimeUtc = getLastWriteTimeUtc
             ?? throw new ArgumentNullException(nameof(getLastWriteTimeUtc));
+        _deleteFile = deleteFile ?? throw new ArgumentNullException(nameof(deleteFile));
         Directory.CreateDirectory(_rootDirectory);
+        CleanupExpiredClaimArtifacts();
     }
 
     public void Write(string token, CompositePreviewStore.Entry entry)
@@ -92,7 +98,7 @@ public sealed class PersistentCompositeStorage
         }
     }
 
-    public CompositePreviewStore.Entry? TryRead(string token)
+    public CompositePreviewStore.Entry? TryClaim(string token)
     {
         if (!IsValidToken(token))
         {
@@ -101,61 +107,28 @@ public sealed class PersistentCompositeStorage
 
         // Search across workspaceVersion subdirectories — caller doesn't know the version
         // when redeeming a token from a separate process.
-        if (!Directory.Exists(_rootDirectory)) return null;
+        var versionDirectories = TryEnumerateVersionDirectories("locating token");
+        if (versionDirectories is null) return null;
 
-        // The enumeration and the TTL stat below race a sibling process's concurrent Delete /
-        // directory cleanup (this store's whole purpose is cross-process token redemption).
-        // Directory.EnumerateDirectories is lazy, so a mid-walk directory removal throws during
-        // the foreach's MoveNext, and File.GetLastWriteTimeUtc can throw between the File.Exists
-        // check and the stat. Wrap the whole loop so a caught race is treated as a cache miss
-        // (the in-memory CompositePreviewStore is the source of truth) rather than surfacing an
-        // uncaught DirectoryNotFoundException/IOException. DirectoryNotFoundException and
-        // FileNotFoundException both derive from IOException; UnauthorizedAccessException does
-        // not and is intentionally left to propagate (a genuine permissions problem, not a race).
-        try
+        foreach (var subdir in versionDirectories)
         {
-            foreach (var subdir in _enumerateDirectoriesForRead(_rootDirectory))
+            var path = Path.Combine(subdir, token + ".json");
+            if (!File.Exists(path))
             {
-                var path = Path.Combine(subdir, token + ".json");
-                if (!File.Exists(path)) continue;
-
-                // TTL check based on file write time so cross-process readers honor expiry.
-                var age = DateTime.UtcNow - _getLastWriteTimeUtc(path);
-                if (age > _ttl)
-                {
-                    TryDelete(path);
-                    return null;
-                }
-
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
-                    if (dto is null) return null;
-                    return new CompositePreviewStore.Entry(
-                        dto.WorkspaceId,
-                        dto.WorkspaceVersion,
-                        dto.Description,
-                        dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
-                        dto.CreatedAt);
-                }
-                catch (Exception ex) when (ex is IOException or JsonException or NotSupportedException)
-                {
-                    // Corrupt entry — drop it and return null so the in-memory miss path takes over.
-                    _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable entry at {Path}.", path);
-                    TryDelete(path);
-                    return null;
-                }
+                continue;
             }
+
+            return ClaimEntry(path);
         }
-        catch (IOException ex)
-        {
-            // Directory/file removed by another process mid-enumeration — treat as a miss.
-            _logger?.LogDebug(ex, "PersistentCompositeStorage: directory/file race while reading token; treating as miss.");
-            return null;
-        }
+
         return null;
     }
+
+    /// <summary>
+    /// Compatibility entry point for callers compiled against the original storage API.
+    /// Reads now have the same one-time, fail-closed semantics as <see cref="TryClaim"/>.
+    /// </summary>
+    public CompositePreviewStore.Entry? TryRead(string token) => TryClaim(token);
 
     public void Delete(string token)
     {
@@ -164,11 +137,111 @@ public sealed class PersistentCompositeStorage
             return;
         }
 
-        if (!Directory.Exists(_rootDirectory)) return;
-        foreach (var subdir in Directory.EnumerateDirectories(_rootDirectory))
+        var versionDirectories = TryEnumerateVersionDirectories("deleting token");
+        if (versionDirectories is null) return;
+
+        foreach (var subdir in versionDirectories)
         {
             var path = Path.Combine(subdir, token + ".json");
-            if (File.Exists(path)) TryDelete(path);
+            _deleteFile(path);
+        }
+    }
+
+    private CompositePreviewStore.Entry? ClaimEntry(string path)
+    {
+        var lockPath = path + ".lock";
+        FileStream claimLock;
+        try
+        {
+            claimLock = new FileStream(
+                lockPath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None);
+        }
+        catch (IOException ex) when (File.Exists(lockPath))
+        {
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: token was claimed by another process.");
+            return null;
+        }
+
+        try
+        {
+            var claimPath = path + ".claim";
+            try
+            {
+                File.Move(path, claimPath);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                _logger?.LogDebug(ex, "PersistentCompositeStorage: token payload disappeared before claim.");
+                return null;
+            }
+
+            try
+            {
+                return ReadClaimedEntry(claimPath);
+            }
+            finally
+            {
+                // Delete before returning the payload. A deletion failure is visible and prevents
+                // mutation from starting with a token whose one-time record still exists.
+                DeleteClaimArtifact(claimPath);
+            }
+        }
+        finally
+        {
+            claimLock.Dispose();
+            DeleteClaimArtifact(lockPath);
+        }
+    }
+
+    private CompositePreviewStore.Entry? ReadClaimedEntry(string claimPath)
+    {
+        // Read first so another process cannot slip a deletion between a path-based timestamp
+        // probe and opening the claim. Claim-file I/O remains fail-closed and visible.
+        var json = File.ReadAllText(claimPath);
+        if (DateTime.UtcNow - _getLastWriteTimeUtc(claimPath) > _ttl)
+        {
+            return null;
+        }
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<PersistedEntry>(json, JsonOpts);
+            return dto is null
+                ? null
+                : new CompositePreviewStore.Entry(
+                    dto.WorkspaceId,
+                    dto.WorkspaceVersion,
+                    dto.Description,
+                    dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
+                    dto.CreatedAt);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable claimed entry.");
+            return null;
+        }
+    }
+
+    private string[]? TryEnumerateVersionDirectories(string operation)
+    {
+        if (!Directory.Exists(_rootDirectory)) return null;
+
+        try
+        {
+            // Materialize inside this narrow catch because Directory.EnumerateDirectories is lazy.
+            // A sibling process removing the root during MoveNext is an idempotent cache miss.
+            return _enumerateDirectoriesForRead(_rootDirectory).ToArray();
+        }
+        catch (IOException ex)
+        {
+            _logger?.LogDebug(
+                ex,
+                "PersistentCompositeStorage: directory race while {Operation}; treating as miss.",
+                operation);
+            return null;
         }
     }
 
@@ -176,13 +249,51 @@ public sealed class PersistentCompositeStorage
     {
         try
         {
-            File.Delete(path);
+            _deleteFile(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Best-effort cleanup — a stale file will simply fail to deserialize on the
-            // next read and be cleaned up there.
+            // Best-effort cleanup for a write's temporary sibling. The primary write failure
+            // remains authoritative; no redeemable token payload exists at this path.
             _logger?.LogDebug(ex, "PersistentCompositeStorage: failed to delete entry at {Path}.", path);
+        }
+    }
+
+    private void DeleteClaimArtifact(string path)
+    {
+        const int maximumAttempts = 3;
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            try
+            {
+                _deleteFile(path);
+                return;
+            }
+            catch (IOException) when (attempt < maximumAttempts)
+            {
+                // A losing claimant may briefly hold a metadata handle while observing the
+                // shared claim. Retry only the transient I/O shape; permission failures and a
+                // terminal I/O failure remain visible before mutation starts.
+                Thread.Sleep(attempt * 10);
+            }
+        }
+    }
+
+    private void CleanupExpiredClaimArtifacts()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var versionDirectory in Directory.EnumerateDirectories(_rootDirectory))
+        {
+            var claimArtifacts = Directory
+                .EnumerateFiles(versionDirectory, "*.json.claim")
+                .Concat(Directory.EnumerateFiles(versionDirectory, "*.json.lock"));
+            foreach (var claimPath in claimArtifacts)
+            {
+                if (now - _getLastWriteTimeUtc(claimPath) > _ttl)
+                {
+                    DeleteClaimArtifact(claimPath);
+                }
+            }
         }
     }
 

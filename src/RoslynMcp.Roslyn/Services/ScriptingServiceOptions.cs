@@ -36,13 +36,13 @@ public sealed record ScriptingServiceOptions
     public int WatchdogGraceSeconds { get; init; } = 10;
 
     /// <summary>
-    /// Interval between repeated Critical watchdog logs while evaluation exceeds budget + grace.
-    /// Defaults to 60. Retained for log-throttling consumers; the deadline itself is single-shot.
+    /// Legacy no-op retained for source and binary compatibility. The watchdog deadline is
+    /// single-shot and has no repeated-log interval.
     /// </summary>
     public int WatchdogRepeatSeconds { get; init; } = 60;
 
     /// <summary>
-    /// FLAG-5C: maximum number of script evaluations allowed to be racing to deadline at once.
+    /// Maximum number of script evaluations allowed to be racing to deadline at once.
     /// Each evaluation runs on its own dedicated background thread. The slot is released as
     /// soon as the request completes (success, error, or hard deadline) so a leaked script
     /// thread does NOT keep the slot — it transitions to the abandoned-thread bookkeeping
@@ -51,13 +51,13 @@ public sealed record ScriptingServiceOptions
     public int MaxConcurrentEvaluations { get; init; } = 4;
 
     /// <summary>
-    /// FLAG-5C: how long a new evaluation will wait to acquire a concurrency slot before
+    /// How long a new evaluation will wait to acquire a concurrency slot before
     /// returning the at-capacity error. Defaults to 5 seconds.
     /// </summary>
     public int ConcurrencySlotAcquireTimeoutSeconds { get; init; } = 5;
 
     /// <summary>
-    /// FLAG-5C: hard upper bound on how many leaked script worker threads we will tolerate
+    /// Hard upper bound on how many leaked script worker threads we will tolerate
     /// across the lifetime of the host. Once exceeded, new <c>evaluate_csharp</c> requests
     /// fail fast with an actionable error directing the operator to restart the host.
     /// Defaults to 8 — well above the in-flight cap so transient deadline races do not

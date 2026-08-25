@@ -32,11 +32,22 @@ public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.E
 
     public (string WorkspaceId, int WorkspaceVersion, string Description, IReadOnlyList<CompositeFileMutation> Mutations)? Retrieve(string token)
     {
-        var entry = RetrieveEntry(token);
-        if (entry is null && _diskBackend is not null)
+        Entry? entry;
+        if (_diskBackend is not null)
         {
-            entry = _diskBackend.TryRead(token);
+            // The persistent record is the shared one-time authority. Never fall back to the
+            // creator process's in-memory copy after another host wins the disk claim.
+            entry = _diskBackend.TryClaim(token);
+            if (entry is not null)
+            {
+                base.Invalidate(token);
+            }
         }
+        else
+        {
+            entry = RetrieveEntry(token);
+        }
+
         if (entry is null) return null;
         return (entry.WorkspaceId, entry.WorkspaceVersion, entry.Description, entry.Mutations);
     }

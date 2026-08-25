@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Configuration;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Runtime;
@@ -296,25 +297,7 @@ static SecurityOptions BindSecurityOptions()
 
 static ScriptingServiceOptions BindScriptingServiceOptions()
 {
-    var opts = new ScriptingServiceOptions();
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"), out var t) && t > 0)
-        opts = opts with { TimeoutSeconds = t };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_HEARTBEAT_MS"), out var hb) && hb > 0)
-        opts = opts with { HeartbeatIntervalMs = hb };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS"), out var sw) && sw > 0)
-        opts = opts with { StuckWarningSeconds = sw };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS"), out var wg) && wg >= 0)
-        opts = opts with { WatchdogGraceSeconds = wg };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0)
-        opts = opts with { WatchdogRepeatSeconds = wr };
-    // FLAG-5C: bound concurrent script evaluations so leaked infinite loops cannot accumulate.
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_MAX_CONCURRENT"), out var mc) && mc > 0)
-        opts = opts with { MaxConcurrentEvaluations = mc };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS"), out var sl) && sl > 0)
-        opts = opts with { ConcurrencySlotAcquireTimeoutSeconds = sl };
-    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_MAX_ABANDONED"), out var ma) && ma > 0)
-        opts = opts with { MaxAbandonedEvaluations = ma };
-    return opts;
+    return ScriptingOptionsEnvironmentBinder.Bind(Environment.GetEnvironmentVariable);
 }
 
 // Reads a ROSLYNMCP_* environment variable, but treats unresolved Claude Code
