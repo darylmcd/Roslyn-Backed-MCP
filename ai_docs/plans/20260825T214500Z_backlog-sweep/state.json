@@ -40,8 +40,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "502ddbf3ccab5a20cd1476a0d10c41bf170bd2b03b7f8a02eba7ef24134d77b4",
-      "stanzaHash": "e46cb0b8f972c642a9af304c593c1887ebedc97d8d8b534f1fd98d4217d580c6",
-      "reviewedStanzaHash": "e46cb0b8f972c642a9af304c593c1887ebedc97d8d8b534f1fd98d4217d580c6"
+      "stanzaHash": "d614ebbd5893bf54a810798d1d90057113cd3672a29196e1e54cf3d3654d46b0",
+      "reviewedStanzaHash": "d614ebbd5893bf54a810798d1d90057113cd3672a29196e1e54cf3d3654d46b0"
     },
     {
       "id": "preview-token-route-binding-extraction-family",
@@ -79,8 +79,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "8fa564a62d609d8d4d99c8c7ce58f13e1cbb4eda440630e88e5dad99399b928d",
-      "stanzaHash": "639515e69fa1725021d61bb730de6398fcf50bb34029acf632722369707d8b5e",
-      "reviewedStanzaHash": "639515e69fa1725021d61bb730de6398fcf50bb34029acf632722369707d8b5e"
+      "stanzaHash": "bfddd93dfcf86116f897590995e10bf23d7d0c34602c77cd2e3e94e955bee5b7",
+      "reviewedStanzaHash": "bfddd93dfcf86116f897590995e10bf23d7d0c34602c77cd2e3e94e955bee5b7"
     },
     {
       "id": "preview-token-route-binding-orchestration-family",
@@ -117,8 +117,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a2fa9a9ccbc704b4117ccc2b4524f27a309d36db3f4a406a9d1fb6fc941c27bd",
-      "stanzaHash": "39364fde75c06cf8ccb86ad74836c8cc4203e64e083ab0bcead2dfe65ea0a763",
-      "reviewedStanzaHash": "39364fde75c06cf8ccb86ad74836c8cc4203e64e083ab0bcead2dfe65ea0a763"
+      "stanzaHash": "4a7569acbdaf017138ef148191c38bbd518c4f2d3fdaa016568573520f346a8d",
+      "reviewedStanzaHash": "4a7569acbdaf017138ef148191c38bbd518c4f2d3fdaa016568573520f346a8d"
     },
     {
       "id": "preview-token-route-binding-bulk-family",
@@ -163,8 +163,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "91208bf98535be8c493ca802219b53607bbd63d1d90d1c7de1c9c29a5452a601",
-      "stanzaHash": "23c1a8cc6b37aabe44de874f41bfe820fc3d1f6c7e883c6a1a5be7acdc111b72",
-      "reviewedStanzaHash": "23c1a8cc6b37aabe44de874f41bfe820fc3d1f6c7e883c6a1a5be7acdc111b72"
+      "stanzaHash": "e19393697bd5688b5db67a0d76ed1cb387115193c20ec8199b61b417d185c679",
+      "reviewedStanzaHash": "e19393697bd5688b5db67a0d76ed1cb387115193c20ec8199b61b417d185c679"
     },
     {
       "id": "shipped-skills-prefix-batch-c1",
@@ -556,8 +556,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "d15b1d00ac0b9408575722eb1f3ecf5d8472fb3a755506a232a52332e0669fa7",
-      "stanzaHash": "4fd69fb8544e2ac8a1c82beef29848b1c5be955f73396a0805800207719e2739",
-      "reviewedStanzaHash": "4fd69fb8544e2ac8a1c82beef29848b1c5be955f73396a0805800207719e2739"
+      "stanzaHash": "a5fce51f376ff16317df4c8ad375b5a803c8b2c37eff7108395a1e7280b144ad",
+      "reviewedStanzaHash": "a5fce51f376ff16317df4c8ad375b5a803c8b2c37eff7108395a1e7280b144ad"
     },
     {
       "id": "preview-token-route-binding-multifile-codeaction",
@@ -588,8 +588,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "aff5e2266345dd47ca8a7ff52e619b77bae791480b29c2d7dfc9651f38191e73",
-      "stanzaHash": "1a595ab3416eff6a58fd29f4f683d2637eaf897a731f3fa8d5c5a48f171e23b5",
-      "reviewedStanzaHash": "1a595ab3416eff6a58fd29f4f683d2637eaf897a731f3fa8d5c5a48f171e23b5"
+      "stanzaHash": "d3a706887a18924e7e54c97bd7d89f64b390c02aa8f83a84fe75a18ba536aae3",
+      "reviewedStanzaHash": "d3a706887a18924e7e54c97bd7d89f64b390c02aa8f83a84fe75a18ba536aae3"
     },
     {
       "id": "preview-token-route-binding-fileops-fixall",
@@ -620,8 +620,8 @@
       "backlogRowsClosed": [],
       "rowsClosedCount": 0,
       "fileSetHash": "05c676d7b6b3a2cc2ef253bc2d7d995f699a2214a2a1a0859279c87bf7197692",
-      "stanzaHash": "feedf74990ca2bbd03dfa7e5ec521bbc2166016e9c06c4636db82881be7344e4",
-      "reviewedStanzaHash": "feedf74990ca2bbd03dfa7e5ec521bbc2166016e9c06c4636db82881be7344e4"
+      "stanzaHash": "fc711fcdef18f7b0ec34d837f868381c00627a4a7a1b64815f3a621d018e340f",
+      "reviewedStanzaHash": "fc711fcdef18f7b0ec34d837f868381c00627a4a7a1b64815f3a621d018e340f"
     }
   ],
   "anchorVerification": "partial",
@@ -768,7 +768,7 @@
     ]
   },
   "conflictGraphInputHash": "63015e3ca7b8d493e849daf6dfdfc55160674e332d488c7522786b2d37ee0dac",
-  "planHash": "dc94f22e1f3b51889be07fb82fc27ef4858bb486752c4afda0a40639713b3f76",
+  "planHash": "c2b5eb131e52329d4e9bb4ead370752bebbb32281ea1eac3222fcdf783c51782",
   "backlogSnapshotHash": "3e2bc9e6c8993ce4211693765bc91d8c2856e39970f8c4cac19e464bbbff1f1a",
   "reviewFindings": {
     "block": 0,
@@ -885,6 +885,6 @@
       "evidence": "Carried forward from cycle 0: shares tests/RoslynMcp.Tests/ParameterDescriptionCanonicalizationTests.cs with initiative 14, and initiative 13 mints a new assembly-wide guard over the same phrasings; unmodeled by the production-file conflict graph."
     }
   ],
-  "reviewedPlanHash": "dc94f22e1f3b51889be07fb82fc27ef4858bb486752c4afda0a40639713b3f76",
+  "reviewedPlanHash": "c2b5eb131e52329d4e9bb4ead370752bebbb32281ea1eac3222fcdf783c51782",
   "reviewedBacklogSnapshotHash": "3e2bc9e6c8993ce4211693765bc91d8c2856e39970f8c4cac19e464bbbff1f1a"
 }
