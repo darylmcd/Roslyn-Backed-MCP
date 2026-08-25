@@ -20,7 +20,7 @@ public static class MSBuildTools
     public static Task<string> EvaluateMsbuildProperty(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Property name (e.g. TargetFramework)")] string propertyName,
         CancellationToken ct = default)
@@ -37,7 +37,7 @@ public static class MSBuildTools
     public static Task<string> EvaluateMsbuildItems(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Item type (e.g. Compile, PackageReference)")] string itemType,
         CancellationToken ct = default)
@@ -54,7 +54,7 @@ public static class MSBuildTools
     public static Task<string> GetMsbuildProperties(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Optional: case-insensitive substring filter applied to property names (e.g., 'Nullable', 'Target')")] string? propertyNameFilter = null,
         [Description("Optional: explicit allowlist of property names to return. Pass as a native JSON array, not a JSON-encoded string. Example: [\"Nullable\", \"TargetFramework\"]. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,

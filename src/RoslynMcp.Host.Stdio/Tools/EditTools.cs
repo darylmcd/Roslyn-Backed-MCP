@@ -20,13 +20,13 @@ public static class EditTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         IEditService editService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file to edit")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the file to edit.")] string filePath,
         [Description("Array of text edits. Each edit has startLine, startColumn, endLine, endColumn (1-based), and newText. Example: [{\"startLine\":10,\"startColumn\":5,\"endLine\":10,\"endColumn\":15,\"newText\":\"newValue\"}]. All positions are 1-based inclusive; non-overlapping edits are applied in the order given.")] TextEditDto[] edits,
         CancellationToken ct = default,
         [Description("When false (default), C# files are parsed after edits and lexer/parser errors block the apply. Set true only for intentional intermediate invalid states.")] bool skipSyntaxCheck = false,
-        [Description("When true, run compile_check scoped to the owning project after the edit and attach the result under Verification. Pre-existing errors are filtered out, so only NEW errors appear in the outcome. Default false preserves the original call-site behavior.")] bool verify = false,
-        [Description("When true AND verify surfaces new compile errors, automatically revert the edit through the single-slot undo path this call populated. Single-shot per call - never touches prior-turn edits. Ignored when verify is false. Default false.")] bool autoRevertOnError = false)
+        [Description("When true, run compile_check scoped to the owning project after the edit and attach the result under Verification. Pre-existing errors are filtered out, so only NEW errors appear in the outcome.")] bool verify = false,
+        [Description("When true AND verify surfaces new compile errors, automatically revert the edit through the single-slot undo path this call populated. Single-shot per call - never touches prior-turn edits. Ignored when verify is false.")] bool autoRevertOnError = false)
     {
         return gate.RunWriteAsync(workspaceId, async c =>
         {
