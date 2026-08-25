@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Services;
 using Microsoft.CodeAnalysis;
 
@@ -212,5 +213,80 @@ public class PreviewStoreTests
 
         Assert.ThrowsExactly<ArgumentNullException>(() => _store.InvalidateOnVersionBump(null!, 1));
         Assert.ThrowsExactly<ArgumentException>(() => _store.InvalidateOnVersionBump(string.Empty, 1));
+    }
+
+    [TestMethod]
+    public void Store_Without_Kind_Defaults_To_Unspecified()
+    {
+        // preview-token-apply-route-provenance: untagged producers stay permissive.
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+
+        var token = _store.Store("workspace-1", solution, 1, "test");
+
+        Assert.AreEqual(PreviewKind.Unspecified, _store.PeekKind(token));
+    }
+
+    [TestMethod]
+    public void Store_With_Kind_Roundtrips_Through_PeekKind()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+
+        var token = _store.Store(
+            "workspace-1",
+            solution,
+            1,
+            "test",
+            Array.Empty<FileChangeDto>(),
+            PreviewKind.SymbolRename);
+
+        Assert.AreEqual(PreviewKind.SymbolRename, _store.PeekKind(token));
+    }
+
+    [TestMethod]
+    public void PeekKind_Does_Not_Consume_Entry_Or_Refresh_Ttl()
+    {
+        // Mirrors the non-consuming PeekChangedPaths contract: the redeeming service must
+        // still be able to Retrieve after a provenance check.
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+
+        var token = _store.Store(
+            "workspace-1",
+            solution,
+            1,
+            "test",
+            Array.Empty<FileChangeDto>(),
+            PreviewKind.FormatDocument);
+
+        Assert.AreEqual(PreviewKind.FormatDocument, _store.PeekKind(token));
+        Assert.AreEqual(PreviewKind.FormatDocument, _store.PeekKind(token));
+
+        var result = _store.Retrieve(token);
+        Assert.IsNotNull(result, "PeekKind must not consume the entry");
+        Assert.AreEqual("test", result.Value.Description);
+    }
+
+    [TestMethod]
+    public void PeekKind_On_Unknown_Or_Expired_Token_Returns_Unspecified()
+    {
+        Assert.AreEqual(PreviewKind.Unspecified, _store.PeekKind("no-such-token"));
+
+        // BoundedStore coerces a non-positive ttl to the 5-minute default, so use a real
+        // (tiny) window and let it elapse.
+        var expiring = new PreviewStore(maxEntries: 20, ttl: TimeSpan.FromMilliseconds(1));
+        using var workspace = new AdhocWorkspace();
+        var token = expiring.Store(
+            "workspace-1",
+            workspace.CurrentSolution,
+            1,
+            "test",
+            Array.Empty<FileChangeDto>(),
+            PreviewKind.CodeFix);
+
+        Thread.Sleep(30);
+
+        Assert.AreEqual(PreviewKind.Unspecified, expiring.PeekKind(token));
     }
 }

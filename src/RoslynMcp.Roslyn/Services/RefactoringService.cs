@@ -88,7 +88,7 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var description = $"Rename '{symbol.Name}' to '{newName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.SymbolRename);
 
         // Register a post-apply rename hint so ApplyRefactoringAsync can rotate the handle
         // and return ApplyResult.MutatedSymbol with the new name. Declaration position is
@@ -487,7 +487,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.OrganizeUsings);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -507,7 +507,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FormatDocument);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -588,7 +588,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FormatRange);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -638,7 +638,7 @@ public sealed class RefactoringService : IRefactoringService
                     var diff = await SolutionDiffHelper.ComputeChangesAsync(solution, newSol, ct).ConfigureAwait(false);
                     var actionId = registeredAction.EquivalenceKey ?? registeredAction.Title ?? provider.GetType().Name;
                     var desc = $"Apply code fix '{actionId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
-                    var tk = _previewStore.Store(workspaceId, newSol, _workspace.GetCurrentVersion(workspaceId), desc);
+                    var tk = _previewStore.Store(workspaceId, newSol, _workspace.GetCurrentVersion(workspaceId), desc, diff, PreviewKind.CodeFix);
                     return new RefactoringPreviewDto(tk, desc, diff, null);
                 }
             }
@@ -691,7 +691,7 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.CodeFix);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }

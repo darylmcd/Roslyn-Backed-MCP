@@ -85,7 +85,14 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
     /// so <c>Solution.Workspace.CurrentSolution</c> at Store time IS the original.
     /// </remarks>
     public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated)
-        => Store(workspaceId, modifiedSolution.Workspace.CurrentSolution, modifiedSolution, workspaceVersion, description, diffTruncated);
+        => Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated, PreviewKind.Unspecified);
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: as above, but records the producer family that
+    /// created the preview so an apply route can verify provenance before mutating.
+    /// </summary>
+    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated, PreviewKind kind)
+        => Store(workspaceId, modifiedSolution.Workspace.CurrentSolution, modifiedSolution, workspaceVersion, description, diffTruncated, kind);
 
     /// <summary>
     /// preview-token-cross-coupling-bundle: explicit-original-solution overload. Use this
@@ -99,6 +106,20 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         int workspaceVersion,
         string description,
         bool diffTruncated)
+        => Store(workspaceId, originalSolution, modifiedSolution, workspaceVersion, description, diffTruncated, PreviewKind.Unspecified);
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: explicit-original-solution overload that also records
+    /// the producer family. All other <c>Store</c> overloads funnel here.
+    /// </summary>
+    public string Store(
+        string workspaceId,
+        Solution originalSolution,
+        Solution modifiedSolution,
+        int workspaceVersion,
+        string description,
+        bool diffTruncated,
+        PreviewKind kind)
         => StoreEntry(new PreviewEntry(
             workspaceId,
             originalSolution,
@@ -110,6 +131,7 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
             MaxRedeemableVersion: workspaceVersion + _maxVersionSpan,
             description,
             diffTruncated,
+            kind,
             DateTime.UtcNow));
 
     /// <summary>
@@ -123,12 +145,26 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         int workspaceVersion,
         string description,
         IReadOnlyList<FileChangeDto> changes)
+        => Store(workspaceId, modifiedSolution, workspaceVersion, description, changes, PreviewKind.Unspecified);
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: as above, but records the producer family that
+    /// created the preview. This is the overload in-tree producers should call.
+    /// </summary>
+    public string Store(
+        string workspaceId,
+        Solution modifiedSolution,
+        int workspaceVersion,
+        string description,
+        IReadOnlyList<FileChangeDto> changes,
+        PreviewKind kind)
         => Store(
             workspaceId,
             modifiedSolution,
             workspaceVersion,
             description,
-            diffTruncated: ContainsTruncatedSentinel(changes));
+            diffTruncated: ContainsTruncatedSentinel(changes),
+            kind);
 
     private static bool ContainsTruncatedSentinel(IReadOnlyList<FileChangeDto> changes)
     {
@@ -216,6 +252,19 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         return paths;
     }
 
+    /// <summary>
+    /// <b>preview-token-apply-route-provenance:</b> returns the producer family recorded at Store
+    /// time, or <see cref="PreviewKind.Unspecified"/> when the token is expired/not found or the
+    /// producer did not tag it. Uses the non-consuming
+    /// <see cref="BoundedStore{TEntry}.RetrieveEntry"/> lookup, so a subsequent <see cref="Retrieve"/>
+    /// by the redeeming service still succeeds and the entry's TTL is not refreshed.
+    /// </summary>
+    public PreviewKind PeekKind(string token)
+    {
+        var entry = RetrieveEntry(token);
+        return entry?.Kind ?? PreviewKind.Unspecified;
+    }
+
     private static void AddDocumentPath(List<string> paths, Document? document)
     {
         if (document?.FilePath is { Length: > 0 } filePath
@@ -246,5 +295,9 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         int MaxRedeemableVersion,
         string Description,
         bool DiffTruncated,
+        // preview-token-apply-route-provenance: producer family recorded at Store time; surfaced
+        // non-consumingly via PeekKind so apply routes can verify token provenance.
+        // PreviewKind.Unspecified means "untagged producer" and stays permissive.
+        PreviewKind Kind,
         DateTime CreatedAt) : IBoundedStoreEntry;
 }
