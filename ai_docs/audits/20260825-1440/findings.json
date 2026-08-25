@@ -31,7 +31,7 @@
     "A13": "partial — outbound HTTP fully logged with durations (HttpClient default categories); dotnet-CLI boundary duration returned in-band only (DotnetCommandRunner DurationMs); no structured boundary events with correlation"
   },
   "live_verification": {
-    "V1": "partial — records located only via driver-redirected stderr capture (run1-stderr.log); no native reachable sink",
+    "V1": "partial — records located only via driver-redirected stderr capture (run1-stderr.txt); no native reachable sink",
     "V2": "partial — rg <correlationId> returns exactly 1 record (the failure line); no causal chain; in-band error envelope carried category/tool/corrective",
     "V3": "fail — no structured duration in stream; SDK prose 'completed in N ms' is request-keyed and regex-only",
     "V4": "pass — Logging__LogLevel__Default=Debug: 68 lines/0 dbug → 202 lines/64 dbug, no rebuild",
@@ -54,7 +54,7 @@
         "src/RoslynMcp.Host.Stdio/Program.cs:43",
         "src/RoslynMcp.Host.Stdio/Diagnostics/HostProcessMetadataStore.cs:266"
       ],
-      "evidence": ["run1-stderr.log", "run2-stderr.log"],
+      "evidence": ["run1-stderr.txt", "run2-stderr.txt"],
       "description": "All operational logging is stderr-only prose; the structured JSON sink fires only for unexpected exceptions and defaults to Disabled. When the server runs under an MCP host in a consumer session, stderr is captured (or dropped) by the host and no rg/jq/tail-reachable telemetry exists. HostProcessMetadataStore already resolves a per-user, XDG-aware LOCALAPPDATA root the sink can reuse. PR #1253 deliberately retired MCP protocol logging (ADR 0003) — the fix must stay on the operator-side sink path.",
       "acceptance": [
         "An env-gated file sink writes JSON-lines records (ts UTC ISO-8601 ms, level, category, eventId, message, correlationId when present) for the full ILogger stream under the metadata-store per-user root",
@@ -80,7 +80,7 @@
         "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs:350",
         "src/RoslynMcp.Host.Stdio/Program.cs:43"
       ],
-      "evidence": ["run1-stderr.log"],
+      "evidence": ["run1-stderr.txt"],
       "description": "RequestCorrelationContext exists but appears in exactly one log template (the failure line) — a correlation-id query over the captured stream returns 1 record, no chain. Success/completion lines carry neither correlation nor the already-measured stopwatch elapsed. The console formatter emits no timestamps at all (grep count 0 in captures). BeginScope/IncludeScopes are unused repo-wide.",
       "acceptance": [
         "Every record emitted during a tool call carries the request correlation id (logging scope, not per-template interpolation)",
@@ -102,7 +102,7 @@
       "confidence": "high",
       "tier": 1,
       "anchors": ["README.md:237", "ai_docs/runtime.md:110"],
-      "evidence": ["run2-stderr.log"],
+      "evidence": ["run2-stderr.txt"],
       "description": "The Logging__LogLevel__* verbosity mechanism works (live-verified) but is documented nowhere. runtime.md (AI-facing) documents the sink env var and 'operational logging goes to stderr'; the README and docs/ (consumer-facing, the surfaces a marketplace/registry installer actually reads) have no observability section — where logs land per host, how to raise verbosity, how to correlate, the server_info/heartbeat health route.",
       "acceptance": [
         "A consumer-visible doc section answers: log destination per host, verbosity env vars (Logging__LogLevel__*), sink env var(s), correlation story, health route",

@@ -1,0 +1,202 @@
+info: Startup[0]
+      Startup surface: pid=35020 version=4.0.0.0 toolTiers=experimental,stable tools=174/174/174 resources=14/14/14 prompts=20/20/20 parity=ok
+info: Startup[0]
+      Roslyn MCP host started with zero loaded workspaces. If this is a transparent subprocess restart, call workspace_load to rehydrate the prior session.
+dbug: Microsoft.Extensions.Hosting.Internal.Host[1]
+      Hosting starting
+info: ModelContextProtocol.Server.StdioServerTransport[857250842]
+      Server (stream) (roslyn-mcp) transport reading messages.
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '1'.
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\daryl\AppData\Local\Temp\claude\C--Users-daryl--claude\35d8f367-e4d4-426f-9842-de721d666449\scratchpad
+dbug: Microsoft.Extensions.Hosting.Internal.Host[2]
+      Hosting started
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0) read JsonRpcRequest message from channel.
+info: ModelContextProtocol.Server.McpServer[570385771]
+      Server (roslyn-mcp 4.0.0.0) method 'initialize' request handler called.
+dbug: ModelContextProtocol.Server.McpServer[1374391956]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) sending message.
+info: ModelContextProtocol.Server.McpServer[1867955179]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'initialize' request handler completed in 11.4464ms.
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '(no id)'.
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '2'.
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) read JsonRpcNotification message from channel.
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) read JsonRpcRequest message from channel.
+info: ModelContextProtocol.Server.McpServer[570385771]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler called.
+info: System.Net.Http.HttpClient.NuGetVersionChecker.LogicalHandler[100]
+      Start processing HTTP request GET https://api.nuget.org/v3-flatcontainer/darylmcd.roslynmcp/index.json
+info: System.Net.Http.HttpClient.NuGetVersionChecker.ClientHandler[100]
+      Sending HTTP request GET https://api.nuget.org/v3-flatcontainer/darylmcd.roslynmcp/index.json
+info: RoslynMcp.StructuredCallToolFilter[0]
+      Tool server_info completed successfully
+info: ModelContextProtocol.Server.McpServer[2065726448]
+      "server_info" completed. IsError = False.
+dbug: ModelContextProtocol.Server.McpServer[1374391956]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) sending message.
+info: ModelContextProtocol.Server.McpServer[1867955179]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler completed in 47.1432ms.
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '3'.
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) read JsonRpcRequest message from channel.
+info: ModelContextProtocol.Server.McpServer[570385771]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler called.
+warn: RoslynMcp.StructuredCallToolFilter[0]
+      Tool find_references called without workspaceId and none loaded; 2 candidate solutions discovered (C:\Code-Repo\Roslyn-Backed-MCP\RoslynMcp.slnx, C:\Code-Repo\Roslyn-Backed-MCP\SampleSolution.slnx).
+info: ModelContextProtocol.Server.McpServer[2065726448]
+      "find_references" completed. IsError = True.
+dbug: ModelContextProtocol.Server.McpServer[1374391956]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) sending message.
+info: ModelContextProtocol.Server.McpServer[1867955179]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler completed in 28.0112ms.
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '4'.
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) read JsonRpcRequest message from channel.
+info: ModelContextProtocol.Server.McpServer[570385771]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler called.
+info: System.Net.Http.HttpClient.NuGetVersionChecker.ClientHandler[101]
+      Received HTTP response headers after 235.1203ms - 200
+info: System.Net.Http.HttpClient.NuGetVersionChecker.LogicalHandler[101]
+      End processing HTTP request after 240.0541ms - 200
+info: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Workspace a8059b736e304d8d8b65f556003298b0: retargeted 12 analyzer reference(s) to shadow-copy loaders.
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\02300a678fd648699b56d72e2bc85dd9\b6bfc66a059648d19abbd937961fe098
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\0241320c8101465b8875994db878a2b2\3c10248854d740f89ec7fd15ae54df08
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\02f766ce670341f297e0b4090f28b62b\682ab20b76d24924a2a4ce6cc88f5b82
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\02fdf7ee6f4844488b84d04ce7ea3d50\5342e0b3f77d4ad999ecda06b7e06d2e
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\08ee85732c354b48a580a617c267a839\5980ce5f5e444bc189539c1e8e897404
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\0a38e7788e654626a677b530ce16de0f\3e3fdcab2f8e4e269544544f7c105cf4
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\0ea23a60107a40e1afd2719bf0e0f96a\ecc67efeb4fe4e47a13c8217ece25bac
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\0ebd5c387f144d65a2302bfc655723f5\93715622e6f342c79dde54045502e879
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\12fe268ba2e242308bc3ea5579b2141e\83b4a522e61e41cb87e67eb2676c7469
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\170368e4ee464e4094268dd90b5677cd\a2efa5ee3dcf4ff3bbc640a14b09fe6e
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\26c7b5115a184fa3972c2798dfd36d9a\b4c511f61be049c1ba4408ad2619737a
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\399ee3e78d0c4a38912469d493f55783\cdfc45e8a43d427ca18b95387ad62998
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\494d971943404a31a7c3c693223f5511\5c6d2f98673c4191a5f9cb35adfbb2fb
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\5136341e16124a37b7d60b5f412136a2\68218e48de0c458c906119416f657b03
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\531489751a614a4aa67147511d319f4c\992961e45f1b497f9ba5e3d88389fcac
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\802efe15fe0945948730be1c561e7bd3\cf5957b684e2474b93fba2ccc8418779
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\88437f1149884dcfbd0e8ef8792d204d\67bc08bf50ff4413ba35b82daf28fc00
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\88437f1149884dcfbd0e8ef8792d204d\82f003ebebd04f4d813b00879b452005
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\88437f1149884dcfbd0e8ef8792d204d\938801e6e952471ba47b42d15226f6ec
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\88437f1149884dcfbd0e8ef8792d204d\f8c30c9f47b74a7cbac61e3feda1dd01
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\8e19e3ddce364ab79a259d4ddcfb2f90\a4b1cc7b61174b0b89c5d522e4e30838
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\9b4e23477a2c495e9cfc1d2cb3c0fea6\e99dbadeeae845d089b922d51002728d
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\9d4f71ccba4942bc8cdfb372c0d8b861\f4a1e90a5b4d494db601151ed3061509
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\9e55ddc6e4784269bc2dde8f8d1baec9\62088a8202004067b72138a80b813fc2
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\a482ed95c09044c59c1a93774413c032\9bcba26727a54d0a9a8b809ba8f05ad6
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\ad3a6684fc5548279411a0162d872b78\65a3e0e6ac8d48e097576b7889ff5c5b
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\b050c2773470415b9a5517219fdf51d4\1027316a15644049b5a664a4e32092b9
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\b43392d5d1e44f1a8d273a5e3831bba1\7c9d982daced4d548ceaab9886d2573e
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\bf806750b5884108b422a9434020f652\1ef51084939e45019fd386f765047334
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\bf806750b5884108b422a9434020f652\6f416ef2d4064e3fb89a4eae9f6b8f89
+info: RoslynMcp.Roslyn.Services.WorkspaceManager[1]
+      Loaded workspace a8059b736e304d8d8b65f556003298b0 from C:\Code-Repo\Roslyn-Backed-MCP\SampleLib\SampleLib.csproj, version 1
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\d2e158ecfa1a49c1a6ffe5ed7c453005\ce811e9220504d088921300c1f279a4b
+info: RoslynMcp.Roslyn.Services.FileWatcherService[0]
+      Started file watcher for workspace a8059b736e304d8d8b65f556003298b0 at C:\Code-Repo\Roslyn-Backed-MCP\SampleLib
+info: RoslynMcp.StructuredCallToolFilter[0]
+      Tool workspace_load completed successfully
+info: ModelContextProtocol.Server.McpServer[2065726448]
+      "workspace_load" completed. IsError = False.
+dbug: ModelContextProtocol.Server.McpServer[1374391956]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) sending message.
+info: ModelContextProtocol.Server.McpServer[1867955179]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler completed in 2325.9396ms.
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\dfaeb44603f94108aca924bbd3a27d01\f8abaee747b4442f8c5539c549ef068e
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\e26361c81c1045b79a58eaa5ca746ba0\91481f5ea8c748d99a9eeb1ab24795ca
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\e26361c81c1045b79a58eaa5ca746ba0\ecc77582ed4849ce98d29cae468a9e45
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\e2ecee16f7ff486eb13303f86213a059\1e1d70b82e7844b58f1f6821c07f0f17
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\e5d2468e13e1488a868ee6cc07695f65\7fa8291a010a48799015b7ce6b863e68
+dbug: ModelContextProtocol.Server.StdioServerTransport[1000831420]
+      Server (stream) (roslyn-mcp) transport received message with ID '5'.
+dbug: ModelContextProtocol.Server.McpServer[330297028]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) read JsonRpcRequest message from channel.
+info: ModelContextProtocol.Server.McpServer[570385771]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler called.
+info: RoslynMcp.StructuredCallToolFilter[0]
+      Tool compile_check called without workspaceId; resolved to the single loaded workspace a8059b736e304d8d8b65f556003298b0.
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\f0abaf71a80447a69c2992f47af8da0b\1185db144dc54f3aa4eb738e163afc1f
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\f0abaf71a80447a69c2992f47af8da0b\4ea50fd090f74604b63ad05dafc828c4
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\f146bcf6ef3643448277621050587b33\db8bccae4ab34946b2332684b3b70f79
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\f928df61e17f4090875176edafb1277d\a43b691c575e490199c95edcd3ca13d6
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\fba023ebb2e2474eb8bc71dba39b9d73\9cabd05589884700bfde9e963f5324ea
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\fba29d159ee642ffbfdb13aaafde8ab7\1aa3913cfc394db8a2c832d30d257039
+dbug: RoslynMcp.Roslyn.Services.WorkspaceManager[0]
+      Swept abandoned analyzer shadow root C:\Users\daryl\AppData\Local\Temp\RoslynMcpAnalyzerShadow\fba29d159ee642ffbfdb13aaafde8ab7\cf0c9c24263f4deab64d1ac142c0f6d9
+info: RoslynMcp.StructuredCallToolFilter[0]
+      Tool compile_check completed successfully
+info: ModelContextProtocol.Server.McpServer[2065726448]
+      "compile_check" completed. IsError = False.
+dbug: ModelContextProtocol.Server.McpServer[1374391956]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) sending message.
+info: ModelContextProtocol.Server.McpServer[1867955179]
+      Server (roslyn-mcp 4.0.0.0), Client (logging-audit-driver 1.0.0) method 'tools/call' request handler completed in 1423.7797ms.
+info: ModelContextProtocol.Server.StdioServerTransport[1221292038]
+      Server (stream) (roslyn-mcp) transport completed reading messages.
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...
+info: Shutdown[0]
+      Shutting down - persisting host metadata
+dbug: Microsoft.Extensions.Hosting.Internal.Host[3]
+      Hosting stopping
+dbug: Microsoft.Extensions.Hosting.Internal.Host[4]
+      Hosting stopped
+info: ModelContextProtocol.Server.StdioServerTransport[1375634372]
+      Server (stream) (roslyn-mcp) shutting down.
+info: ModelContextProtocol.Server.StdioServerTransport[1256455528]
+      Server (stream) (roslyn-mcp) shut down.
