@@ -48,7 +48,7 @@
     {
       "id": "preview-token-apply-route-binding",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "preview-token-apply-route-provenance",
       "backlogRowsClosed": [
         "preview-token-apply-route-provenance"
@@ -75,10 +75,10 @@
       "dependsOn": [
         "preview-token-store-provenance-contract"
       ],
-      "branch": null,
+      "branch": "remediation/preview-token-apply-route-binding",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1354",
+      "mergedAt": "2026-08-25T19:13:55Z",
       "notes": null,
       "fileSetHash": "b8c7a5330b99c3c0511a636860203d4852caf85cdab5dde033326dc98b0af6e2",
       "stanzaHash": "4ff87ba42dbb183e9be793f008f33675b6ad203483412a34f5cee76c89c5e418",
@@ -159,7 +159,7 @@
     {
       "id": "shipped-skills-prefix-genericity-guard-assertion",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "shipped-skills-hardcode-bare-roslyn-tool-prefix",
       "backlogRowsClosed": [],
       "productionFilesTouched": 2,
@@ -184,10 +184,10 @@
         "shipped-skills-prefix-sweep-batch-a",
         "shipped-skills-prefix-sweep-batch-b"
       ],
-      "branch": null,
+      "branch": "remediation/shipped-skills-prefix-genericity-guard-assertion",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1353",
+      "mergedAt": "2026-08-25T18:33:54Z",
       "notes": null,
       "fileSetHash": "b66f8a2c35814abd313005dfc5c0cf9b4c1f7cf75b89c31d91fe4bbe585b06b5",
       "stanzaHash": "c2ca0b2bbb99932f81b3125f090765981937302e5365563d441bf5e3670657db",
@@ -267,7 +267,7 @@
     {
       "id": "method-description-diet-refactoring-core",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "method-description-diet",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
@@ -291,10 +291,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/method-description-diet-refactoring-core",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1348",
+      "mergedAt": "2026-08-25T18:15:05Z",
       "notes": null,
       "fileSetHash": "ece7210e1f7c59f70eef7db3aecf45774b8e89758f6cc212c12f78603d25403c",
       "stanzaHash": "1251f64130da4b7d449580975b0af4031ce4462643942de7a311690c1eda416c",
@@ -303,7 +303,7 @@
     {
       "id": "method-description-diet-scaffolding-mutation",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "method-description-diet",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
@@ -327,10 +327,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/method-description-diet-scaffolding-mutation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1345",
+      "mergedAt": "2026-08-25T18:33:47Z",
       "notes": null,
       "fileSetHash": "a55df4b14e986c0fdb8981228c7b766a24baa00d147cf70902d806dc9e434aed",
       "stanzaHash": "307ca23281bb6bc3b31cd42c449170af67ad41df503304e91d5332006b3f1631",
@@ -373,7 +373,7 @@
     {
       "id": "workspace-source-text-projection-extraction",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-source-text-projection-extraction"
       ],
@@ -396,10 +396,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-source-text-projection-extraction",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1352",
+      "mergedAt": "2026-08-25T18:35:21Z",
       "notes": null,
       "fileSetHash": "42557d569e3ed4584f74af879313c09d33eddbdf3463f02c3729be50f2a11eda",
       "stanzaHash": "37363c57326623866cb564a30da60cc9484ab69608fc136d385fb800861afc9f",
@@ -408,7 +408,7 @@
     {
       "id": "format-baseline-inventory-contract",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "repository-dotnet-format-baseline-partition",
       "backlogRowsClosed": [],
       "productionFilesTouched": 2,
@@ -430,10 +430,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/format-baseline-inventory-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1347",
+      "mergedAt": "2026-08-25T19:27:09Z",
       "notes": null,
       "fileSetHash": "854f209da4c6c7bd3954f675143a712cd0eb39bb63baa6789d0be567a3008e0b",
       "stanzaHash": "b0c47f4ac1e07354dacf17d9fb56257a9f74cb7ce6d09e93b5ea233aa8fb3e3a",
