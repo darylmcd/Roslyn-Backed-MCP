@@ -38,10 +38,13 @@ public static class FlowAnalysisTools
             },
             ct);
 
+    /// <remarks>
+    /// <para>EndPointIsReachable reports whether execution can fall through the end of the analyzed region without hitting a return or throw. It does NOT report whether the method can complete. The response carries a Warning when return statements exist but EndPointIsReachable is false, because that combination is routinely misread as unreachable code.</para>
+    /// </remarks>
     [McpServerTool(Name = "analyze_control_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Analyze control flow: entry/exit points, reachability, return statements."),
-     Description("Analyze control flow through a code region: entry/exit points, reachability, and return statements. EndPointIsReachable follows Roslyn semantics (whether execution can fall through the end of the region without return/throw), not whether the method can complete; see Warning when returns exist but EndPointIsReachable is false.")]
+     Description("Analyze control flow through a code region: entry/exit points, reachability, and return statements. EndPointIsReachable uses Roslyn fall-through semantics, not whether the method can complete.")]
     public static Task<string> AnalyzeControlFlow(
         McpServer server,
         IWorkspaceExecutionGate gate,

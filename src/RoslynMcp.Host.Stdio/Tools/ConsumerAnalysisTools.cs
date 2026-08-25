@@ -10,10 +10,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ConsumerAnalysisTools
 {
 
+    /// <remarks>
+    /// <para>The optional projectFilter is a case-sensitive Project.Name, comma-separated for multiple projects. It restricts the consumer walk to the listed project(s) and matches semantic_grep's filter semantics; null or empty preserves the unfiltered solution-wide walk.</para>
+    /// </remarks>
     [McpServerTool(Name = "find_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "stable", true, false,
         "Find all types that depend on a given type or interface, classified by dependency kind. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated)."),
-     Description("Find all types that depend on a given type or interface, classified by dependency kind (Constructor, Field, Parameter, BaseType, LocalVariable, Property, ReturnType, GenericArgument, StaticMemberAccess). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the consumer walk to the listed project(s) — matches semantic_grep's filter semantics.")]
+     Description("Find all types that depend on a given type or interface, classified by dependency kind (Constructor, Field, Parameter, BaseType, LocalVariable, Property, ReturnType, GenericArgument, StaticMemberAccess). Optional projectFilter scopes the walk.")]
     public static Task<string> FindConsumers(
         IWorkspaceExecutionGate gate,
         IConsumerAnalysisService consumerAnalysisService,
