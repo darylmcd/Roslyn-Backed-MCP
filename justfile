@@ -52,6 +52,10 @@ verify-version-drift:
 verify-skills:
     pwsh -NoProfile -File ./eng/verify-skills-are-generic.ps1
 
+# Gate formatter debt introduced on the C# files this change touches (baseline debt stays tracked)
+verify-changed-format:
+    pwsh -NoProfile -File ./eng/verify-changed-format.ps1
+
 # MCP registry install-readiness scorecard (writes artifacts/registry-readiness.json)
 verify-registry-readiness:
     pwsh -NoProfile -File ./eng/verify-registry-readiness.ps1
@@ -68,10 +72,10 @@ run:
 validate: build test
 
 # Local equivalent of the required pull-request pipeline (no coverage/live-network canary)
-ci: verify-docs verify-skills verify-release-pr vuln-audit
+ci: verify-docs verify-skills verify-changed-format verify-release-pr vuln-audit
 
 # Everything including coverage and the live-network canary
-full: verify-docs verify-skills verify-release vuln-audit
+full: verify-docs verify-skills verify-changed-format verify-release vuln-audit
 
 # --- Clean ---
 

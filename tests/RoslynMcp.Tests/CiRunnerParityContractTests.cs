@@ -207,12 +207,25 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(releaseStep, "./eng/verify-release.ps1 @parameters");
         Assert.IsFalse(releaseStep.Contains("--filter", StringComparison.Ordinal));
 
-        StringAssert.Contains(justfile, "ci: verify-docs verify-skills verify-release-pr vuln-audit");
+        StringAssert.Contains(justfile, "ci: verify-docs verify-skills verify-changed-format verify-release-pr vuln-audit");
         StringAssert.Contains(
             justfile,
             "verify-release-pr:\n" +
             "    pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests");
-        StringAssert.Contains(justfile, "full: verify-docs verify-skills verify-release vuln-audit");
+        StringAssert.Contains(justfile, "full: verify-docs verify-skills verify-changed-format verify-release vuln-audit");
+
+        // The changed-file formatter gate is a standalone validate-leg step, deliberately NOT a
+        // verify-release child (that script's child set is a separate hard-listed contract). Local
+        // `just ci` therefore has to invoke it directly or it would run only in CI.
+        var formatStep = GetNamedStepBlock(validate, "Verify changed-file formatting");
+        StringAssert.Contains(
+            formatStep,
+            "if: github.event_name == 'pull_request' && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'");
+        StringAssert.Contains(formatStep, "./eng/verify-changed-format.ps1 -BaseRef origin/${{ github.base_ref }} -NoRestore");
+        StringAssert.Contains(
+            justfile,
+            "verify-changed-format:\n" +
+            "    pwsh -NoProfile -File ./eng/verify-changed-format.ps1");
     }
 
     [TestMethod]
