@@ -67,7 +67,7 @@ public static class SuppressionTools
         IWorkspaceExecutionGate gate,
         ISuppressionService suppressionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the C# source file to inspect")] string filePath,
+        [Description("Absolute path to the source file")] string filePath,
         [Description("1-based line number that should be covered (the diagnostic fire site)")] int line,
         [Description("Diagnostic id whose suppression to check (e.g. CA2025)")] string diagnosticId,
         CancellationToken ct = default)
@@ -87,7 +87,7 @@ public static class SuppressionTools
         IWorkspaceExecutionGate gate,
         IPinnedSuppressionWriteService suppressionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the C# source file to modify")] string filePath,
+        [Description("Absolute path to the source file")] string filePath,
         [Description("1-based line number that must be covered after the widen (the diagnostic fire site)")] int line,
         [Description("Diagnostic id whose 'restore' is being moved (e.g. CA2025)")] string diagnosticId,
         CancellationToken ct = default)
