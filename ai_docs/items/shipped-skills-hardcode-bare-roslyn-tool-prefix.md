@@ -58,3 +58,23 @@ Three split initiatives shipped against this row. **None closed it, and none sho
 - **Byte-identity guard still unbuilt.** The precheck block is now byte-identical across the 6.01 files (hash verified during review) but nothing asserts it. As the remaining files are swept this becomes ~17 unpinned copies free to drift. Both the 6.01 and 6.02 reviews independently routed this here as an amendment rather than a sibling row, because a sibling would collide as a second PR editing the same guard.
 
 **New finding folded in (PR #1232 review, traced not hypothesized):** the retro prompt's new relevance regex `mcp__\S*roslyn\S*__\S+` works as a boolean filter but is unusable for the extraction the same prompt mandates — Claude Code JSONL is minified (measured non-whitespace runs up to 58,809 chars), so `rg -o` returns multi-KB JSON spans instead of a tool name. It is also case-sensitive, so a `Roslyn` registration key is a silent false negative. Use an identifier-bounded, case-insensitive form, e.g. `(?i)mcp__[A-Za-z0-9_.-]*roslyn[A-Za-z0-9_.-]*__[a-z0-9_]+`. Confirmed NOT a relevance-filter defect: shipped vs bounded regex matched an identical 72 files across a 726 MB session corpus.
+## Amendment — 2026-08-25 (backlog-sweep 20260825T151721Z; PRs #1342, #1341, #1353 — row stays OPEN)
+
+Three split initiatives shipped. **The row was deliberately NOT closed**, correcting the plan's original intent.
+
+**Shipped:**
+- **PR #1342** (batch-a) — resolve-once-then-pin precheck applied to `exception-audit`, `format-sweep`, `generate-tests`, `impact-assessment`.
+- **PR #1341** (batch-b) — same for `inheritance-explorer`, `modernize`, `nuget-preflight`, `review`.
+- **PR #1353** (guard) — acceptance bullets 3 and 4: `eng/verify-skills-are-generic.ps1` now carries `Assert-PrefixAgnostic` (contextual imperative rule, not a blanket ban) and `Assert-CanonicalBlockIdentity` (byte-identity of the canonical block), backed by `eng/banned-skill-markers.json`'s `prefixAgnostic` + `canonicalPrecheckBlocks` and `tests/RoslynMcp.Tests/Skills/SkillPrefixGenericityTests.cs`.
+
+**Why the row stays open.** The plan originally had the guard initiative close this row. That was corrected at plan time: acceptance bullet 4 is NOT met while five skills still carry the old bare-prefix block behind `residualUnsweptAllowlist`. Closing would have banked a five-file amnesty as a satisfied criterion.
+
+**Verified remaining work (measured 2026-08-25, not estimated):** exactly 5 unswept files, matching the allowlist —
+`skills/semantic-find/SKILL.md`, `skills/test-coverage/SKILL.md`, `skills/trace-flow/SKILL.md`, `skills/version-bump/SKILL.md`, `skills/workspace-health/SKILL.md`.
+(`skills/mcp-server-surface-test/SKILL.md` still shows three `mcp__roslyn__` literals but is already on the pinned form — its literals are the "examples, not an allowed list" prose, and the guard passes it.)
+
+**Next deliverable:** a batch-c sweep of those 5 files, after which `residualUnsweptAllowlist` empties and the row closes. `skills/workspace-health/SKILL.md` carries a longer per-skill variant of the block — the identity guard tolerates a trailer after the terminator, so keep the canonical leading slice byte-identical.
+
+**Correction to the 2026-08-13 amendment:** it said "roughly 10 of the ~18 shipped files remain unswept". The live count at sweep start was 13, not ~10.
+
+**Related new row:** `skill-prefix-guard-tests-assert-bcl-not-gate` — the guard's own negative-path tests assert BCL string semantics rather than exercising the gate.

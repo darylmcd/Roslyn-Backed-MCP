@@ -25,3 +25,18 @@
 
 - Depends on `server-instructions-discovery-hint` (the relocation target must exist before guidance moves).
 - Benefits ALL clients; deferring clients also pay less per on-demand tool load (~318 avg tokens/tool today).
+## Amendment — 2026-08-25 (backlog-sweep 20260825T151721Z; PRs #1343, #1346, #1348, #1345 — row stays OPEN)
+
+Four per-cluster child initiatives shipped; the row stays open for the remaining ~40 `Tools/*.cs` files.
+
+**Shipped clusters (disjoint file sets, chosen so the method-diet and param-dedupe families could run concurrently without conflict):**
+- **#1343** `SymbolTools`, `AdvancedAnalysisTools`, `AnalysisTools`
+- **#1346** `WorkspaceTools`, `ValidationTools`, `ValidationBundleTools`, `CompileCheckTools`
+- **#1348** `ExtractMethodTools`, `ChangeSignatureTools`, `ParameterObjectTools`, `SyntaxTools`
+- **#1345** `ScaffoldingTools`, `ProjectMutationTools`, `MultiFileEditTools`, `CrossProjectRefactoringTools`
+
+**Lesson for the next slices — the per-tool figure is a CEILING, not a target.** #1345's first attempt asserted a 2,800-char slice aggregate against a spec'd 2,200, justified in-code by claiming ~2,794 was the "theoretical minimum". That reasoning was unsound: it multiplied the ~200-char per-tool ceiling by the tool count as though it were a floor. Cold spec review caught it; the corrected slice measures **2,019** with every description still under the per-tool ceiling and every discriminating trigger retained. Budget future slices from real per-tool content, not from `toolCount × ceiling`.
+
+**Also observed:** #1348's first attempt dropped the refusal clause from `extract_shared_expression_to_helper_preview` entirely where the Approach called for condensing it — i.e. a capability statement was lost, which this row's acceptance forbids. Cold review caught that too. Both are worth briefing into the next slice.
+
+**Follow-ons filed separately:** per-slice ceiling ratchets are accumulating one test class per slice; consolidating them into one data-driven test is worth doing before the remaining ~40 files are swept.

@@ -20,3 +20,14 @@
 ## Notes
 
 - Original audit synthesis also proposed trimming `title` annotations (~1.9k tokens) — WRONG: the wire probe's per-tool annotations (89–91 chars) are exactly the four boolean hints; no annotation titles exist. Scope is param descriptions only.
+## Amendment — 2026-08-25 (backlog-sweep 20260825T151721Z; PRs #1349, #1350 — row stays OPEN)
+
+Two per-cluster child initiatives shipped; the row stays open for the remaining ~46 `Tools/*.cs` files.
+
+**Shipped clusters:**
+- **#1349** `EditTools`, `FileOperationTools`, `MSBuildTools`, `TypeMoveTools`
+- **#1350** `CodeActionTools`, `SuppressionTools`, `SymbolRefactorTools`, `BulkRefactoringTools`
+
+**Scheduling note for the next slices.** These clusters were chosen to be **disjoint from the `method-description-diet` clusters** running in the same sweep — the two families edit the same files (method-level vs parameter-level `[Description]`), so overlapping clusters would have produced conflict edges and serialized the waves. Keep partitioning both families against one shared file map.
+
+**Advisory findings from cold review (not blockers):** the canonicalization ratchet could assert exact strings rather than shape, and the guard could be generalized via `ToolParameterIndex` instead of per-slice type lists — worth folding into the next slice rather than filing as siblings, since they edit the same test surface.
