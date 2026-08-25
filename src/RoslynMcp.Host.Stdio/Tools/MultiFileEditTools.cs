@@ -23,10 +23,19 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class MultiFileEditTools
 {
 
+    /// <remarks>
+    /// If a file validation or apply fails partway through, <c>revert_last_apply</c> restores the
+    /// pre-call state for any files already written. When <c>verify</c> is true, <c>compile_check</c>
+    /// runs ONCE after the batch completes — scoped to the single owning project when the batch is
+    /// single-project, or to the full solution when it spans several — and the new-error set is
+    /// attached as Verification (pre-existing errors are filtered out). When
+    /// <c>autoRevertOnError</c> is true AND new errors appeared, the whole batch is rolled back
+    /// through that single batch-level undo snapshot.
+    /// </remarks>
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", false, true,
         "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
-     Description("Apply text edits to multiple files in the workspace sequentially. All edits share a single pre-apply snapshot — revert_last_apply rolls back the entire batch atomically. If a file validation or apply fails partway through, revert_last_apply restores the pre-call state for any files that were already written. When verify=true, runs compile_check ONCE after the batch completes (scoped to the single owning project when the batch is single-project, or the full solution when it spans multiple) and attaches the new-error set as Verification. When autoRevertOnError=true AND new errors appeared, the whole batch is rolled back through the single batch-level undo snapshot. Prefer preview_multi_file_edit + apply_composite_preview for agent workflows that need a review step.")]
+     Description("Apply text edits to multiple files under one atomic pre-apply snapshot. Prefer preview_multi_file_edit + apply_composite_preview for review workflows.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -60,10 +69,14 @@ public static class MultiFileEditTools
         }, ct);
     }
 
+    /// <remarks>
+    /// Diffs are returned per file in unified format; nothing is written until the returned
+    /// token is redeemed.
+    /// </remarks>
     [McpServerTool(Name = "preview_multi_file_edit", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", true, false,
         "Preview a multi-file edit batch; returns per-file diffs and a preview token."),
-     Description("Preview applying text edits to multiple files. Simulates every file's edits against a single Roslyn Solution snapshot and returns per-file unified diffs plus a preview token. Redeem via preview_multi_file_edit_apply.")]
+     Description("Preview text edits to multiple files against a single Solution snapshot; returns per-file diffs plus a token redeemed via preview_multi_file_edit_apply.")]
     public static Task<string> PreviewMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
