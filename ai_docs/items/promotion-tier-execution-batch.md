@@ -34,3 +34,16 @@ Clusters: brainstorm BRAIN-007 (stable-surface promotion scorecard system). Sour
 - **Stale anchor:** the `skills/promote-tier/` anchor above does NOT exist. The maintainer skill lives at `.claude/skills/promote-tier/`. Fix the anchor when this row is next opened.
 - **No staleness alarm exists.** `.gitignore` now claims tracking means "a lost refresh shows up as an absent diff instead of failing silently", but nothing compares `generatedAt` / `serverVersion` against the current build (`rg 'serverVersion|generatedAt|stale|MaxAge' eng/aggregate-promotion-scorecards.ps1` finds only the writer and comments). Tracked by `surface-test-audit-artifact-gate-and-scorecard-staleness`.
 - Acceptance bullet 2 (ship experimental->stable promotions in bounded batches) is untouched and still gated on a fresh scorecard. Promotions touch the `ServerSurfaceCatalog.*.cs` partials — an addenda-listed hotspot, RMCP001/RMCP002-gated — so schedule at most one catalog-touching initiative per wave.
+## Amendment — 2026-08-25 (backlog-sweep 20260825T151721Z — initiative DEFERRED, row stays OPEN)
+
+Initiative `promotion-tier-scorecard-refresh-execution` (acceptance bullet 1 only) was planned, scheduled `heroic-last`, executed, and **deferred without shipping**. No partial work was committed and the scorecard is untouched.
+
+**Blocker — an environment capability gap, not a work failure.** The canonical scorecard is written only by a `--full` `/mcp-server-surface-test` run. Per `skills/mcp-server-surface-test/SKILL.md:55`, dispatching `audit-phase-runner` subagents is "the only way the `--full` tier achieves its 250+ tool-call coverage"; `:56` documents `--single-agent` as the opt-out for hosts that cannot spawn subagents, with long phases surfacing as `phase-failed-budget` partial coverage. **A workflow-dispatched executor subagent cannot itself spawn subagents**, so only the degraded path was available, and a partial scorecard is worse than a stale one — it destroys the staleness signal while looking current.
+
+**Verified at defer time:** `audit-reports/_latest-promotion-scorecard.json` still reads `generatedAt: 2026-05-16T06:25:47Z` / `serverVersion: 1.38.1`; the worktree was clean.
+
+**RE-SCOPE — do not re-plan this as a sweep initiative.** It must be run by a **top-level orchestrator session** that can spawn subagents: invoke `/mcp-server-surface-test --full` directly, then commit the refreshed scorecard. Nesting it inside `/backlog-sweep:execute` will fail the same way every time.
+
+**Stale anchor (still unfixed, since the initiative shipped nothing):** the `skills/promote-tier/` anchor in this file does not exist — the maintainer skill lives at `.claude/skills/promote-tier/`.
+
+Acceptance bullet 2 (ship experimental→stable promotions in bounded batches) remains gated on a fresh scorecard.

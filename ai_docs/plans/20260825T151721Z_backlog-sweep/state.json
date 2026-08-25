@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-25T15:17:43.482Z",
-  "backlogSnapshot": "2026-08-25T14:48:37Z",
+  "backlogSnapshot": "2026-08-25T21:11:18Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -339,7 +339,7 @@
     {
       "id": "promotion-tier-scorecard-refresh-execution",
       "order": 10,
-      "status": "pending",
+      "status": "deferred",
       "parentRow": "promotion-tier-execution-batch",
       "backlogRowsClosed": [],
       "productionFilesTouched": 3,
@@ -365,7 +365,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deferred — environment capability gap, not a work failure. The canonical scorecard is written ONLY by a --full /mcp-server-surface-test run, whose 250+ tool-call coverage requires dispatching audit-phase-runner subagents (skills/mcp-server-surface-test/SKILL.md:55). A workflow-dispatched executor subagent cannot itself spawn subagents, leaving only --single-agent, which SKILL.md:56 documents as yielding phase-failed-budget partial coverage — and the stanza forbids committing a partial scorecard. Verified: scorecard untouched at serverVersion 1.38.1 / generatedAt 2026-05-16T06:25:47Z; worktree clean, partialWork none. RE-SCOPE: this initiative must be run by a TOP-LEVEL orchestrator session that can spawn subagents (invoke /mcp-server-surface-test --full directly), not as a nested sweep executor. Parent row promotion-tier-execution-batch stays open.",
       "fileSetHash": "f50052c6154c352a08cf79ffeda4e2f519df4617498b01762723f224438b6b98",
       "stanzaHash": "a16e33fb86f3cfdc568e0a07f73b747bbf698b25e05224c9f618557a5d43c266",
       "reviewedStanzaHash": "a16e33fb86f3cfdc568e0a07f73b747bbf698b25e05224c9f618557a5d43c266"
@@ -442,7 +442,7 @@
     {
       "id": "format-changed-file-gate",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "repository-dotnet-format-baseline-partition",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
@@ -468,10 +468,10 @@
       "dependsOn": [
         "format-baseline-inventory-contract"
       ],
-      "branch": null,
+      "branch": "remediation/format-changed-file-gate",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1356",
+      "mergedAt": "2026-08-25T21:01:27Z",
       "notes": null,
       "fileSetHash": "a47131b30117935b9237cc4c22fa9fcd6764b84014779440b3fdac445757a3fd",
       "stanzaHash": "18ee61652af847c49d7358f1ebb19c464f9e30b89f3e8442a0d71312947b0ca9",
@@ -717,5 +717,7 @@
   "planHash": "2c5c7a7ea2699e9ae8cd41a00ea0fe182db1b585fa2a3462158f12f539bf18ff",
   "backlogSnapshotHash": "f32ead1b884b7e98506059189b1c980e0b1f19f9c5a538e233a07380caedb693",
   "reviewedPlanHash": "2c5c7a7ea2699e9ae8cd41a00ea0fe182db1b585fa2a3462158f12f539bf18ff",
-  "reviewedBacklogSnapshotHash": "f32ead1b884b7e98506059189b1c980e0b1f19f9c5a538e233a07380caedb693"
+  "reviewedBacklogSnapshotHash": "f32ead1b884b7e98506059189b1c980e0b1f19f9c5a538e233a07380caedb693",
+  "completed": true,
+  "completedAt": "2026-08-25T21:11:30.493Z"
 }
