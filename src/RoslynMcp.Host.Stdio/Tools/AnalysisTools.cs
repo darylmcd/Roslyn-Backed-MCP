@@ -19,12 +19,7 @@ public static class AnalysisTools
         Analyzer,
     }
 
-    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Get diagnostics for the workspace (compiler CS*, analyzers CA*/IDE*, and workspace load issues). " +
-        "Contrast with compile_check (CS-only). Totals totalErrors/totalWarnings/totalInfo count the full queried scope and ignore the severity filter; " +
-        "the severity parameter only narrows which rows are collected (default minimum severity is Info when omitted — Hidden is still excluded). " +
-        "Use offset/limit to page; limit defaults to 200 to cap payload size. When hasMore is true, increase offset or narrow project/file filters. " +
-        "Large solutions can take tens of seconds — prefer projectName or file filters.")]
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics — compiler CS*, analyzers CA*/IDE*, and workspace load issues. Contrast compile_check, which is CS-only. Large solutions take tens of seconds, so prefer a projectName or file filter.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Return compiler diagnostics for a workspace.")]
     public static Task<string> GetProjectDiagnostics(
@@ -135,19 +130,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Get detailed information and available code fix options for a specific diagnostic occurrence. " +
-        "supportedFixes is populated from CodeFixProvider instances loaded via the CodeFixProviderRegistry " +
-        "(static IDE Features providers + per-project analyzer references). " +
-        "IMPORTANT LIMITATION: CA-series rules (e.g. CA1826, CA1848) from Microsoft.CodeAnalysis.NetAnalyzers " +
-        "ship with code-fix providers but those providers require Roslyn workspace services injected via constructor " +
-        "and cannot be instantiated by static reflection alone — supportedFixes will therefore always be empty for " +
-        "CA-series diagnostics. Use get_code_actions + preview_code_action to apply fixes for CA rules at a specific " +
-        "document location; those tools go through the live Roslyn workspace and surface the full fix menu. " +
-        "supportedFixes is reliable for CS* compiler diagnostics and IDE* Roslyn-IDE rules. " +
-        "When supportedFixes is empty for any diagnostic, guidanceMessage points to the get_code_actions fallback. " +
-        "Position parameters accept either `line`/`column` or the `startLine`/`startColumn` naming used by other positional tools " +
-        "(find_references, goto_definition, get_code_actions, …); supply exactly one pair.")]
+    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get details and available code fixes for one diagnostic occurrence. supportedFixes is reliable for CS* and IDE* rules but is always empty for CA-series NetAnalyzers rules — use get_code_actions + preview_code_action there.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Inspect one diagnostic occurrence in detail.")]
     public static Task<string> GetDiagnosticDetails(
@@ -240,7 +223,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol resolved at the exact line/column (or symbolHandle). Resolution uses the token at that position — e.g. a caret on a field name inside a method resolves the field, not the enclosing method. Place the caret on the method name to analyze the method.")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol at the exact position or symbolHandle. Resolution uses the token at that position — a caret on a field inside a method resolves the field, so place it on the method name.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Find direct callers and callees for a method.")]
     public static Task<string> GetCallersCallees(
@@ -284,7 +267,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned. Pass summary=true to drop the per-reference and per-declaration arrays and keep only counts (10-100x smaller payload on broad-impact symbols).")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the blast radius of changing a symbol: references, affected declarations, and affected projects in one call. Pass summary=true on broad-impact symbols to keep only counts (10-100x smaller than the full arrays).")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Estimate the impact of changing a symbol.")]
     public static Task<string> AnalyzeImpact(
@@ -343,7 +326,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
+    [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find every mutating member of a type (settable properties, methods writing instance state) and their external callers, classified as construction-phase vs post-construction.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Identify mutating members of a type and who calls them.")]
     public static Task<string> FindTypeMutations(
@@ -379,7 +362,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
+    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, each classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Classify usages of a type across the solution.")]
     public static Task<string> FindTypeUsages(
@@ -427,13 +410,7 @@ public static class AnalysisTools
     /// </summary>
     private const int SemanticGrepHardCap = 500;
 
-    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Token-aware regex search over the loaded C# workspace. Applies a .NET regular expression to individual syntax tokens and comment trivia so callers can avoid plain-text false positives in strings or comments. " +
-        "Scopes: `identifiers` (identifier tokens), `strings` (string, interpolated-text, raw, char, and UTF-8 literal tokens), `comments` (single-line, multi-line, and documentation trivia), or `all` (their union). " +
-        "Patterns use System.Text.RegularExpressions, not ripgrep/PCRE syntax; each token is matched independently. Under `identifiers`, member access is split into separate tokens (`Task.Run` becomes `Task`, `.`, `Run`), so `Task\\.Run` cannot match—search the component identifiers separately. " +
-        "Per-document regex evaluation is capped at 2 seconds; timed-out tokens are skipped, so simplify expensive patterns if results appear incomplete. Optional `projectName` restricts the walk by Project.Name. " +
-        "Collection is hard-capped at 500 hits per call. Results are paginated with offset/limit; iterate until hasMore=false. totalCount covers collected hits only, up to that hard cap, so narrow `pattern` or `projectName` when the ceiling is reached. " +
-        "Response shape: { count, totalCount, hasMore, offset, limit, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace, scoped to identifiers / strings / comments / all — no plain-text false positives. Patterns are .NET regex, not ripgrep; identifiers split on member access, so `Task\\.Run` never matches.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]
     public static Task<string> SemanticGrep(

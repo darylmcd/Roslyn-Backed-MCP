@@ -309,6 +309,54 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void DietedToolMethodDescriptions_StayWithinSliceCeiling()
+    {
+        // Slice ratchet for method-description-diet. Each slice adds its declaring types here
+        // once its descriptions are compressed to ~200-char capability statements.
+        const int maxPerToolCharacters = 250;
+        const int maxAggregateCharacters = 9_500;
+
+        var dietedTypes = new[]
+        {
+            typeof(SymbolTools),
+            typeof(AdvancedAnalysisTools),
+            typeof(AnalysisTools),
+        };
+
+        var entries = dietedTypes
+            .SelectMany(type => type.GetMethods(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+            .Select(method => new
+            {
+                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
+                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
+            })
+            .Where(entry => entry.Tool is not null && entry.Description is not null)
+            .Select(entry => new { Name = entry.Tool!.Name!, Text = entry.Description!.Description })
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.IsTrue(entries.Length > 0, "Expected dieted tool types to declare [McpServerTool] methods.");
+
+        var violations = entries
+            .Where(entry => entry.Text.Length > maxPerToolCharacters)
+            .Select(entry => $"{entry.Name}: {entry.Text.Length} chars")
+            .ToArray();
+
+        Assert.AreEqual(
+            0,
+            violations.Length,
+            $"Dieted tool descriptions must stay <= {maxPerToolCharacters} characters. Violations:\n  "
+            + string.Join("\n  ", violations));
+
+        var aggregate = entries.Sum(entry => entry.Text.Length);
+        Assert.IsTrue(
+            aggregate <= maxAggregateCharacters,
+            $"Aggregate dieted tool description length was {aggregate} characters "
+            + $"across {entries.Length} tools; ceiling is {maxAggregateCharacters}.");
+    }
+
+    [TestMethod]
     public void GetCompletions_DescriptionAndCatalogGuideMemberAccessPositioning()
     {
         var method = typeof(SymbolTools).GetMethod(
