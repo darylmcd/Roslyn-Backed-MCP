@@ -58,7 +58,7 @@ public static class ExtractMethodTools
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,
         "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope.")]
-    [Description("Preview extracting a shared sub-expression into a static helper, rewriting every identical site in the containing type (or project when allowCrossFile=true). Handles the N-function shape extract_method_preview does not.")]
+    [Description("Preview rewriting an N-function shared sub-expression into static-helper calls, unlike extract_method_preview. Refuses on occurrences < 2, mixed free-variable types, or cross-type hits when allowCrossFile=false.")]
     public static Task<string> PreviewExtractSharedExpressionToHelper(
         IWorkspaceExecutionGate gate,
         IExtractMethodService extractMethodService,
