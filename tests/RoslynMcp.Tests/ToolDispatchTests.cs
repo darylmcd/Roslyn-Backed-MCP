@@ -28,6 +28,124 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ToolDispatchTests
 {
+    /// <summary>
+    /// preview-token-apply-route-provenance: a token whose recorded producer is concrete and
+    /// different from the route's declared producer must be refused BEFORE the service call runs,
+    /// with a message naming both the actual producer and the route it should be redeemed through.
+    /// Mirrors <see cref="ApplyByTokenAsync_ChangedPathOutsideBoundary_RefusesBeforeServiceCall"/>:
+    /// the guard sits inside the write gate but ahead of every mutation.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByTokenAsync_IncompatibleProducer_RefusesBeforeServiceCall()
+    {
+        var gate = new FakeGate();
+        var serviceCallRan = false;
+        var store = new FakePreviewStore(token: "tok-xroute", workspaceId: "ws-xr")
+        {
+            Kind = PreviewKind.CodeFix,
+        };
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                previewToken: "tok-xroute",
+                serviceCall: _ =>
+                {
+                    serviceCallRan = true;
+                    return Task.FromResult(new FakeResultDto("must-not-run", 0));
+                },
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                applyRoute: "rename_apply"));
+
+        Assert.IsFalse(serviceCallRan, "Provenance guard must refuse the apply BEFORE the service call runs.");
+        StringAssert.Contains(ex.Message, "code_fix_preview",
+            "message must name the token's ACTUAL producer so the caller knows what they hold");
+        StringAssert.Contains(ex.Message, "code_fix_apply",
+            "message must name the apply route the token SHOULD be redeemed through");
+        StringAssert.Contains(ex.Message, "rename_apply",
+            "message must name the route that was wrongly invoked");
+    }
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: the happy path — a token whose producer matches the
+    /// route's declared family redeems unchanged. Pins that binding the five named routes did not
+    /// regress their own previews.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByTokenAsync_MatchingProducer_Applies()
+    {
+        var gate = new FakeGate();
+        var store = new FakePreviewStore(token: "tok-match", workspaceId: "ws-m")
+        {
+            Kind = PreviewKind.SymbolRename,
+        };
+
+        var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+            gate,
+            store,
+            previewToken: "tok-match",
+            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 1)),
+            ct: CancellationToken.None,
+            expectedKind: PreviewKind.SymbolRename,
+            applyRoute: "rename_apply");
+
+        StringAssert.Contains(result, "applied");
+    }
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: the guard fails OPEN on unknown provenance — an
+    /// untagged producer or an out-of-tree store that returns the interface default
+    /// <see cref="PreviewKind.Unspecified"/> still redeems on a bound route. Mirrors the
+    /// null-<c>PeekChangedPaths</c> skip in
+    /// <see cref="ApplyByTokenAsync_NullChangedPathsPeek_SkipsRevalidation_AndApplies"/>.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByTokenAsync_UnspecifiedProducer_SkipsGuard_AndApplies()
+    {
+        var gate = new FakeGate();
+        // Kind left at its default (Unspecified) — the interface-default / legacy-store shape.
+        var store = new FakePreviewStore(token: "tok-untagged", workspaceId: "ws-ut");
+
+        var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+            gate,
+            store,
+            previewToken: "tok-untagged",
+            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 2)),
+            ct: CancellationToken.None,
+            expectedKind: PreviewKind.SymbolRename,
+            applyRoute: "rename_apply");
+
+        StringAssert.Contains(result, "applied",
+            "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
+    }
+
+    /// <summary>
+    /// preview-token-apply-route-provenance: an UNBOUND route (the ~10 apply families that have
+    /// not declared a producer set) performs no enforcement — a concrete, unrelated producer kind
+    /// still redeems. Pins the deliberate residue so it is a visible contract, not an accident.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance()
+    {
+        var gate = new FakeGate();
+        var store = new FakePreviewStore(token: "tok-unbound", workspaceId: "ws-ub")
+        {
+            Kind = PreviewKind.FormatRange,
+        };
+
+        var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+            gate,
+            store,
+            previewToken: "tok-unbound",
+            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 3)),
+            ct: CancellationToken.None);
+
+        StringAssert.Contains(result, "applied",
+            "A route that declares no expectedKind must keep its pre-binding behavior.");
+    }
+
     // Distinguishable payload type so the assertions can inspect JSON structure.
     private sealed record FakeResultDto(string Message, int Count);
 
@@ -339,9 +457,18 @@ public sealed class ToolDispatchTests
         /// </summary>
         public IReadOnlyList<string>? ChangedPaths { get; init; }
 
+        /// <summary>
+        /// preview-token-apply-route-provenance: producer family the fake reports for its token.
+        /// Defaults to <see cref="PreviewKind.Unspecified"/>, matching both the interface default
+        /// and an untagged producer.
+        /// </summary>
+        public PreviewKind Kind { get; init; } = PreviewKind.Unspecified;
+
         public string? PeekWorkspaceId(string token) => token == _token ? _workspaceId : null;
 
         public IReadOnlyList<string>? PeekChangedPaths(string token) => token == _token ? ChangedPaths : null;
+
+        public PreviewKind PeekKind(string token) => token == _token ? Kind : PreviewKind.Unspecified;
 
         public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
             => throw new NotSupportedException();

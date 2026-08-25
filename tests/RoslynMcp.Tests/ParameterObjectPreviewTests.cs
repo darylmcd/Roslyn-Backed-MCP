@@ -1226,6 +1226,73 @@ public sealed class ParameterObjectPreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// preview-token-apply-route-provenance: the cross-route regression. A token minted by
+    /// <c>rename_preview</c> (recorded as <see cref="PreviewKind.SymbolRename"/>) must be refused
+    /// by a named apply route bound to a different producer family — here
+    /// <c>format_document_apply</c> — BEFORE any workspace mutation. Asserts the file on disk is
+    /// byte-identical afterwards and that the error names both the actual producer and the route
+    /// the token should be redeemed through.
+    /// </summary>
+    /// <remarks>
+    /// The untagged half of the contract is covered by
+    /// <c>ApplyWithVerify_RedeemsPreviewAndWritesChangesToDisk</c> above: a
+    /// <c>parameter_object_preview</c> token carries <see cref="PreviewKind.Unspecified"/>
+    /// ("no provenance claim") and still redeems unchanged, which is the documented fail-open
+    /// behavior for producers that have not yet been tagged.
+    /// </remarks>
+    [TestMethod]
+    public async Task NamedApplyRoute_RejectsTokenFromAnotherProducer_WithoutMutatingDisk()
+    {
+        var (workspaceId, fixturePath, _) = await SetupSingleProjectFixtureAsync(
+            """
+            namespace SampleLib;
+
+            public class POXRouteFixture
+            {
+                public int Sum(int a, int b, int c) => a + b + c;
+
+                public int Caller() => Sum(1, 2, 3);
+            }
+            """,
+            "POXRouteFixture.cs");
+
+        try
+        {
+            var before = await File.ReadAllTextAsync(fixturePath);
+
+            var rename = await RefactoringService.PreviewRenameAsync(
+                workspaceId,
+                SymbolLocator.BySource(fixturePath, line: 5, column: 16), // 'Sum'
+                "Total",
+                CancellationToken.None);
+            Assert.IsNotNull(rename.PreviewToken, "rename_preview must mint a token for this fixture");
+
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                RefactoringTools.ApplyFormatDocument(
+                    WorkspaceExecutionGate,
+                    RefactoringService,
+                    PreviewStore,
+                    rename.PreviewToken!,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "rename_preview",
+                "error must name the token's actual producer");
+            StringAssert.Contains(ex.Message, "rename_apply",
+                "error must name the apply route the token should be redeemed through");
+            StringAssert.Contains(ex.Message, "format_document_apply",
+                "error must name the route that was wrongly invoked");
+
+            var after = await File.ReadAllTextAsync(fixturePath);
+            Assert.AreEqual(before, after,
+                "A wrong-route redemption must be refused BEFORE any file is written.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     [TestMethod]
     public async Task ExplicitDtoNamespace_QualifiesDeclarationAndCallsiteReferences()
     {

@@ -16,13 +16,25 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// (Roslyn layer); this wrapper only resolves the workspace, opens the write gate, and maps the
 /// returned <see cref="ApplyVerifyOutcome"/> onto the tool's JSON wire shape.
 /// </summary>
+/// <remarks>
+/// <b>preview-token-apply-route-provenance:</b> this route is deliberately producer-AGNOSTIC and
+/// therefore does NOT call <c>ToolDispatch.RequireCompatibleProducer</c>. Its supported set is
+/// "every token held by <see cref="IPreviewStore"/>" — the store is the parameter type, so the
+/// admissible set is enforced by construction and any <see cref="RoslynMcp.Core.Models.PreviewKind"/>
+/// is legitimate here; adding a guard that accepts every member would be unreachable code. The
+/// named <c>*_apply</c> routes in <c>RefactoringTools</c> are the ones that bind to a single
+/// producer family. Tokens from <c>ICompositePreviewStore</c> / <c>IProjectMutationPreviewStore</c>
+/// are structurally out of reach and already surface as <see cref="PreviewTokenStaleException"/>
+/// from the <c>PeekWorkspaceId</c> miss below. The tool's <c>[Description]</c> states this set
+/// explicitly so callers do not have to infer it.
+/// </remarks>
 [McpServerToolType]
 public static class ApplyWithVerifyTool
 {
     [McpServerTool(Name = "apply_with_verify", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "experimental", false, true,
         "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
-     Description("Apply a previously previewed refactoring AND immediately verify the workspace still compiles. When new compile errors appear (relative to the pre-apply baseline), automatically revert via revert_last_apply and return status=\"rolled_back\" with the introduced errors. Otherwise return status=\"applied\". Pass rollbackOnError=false to keep broken state for inspection (returns status=\"applied_with_errors\").")]
+     Description("Apply a previously previewed refactoring AND immediately verify the workspace still compiles. Supported producers: any token from a solution-snapshot *_preview tool (rename/organize_usings/format_document/format_range/code_fix_preview, plus untagged ones such as parameter_object_preview) — unlike the named *_apply routes this one is producer-agnostic and never rejects a token for its producer family. Composite and project-mutation tokens are not redeemable here; use apply_composite_preview / apply_project_mutation. When new compile errors appear (relative to the pre-apply baseline), automatically revert via revert_last_apply and return status=\"rolled_back\" with the introduced errors. Otherwise return status=\"applied\". Pass rollbackOnError=false to keep broken state for inspection (returns status=\"applied_with_errors\").")]
     public static Task<string> ApplyWithVerify(
         IWorkspaceExecutionGate gate,
         IApplyUndoWorkflowService workflowService,
