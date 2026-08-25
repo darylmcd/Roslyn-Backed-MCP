@@ -15,10 +15,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class RecordImpactTools
 {
+    /// <remarks>
+    /// Construction sites carry rewritten argument lists, deconstruction sites carry rewritten
+    /// patterns, and property-pattern sites are flagged when exhaustive-in-spirit but missing the
+    /// new field. Test files that merely mention the record are reported separately.
+    /// </remarks>
     [McpServerTool(Name = "preview_record_field_addition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "experimental", true, false,
         "Pre-flight audit: every site impacted by adding a positional field to a record."),
-     Description("Pre-flight audit for adding a positional field to a record. Returns positional construction sites (with rewritten arg lists), deconstruction sites (with rewritten patterns), property-pattern sites (flagged when exhaustive-in-spirit but missing the new field), `with`-expression sites, and test files that mention the record. Catches the breaking-change shapes the C# compiler does NOT flag: pattern coverage, deconstruction shape, with-expression assumptions.")]
+     Description("Pre-flight audit for adding a positional field to a record: construction, deconstruction, property-pattern, and `with`-expression sites. Catches breaking shapes the C# compiler does NOT flag.")]
     public static Task<string> PreviewRecordFieldAddition(
         IWorkspaceExecutionGate gate,
         IRecordFieldAdditionService recordFieldAdditionService,

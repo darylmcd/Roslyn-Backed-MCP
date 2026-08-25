@@ -13,10 +13,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class TestCoverageTools
 {
 
+    /// <remarks>
+    /// Response shape is the <see cref="TestCoverageResultDto"/> fields (success, error,
+    /// lineCoveragePercent, branchCoveragePercent, modules, failureEnvelope) with an additional
+    /// top-level <c>deprecation</c> field — null on this canonical tool, populated on aliases
+    /// (e.g. <c>get_test_coverage_map</c>).
+    /// </remarks>
     [McpServerTool(Name = "test_coverage", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("validation", "stable", false, false,
         "Run coverage collection for test execution."),
-     Description("Run tests with code coverage collection and return coverage metrics per module and class. Requires coverlet.collector NuGet package in test projects. Response shape is the TestCoverageResultDto fields (success, error, lineCoveragePercent, branchCoveragePercent, modules, failureEnvelope) with an additional top-level `deprecation` field — null on the canonical tool, populated on aliases (e.g. get_test_coverage_map).")]
+     Description("Run tests with code coverage collection and return coverage metrics per module and class. Requires the coverlet.collector NuGet package in test projects.")]
     public static Task<string> RunTestCoverage(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -222,10 +228,14 @@ public static class TestCoverageTools
     // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
     // (Jedi) tool name `get_test_coverage_map`. Delegates to the canonical `test_coverage`
     // implementation and surfaces the migration path inline via the `deprecation` envelope.
+    /// <remarks>
+    /// Returns the canonical <c>test_coverage</c> response envelope with
+    /// <c>deprecation.canonicalName</c> populated.
+    /// </remarks>
     [McpServerTool(Name = "get_test_coverage_map", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("validation", "stable", false, false,
         "Alias for test_coverage (cross-MCP-server name compatibility)."),
-     Description("Alias for `test_coverage` (cross-MCP-server name compatibility — matches the python-refactor tool name). Returns the canonical test_coverage response envelope with deprecation.canonicalName populated. Prefer `test_coverage` directly in new code.")]
+     Description("Alias for `test_coverage` (cross-MCP-server name compatibility — matches the python-refactor tool name). Prefer `test_coverage` directly in new code.")]
     public static Task<string> GetTestCoverageMap(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
