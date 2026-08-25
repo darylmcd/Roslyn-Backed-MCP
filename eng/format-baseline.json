@@ -1,0 +1,2330 @@
+{
+  "schemaVersion": 1,
+  "command": "dotnet format RoslynMcp.slnx --verify-no-changes --no-restore",
+  "diagnosticIds": [
+    "FINALNEWLINE",
+    "IDE1006",
+    "IMPORTS",
+    "WHITESPACE"
+  ],
+  "totals": {
+    "findingCount": 400,
+    "fileCount": 226,
+    "countsByDiagnosticId": {
+      "FINALNEWLINE": 1,
+      "IDE1006": 288,
+      "IMPORTS": 108,
+      "WHITESPACE": 3
+    }
+  },
+  "files": [
+    {
+      "path": "analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs",
+      "findingCount": 13,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 13
+      }
+    },
+    {
+      "path": "analyzers/ServerSurfaceCatalogAnalyzer/StdoutWriteAnalyzer.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 5
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Core/Models/WorkspaceDiagnosticClassifier.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Core/Services/PublicExceptionDetailPolicy.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Core/Services/WorkspaceEvictedException.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/PromptParameterIndex.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Analysis.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Editing.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Prompts.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Resources.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Symbols.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Workspace.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs",
+      "findingCount": 7,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 7
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ToolParameterIndex.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Catalog/ToolTierSelection.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/HostProcessMetadataSnapshotProvider.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/HostProcessMetadataStore.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/RequestCorrelationContext.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/RequestMcpServerContext.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/SecurityOptionsSnapshot.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/SurfaceRegistrationSnapshot.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Middleware/PromptBindingStageAdapter.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Middleware/ResourceReadResultFilter.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Middleware/SolutionDiscoveryHelper.cs",
+      "findingCount": 7,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 7
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.AnalysisWorkflows.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.GuidedWorkflows.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.RefactoringWorkflows.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Resources/WorkspaceResources.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Security/ConfiguredRootBoundary.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/ServerInstructions.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Services/NuGetVersionChecker.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/AnalyzerInfoTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/BulkRefactoringTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/CodeActionTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/CohesionAnalysisTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ConsumerAnalysisTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/CrossProjectRefactoringTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/EditTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/EditorConfigTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/FileOperationTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/FixAllTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/FlowAnalysisTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ImpactSweepTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/InterfaceExtractionTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/MSBuildTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/MultiFileEditTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/OperationTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ParameterValidation.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 5
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/RemoveInterfaceMemberTool.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/RestructureTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ScriptingTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SecurityTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SnippetAnalysisTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SuppressionTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorFactory.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SymbolRefactorTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/SyntaxTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/TestCoverageTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/TestReferenceMapTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/TypeExtractionTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/TypeMoveTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/WorkspaceReadinessReportBuilder.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Host.Stdio/Tools/WorkspaceWarmTools.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Contracts/IWorkspaceManager.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs",
+      "findingCount": 7,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 6,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/DocumentResolution.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/DotnetTestModeResolver.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/PathFilter.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/PhysicalPathResolver.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/ProjectMetadataParser.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/ProjectRelativePathValidation.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/ReferenceLocationMaterializer.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Helpers/SymbolResolver.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/AnalyzerInfoService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/BuildService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ChangeTracker.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CodeActionService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CodeMetricsService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CodePatternAnalyzer.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CohesionAnalysisService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CompileCheckService.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CompletionService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CouplingAnalysisService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/DeadCodeService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/DiagnosticService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/DuplicateMethodDetectorService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/FileOperationService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/FileWatcherService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ImpactSweepService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/MsBuildEvaluationService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/NamespaceDependencyService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/NuGetDependencyService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/OperationService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/PersistentCompositeStorage.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ReferenceService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/RestoreStalenessDetector.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/RestructureService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ScriptExecutionSupervisor.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006",
+        "WHITESPACE"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "WHITESPACE": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ScriptWorkerProcess.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/ScriptingService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SecurityDiagnosticRegistry.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SecurityDiagnosticService.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SnippetAnalysisService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SuppressionService.cs",
+      "findingCount": 5,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 5
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SymbolNavigationService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/SyntaxService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/TypeMoveService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/UndoService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/UnresolvedAnalyzerReferenceStripper.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceCacheStore.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs",
+      "findingCount": 14,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 13,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
+      "findingCount": 8,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 7,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "src/RoslynMcp.Roslyn/Services/WorkspaceWarmService.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/AliasToolsTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/AnalysisFlowFailureRedactionTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/CatalogDestructiveWarningTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/CodeMetricsNestingTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/CohesionAnalysisTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DeadFieldDetectorTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DeadLocalDetectorTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DeadLoggerFieldsTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DiagnosticServicePerfTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DuplicateHelperDetectionTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/DuplicateMethodDetectorTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ExperimentalSurfaceParameterNamingTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/FileEditsDtoTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/FixAllServiceTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/HardeningBehaviorTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Helpers/GeneratedJsonSchemaMatcher.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/HostProcessMetadataTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/LocationDtoMigrationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/LspSourceLocationAliasWireTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ManualNuGetPublishContractTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/MsBuildEvaluationCacheTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/NamespaceRelocationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/NuGetAuditGateTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PackageFamilyContractTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ParameterObjectPreviewTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006",
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1,
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PerformanceBehaviorTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PowerShellOutputNormalizerTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PreviewApplyBoundaryRevalidationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PreviewStoreTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ProjectRelativePathValidationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ProtocolVersionResultShapeWireTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PublicExceptionDetailPolicyTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/PublishVersionContextTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ScriptingServiceTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/SecurityDiagnosticIntegrationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ServerSurfaceCatalogAnalyzerTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/SharedWorkspaceTestBase.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "FINALNEWLINE"
+      ],
+      "countsByDiagnosticId": {
+        "FINALNEWLINE": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Skills/McpServerStressSkillFrontmatterTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Skills/McpServerSurfaceTestSkillTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/SliceFieldDetectionTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/StdioFlushOnExitTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/StdoutWriteAnalyzerTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/Support/GitFixtureRunner.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/SymbolTraversalTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestBase.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestInfrastructure/PowerShellOutputNormalizer.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestReferenceMapServiceTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TestResultsSummaryContractTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs",
+      "findingCount": 4,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 4
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/TreeNodeFilterTranslatorTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceEvictionAutoRetryTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceFilePathInferenceWireTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceForkApplyCancellationTests.cs",
+      "findingCount": 3,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 3
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceIdOptionalSurfaceTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceLoadRestoreRaceTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IMPORTS"
+      ],
+      "countsByDiagnosticId": {
+        "IMPORTS": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceManagerEvictionTests.cs",
+      "findingCount": 2,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 2
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceReadinessReportIntegrationTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceSessionLoaderFailureTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceStatusSummaryDtoTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    },
+    {
+      "path": "tests/RoslynMcp.Tests/WorkspaceToolchainClassifierTests.cs",
+      "findingCount": 1,
+      "diagnosticIds": [
+        "IDE1006"
+      ],
+      "countsByDiagnosticId": {
+        "IDE1006": 1
+      }
+    }
+  ]
+}
