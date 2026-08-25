@@ -32,7 +32,7 @@ Full solution workflows live in **`roslyn://server/catalog`**. This skill is for
 ## Workflow
 
 1. For **compile/bind** questions: call **`analyze_snippet`** with the code and appropriate options (as exposed by the tool schema).
-2. For **execution**: call **`evaluate_csharp`**; warn the user that scripts run in the host process trust boundary.
+2. For **execution**: call **`evaluate_csharp`**; warn the user that scripts run in a killable child process but remain inside the host's security trust boundary.
 3. If results imply real-project dependencies, recommend **`workspace_load`** on the actual solution.
 
 ## Explain mode — semantic walk-through for teaching or learning
@@ -53,4 +53,4 @@ Explain mode is read-only — it never calls `evaluate_csharp`. It's useful for 
 
 ## Safety
 
-Treat **`evaluate_csharp`** as **arbitrary code execution** in the MCP host environment. Only run code the user explicitly supplied and avoid secrets in snippets. Explain mode is safe — it never executes.
+Treat **`evaluate_csharp`** as **arbitrary code execution** in the MCP host security context. The child-process boundary enforces termination; it is not a permission sandbox. Only run code the user explicitly supplied and avoid secrets in snippets. Explain mode is safe — it never executes.

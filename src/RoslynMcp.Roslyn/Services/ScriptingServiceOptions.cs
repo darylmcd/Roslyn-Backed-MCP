@@ -28,10 +28,9 @@ public sealed record ScriptingServiceOptions
     public int StuckWarningSeconds { get; init; } = 5;
 
     /// <summary>
-    /// Seconds after <see cref="TimeoutSeconds"/> before the host abandons the script worker
-    /// and returns a forcibly-abandoned timeout response. Roslyn may not honor
-    /// <see cref="System.Threading.CancellationToken"/> during tight loops; this is the
-    /// hard wall-clock cap that always fires. Defaults to 10.
+    /// Seconds after <see cref="TimeoutSeconds"/> before the host terminates the isolated
+    /// worker process. Roslyn may not honor <see cref="System.Threading.CancellationToken"/>
+    /// during tight loops; this is the hard wall-clock cap that always fires. Defaults to 10.
     /// </summary>
     public int WatchdogGraceSeconds { get; init; } = 10;
 
@@ -43,10 +42,8 @@ public sealed record ScriptingServiceOptions
 
     /// <summary>
     /// Maximum number of script evaluations allowed to be racing to deadline at once.
-    /// Each evaluation runs on its own dedicated background thread. The slot is released as
-    /// soon as the request completes (success, error, or hard deadline) so a leaked script
-    /// thread does NOT keep the slot — it transitions to the abandoned-thread bookkeeping
-    /// (<see cref="MaxAbandonedEvaluations"/>). Defaults to 4.
+    /// Each evaluation runs in an owned child process with a dedicated parent-side monitor.
+    /// The slot is released only after normal exit or bounded termination cleanup. Defaults to 4.
     /// </summary>
     public int MaxConcurrentEvaluations { get; init; } = 4;
 
@@ -57,11 +54,11 @@ public sealed record ScriptingServiceOptions
     public int ConcurrencySlotAcquireTimeoutSeconds { get; init; } = 5;
 
     /// <summary>
-    /// Hard upper bound on how many leaked script worker threads we will tolerate
+    /// Hard upper bound on worker processes that the operating system failed to terminate
     /// across the lifetime of the host. Once exceeded, new <c>evaluate_csharp</c> requests
     /// fail fast with an actionable error directing the operator to restart the host.
-    /// Defaults to 8 — well above the in-flight cap so transient deadline races do not
-    /// trigger it, but low enough to fail fast on a persistent infinite-loop pattern.
+    /// Defaults to 8 — well above the in-flight cap but low enough to fail closed when
+    /// process cleanup is persistently unavailable.
     /// </summary>
     public int MaxAbandonedEvaluations { get; init; } = 8;
 }

@@ -8,20 +8,19 @@ using Microsoft.Extensions.Logging;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Roslyn C# scripting host with hard wall-clock cancellation guarantees.
+/// Roslyn C# scripting host with hard wall-clock termination guarantees.
 ///
 /// FLAG-5C: <c>Microsoft.CodeAnalysis.CSharp.Scripting</c> does not honor
 /// <see cref="CancellationToken"/> for tight CPU loops (e.g. <c>while(true){}</c>).
-/// <see cref="ScriptExecutionSupervisor"/> owns the runtime isolation mechanics:
-/// dedicated worker thread, timeout/deadline/heartbeat timers, capacity slots, and
-/// abandoned-worker accounting. This service keeps script setup and public result DTO
-/// formatting in one place.
+/// <see cref="ScriptExecutionSupervisor"/> runs every script in an owned child process.
+/// A dedicated parent-side monitor enforces the hard deadline without relying on a
+/// thread-pool callback and reclaims the process before returning capacity.
 /// </summary>
 public sealed class ScriptingService : IScriptingService
 {
     private readonly ScriptingServiceOptions _options;
     private readonly ScriptExecutionSupervisor _executionSupervisor;
-    private readonly Func<string, ScriptOptions, CancellationToken, ScriptExecutionOutcome> _executeScript;
+    private readonly Func<string, ScriptOptions, CancellationToken, ScriptExecutionOutcome>? _executeScript;
 
     private static readonly string[] DefaultImports =
     [
@@ -35,8 +34,20 @@ public sealed class ScriptingService : IScriptingService
     ];
 
     public ScriptingService(ILogger<ScriptingService> logger, ScriptingServiceOptions options)
-        : this(logger, options, ExecuteScript)
+        : this(logger, options, new ScriptWorkerProcess(logger))
     {
+    }
+
+    internal ScriptingService(
+        ILogger<ScriptingService> logger,
+        ScriptingServiceOptions options,
+        IScriptWorkerProcess workerProcess)
+    {
+        _options = options;
+        _executionSupervisor = new ScriptExecutionSupervisor(
+            logger,
+            options,
+            workerProcess ?? throw new ArgumentNullException(nameof(workerProcess)));
     }
 
     internal ScriptingService(
@@ -60,12 +71,17 @@ public sealed class ScriptingService : IScriptingService
         int? timeoutSecondsOverride = null)
     {
         var settings = CreateExecutionSettings(timeoutSecondsOverride);
-        var scriptOptions = BuildScriptOptions(imports);
-        var result = await _executionSupervisor.ExecuteAsync(
-            timeoutToken => _executeScript(code, scriptOptions, timeoutToken),
-            onProgress,
-            settings,
-            ct).ConfigureAwait(false);
+        var result = _executeScript is null
+            ? await _executionSupervisor.ExecuteAsync(
+                new ScriptWorkerRequest(code, imports, settings.EffectiveTimeoutSeconds),
+                onProgress,
+                settings,
+                ct).ConfigureAwait(false)
+            : await _executionSupervisor.ExecuteAsync(
+                timeoutToken => _executeScript(code, BuildScriptOptions(imports), timeoutToken),
+                onProgress,
+                settings,
+                ct).ConfigureAwait(false);
 
         return BuildEvaluationDto(result, ct);
     }
@@ -134,8 +150,8 @@ public sealed class ScriptingService : IScriptingService
         var error = failure.Kind switch
         {
             ScriptExecutionCapacityFailureKind.AbandonedWorkerCap =>
-                $"evaluate_csharp has {failure.AbandonedCount} abandoned worker threads (cap {_options.MaxAbandonedEvaluations}). " +
-                "Likely caused by previous infinite-loop scripts that Roslyn could not cancel. " +
+                $"evaluate_csharp has {failure.AbandonedCount} unreclaimed worker processes (cap {_options.MaxAbandonedEvaluations}). " +
+                "Likely caused by an operating-system process termination failure. " +
                 "Restart the MCP host to recover.",
             ScriptExecutionCapacityFailureKind.ConcurrentSlotCap =>
                 $"evaluate_csharp is at capacity ({_options.MaxConcurrentEvaluations} concurrent slots, {failure.ActiveCount} in flight). " +
@@ -160,11 +176,10 @@ public sealed class ScriptingService : IScriptingService
             Success: false,
             ResultType: null,
             ResultValue: null,
-            Error: $"Script execution was forcibly abandoned after {result.Settings.HardDeadlineSeconds} second(s) " +
+            Error: $"Script execution reached its hard deadline after {result.Settings.HardDeadlineSeconds} second(s) " +
                    $"(script budget {result.Settings.EffectiveTimeoutSeconds}s + ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS {result.Settings.GraceSeconds}s). " +
-                   "Roslyn does not cancel tight infinite loops; the server no longer waits for cooperative cancellation. " +
-                   $"{result.AbandonedCount}/{result.MaxAbandonedCount} abandoned worker thread(s) outstanding; " +
-                   "restart the MCP host if this happens repeatedly.",
+                   "The isolated worker process was terminated so CPU and concurrency capacity were reclaimed. " +
+                   $"{result.AbandonedCount}/{result.MaxAbandonedCount} worker process(es) could not be reclaimed.",
             CompilationErrors: null,
             ElapsedMs: result.ElapsedMs,
             AppliedScriptTimeoutSeconds: result.Settings.EffectiveTimeoutSeconds,
@@ -215,16 +230,16 @@ public sealed class ScriptingService : IScriptingService
         {
             ScriptExecutionOutcomeKind.Success => (
                 true,
-                outcome.Result?.GetType().FullName,
-                FormatResult(outcome.Result),
+                outcome.ResultType,
+                outcome.ResultValue,
                 (string?)null,
                 (List<DiagnosticDto>?)null),
             ScriptExecutionOutcomeKind.CompilationFailure => (
                 false,
                 (string?)null,
                 (string?)null,
-                outcome.CompilationException!.Message,
-                MapCompilationErrors(outcome.CompilationException!)),
+                outcome.Error,
+                outcome.CompilationErrors),
             ScriptExecutionOutcomeKind.TimedOut => (
                 false,
                 (string?)null,
@@ -236,7 +251,7 @@ public sealed class ScriptingService : IScriptingService
                 false,
                 (string?)null,
                 (string?)null,
-                $"Runtime error: {outcome.RuntimeException!.GetType().Name}: {outcome.RuntimeException!.Message}",
+                outcome.Error,
                 (List<DiagnosticDto>?)null),
             _ => (
                 false,
@@ -257,7 +272,7 @@ public sealed class ScriptingService : IScriptingService
             ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
     }
 
-    private ScriptOptions BuildScriptOptions(string[]? imports)
+    internal static ScriptOptions BuildScriptOptions(string[]? imports)
     {
         var allImports = DefaultImports.Concat(imports ?? []).Distinct().ToArray();
         return ScriptOptions.Default
@@ -269,7 +284,7 @@ public sealed class ScriptingService : IScriptingService
             .WithEmitDebugInformation(false);
     }
 
-    private static List<DiagnosticDto> MapCompilationErrors(CompilationErrorException ex)
+    internal static List<DiagnosticDto> MapCompilationErrors(CompilationErrorException ex)
     {
         return ex.Diagnostics
             .Where(d => d.Severity != DiagnosticSeverity.Hidden)
@@ -291,7 +306,7 @@ public sealed class ScriptingService : IScriptingService
             .ToList();
     }
 
-    private static string? FormatResult(object? result)
+    internal static string? FormatResult(object? result)
     {
         if (result is null) return "null";
 
