@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
@@ -19,7 +20,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <para>
 /// <b>Dispatch shapes</b> — one helper method per workspace-gating pattern:
 /// <list type="bullet">
-///   <item><see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
+///   <item><see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind)"/>
 ///     — <c>*_apply</c> tools that receive an opaque preview token; resolves the
 ///     workspaceId via the store's <c>PeekWorkspaceId</c> peek and runs under the
 ///     per-workspace write gate. Also has a delegate-peek overload for preview stores
@@ -106,11 +107,6 @@ internal static class ToolDispatch
     /// families that have not yet declared a producer set keep their existing behavior without an
     /// edit. See <see cref="RequireCompatibleProducer"/> for the fail-open/fail-closed semantics.
     /// </param>
-    /// <param name="applyRoute">
-    /// preview-token-apply-route-provenance: this route's tool name, used only to make the mismatch
-    /// error name the route the caller actually invoked. Falls back to the canonical route for
-    /// <paramref name="expectedKind"/> when omitted.
-    /// </param>
     /// <returns>
     /// The DTO serialized with <see cref="JsonDefaults.Indented"/>.
     /// </returns>
@@ -129,8 +125,7 @@ internal static class ToolDispatch
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct,
-        PreviewKind expectedKind = PreviewKind.Unspecified,
-        string? applyRoute = null)
+        PreviewKind expectedKind = PreviewKind.Unspecified)
     {
         var wsId = RequirePreviewWorkspaceId(previewStore.PeekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
@@ -138,7 +133,7 @@ internal static class ToolDispatch
             // preview-token-apply-route-provenance: refuse a token minted by a different producer
             // family BEFORE any mutation — and before the boundary revalidation below, so a
             // wrong-route redemption never reaches RevalidateChangedPathsAsync or TryApplyChanges.
-            RequireCompatibleProducer(previewStore, previewToken, expectedKind, applyRoute);
+            RequireCompatibleProducer(previewStore, previewToken, expectedKind);
 
             // preview-apply-token-write-path-toctou: revalidate the preview's write set against
             // the sanctioned-root boundary AT REDEMPTION TIME, under the same write gate that
@@ -161,7 +156,7 @@ internal static class ToolDispatch
     /// <list type="bullet">
     ///   <item><paramref name="expectedKind"/> is <see cref="PreviewKind.Unspecified"/> — the route
     ///     has not declared a producer set, so no enforcement (the ~10 other
-    ///     <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
+    ///     <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind)"/>
     ///     apply families are still in this state; binding them is a follow-up row).</item>
     ///   <item>The stored kind is <see cref="PreviewKind.Unspecified"/> — an untagged producer or an
     ///     out-of-tree store that does not track provenance. Permissive by the enum's own documented
@@ -179,8 +174,7 @@ internal static class ToolDispatch
     internal static void RequireCompatibleProducer(
         IPreviewStore previewStore,
         string previewToken,
-        PreviewKind expectedKind,
-        string? applyRoute)
+        PreviewKind expectedKind)
     {
         if (expectedKind == PreviewKind.Unspecified)
         {
@@ -196,37 +190,83 @@ internal static class ToolDispatch
         throw new InvalidOperationException(
             $"Preview token '{previewToken}' was produced by `{PreviewToolFor(actualKind)}`; " +
             $"redeem it via `{ApplyRouteFor(actualKind)}` (or the generic `apply_with_verify`), " +
-            $"not `{applyRoute ?? ApplyRouteFor(expectedKind)}`, which only accepts " +
+            $"not `{ApplyRouteFor(expectedKind)}`, which only accepts " +
             $"`{PreviewToolFor(expectedKind)}` tokens. No workspace changes were made.");
     }
 
     /// <summary>
+    /// preview-token-route-map-centralization: THE single kind → <c>*_preview</c> tool-name map.
+    /// The apply-route half is deliberately absent — <see cref="ApplyRouteFor"/> derives it by
+    /// looking the preview-tool name up in <c>ServerSurfaceCatalog.PreviewApplyRoutes</c>,
+    /// which the catalog already maintains for the whole preview surface. Keeping only the
+    /// kind → preview-tool hop here means a route rename is edited in exactly one place.
+    /// <see cref="PreviewKind.Unspecified"/> is intentionally NOT a key: it means "no provenance
+    /// claim" and has no producer tool.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<PreviewKind, string> _previewToolsByKind =
+        new Dictionary<PreviewKind, string>
+        {
+            [PreviewKind.SymbolRename] = "rename_preview",
+            [PreviewKind.FormatDocument] = "format_document_preview",
+            [PreviewKind.FormatRange] = "format_range_preview",
+            [PreviewKind.OrganizeUsings] = "organize_usings_preview",
+            [PreviewKind.CodeFix] = "code_fix_preview",
+        };
+
+    /// <summary>
     /// preview-token-apply-route-provenance: the <c>*_preview</c> tool name that mints each
     /// <see cref="PreviewKind"/>, for the actionable half of the mismatch message.
+    /// <para>
+    /// preview-token-route-map-centralization: fails LOUD on an unmapped kind rather than
+    /// returning a plausible-looking catch-all. Only ever reached with a concrete kind —
+    /// <see cref="RequireCompatibleProducer"/> returns early on
+    /// <see cref="PreviewKind.Unspecified"/> for both the route's and the token's kind, so the
+    /// permissive contract never touches this map.
+    /// </para>
     /// </summary>
-    private static string PreviewToolFor(PreviewKind kind) => kind switch
-    {
-        PreviewKind.SymbolRename => "rename_preview",
-        PreviewKind.FormatDocument => "format_document_preview",
-        PreviewKind.FormatRange => "format_range_preview",
-        PreviewKind.OrganizeUsings => "organize_usings_preview",
-        PreviewKind.CodeFix => "code_fix_preview",
-        _ => "an untagged *_preview tool",
-    };
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <paramref name="kind"/> has no entry — a new <see cref="PreviewKind"/> member
+    /// was added without its companion map entry.
+    /// </exception>
+    internal static string PreviewToolFor(PreviewKind kind) =>
+        _previewToolsByKind.TryGetValue(kind, out var previewTool)
+            ? previewTool
+            : throw UnmappedPreviewKind(kind, "ToolDispatch._previewToolsByKind (kind → *_preview tool)");
 
     /// <summary>
     /// preview-token-apply-route-provenance: the named <c>*_apply</c> route bound to each
     /// <see cref="PreviewKind"/>, for the recovery half of the mismatch message.
+    /// <para>
+    /// preview-token-route-map-centralization: derived, not re-listed — the kind resolves to its
+    /// <c>*_preview</c> tool via <see cref="PreviewToolFor"/>, and the tool resolves to its apply
+    /// route via <see cref="ServerSurfaceCatalog.TryGetCompatibleApplyRoute"/>. Same-assembly
+    /// internal reach; no visibility change was needed.
+    /// </para>
     /// </summary>
-    private static string ApplyRouteFor(PreviewKind kind) => kind switch
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <paramref name="kind"/> is unmapped in either hop.
+    /// </exception>
+    internal static string ApplyRouteFor(PreviewKind kind)
     {
-        PreviewKind.SymbolRename => "rename_apply",
-        PreviewKind.FormatDocument => "format_document_apply",
-        PreviewKind.FormatRange => "format_range_apply",
-        PreviewKind.OrganizeUsings => "organize_usings_apply",
-        PreviewKind.CodeFix => "code_fix_apply",
-        _ => "apply_with_verify",
-    };
+        var previewTool = PreviewToolFor(kind);
+        return ServerSurfaceCatalog.TryGetCompatibleApplyRoute(previewTool, out var applyRoute)
+            ? applyRoute
+            : throw UnmappedPreviewKind(
+                kind,
+                $"ServerSurfaceCatalog.PreviewApplyRoutes (no entry for `{previewTool}`)");
+    }
+
+    /// <summary>
+    /// preview-token-route-map-centralization: the fail-loud arm shared by
+    /// <see cref="PreviewToolFor"/> and <see cref="ApplyRouteFor"/>. Names the offending member
+    /// and BOTH map sites so the fix is mechanical.
+    /// </summary>
+    private static InvalidOperationException UnmappedPreviewKind(PreviewKind kind, string missingSite) =>
+        new($"PreviewKind.{kind} has no entry in {missingSite}. Every concrete PreviewKind must be " +
+            "mapped in BOTH ToolDispatch._previewToolsByKind (kind → *_preview tool) and " +
+            "ServerSurfaceCatalog.PreviewApplyRoutes (*_preview tool → *_apply route); add the " +
+            "missing entry rather than letting the preview-token provenance guard report a route " +
+            "the caller cannot use.");
 
     /// <summary>
     /// preview-apply-token-write-path-toctou: runs every path in the preview's write set through
@@ -301,7 +341,7 @@ internal static class ToolDispatch
     /// A closure that invokes the service method with the <paramref name="previewToken"/>
     /// and the gate-provided <see cref="CancellationToken"/>. Kept as
     /// <c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c> for the same reason as the
-    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind, string?)"/>
+    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind)"/>
     /// overload: closure capture matches the existing hand-written shim bodies byte-for-byte.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
