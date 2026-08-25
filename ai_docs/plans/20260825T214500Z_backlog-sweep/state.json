@@ -37,7 +37,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "d332fe5f8f2aefd782af1f40686d24a0c6bad9530b4e86f8806878cabf30fec0"
     },
     {
       "id": "preview-token-route-binding-editing-family",
@@ -67,7 +69,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "59e1097391454966abdf84924e01af353c5bbea3a533b4f3f067370fe60a9e73"
     },
     {
       "id": "preview-token-route-binding-extraction-family",
@@ -97,7 +101,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "9e299c906cd185406ae1904752e8ea044de3d69826c687453cb50738c413e7b1"
     },
     {
       "id": "preview-token-route-binding-orchestration-family",
@@ -127,7 +133,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "ec6bf6eaa7f208a83071d2526fdfc61850d3dcf8480f49fe9c4e1be362af73ca"
     },
     {
       "id": "preview-token-route-binding-bulk-family",
@@ -157,7 +165,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "6363a919f156c351a20a27211167bf1598597ff1d87b8198243fb6f4925b1d70"
     },
     {
       "id": "shipped-skills-prefix-batch-c1",
@@ -187,7 +197,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "de6b6b8114f6c70d6fc98b2214d78a1e4bd09eb2b37761db821f4643990f8713"
     },
     {
       "id": "shipped-skills-prefix-batch-c2",
@@ -217,7 +229,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "05cd4dc5922a4f6e0802511aee6381d0d56dca87b0efccc734225d77c14ae1ab"
     },
     {
       "id": "method-description-diet-analysis-metrics",
@@ -247,7 +261,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "3bc333690b6b508cfa88753b0a8b2efe85127eb4998c5b458ba5f85eaaa15925"
     },
     {
       "id": "method-description-diet-diagnostics-security",
@@ -277,7 +293,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "07d44c53bd24388a0329488c9998356f1d2ba797f76a0207919c5489a592a3c1"
     },
     {
       "id": "method-description-diet-server-surface",
@@ -307,7 +325,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "04be4a7f951984dd7ac3da81a97c1ad5bd6a57d00ae3aea71927724338d14cf0"
     },
     {
       "id": "method-description-diet-test-tooling",
@@ -337,7 +357,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "9cc51b53d7fbd7ec1430873678beadb753726d43ada451820a0a720c90750908"
     },
     {
       "id": "method-description-diet-editing-msbuild",
@@ -367,7 +389,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "73067292aec92291e37a478d206c3e4b14690b39e22d6e31377ac2d3c9f1520c"
     },
     {
       "id": "param-description-dedupe-workspace-ops",
@@ -397,7 +421,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "6aa0477a95e6f403c7abb4dee028aa6207cfb0966d727557bb558682c2e89f80"
     },
     {
       "id": "param-description-dedupe-refactoring-core",
@@ -427,7 +453,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "21f0c88f2758cfabc44d2eaf7aacb76334f383e746e00556da222b0c717a7df5"
     },
     {
       "id": "param-description-dedupe-validation-signature",
@@ -457,7 +485,9 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "922a486d534a8382610953237ea19310253af26c402595bfdfe7d03cf6faa441"
     }
   ],
   "anchorVerification": "pending",
@@ -487,5 +517,8 @@
         "reason": "deps-unfinished"
       }
     ]
-  }
+  },
+  "conflictGraphInputHash": "9a4ef46eeede8c66f2ca90243e154e7e34eeafc406c50c96124c4301f078a69a",
+  "planHash": "0d8826ce6fd1f9eb429b3c39bef2eefcb890fd05192ee63f81f4970d28600216",
+  "backlogSnapshotHash": "3e2bc9e6c8993ce4211693765bc91d8c2856e39970f8c4cac19e464bbbff1f1a"
 }
