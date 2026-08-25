@@ -611,54 +611,13 @@ public static class WorkspaceTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            if (maxChars <= 0)
-                throw new ArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
-            if (startLine is < 1)
-                throw new ArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
-            if (endLine is < 1)
-                throw new ArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
-            if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
-                throw new ArgumentException(
-                    $"startLine ({startLine.Value}) must be <= endLine ({endLine.Value}).",
-                    nameof(startLine));
+            SourceTextRequestProjection.ValidateRequest(maxChars, startLine, endLine);
 
             var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
             if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
 
-            var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
-            var requestedStart = startLine ?? 1;
-            var requestedEnd = endLine ?? totalLineCount;
-
-            if (requestedStart > totalLineCount)
-                throw new ArgumentException(
-                    $"startLine ({requestedStart}) is past the end of the file ({totalLineCount} lines).",
-                    nameof(startLine));
-
-            // Clamp endLine to the file end so callers asking for "lines 100..1000" on a
-            // 200-line file get lines 100..200 instead of an error.
-            var returnedEnd = Math.Min(requestedEnd, totalLineCount);
-            var returnedStart = requestedStart;
-
-            var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, returnedStart, returnedEnd);
-
-            var truncated = false;
-            if (slice.Length > maxChars)
-            {
-                slice = slice.Substring(0, maxChars) + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
-                truncated = true;
-            }
-
-            return JsonSerializer.Serialize(new
-            {
-                filePath,
-                totalLineCount,
-                requestedStartLine = requestedStart,
-                requestedEndLine = requestedEnd,
-                returnedStartLine = returnedStart,
-                returnedEndLine = returnedEnd,
-                truncated,
-                text = slice
-            }, JsonDefaults.Indented);
+            var projection = SourceTextRequestProjection.Project(filePath, text, startLine, endLine, maxChars);
+            return JsonSerializer.Serialize(projection, JsonDefaults.Indented);
         }, ct);
     }
 
