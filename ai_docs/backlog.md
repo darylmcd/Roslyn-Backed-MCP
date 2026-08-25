@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-25T13:24:30Z
+**updated_at:** 2026-08-25T14:48:37Z
 
 ## Agent contract
 
@@ -48,6 +48,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `retired-actions-runner-service-record-removal` | High | — | Delete the orphaned delayed-auto LocalSystem runner service and quarantined installation; prove service, paths, processes, and remote inventory are absent. [type: security] [source: 2026-08-24 runner retirement] | S | items/retired-actions-runner-service-record-removal.md |
+| `observability-file-sink-full-stream` | High | — | **Add full-stream JSON-lines file sink** — env-gated ILoggerProvider writing to the per-user metadata-store root; sink vocab disabled/stderr/file. [type: feature] [source: 2026-08-25 logging-observability audit] | M | items/observability-file-sink-full-stream.md |
 
 ## Medium
 
@@ -75,6 +76,9 @@
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
+| `tool-call-stream-record-enrichment` | Medium | — | **Enrich tool-call stream records** — stamp correlation via logging scope, add ElapsedMs+outcome to completion/failure templates, UTC timestamps on the console formatter. [type: quality] [source: 2026-08-25 logging-observability audit] | M | items/tool-call-stream-record-enrichment.md |
+| `observability-consumer-doc-contract` | Medium | observability-file-sink-full-stream,tool-call-stream-record-enrichment | **Ship consumer observability contract** — README/docs section: log destinations per host, Logging__LogLevel__* verbosity, sink env, correlation, server_info health route. [type: docs] [source: 2026-08-25 logging-observability audit] | S | items/observability-consumer-doc-contract.md |
+| `docs-observability-sink-env-name-corruption` | Medium | — | **Fix corrupted sink env-var name in docs** — replace literal n=stderr with ROSLYNMCP_OBSERVABILITY_SINK=stderr in upgrade-matrix, ADR 0003, stdio-client-integration. [type: docs] [source: 2026-08-25 logging-observability audit] | S | items/docs-observability-sink-env-name-corruption.md |
 
 ## Low
 
@@ -175,6 +179,7 @@
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
 | `dependency-gate-process-tests-runner-adoption` | Low | powershell-script-test-runner-foundation | Adopt shared process runner in dependency gate tests — replace duplicated PowerShell launch, timeout, process-tree termination, root-reap, and output-drain plumbing without weakening fail-closed assertions. [type: test-refactor] [source: 2026-08-24 loaded-machine gate failure] | S | items/dependency-gate-process-tests-runner-adoption.md |
 | `mstest-cooperative-timeout-token-flow` | Low | — | Make cooperative test timeouts cancel owned work — flow MSTest cancellation through the third-party notice verifier and elicitation coordinator so hung work cannot outlive the advertised ceiling. [type: test-correctness] [source: 2026-08-24 adjacent review] | S | items/mstest-cooperative-timeout-token-flow.md |
+| `backlog-dangling-deps-closed-observability-rows` | Low | — | **Clean dangling deps to closed observability rows** — remove/replace 7 refs to mcp-logging-stderr-otel-migration + server-structured-observability-sink (closed in PR #1253). [type: quality] [source: 2026-08-25 logging-observability audit] | S | items/backlog-dangling-deps-closed-observability-rows.md |
 
 ## Defer
 

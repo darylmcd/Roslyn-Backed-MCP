@@ -1,0 +1,166 @@
+{
+  "audit_run": {
+    "id": "20260825-1440",
+    "scope": "observability",
+    "mode": "full",
+    "since": "full",
+    "repo": "Roslyn-Backed-MCP",
+    "commit": "72636987",
+    "started_at": "2026-08-25T14:40:00Z",
+    "finished_at": "2026-08-25T15:05:00Z",
+    "tiers_run": [0, 1, 2],
+    "parallel_subagents": 0
+  },
+  "verdicts": {
+    "sufficient_agentic": "conditional — in-session single-call reasoning is strong (in-band _meta elapsedMs/gate metrics, server_info with version+git-sha, structured error envelopes with correctives); post-hoc debugging and cross-call perf analysis fail on A6 (no reachable persisted sink) with A1/A3/A5/A8 stream quality behind it. Blocking fix: the file sink.",
+    "durable": "conditional — A9 stdout purity is analyzer-enforced (StdoutWriteAnalyzer, best-in-class); record schema/event names are not drift-tested (A12) and nothing persists to retain (A6)."
+  },
+  "rubric": {
+    "A1": "fail — stream is prose console format; JSON observability sink is exception-only and default-disabled",
+    "A2": "partial — SDK records carry EventIds; app records mostly [0]; DotnetCommandRunner uses LoggerMessage",
+    "A3": "partial — RequestCorrelationContext exists; stamped only on the failure template; zero BeginScope/IncludeScopes",
+    "A4": "partial-pass — in-band error envelopes with category+corrective are excellent; stream failure line carries no detail; unexpected-exception path routes to a default-disabled sink",
+    "A5": "partial — per-call elapsedMs in-band via _meta; SDK prose durations request-keyed in stream; no structured duration field in any persisted record",
+    "A6": "fail — stderr-only, host-swallowed in real deployments; no file sink; foreign-CWD run wrote nothing to CWD (clean)",
+    "A7": "pass (mechanism) — Logging__LogLevel__Default=Debug env flip live-verified 68→202 lines; documented nowhere (fed to A10)",
+    "A8": "fail — zero timestamps in the captured stream (grep count 0)",
+    "A9": "pass — stdout protocol-pure, analyzer-enforced; logs on stderr",
+    "A10": "partial — ai_docs/runtime.md documents sink env + stderr; README/consumer docs have no observability section; three docs carry a corrupted env-var name (n=stderr); verbosity/correlation/collection undocumented",
+    "A11": "partial-pass — server_info/server_heartbeat/workspace_support_bundle strong (version 4.0.0+58af800, tool tiers, parity; startup stamps pid+version); process vitals absent",
+    "A12": "partial — stdout purity is an enforced contract; record shapes/event names are not drift-tested; retention n/a (nothing persisted)",
+    "A13": "partial — outbound HTTP fully logged with durations (HttpClient default categories); dotnet-CLI boundary duration returned in-band only (DotnetCommandRunner DurationMs); no structured boundary events with correlation"
+  },
+  "live_verification": {
+    "V1": "partial — records located only via driver-redirected stderr capture (run1-stderr.txt); no native reachable sink",
+    "V2": "partial — rg <correlationId> returns exactly 1 record (the failure line); no causal chain; in-band error envelope carried category/tool/corrective",
+    "V3": "fail — no structured duration in stream; SDK prose 'completed in N ms' is request-keyed and regex-only",
+    "V4": "pass — Logging__LogLevel__Default=Debug: 68 lines/0 dbug → 202 lines/64 dbug, no rebuild",
+    "V5": "pass — server_info over protocol: version 4.0.0+58af800bc178887f20d0e2ab3df93aa40cc3ed65, productShape local-first, tiers, parity=ok",
+    "V6": "fail-by-construction — nothing persists natively; restart retains nothing",
+    "V7": "partial — workspace_load (with ROSLYNMCP_SANCTIONED_ROOTS) logged WorkspaceManager info+dbug; NuGet HTTP boundary logged with durations; no per-boundary structured event; dbug stream dominated by 25+ repeated shadow-sweep lines"
+  },
+  "findings": [
+    {
+      "fingerprint": "0b5201323f60",
+      "title": "Add an opt-in JSON-lines file sink for the full ILogger stream at the per-user metadata-store root",
+      "severity": "High",
+      "dimension": "A6",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs:7",
+        "src/RoslynMcp.Host.Stdio/Program.cs:43",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/HostProcessMetadataStore.cs:266"
+      ],
+      "evidence": ["run1-stderr.txt", "run2-stderr.txt"],
+      "description": "All operational logging is stderr-only prose; the structured JSON sink fires only for unexpected exceptions and defaults to Disabled. When the server runs under an MCP host in a consumer session, stderr is captured (or dropped) by the host and no rg/jq/tail-reachable telemetry exists. HostProcessMetadataStore already resolves a per-user, XDG-aware LOCALAPPDATA root the sink can reuse. PR #1253 deliberately retired MCP protocol logging (ADR 0003) — the fix must stay on the operator-side sink path.",
+      "acceptance": [
+        "An env-gated file sink writes JSON-lines records (ts UTC ISO-8601 ms, level, category, eventId, message, correlationId when present) for the full ILogger stream under the metadata-store per-user root",
+        "Default remains off; enabling requires no rebuild; stderr behavior unchanged",
+        "Foreign-CWD launch writes nothing into the working directory (existing behavior preserved)"
+      ],
+      "suggested_approach": "Extend ServerObservabilitySinkKind vocabulary (disabled|stderr|file) or add a dedicated ROSLYNMCP_LOG_FILE toggle; register an ILoggerProvider writing JSON lines to <metadata-store-root>/logs/; reuse HostProcessMetadataStore root resolution.",
+      "counterargument": "The host (Claude Code) already persists MCP stderr in its own log files, so a second sink is redundant plumbing. Cost: a new file surface to rotate and document. Rebuttal: host log locations are host-specific, undocumented for agents, prose-format, and absent on other MCP hosts — the published-artifact context makes a host-independent sink the only reliable access path.",
+      "backlog_id": "observability-file-sink-full-stream",
+      "first_seen_run": "20260825-1440"
+    },
+    {
+      "fingerprint": "0eb511d71c9c",
+      "title": "Stamp correlation id, elapsed ms, and timestamps onto stream records",
+      "severity": "Medium",
+      "dimension": "A3",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs:306",
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs:350",
+        "src/RoslynMcp.Host.Stdio/Program.cs:43"
+      ],
+      "evidence": ["run1-stderr.txt"],
+      "description": "RequestCorrelationContext exists but appears in exactly one log template (the failure line) — a correlation-id query over the captured stream returns 1 record, no chain. Success/completion lines carry neither correlation nor the already-measured stopwatch elapsed. The console formatter emits no timestamps at all (grep count 0 in captures). BeginScope/IncludeScopes are unused repo-wide.",
+      "acceptance": [
+        "Every record emitted during a tool call carries the request correlation id (logging scope, not per-template interpolation)",
+        "Tool completion and failure templates include ElapsedMs and outcome",
+        "Console/file records carry UTC ISO-8601 timestamps with millisecond precision"
+      ],
+      "suggested_approach": "BeginScope with the correlation id in StructuredCallToolFilter around dispatch; enable scopes + timestampFormat on the console options; add ElapsedMs to the completion/failure templates. Interacts with backlog row correlation-id-suffix-single-source (scope-stamping reduces the hand-interpolated suffix pattern it consolidates).",
+      "counterargument": "Scope output makes the prose stderr lines longer/noisier for humans tailing the stream. Rebuttal: humans are the second audience; the delta is one short suffix per line.",
+      "backlog_id": "tool-call-stream-record-enrichment",
+      "first_seen_run": "20260825-1440"
+    },
+    {
+      "fingerprint": "c9ccdb928898",
+      "title": "Ship a consumer-facing observability contract",
+      "severity": "Medium",
+      "dimension": "A10",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 1,
+      "anchors": ["README.md:237", "ai_docs/runtime.md:110"],
+      "evidence": ["run2-stderr.txt"],
+      "description": "The Logging__LogLevel__* verbosity mechanism works (live-verified) but is documented nowhere. runtime.md (AI-facing) documents the sink env var and 'operational logging goes to stderr'; the README and docs/ (consumer-facing, the surfaces a marketplace/registry installer actually reads) have no observability section — where logs land per host, how to raise verbosity, how to correlate, the server_info/heartbeat health route.",
+      "acceptance": [
+        "A consumer-visible doc section answers: log destination per host, verbosity env vars (Logging__LogLevel__*), sink env var(s), correlation story, health route",
+        "runtime.md points at (or mirrors) the same contract without divergence"
+      ],
+      "suggested_approach": "Add an Observability section to README or docs/stdio-client-integration.md using the A10 contract-table shape; cross-link from runtime.md.",
+      "backlog_id": "observability-consumer-doc-contract",
+      "first_seen_run": "20260825-1440"
+    },
+    {
+      "fingerprint": "bae3412f573f",
+      "title": "Fix corrupted env-var name 'n=stderr' in three published docs",
+      "severity": "Medium",
+      "dimension": "A10",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 0,
+      "anchors": [
+        "docs/upgrade-matrix.md",
+        "docs/decisions/0003-sdk-2x-wire-compatibility.md",
+        "docs/stdio-client-integration.md"
+      ],
+      "evidence": ["grep: 'set `n=stderr`' in three docs; ai_docs/runtime.md:77 has the correct ROSLYNMCP_OBSERVABILITY_SINK"],
+      "description": "Three consumer-facing docs instruct operators to 'set `n=stderr`' — a corrupted replacement of ROSLYNMCP_OBSERVABILITY_SINK (runtime.md retains the correct name). A consumer following these docs sets a nonsense env var and concludes the diagnostics feature is broken.",
+      "acceptance": [
+        "All three docs name ROSLYNMCP_OBSERVABILITY_SINK=stderr; no literal 'n=' remnant remains repo-wide outside changelogs"
+      ],
+      "suggested_approach": "Targeted text fix; add the correct name to the consumer-doc contract row's section so the two rows land coherently.",
+      "backlog_id": "docs-observability-sink-env-name-corruption",
+      "first_seen_run": "20260825-1440"
+    },
+    {
+      "fingerprint": "583b47234162",
+      "title": "Clean 7 dangling deps references to closed observability rows",
+      "severity": "Low",
+      "dimension": "A12",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 0,
+      "anchors": ["ai_docs/backlog.md:63", "ai_docs/backlog.md:139"],
+      "evidence": ["backlog.mjs get: 'row not found' for both ids; git log: items deleted in PR #1253"],
+      "description": "Six rows carry deps on mcp-logging-stderr-otel-migration and one on server-structured-observability-sink; both were closed in PR #1253 and no longer exist. Dangling deps mislead sweep planners into treating satisfiable rows as blocked.",
+      "acceptance": [
+        "No deps cell references a non-existent row id (verified via backlog.mjs ids diff)",
+        "Rows whose only dep was a closed row show deps '—' or their remaining real deps"
+      ],
+      "suggested_approach": "backlog.mjs update per affected row; consider whether backlog-lint should flag dangling deps (global tooling backlog, not this repo).",
+      "backlog_id": "backlog-dangling-deps-closed-observability-rows",
+      "first_seen_run": "20260825-1440"
+    }
+  ],
+  "info_observations": [
+    "Debug stream is dominated by 25+ near-identical 'Swept abandoned analyzer shadow root' dbug lines per load — aggregate to one summary record with a count",
+    "Process vitals (memory/GC/pool) absent from heartbeat — candidate EventCounters snapshot in server_heartbeat (A11)",
+    "ServerObservabilitySinkKind default is Disabled — whether unexpected-exception diagnostics should default to stderr is a product decision",
+    "Broader event-id catalog for app-level records (A2) deferred as Info; the enrichment row seeds ids for the filter's records only",
+    "Startup NuGet version-check HTTP call is fully logged by default HttpClient categories — good A13 evidence; note it is the only default outbound call"
+  ]
+}
