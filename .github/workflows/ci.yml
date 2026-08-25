@@ -215,6 +215,11 @@ jobs:
           }
           ./eng/verify-release.ps1 @parameters
 
+      - name: Verify changed-file formatting
+        if: github.event_name == 'pull_request' && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'
+        shell: pwsh
+        run: ./eng/verify-changed-format.ps1 -BaseRef origin/${{ github.base_ref }} -NoRestore
+
       - name: Verify release build (dispatch / schedule)
         if: github.event_name != 'pull_request'
         shell: pwsh

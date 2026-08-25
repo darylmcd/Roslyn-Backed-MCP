@@ -53,6 +53,7 @@ The router emits typed leg fields. Keep their concerns separate:
 | Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load |
 | Publish/hash | Artifact-owning non-doc leg |
 | Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
+| Changed-file formatter gate | Artifact-owning non-doc pull-request leg; new findings on touched files fail, tracked baseline debt is reported not suppressed |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
 | Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
@@ -106,10 +107,11 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 |---|---|
 | AI-doc changes | `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1` |
 | Required PR-equivalent gate | `just ci` |
+| Formatter debt on touched C# files | `pwsh -NoProfile -File ./eng/verify-changed-format.ps1` |
 | Informational coverage/live-network gate | `just full` |
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 
-`just ci` composes docs, shipped skills, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
+`just ci` composes docs, shipped skills, the changed-file formatter gate, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
 
 ## Merge Gating Expectations
 
