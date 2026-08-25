@@ -14,17 +14,22 @@ public sealed class ThirdPartyNoticeDriftTests
 
         Assert.IsFalse(script.Contains("Invoke-WebRequest", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(script.Contains("Invoke-RestMethod", StringComparison.OrdinalIgnoreCase));
-        StringAssert.Contains(script, "VerifyLicenseFromNuGet");
+        Assert.IsFalse(script.Contains("VerifyLicenseFromNuGet", StringComparison.Ordinal));
+        StringAssert.Contains(script, "Get-RestoredNuspecPath");
+
+        var releaseGate = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "verify-release.ps1"));
+        StringAssert.Contains(releaseGate, "VerifyRestoredLicenses = $true");
     }
 
     [TestMethod]
     [TestCategory("Process")]
     [Timeout(60_000, CooperativeCancellation = true)]
-    public async Task VerifyMode_UsesRestoredMetadata_AndRejectsPinOrLicenseDrift()
+    public async Task VerifyMode_UsesEveryCentralPin_AndRejectsNonMcpLicenseDrift()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var mcpVersion = ReadCentralMcpVersion(repositoryRoot);
-        var restoredPackagesRoot = FindRestoredPackagesRoot(repositoryRoot, mcpVersion);
+        var packages = ReadCentralPackages(repositoryRoot);
+        var mcpVersion = packages.Single(package => package.Id == "ModelContextProtocol").Version;
+        var restoredPackagesRoot = FindRestoredPackagesRoot(repositoryRoot, packages);
         var fixtureRoot = Path.Combine(TestTempRoot.Current, "ThirdPartyNotices", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixtureRoot);
 
@@ -37,12 +42,12 @@ public sealed class ThirdPartyNoticeDriftTests
             var current = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot);
             Assert.AreEqual(0, current.ExitCode, current.AllOutput);
 
-            var packages = await File.ReadAllTextAsync(packagesPath);
-            packages = packages.Replace(
+            var packagesText = await File.ReadAllTextAsync(packagesPath);
+            packagesText = packagesText.Replace(
                 $"<PackageVersion Include=\"ModelContextProtocol\" Version=\"{mcpVersion}\" />",
                 "<PackageVersion Include=\"ModelContextProtocol\" Version=\"99.0.0-test\" />",
                 StringComparison.Ordinal);
-            await File.WriteAllTextAsync(packagesPath, packages);
+            await File.WriteAllTextAsync(packagesPath, packagesText);
 
             var pinDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot);
             Assert.AreNotEqual(0, pinDrift.ExitCode, "Intentional central-pin drift must fail verification.");
@@ -50,16 +55,21 @@ public sealed class ThirdPartyNoticeDriftTests
 
             File.Copy(Path.Combine(repositoryRoot, "Directory.Packages.props"), packagesPath, overwrite: true);
             var fixturePackagesRoot = Path.Combine(fixtureRoot, "packages");
-            var sourceNuspec = GetMcpNuspecPath(restoredPackagesRoot, mcpVersion);
-            var fixtureNuspec = GetMcpNuspecPath(fixturePackagesRoot, mcpVersion);
-            Directory.CreateDirectory(Path.GetDirectoryName(fixtureNuspec)!);
-            File.Copy(sourceNuspec, fixtureNuspec);
+            foreach (var package in packages)
+            {
+                var sourceNuspec = GetNuspecPath(restoredPackagesRoot, package);
+                var fixtureNuspec = GetNuspecPath(fixturePackagesRoot, package);
+                Directory.CreateDirectory(Path.GetDirectoryName(fixtureNuspec)!);
+                File.Copy(sourceNuspec, fixtureNuspec);
+            }
 
-            var nuspec = System.Xml.Linq.XDocument.Load(fixtureNuspec);
+            var diffPlex = packages.Single(package => package.Id == "DiffPlex");
+            var mutatedNuspec = GetNuspecPath(fixturePackagesRoot, diffPlex);
+            var nuspec = System.Xml.Linq.XDocument.Load(mutatedNuspec);
             var license = nuspec.Descendants().Single(element => element.Name.LocalName == "license");
-            Assert.AreEqual("Apache-2.0", license.Value, "Restored MCP metadata must prove the reviewed baseline license.");
+            Assert.AreEqual("Apache-2.0", license.Value, "Restored DiffPlex metadata must prove the reviewed baseline license.");
             license.Value = "MIT";
-            nuspec.Save(fixtureNuspec);
+            nuspec.Save(mutatedNuspec);
 
             var licenseDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, fixturePackagesRoot);
             Assert.AreNotEqual(0, licenseDrift.ExitCode, "Authoritative license drift must fail verification.");
@@ -73,40 +83,42 @@ public sealed class ThirdPartyNoticeDriftTests
         }
     }
 
-    private static string ReadCentralMcpVersion(string repositoryRoot)
+    private static CentralPackage[] ReadCentralPackages(string repositoryRoot)
     {
         var packages = System.Xml.Linq.XDocument.Load(Path.Combine(repositoryRoot, "Directory.Packages.props"));
         return packages.Descendants("PackageVersion")
-            .Single(element => string.Equals((string?)element.Attribute("Include"), "ModelContextProtocol", StringComparison.Ordinal))
-            .Attribute("Version")?.Value
-            ?? throw new InvalidOperationException("The central ModelContextProtocol pin has no Version value.");
+            .Select(element => new CentralPackage(
+                element.Attribute("Include")?.Value
+                    ?? throw new InvalidOperationException("A central package pin has no Include value."),
+                element.Attribute("Version")?.Value
+                    ?? throw new InvalidOperationException("A central package pin has no Version value.")))
+            .ToArray();
     }
 
-    private static string FindRestoredPackagesRoot(string repositoryRoot, string mcpVersion)
+    private static string FindRestoredPackagesRoot(
+        string repositoryRoot,
+        IReadOnlyCollection<CentralPackage> packages)
     {
         var assetsPath = Path.Combine(repositoryRoot, "tests", "RoslynMcp.Tests", "obj", "project.assets.json");
         Assert.IsTrue(File.Exists(assetsPath), "Release restore must produce the test project's assets file.");
         using var assets = JsonDocument.Parse(File.ReadAllText(assetsPath));
-        Assert.IsTrue(
-            assets.RootElement.GetProperty("libraries").TryGetProperty($"ModelContextProtocol/{mcpVersion}", out _),
-            $"The restored test graph must resolve the central MCP pin {mcpVersion}.");
         var packagesRoot = assets.RootElement.GetProperty("packageFolders")
             .EnumerateObject()
             .Select(folder => folder.Name)
-            .FirstOrDefault(folder => File.Exists(GetMcpNuspecPath(folder, mcpVersion)));
+            .FirstOrDefault(folder => packages.All(package => File.Exists(GetNuspecPath(folder, package))));
         Assert.IsNotNull(
             packagesRoot,
-            "The restored graph must resolve the exact MCP nuspec from an effective package root.");
+            "The restored graph must resolve every exact central-pin nuspec from one effective package root.");
 
-        var nuspecPath = GetMcpNuspecPath(packagesRoot, mcpVersion);
-        Assert.IsTrue(
-            File.Exists(nuspecPath),
-            $"Release restore must materialize authoritative MCP package metadata at '{nuspecPath}'.");
         return packagesRoot;
     }
 
-    private static string GetMcpNuspecPath(string packagesRoot, string version) =>
-        Path.Combine(packagesRoot, "modelcontextprotocol", version, "modelcontextprotocol.nuspec");
+    private static string GetNuspecPath(string packagesRoot, CentralPackage package) =>
+        Path.Combine(
+            packagesRoot,
+            package.Id.ToLowerInvariant(),
+            package.Version.ToLowerInvariant(),
+            package.Id.ToLowerInvariant() + ".nuspec");
 
     private static async Task<PwshResult> RunVerifierAsync(
         string repositoryRoot,
@@ -130,6 +142,7 @@ public sealed class ThirdPartyNoticeDriftTests
         startInfo.ArgumentList.Add("-PackageMetadataRoot");
         startInfo.ArgumentList.Add(packageMetadataRoot);
         startInfo.ArgumentList.Add("-Verify");
+        startInfo.ArgumentList.Add("-VerifyRestoredLicenses");
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start third-party notice verifier.");
@@ -153,4 +166,6 @@ public sealed class ThirdPartyNoticeDriftTests
     {
         public string AllOutput => PowerShellOutputNormalizer.Normalize(StdOut + Environment.NewLine + StdErr);
     }
+
+    private sealed record CentralPackage(string Id, string Version);
 }

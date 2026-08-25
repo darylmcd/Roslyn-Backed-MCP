@@ -22,7 +22,7 @@ public sealed class ChangelogFragmentRequirementTests
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"));
-        var checkoutIndex = workflow.IndexOf("uses: actions/checkout@v7", StringComparison.Ordinal);
+        var checkoutIndex = workflow.IndexOf("- name: Check out repository", StringComparison.Ordinal);
         var historyIndex = workflow.IndexOf("fetch-depth: 0", checkoutIndex, StringComparison.Ordinal);
         var changelogStepIndex = workflow.IndexOf(
             "- name: Verify changelog contract",
@@ -54,7 +54,7 @@ public sealed class ChangelogFragmentRequirementTests
 
         var publishWorkflow = File.ReadAllText(
             Path.Combine(repositoryRoot, ".github", "workflows", "publish-nuget.yml"));
-        var publishCheckoutIndex = publishWorkflow.IndexOf("uses: actions/checkout@v7", StringComparison.Ordinal);
+        var publishCheckoutIndex = publishWorkflow.IndexOf("- name: Check out repository", StringComparison.Ordinal);
         var publishHistoryIndex = publishWorkflow.IndexOf(
             "fetch-depth: 0",
             publishCheckoutIndex,

@@ -117,6 +117,96 @@ public sealed class CompositeApplyOrchestratorTests
     }
 
     [TestMethod]
+    [DataRow("delete")]
+    [DataRow("encoded-write")]
+    [DataRow("pre-write-failure")]
+    [DataRow("partial-apply")]
+    [DataRow("reload-failure")]
+    [DataRow("successful-invalidation")]
+    public async Task ApplyComposite_OrchestrationScenarios_PreserveMutationAndTokenContracts(string scenario)
+    {
+        var primaryPath = Path.Combine(_tempDir, "primary.cs");
+        var mutations = new List<CompositeFileMutation>();
+        Exception? reloadFailure = null;
+
+        switch (scenario)
+        {
+            case "delete":
+                await File.WriteAllTextAsync(primaryPath, "delete me");
+                mutations.Add(new CompositeFileMutation(primaryPath, null, DeleteFile: true));
+                break;
+            case "encoded-write":
+                await File.WriteAllBytesAsync(
+                    primaryPath,
+                    Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("old")).ToArray());
+                mutations.Add(new CompositeFileMutation(primaryPath, "new", DeleteFile: false));
+                break;
+            case "pre-write-failure":
+                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", DeleteFile: false));
+                break;
+            case "partial-apply":
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
+                mutations.Add(new CompositeFileMutation(CreateBlockedChildPath(), "never", DeleteFile: false));
+                break;
+            case "reload-failure":
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
+                reloadFailure = new InvalidOperationException("reload failed");
+                break;
+            case "successful-invalidation":
+                mutations.Add(new CompositeFileMutation(primaryPath, "applied", DeleteFile: false));
+                break;
+            default:
+                Assert.Fail($"Unknown scenario '{scenario}'.");
+                break;
+        }
+
+        var store = new CompositePreviewStore();
+        var token = store.Store("ws-1", 1, scenario, mutations);
+        var workspace = new RecordingWorkspaceManager(reloadFailure);
+        var orchestrator = new CompositeApplyOrchestrator(workspace, store);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+
+        switch (scenario)
+        {
+            case "delete":
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.IsFalse(File.Exists(primaryPath));
+                break;
+            case "encoded-write":
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.IsTrue((await File.ReadAllBytesAsync(primaryPath)).AsSpan().StartsWith(Encoding.UTF8.GetPreamble()));
+                break;
+            case "pre-write-failure":
+                Assert.IsFalse(result.Success);
+                Assert.AreEqual(0, result.AppliedFiles.Count);
+                Assert.IsFalse(workspace.ReloadCalled);
+                break;
+            case "partial-apply":
+                Assert.IsFalse(result.Success);
+                CollectionAssert.AreEqual(new[] { primaryPath }, result.AppliedFiles.ToArray());
+                Assert.IsFalse(workspace.ReloadCalled);
+                break;
+            case "reload-failure":
+                Assert.IsFalse(result.Success);
+                CollectionAssert.AreEqual(new[] { primaryPath }, result.AppliedFiles.ToArray());
+                Assert.IsNotNull(store.Retrieve(token));
+                break;
+            case "successful-invalidation":
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.IsNull(store.Retrieve(token));
+                break;
+        }
+
+        string CreateBlockedChildPath()
+        {
+            var blocker = Path.Combine(_tempDir, $"blocker-{scenario}");
+            File.WriteAllText(blocker, "not a directory");
+            return Path.Combine(blocker, "child.cs");
+        }
+    }
+
+    [TestMethod]
     public async Task ApplyComposite_MidLoop_Failure_Applies_Prior_Writes_Marks_Partial_And_Logs()
     {
         // Arrange: a first valid write, then a second mutation whose parent path is an existing
@@ -317,7 +407,7 @@ public sealed class CompositeApplyOrchestratorTests
             => Entries.Add((logLevel, formatter(state, exception), exception));
     }
 
-    private sealed class RecordingWorkspaceManager : IWorkspaceManager
+    private sealed class RecordingWorkspaceManager(Exception? reloadFailure = null) : IWorkspaceManager
     {
         public bool ReloadCalled { get; private set; }
 
@@ -329,7 +419,9 @@ public sealed class CompositeApplyOrchestratorTests
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
         {
             ReloadCalled = true;
-            return Task.FromResult(GetStatus(workspaceId));
+            return reloadFailure is null
+                ? Task.FromResult(GetStatus(workspaceId))
+                : Task.FromException<WorkspaceStatusDto>(reloadFailure);
         }
 
         public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);

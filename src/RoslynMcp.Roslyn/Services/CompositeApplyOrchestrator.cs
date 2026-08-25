@@ -37,20 +37,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
 
         var (workspaceId, _, _, mutations) = entry.Value;
-        // preview-token-cross-coupling-bundle (BREAKING): version-equality check removed.
-        // Composite previews hold a per-token list of absolute-path `CompositeFileMutation`
-        // records (write text / delete file). A sibling `*_apply` that mutated unrelated
-        // files does not invalidate these records; the mutations replay cleanly below. If
-        // two previews happen to target the same file, last-apply wins by design. If the
-        // workspace was reloaded or closed, the composite store's lifecycle hook has
-        // already dropped the entry and Retrieve above returned null.
-
-        // symbol-refactor-preview-empty-appliedfiles-on-success (gh #750, BREAKING):
-        // Pre-fix, an empty `mutations` list silently returned `{success: true, appliedFiles: []}`
-        // because the foreach below never executed. That looked like "apply succeeded" while
-        // doing nothing. Now we surface the no-op explicitly so callers can distinguish a
-        // genuine no-op preview from a successful apply. `ReloadAsync` and `Invalidate` are
-        // skipped so the token remains valid for caller inspection.
+        // Lifecycle invalidation, not unrelated workspace-version changes, governs token validity.
         if (mutations.Count == 0)
         {
             return new ApplyResultDto(
@@ -60,130 +47,124 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         }
 
         var appliedFiles = new List<string>();
-
         try
         {
-            foreach (var mutation in mutations)
-            {
-                if (mutation.DeleteFile)
-                {
-                    if (File.Exists(mutation.FilePath))
-                    {
-                        File.Delete(mutation.FilePath);
-                    }
-
-                    appliedFiles.Add(mutation.FilePath);
-                    continue;
-                }
-
-                var directory = Path.GetDirectoryName(mutation.FilePath);
-                if (!string.IsNullOrWhiteSpace(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // composite-apply-undo-encoding-still-lossy: `CompositeFileMutation` carries only
-                // the replacement text, so the file's original BOM/encoding has to be recovered at
-                // write time from the pre-apply on-disk bytes — the same pattern
-                // `ProjectMutationService.ApplyProjectMutationAsync` uses. Without it every composite
-                // apply silently re-encoded the target as UTF-8-no-BOM.
-                var preApplyBytes = File.Exists(mutation.FilePath)
-                    ? await File.ReadAllBytesAsync(mutation.FilePath, ct).ConfigureAwait(false)
-                    : null;
-
-                await AtomicFileWriter.WriteAllTextAsync(
-                    mutation.FilePath,
-                    mutation.UpdatedContent ?? string.Empty,
-                    ct,
-                    _logger,
-                    encoding: SourceFileEncoding.FromBytes(preApplyBytes),
-                    exceptionReporter: _exceptionReporter).ConfigureAwait(false);
-                appliedFiles.Add(mutation.FilePath);
-            }
-
-            await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
-            _compositePreviewStore.Invalidate(previewToken);
-            var distinctFiles = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            _changeTracker?.RecordChange(workspaceId, $"Composite operation ({distinctFiles.Count} files)", distinctFiles, "apply_composite_preview");
-            return new ApplyResultDto(true, distinctFiles, null);
+            await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
+            return await CompleteApplyAsync(
+                previewToken,
+                workspaceId,
+                appliedFiles,
+                ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            // A mutation failed mid-loop. Prior mutations already hit disk — this orchestrator does
-            // not roll them back (see plan Risk 3: true rollback would duplicate UndoService's
-            // pre-image capture). Instead we log a warning naming applied-vs-total plus the failing
-            // file, and clearly mark the returned result as a partial apply so a caller can tell a
-            // genuine partial state apart from a clean no-op failure. Each completed mutation adds
-            // exactly one entry to appliedFiles, so appliedFiles.Count is the index of the failing
-            // mutation. The preview token is intentionally left valid (Invalidate is not called).
-            var applied = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var detail = UnexpectedExceptionReporting.Report(
-                _exceptionReporter,
-                ex,
-                UnexpectedExceptionCategory.CompositeApply).Public;
-            var failingTarget = $"mutation[{appliedFiles.Count}]";
-            _logger?.LogWarning(
-                "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing target: {FailingTarget}. " +
-                "Prior writes are left in place (no rollback); correlationId={CorrelationId}.",
-                appliedFiles.Count,
-                mutations.Count,
-                failingTarget,
-                detail.CorrelationId);
-            var message = appliedFiles.Count > 0
-                ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingTarget}. " +
-                  $"Inspect appliedFiles, resolve the filesystem failure, and re-preview. correlationId={detail.CorrelationId}"
-                : "Composite apply failed before any files were written. Resolve the filesystem failure and retry with the same token. " +
-                  $"correlationId={detail.CorrelationId}";
-            return new ApplyResultDto(false, applied, message);
+            return ProjectFailure(ex, appliedFiles, mutations.Count);
         }
     }
 
+    private async Task ApplyMutationsAsync(
+        IReadOnlyList<CompositeFileMutation> mutations,
+        ICollection<string> appliedFiles,
+        CancellationToken ct)
+    {
+        foreach (var mutation in mutations)
+        {
+            await ApplyMutationAsync(mutation, ct).ConfigureAwait(false);
+            appliedFiles.Add(mutation.FilePath);
+        }
+    }
+
+    private async Task ApplyMutationAsync(CompositeFileMutation mutation, CancellationToken ct)
+    {
+        if (mutation.DeleteFile)
+        {
+            if (File.Exists(mutation.FilePath))
+            {
+                File.Delete(mutation.FilePath);
+            }
+
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(mutation.FilePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        // Existing source files retain their on-disk encoding; new files remain UTF-8 without BOM.
+        var preApplyBytes = File.Exists(mutation.FilePath)
+            ? await File.ReadAllBytesAsync(mutation.FilePath, ct).ConfigureAwait(false)
+            : null;
+        await AtomicFileWriter.WriteAllTextAsync(
+            mutation.FilePath,
+            mutation.UpdatedContent ?? string.Empty,
+            ct,
+            _logger,
+            encoding: SourceFileEncoding.FromBytes(preApplyBytes),
+            exceptionReporter: _exceptionReporter).ConfigureAwait(false);
+    }
+
+    private async Task<ApplyResultDto> CompleteApplyAsync(
+        string previewToken,
+        string workspaceId,
+        IReadOnlyCollection<string> appliedFiles,
+        CancellationToken ct)
+    {
+        await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+        _compositePreviewStore.Invalidate(previewToken);
+        var distinctFiles = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        _changeTracker?.RecordChange(
+            workspaceId,
+            $"Composite operation ({distinctFiles.Count} files)",
+            distinctFiles,
+            "apply_composite_preview");
+        return new ApplyResultDto(true, distinctFiles, null);
+    }
+
+    private ApplyResultDto ProjectFailure(
+        Exception failure,
+        IReadOnlyCollection<string> appliedFiles,
+        int mutationCount)
+    {
+        // Completed mutations are not rolled back; the token remains valid for inspection/re-preview.
+        var applied = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var detail = UnexpectedExceptionReporting.Report(
+            _exceptionReporter,
+            failure,
+            UnexpectedExceptionCategory.CompositeApply).Public;
+        var failingTarget = $"mutation[{appliedFiles.Count}]";
+        _logger?.LogWarning(
+            "Composite apply failed after {AppliedCount} of {TotalCount} mutation(s); failing target: {FailingTarget}. " +
+            "Prior writes are left in place (no rollback); correlationId={CorrelationId}.",
+            appliedFiles.Count,
+            mutationCount,
+            failingTarget,
+            detail.CorrelationId);
+        var message = appliedFiles.Count > 0
+            ? $"Partial composite apply: {applied.Count} file(s) were written before the failure at {failingTarget}. " +
+              $"Inspect appliedFiles, resolve the filesystem failure, and re-preview. correlationId={detail.CorrelationId}"
+            : "Composite apply failed before any files were written. Resolve the filesystem failure and retry with the same token. " +
+              $"correlationId={detail.CorrelationId}";
+        return new ApplyResultDto(false, applied, message);
+    }
 }
 
 /// <summary>
-/// Shared atomic file-write primitive: writes <paramref name="content"/> to a same-directory
-/// <c>.tmp</c> sibling of <paramref name="path"/>, then <see cref="File.Move(string, string, bool)"/>
-/// over the target. This mirrors the proven pattern in <c>WorkspaceCacheStore</c> and
-/// <c>PersistentCompositeStorage</c> and prevents a truncated/corrupt target file if the process
-/// crashes or the disk fills mid-write. The temp file is always <paramref name="path"/> + ".tmp",
-/// so it lives on the same directory/volume as the target — a precondition for <c>File.Move</c>
-/// being atomic (a cross-volume move degrades to a non-atomic copy+delete). On any failure the
-/// orphaned <c>.tmp</c> is best-effort deleted so a failed write leaves no artifact, then the
-/// original exception is re-thrown for the caller's catch filter. If an optional
-/// <paramref name="logger"/> is supplied, a failure to delete the orphaned <c>.tmp</c> is logged
-/// at Warning level (the primary write failure is still re-thrown either way) so a stray artifact
-/// left on disk leaves an observability trail instead of being silently discarded. That warning
-/// carries only a stable cleanup category, the target's file name, and the shared secret-safe
-/// projection from <see cref="PublicExceptionDetailPolicy"/> (correlation id, exception-type
-/// topology, stack depth) — never the raw exception or absolute temp/target paths.
-/// <para>
-/// Text writes accept an optional <see cref="Encoding"/> so a mutated file keeps its original
-/// BOM/encoding (<c>mutation-write-paths-drop-original-encoding</c>). Callers resolve it through
-/// <see cref="SourceFileEncoding.FromBytes(byte[])"/> (from the pre-mutation on-disk bytes) or
-/// <see cref="SourceFileEncoding.FromSourceText(Encoding)"/> (from a Roslyn <c>SourceText.Encoding</c>).
-/// Detection deliberately does NOT live on this class — it is not atomic-write plumbing
-/// (<c>extract-atomicfilewriter-encoding-helper</c>). Omitting the encoding keeps the historic
-/// UTF-8-no-BOM behavior.
-/// </para>
+/// Writes through a same-directory temporary sibling before atomically replacing the target.
+/// Cleanup failures are secret-safe warnings and never mask the primary write failure.
 /// </summary>
 internal static class AtomicFileWriter
 {
     /// <summary>
-    /// Stable, greppable category token for the temp-cleanup-failure warning. Aligned with the
-    /// <see cref="UnexpectedExceptionCategory.CompositeApply"/> vocabulary.
+    /// Stable category token for secret-safe temp-cleanup diagnostics.
     /// </summary>
     private const string TempCleanupCategory = "CompositeApplyTempCleanup";
 
     /// <summary>
     /// Atomically writes <paramref name="content"/> to <paramref name="path"/>.
     /// </summary>
-    /// <param name="encoding">
-    /// Optional. When supplied, the temp file is written with this encoding so a source file's
-    /// original BOM/encoding survives the round-trip (<c>mutation-write-paths-drop-original-encoding</c>).
-    /// When <see langword="null"/> the encoding-less BCL overload is used, i.e. UTF-8 with no BOM.
-    /// Declared AFTER <paramref name="logger"/> on purpose: callers that pass a logger positionally
-    /// must keep binding it to <paramref name="logger"/>.
-    /// </param>
+    /// <param name="encoding">Existing source encoding, or null for UTF-8 without BOM.</param>
     public static async Task WriteAllTextAsync(
         string path,
         string content,

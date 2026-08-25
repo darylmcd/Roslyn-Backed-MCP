@@ -324,6 +324,13 @@ if (-not $TestShardOnly) {
 dotnet restore $solutionPath --nologo
 Invoke-DotnetStep "dotnet restore (main solution)"
 
+if (-not $TestShardOnly) {
+    Invoke-ChildScriptStep `
+        -Description 'Restored third-party license validation' `
+        -ScriptPath (Join-Path $PSScriptRoot 'update-third-party-notices.ps1') `
+        -Parameters @{ RepoRoot = $repoRoot; Verify = $true; VerifyRestoredLicenses = $true }
+}
+
 # Sample solution restore: integration tests load samples/SampleSolution/SampleSolution.slnx
 # via MSBuildWorkspace and then run CompileCheckService. That project tree references
 # MSTest (for SampleLib.Tests) and the packages must be resolved in the NuGet global-packages

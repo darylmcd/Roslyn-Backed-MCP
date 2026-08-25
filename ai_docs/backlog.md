@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-25T04:32:04Z
+**updated_at:** 2026-08-25T13:24:30Z
 
 ## Agent contract
 
@@ -71,14 +71,10 @@
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
 | `scaffold-sampling-mrtr-replay-cost` | Medium | — | Split scaffold sampling preparation from completion so MRTR replay does not repeat compilation and sibling discovery; keep request state bounded and secret-safe and prove one expensive preparation. | M | items/scaffold-sampling-mrtr-replay-cost.md |
 | `test-shard-adapter-discovery-parity` | Medium | — | **Prove shard discovery matches the MSTest adapter** — compare planner class coverage with executable adapter discovery so a future custom or inherited test shape cannot be silently omitted from every shard. [type: test infrastructure] [source: 2026-08-24 adversarial review] | S | items/test-shard-adapter-discovery-parity.md |
-| `ci-third-party-action-sha-pinning` | Medium | — | Pin release and validation workflow actions to reviewed immutable commit SHAs while preserving automated dependency updates and a contract that rejects mutable external action refs. [type: CI supply-chain security] [source: 2026-08-24 code-quality review] | M | items/ci-third-party-action-sha-pinning.md |
-| `isolated-workspace-scope-cleanup-composition` | Medium | — | Compose isolated workspace close and fixture deletion so both are attempted exactly once and single/dual cleanup failures remain diagnosable. [type: test infrastructure] [source: 2026-08-24 adjacent lifecycle review] | S | items/isolated-workspace-scope-cleanup-composition.md |
 | `ci-router-pure-decision-and-actionlint` | Medium | — | Extract the CI topology into a pure decision contract and gate workflow syntax with repository-pinned actionlint. [type: CI refactor] [source: 2026-08-24 final CI review] | M | items/ci-router-pure-decision-and-actionlint.md |
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
-| `third-party-license-verification-all-central-pins` | Medium | — | Verify every central package's restored identity, version, and SPDX license so notice attribution cannot drift outside the MCP special case. [type: supply-chain correctness] [source: 2026-08-24 dependency review] | S | items/third-party-license-verification-all-central-pins.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
-| `composite-apply-orchestrator-decomposition` | Medium | — | Decompose composite apply orchestration into bounded mutation and failure-projection helpers without changing partial-apply semantics. [type: maintainability] [source: 2026-08-24 adjacent code-quality review] | S | items/composite-apply-orchestrator-decomposition.md |
 
 ## Low
 

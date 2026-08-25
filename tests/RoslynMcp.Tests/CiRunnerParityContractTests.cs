@@ -8,6 +8,11 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class CiRunnerParityContractTests
 {
+    private static readonly System.Text.RegularExpressions.Regex _actionReferencePattern = new(
+        @"^\s*(?:-\s*)?uses:\s*(?<reference>[^\s#]+)",
+        System.Text.RegularExpressions.RegexOptions.Multiline |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     private static string LoadCiWorkflow()
         => LoadRepositoryFile(".github", "workflows", "ci.yml");
 
@@ -76,6 +81,38 @@ public sealed class CiRunnerParityContractTests
         Assert.IsFalse(workflow.Contains("RUNNER_STATUS_PAT", StringComparison.Ordinal));
         Assert.IsFalse(workflow.Contains("/actions/runners", StringComparison.Ordinal));
         Assert.IsFalse(workflow.Contains("secrets.", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Workflows_PinEveryExternalActionToAFullCommitSha()
+    {
+        foreach (var relativePath in new[]
+        {
+            new[] { ".github", "workflows", "ci.yml" },
+            new[] { ".github", "workflows", "publish-nuget.yml" },
+        })
+        {
+            var workflow = LoadRepositoryFile(relativePath);
+            var references = _actionReferencePattern.Matches(workflow)
+                .Select(match => match.Groups["reference"].Value)
+                .ToArray();
+            Assert.IsTrue(references.Length > 0, $"Workflow '{string.Join('/', relativePath)}' has no action references.");
+
+            foreach (var reference in references)
+            {
+                if (reference.StartsWith("./", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Assert.IsTrue(
+                    System.Text.RegularExpressions.Regex.IsMatch(
+                        reference,
+                        @"\A[^@\s]+@[0-9a-f]{40}\z",
+                        System.Text.RegularExpressions.RegexOptions.CultureInvariant),
+                    $"External action '{reference}' must use a reviewed full commit SHA.");
+            }
+        }
     }
 
     [TestMethod]
