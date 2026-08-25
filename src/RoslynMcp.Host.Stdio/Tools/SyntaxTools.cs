@@ -14,7 +14,7 @@ public static class SyntaxTools
     [McpServerTool(Name = "get_syntax_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("syntax", "stable", true, false,
         "Return a structured syntax tree for a document or range."),
-     Description("Get the syntax tree (AST) for a source file or a specific line range. Returns a hierarchical tree of syntax nodes with their kinds and positions. THREE INDEPENDENT BUDGETS apply: maxOutputChars (LEAF TEXT only — does not bound structural JSON), maxNodes (total node count), maxTotalBytes (estimated total response size). The walker stops at the first cap hit and emits a TruncationNotice. Use maxTotalBytes to enforce the MCP cap regardless of leaf-text vs structural distribution — addresses the §3 stress test repro where maxOutputChars=20000 produced 229 KB on EncodingHelper.cs because structural JSON dominated.")]
+     Description("Get the hierarchical syntax tree (AST) for a file or line range, with node kinds and positions. Three budgets cap it (maxOutputChars, maxNodes, maxTotalBytes); output stops at the first cap and emits a TruncationNotice.")]
     public static Task<string> GetSyntaxTree(
         McpServer server,
         IWorkspaceExecutionGate gate,
