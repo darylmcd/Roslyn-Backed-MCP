@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-25T00:01:10Z
+**updated_at:** 2026-08-25T04:32:04Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `scripting-killable-worker-isolation-boundary` | High | — | Isolate C# script execution behind a killable worker boundary so hard deadlines reclaim CPU and capacity. [type: security] [source: 2026-08-24 CI hotspot audit] | M | items/scripting-killable-worker-isolation-boundary.md |
 | `retired-actions-runner-service-record-removal` | High | — | Delete the orphaned delayed-auto LocalSystem runner service and quarantined installation; prove service, paths, processes, and remote inventory are absent. [type: security] [source: 2026-08-24 runner retirement] | S | items/retired-actions-runner-service-record-removal.md |
 
 ## Medium
@@ -76,7 +75,6 @@
 | `isolated-workspace-scope-cleanup-composition` | Medium | — | Compose isolated workspace close and fixture deletion so both are attempted exactly once and single/dual cleanup failures remain diagnosable. [type: test infrastructure] [source: 2026-08-24 adjacent lifecycle review] | S | items/isolated-workspace-scope-cleanup-composition.md |
 | `ci-router-pure-decision-and-actionlint` | Medium | — | Extract the CI topology into a pure decision contract and gate workflow syntax with repository-pinned actionlint. [type: CI refactor] [source: 2026-08-24 final CI review] | M | items/ci-router-pure-decision-and-actionlint.md |
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
-| `script-supervisor-cleanup-failure-observability` | Medium | — | **Make script-supervisor cleanup failures observable** — remove untyped timer-disposal catches and distinguish normal shutdown from semaphore invariant violations without masking a primary execution failure. [type: reliability] [source: 2026-08-24 adjacent review] | S | items/script-supervisor-cleanup-failure-observability.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
 | `third-party-license-verification-all-central-pins` | Medium | — | Verify every central package's restored identity, version, and SPDX license so notice attribution cannot drift outside the MCP special case. [type: supply-chain correctness] [source: 2026-08-24 dependency review] | S | items/third-party-license-verification-all-central-pins.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |

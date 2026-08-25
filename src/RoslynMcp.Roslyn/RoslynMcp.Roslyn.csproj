@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
+    <InternalsVisibleTo Include="RoslynMcp.Host.Stdio" />
   </ItemGroup>
 
 </Project>

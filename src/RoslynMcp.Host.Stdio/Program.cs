@@ -13,6 +13,14 @@ using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
+// The private worker mode is intentionally handled before host construction: it owns one
+// bounded stdin/stdout exchange, never starts MCP transport, and exits after one evaluation.
+if (args is [ScriptWorkerProtocol.WorkerArgument])
+{
+    Environment.ExitCode = ScriptWorkerProtocol.Run(Console.In, Console.Out);
+    return;
+}
+
 // mcp-stdio-console-flush-on-exit: belt-and-suspenders synchronous flush hook that fires
 // on every process-exit path (graceful, abrupt, AppDomain unload). Pre-fix the host
 // flushed in the ApplicationStopping callback + after RunAsync returns, but on stdin-EOF

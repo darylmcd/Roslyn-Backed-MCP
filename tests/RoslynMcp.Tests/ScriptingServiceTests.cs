@@ -11,7 +11,7 @@ public sealed class ScriptingServiceTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task EvaluateAsync_FiniteNonCooperativeScript_ReturnsHardDeadlineAndWorkerExits()
+    public async Task EvaluateAsync_InfiniteScript_TerminatesWorkerAndRecoversCapacity()
     {
         var options = new ScriptingServiceOptions
         {
@@ -33,7 +33,7 @@ public sealed class ScriptingServiceTests
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var result = await service.EvaluateAsync(
-            "System.Threading.Thread.Sleep(2500); 42",
+            "while (true) { }",
             imports: null,
             CancellationToken.None,
             onProgress: null,
@@ -42,14 +42,12 @@ public sealed class ScriptingServiceTests
 
         Assert.IsFalse(result.Success, "A non-cooperative script should hit the hard deadline.");
         Assert.IsFalse(string.IsNullOrEmpty(result.Error), "Expected error message.");
-        StringAssert.Contains(result.Error!, "forcibly abandoned");
+        StringAssert.Contains(result.Error!, "worker process was terminated");
         Assert.AreEqual(1, result.AppliedScriptTimeoutSeconds);
         Assert.IsTrue(sw.Elapsed.TotalSeconds < 5, $"Expected sub-5s completion, took {sw.Elapsed.TotalSeconds:F1}s");
         Assert.AreEqual(0, service.ActiveEvaluationCount, "The completed request should release its capacity slot.");
 
-        Assert.IsTrue(
-            SpinWait.SpinUntil(() => service.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(4)),
-            "The finite worker should exit and leave no abandoned thread in the test host.");
+        Assert.AreEqual(0, service.AbandonedEvaluationCount, "The worker process must be reclaimed before the response returns.");
 
         var recovered = await service.EvaluateAsync(
             "20 + 22",
@@ -64,147 +62,39 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
-    [Timeout(25_000)]
-    public async Task EvaluateAsync_AbandonedWorkerCap_ProjectsFailureAndRecoversAfterWorkerExit()
+    [Timeout(10_000)]
+    public async Task EvaluateAsync_UnboundedRawOutput_TerminatesAtIpcLimit()
     {
-        var options = new ScriptingServiceOptions
-        {
-            MaxAbandonedEvaluations = 1,
-        };
-        using var worker = new ControlledWorker();
         var service = new ScriptingService(
             NullLogger<ScriptingService>.Instance,
-            options,
-            (code, _, cancellationToken) =>
-                string.Equals(code, "block", StringComparison.Ordinal)
-                    ? worker.RunSynchronously(cancellationToken)
-                    : ScriptExecutionOutcome.Success(42));
-        using var cancellation = new CancellationTokenSource();
+            new ScriptingServiceOptions { WatchdogGraceSeconds = 1 });
 
-        try
-        {
-            var execution = service.EvaluateAsync(
-                "block",
-                imports: null,
-                cancellation.Token,
-                onProgress: null,
-                timeoutSecondsOverride: 30);
-            Assert.IsTrue(worker.WaitUntilEntered(), "The controlled worker should enter before cancellation.");
-
-            // Caller cancellation deterministically abandons this non-cooperative worker. The
-            // separate finite-script test owns the production deadline-timer integration path.
-            cancellation.Cancel();
-            await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
-                await execution.WaitAsync(ContendedCompletionTimeout).ConfigureAwait(false)).ConfigureAwait(false);
-            Assert.AreEqual(1, service.AbandonedEvaluationCount);
-            Assert.AreEqual(0, service.ActiveEvaluationCount);
-
-            var capacityResult = await service.EvaluateAsync(
-                "recover",
-                imports: null,
-                CancellationToken.None,
-                onProgress: null,
-                timeoutSecondsOverride: 5).ConfigureAwait(false);
-            Assert.IsFalse(
-                capacityResult.Success,
-                "The public service should reject work while its abandoned-worker cap is full.");
-            StringAssert.Contains(capacityResult.Error!, "abandoned worker threads");
-            Assert.AreEqual(
-                0,
-                capacityResult.ElapsedMs,
-                "The public capacity guard should fail before starting another script worker.");
-        }
-        finally
-        {
-            cancellation.Cancel();
-            worker.ReleaseAndWait();
-        }
-
-        Assert.IsTrue(
-            SpinWait.SpinUntil(() => service.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(2)),
-            "The released worker should drain the public abandoned-worker count.");
-
-        var recovered = await service.EvaluateAsync(
-            "recover",
+        var result = await service.EvaluateAsync(
+            "var console = System.Reflection.Assembly.Load(\"System.Console\").GetType(\"System.Console\")!; " +
+            "var stream = (System.IO.Stream)console.GetMethod(\"OpenStandardOutput\", System.Type.EmptyTypes)!.Invoke(null, null)!; " +
+            "var bytes = new byte[8192]; while (true) { stream.Write(bytes); stream.Flush(); }",
             imports: null,
             CancellationToken.None,
             onProgress: null,
             timeoutSecondsOverride: 5).ConfigureAwait(false);
-        Assert.IsTrue(recovered.Success, recovered.Error);
-        Assert.AreEqual("42", recovered.ResultValue);
+
+        Assert.IsFalse(result.Success);
+        StringAssert.Contains(result.Error ?? string.Empty, "bounded IPC output limit");
         Assert.AreEqual(0, service.ActiveEvaluationCount);
         Assert.AreEqual(0, service.AbandonedEvaluationCount);
     }
 
     [TestMethod]
-    [Timeout(25_000)]
-    public async Task ExecuteAsync_AbandonedWorkerCap_FailsFastAndRecoversAfterWorkersExit()
+    public void ScriptWorkerProtocol_OversizedInput_FailsClosedWithoutOutput()
     {
-        var options = new ScriptingServiceOptions
-        {
-            MaxConcurrentEvaluations = 1,
-            MaxAbandonedEvaluations = 2,
-        };
-        var supervisor = new ScriptExecutionSupervisor(NullLogger<ScriptingService>.Instance, options);
-        using var firstWorker = new ControlledWorker();
-        using var secondWorker = new ControlledWorker();
-        var startedWorkers = new List<ControlledWorker>();
+        var oversized = new string('x', ScriptWorkerProcess.MaxIpcCharacters + 1) + "\n";
+        using var input = new StringReader(oversized);
+        using var output = new StringWriter();
 
-        try
-        {
-            startedWorkers.Add(firstWorker);
-            var first = await ExecuteUntilImmediateDeadlineAsync(supervisor, firstWorker).ConfigureAwait(false);
-            Assert.AreEqual(ScriptExecutionOutcomeKind.HardDeadline, first.Outcome.Kind);
-            Assert.AreEqual(1, supervisor.AbandonedEvaluationCount);
-            Assert.AreEqual(0, supervisor.ActiveEvaluationCount, "A hard deadline should release the capacity slot.");
+        var exitCode = ScriptWorkerProtocol.Run(input, output);
 
-            // MaxConcurrentEvaluations is one, so reaching a second worker while the first is
-            // still blocked proves that hard-deadline completion released the first slot.
-            startedWorkers.Add(secondWorker);
-            var second = await ExecuteUntilImmediateDeadlineAsync(supervisor, secondWorker).ConfigureAwait(false);
-            Assert.AreEqual(ScriptExecutionOutcomeKind.HardDeadline, second.Outcome.Kind);
-            Assert.AreEqual(2, supervisor.AbandonedEvaluationCount);
-
-            var unexpectedWorkerStarted = 0;
-            var capacityResult = await supervisor.ExecuteAsync(
-                _ =>
-                {
-                    Interlocked.Exchange(ref unexpectedWorkerStarted, 1);
-                    return ScriptExecutionOutcome.Success(99);
-                },
-                onProgress: null,
-                CreateSuccessfulExecutionSettings(),
-                CancellationToken.None).ConfigureAwait(false);
-
-            Assert.IsTrue(capacityResult.CapacityFailure.HasValue);
-            Assert.AreEqual(
-                ScriptExecutionCapacityFailureKind.AbandonedWorkerCap,
-                capacityResult.CapacityFailure.Value.Kind);
-            Assert.AreEqual(ScriptExecutionOutcomeKind.CapacityFailure, capacityResult.Outcome.Kind);
-            Assert.AreEqual(0, capacityResult.ElapsedMs, "The abandoned-worker cap should fail before starting a worker.");
-            Assert.AreEqual(0, unexpectedWorkerStarted, "A capacity failure must not invoke the worker callback.");
-            Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
-        }
-        finally
-        {
-            foreach (var worker in startedWorkers)
-            {
-                worker.ReleaseAndWait();
-            }
-        }
-
-        Assert.IsTrue(
-            SpinWait.SpinUntil(() => supervisor.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(2)),
-            "Released workers should drain the abandoned-worker count.");
-
-        var recovered = await supervisor.ExecuteAsync(
-            _ => ScriptExecutionOutcome.Success(15),
-            onProgress: null,
-            CreateSuccessfulExecutionSettings(),
-            CancellationToken.None).ConfigureAwait(false);
-        Assert.AreEqual(ScriptExecutionOutcomeKind.Success, recovered.Outcome.Kind);
-        Assert.AreEqual(15, recovered.Outcome.Result);
-        Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
+        Assert.AreEqual(70, exitCode);
+        Assert.AreEqual(string.Empty, output.ToString());
     }
 
     [TestMethod]
@@ -231,7 +121,7 @@ public sealed class ScriptingServiceTests
 
             var result = await execution.WaitAsync(ContendedCompletionTimeout).ConfigureAwait(false);
             Assert.AreEqual(ScriptExecutionOutcomeKind.OuterCancelled, result.Outcome.Kind);
-            Assert.AreEqual(1, supervisor.AbandonedEvaluationCount, "An externally-cancelled blocked worker should be tracked.");
+            Assert.AreEqual(0, supervisor.AbandonedEvaluationCount, "Cancellation cleanup should not report a reclaimed worker as abandoned.");
             Assert.AreEqual(0, supervisor.ActiveEvaluationCount, "Outer cancellation should release the capacity slot.");
         }
         finally
@@ -429,7 +319,7 @@ public sealed class ScriptingServiceTests
 
     [TestMethod]
     [Timeout(25_000)]
-    public async Task ExecuteAsync_ThrowingProgressCallback_DoesNotTerminateEvaluation()
+    public async Task ExecuteAsync_ProgressCallbacksAreSerializedAndQuiescentBeforeReturn()
     {
         var logger = new ScriptLogCounter();
         var supervisor = new ScriptExecutionSupervisor(
@@ -471,20 +361,22 @@ public sealed class ScriptingServiceTests
 
         var signalTimeout = ContendedCompletionTimeout;
         bool progressStarted;
-        bool overlappingHeartbeatObserved;
+        bool callbackStayedSerialized;
         bool failureSignalsObserved;
         ScriptExecutionResult result;
         try
         {
             progressStarted = await CompletesWithinAsync(callbackEntered.Task, signalTimeout).ConfigureAwait(false);
-            // The first callback is blocked above the slow-warning branch. Observing that warning
-            // therefore proves a later timer invocation overlapped and continued internal accounting.
-            overlappingHeartbeatObserved = progressStarted &&
-                await CompletesWithinAsync(logger.SlowWarningObserved, signalTimeout).ConfigureAwait(false);
+            await Task.Delay(100).ConfigureAwait(false);
+            callbackStayedSerialized = Volatile.Read(ref callbackCount) == 1 &&
+                !logger.SlowWarningObserved.IsCompleted;
             releaseCallback.TrySetResult(true);
             failureSignalsObserved = progressStarted &&
                 await CompletesWithinAsync(
-                    Task.WhenAll(callbackExited.Task, logger.ProgressFailureWarningObserved),
+                    Task.WhenAll(
+                        callbackExited.Task,
+                        logger.ProgressFailureWarningObserved,
+                        logger.SlowWarningObserved),
                     signalTimeout).ConfigureAwait(false);
             releaseWorker.TrySetResult(true);
             result = await execution.WaitAsync(signalTimeout).ConfigureAwait(false);
@@ -497,8 +389,8 @@ public sealed class ScriptingServiceTests
 
         Assert.IsTrue(progressStarted, "The first progress callback should start while the worker is blocked.");
         Assert.IsTrue(
-            overlappingHeartbeatObserved,
-            "A later heartbeat should run while the first progress callback remains blocked.");
+            callbackStayedSerialized,
+            "The monitor must not overlap heartbeat delivery while the first callback is blocked.");
         Assert.IsTrue(
             failureSignalsObserved,
             "The failing callback should exit and log its failure before the worker completes.");
@@ -506,11 +398,50 @@ public sealed class ScriptingServiceTests
         Assert.AreEqual(42, result.Outcome.Result);
         Assert.AreEqual(1, callbackCount, "A failing progress sink should be disabled after its first exception.");
         Assert.IsTrue(
-            result.HeartbeatCount >= 2,
-            "Internal heartbeat accounting should continue while overlapping progress delivery is suppressed.");
+            result.HeartbeatCount >= 1,
+            "The result should retain the heartbeat that delivered the failing callback.");
+        await Task.Delay(100).ConfigureAwait(false);
+        Assert.AreEqual(1, callbackCount, "No progress callback may run after ExecuteAsync returns.");
         Assert.AreEqual(1, logger.ProgressFailureWarnings);
-        Assert.AreEqual(1, logger.SlowWarnings, "Overlapping timer callbacks must emit the slow warning once.");
+        Assert.AreEqual(1, logger.SlowWarnings, "The serialized monitor must emit the slow warning once.");
         Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task ExecuteAsync_HardDeadlinePreservesOutcomeAndAggregatesCleanupFailures()
+    {
+        var logger = new ScriptLogCounter();
+        var supervisor = new ScriptExecutionSupervisor(
+            logger,
+            new ScriptingServiceOptions { MaxAbandonedEvaluations = 1 },
+            new FailingCleanupWorkerProcess());
+        var settings = new ScriptExecutionSupervisorSettings(
+            EffectiveTimeoutSeconds: 1,
+            GraceSeconds: 0,
+            HardDeadlineSeconds: 1,
+            HeartbeatInterval: TimeSpan.FromMilliseconds(100),
+            Budget: TimeSpan.FromSeconds(1));
+
+        var result = await supervisor.ExecuteAsync(
+            new ScriptWorkerRequest("ignored", null, 1),
+            onProgress: null,
+            settings,
+            CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ScriptExecutionOutcomeKind.HardDeadline, result.Outcome.Kind);
+        Assert.AreEqual(1, supervisor.AbandonedEvaluationCount);
+        Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
+        Assert.AreEqual(1, logger.CleanupErrors);
+        StringAssert.Contains(logger.CleanupException?.ToString() ?? string.Empty, "terminate sentinel");
+        StringAssert.Contains(logger.CleanupException?.ToString() ?? string.Empty, "dispose sentinel");
+
+        var blocked = await supervisor.ExecuteAsync(
+            new ScriptWorkerRequest("ignored", null, 1),
+            onProgress: null,
+            settings,
+            CancellationToken.None).ConfigureAwait(false);
+        Assert.AreEqual(ScriptExecutionCapacityFailureKind.AbandonedWorkerCap, blocked.CapacityFailure?.Kind);
     }
 
     private static async Task<bool> CompletesWithinAsync(Task signal, TimeSpan timeout)
@@ -615,26 +546,6 @@ public sealed class ScriptingServiceTests
         }
     }
 
-    private static async Task<ScriptExecutionResult> ExecuteUntilImmediateDeadlineAsync(
-        ScriptExecutionSupervisor supervisor,
-        ControlledWorker worker)
-    {
-        var execution = worker.ExecuteAsync(
-            supervisor,
-            CreateImmediateDeadlineSettings(),
-            CancellationToken.None);
-        Assert.IsTrue(worker.WaitUntilEntered(), "The controlled worker should enter before assertions continue.");
-        return await execution.WaitAsync(ContendedCompletionTimeout).ConfigureAwait(false);
-    }
-
-    private static ScriptExecutionSupervisorSettings CreateImmediateDeadlineSettings() =>
-        new(
-            EffectiveTimeoutSeconds: 1,
-            GraceSeconds: 0,
-            HardDeadlineSeconds: 0,
-            HeartbeatInterval: TimeSpan.FromMilliseconds(100),
-            Budget: TimeSpan.FromSeconds(1));
-
     private static ScriptExecutionSupervisorSettings CreateSuccessfulExecutionSettings() =>
         new(
             EffectiveTimeoutSeconds: 2,
@@ -672,15 +583,6 @@ public sealed class ScriptingServiceTests
         }
 
         public bool WaitUntilEntered() => _entered.Wait(TimeSpan.FromSeconds(2));
-
-        public ScriptExecutionOutcome RunSynchronously(CancellationToken cancellationToken)
-        {
-            Assert.AreEqual(
-                0,
-                Interlocked.Exchange(ref _scheduled, 1),
-                "A controlled worker can only be scheduled once.");
-            return Run(cancellationToken);
-        }
 
         public void ReleaseAndWait()
         {
@@ -723,6 +625,8 @@ public sealed class ScriptingServiceTests
     {
         private int _progressFailureWarnings;
         private int _slowWarnings;
+        private int _cleanupErrors;
+        private Exception? _cleanupException;
         private readonly TaskCompletionSource<bool> _progressFailureWarningObserved =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<bool> _slowWarningObserved =
@@ -730,6 +634,8 @@ public sealed class ScriptingServiceTests
 
         public int ProgressFailureWarnings => Volatile.Read(ref _progressFailureWarnings);
         public int SlowWarnings => Volatile.Read(ref _slowWarnings);
+        public int CleanupErrors => Volatile.Read(ref _cleanupErrors);
+        public Exception? CleanupException => _cleanupException;
         public Task ProgressFailureWarningObserved => _progressFailureWarningObserved.Task;
         public Task SlowWarningObserved => _slowWarningObserved.Task;
 
@@ -756,6 +662,27 @@ public sealed class ScriptingServiceTests
                 Interlocked.Increment(ref _slowWarnings);
                 _slowWarningObserved.TrySetResult(true);
             }
+
+
+            if (message.Contains("isolated worker cleanup failed", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _cleanupErrors);
+                _cleanupException = exception;
+            }
+        }
+    }
+
+    private sealed class FailingCleanupWorkerProcess : IScriptWorkerProcess
+    {
+        public IScriptWorkerSession Start(ScriptWorkerRequest request) => new Session();
+
+        private sealed class Session : IScriptWorkerSession
+        {
+            public string Name => "failing-cleanup-worker";
+            public bool WaitForExit(int milliseconds) => false;
+            public ScriptExecutionOutcome GetOutcome() => throw new InvalidOperationException("not exited");
+            public void Terminate() => throw new InvalidOperationException("terminate sentinel");
+            public void Dispose() => throw new IOException("dispose sentinel");
         }
     }
 }
