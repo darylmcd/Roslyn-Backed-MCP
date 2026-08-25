@@ -5,9 +5,9 @@ namespace RoslynMcp.Tests.Services;
 
 /// <summary>
 /// Direct unit tests for <see cref="PersistentCompositeStorage"/> covering the cross-process
-/// TOCTOU hardening in <c>TryRead</c> (<c>workspace-infra-resource-cleanup-hygiene</c>). The
+/// TOCTOU hardening in <c>TryClaim</c> (<c>workspace-infra-resource-cleanup-hygiene</c>). The
 /// store's whole purpose is cross-process token redemption, so a sibling process deleting a
-/// version subdirectory (or the root) while <c>TryRead</c> is enumerating is a real scenario;
+/// version subdirectory (or the root) while <c>TryClaim</c> is enumerating is a real scenario;
 /// the enumeration must be treated as a cache miss rather than surfacing an uncaught
 /// <see cref="DirectoryNotFoundException"/>/<see cref="IOException"/>.
 /// </summary>
@@ -34,7 +34,7 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
-    public void Write_ThenTryRead_RoundTripsEntry()
+    public void Write_ThenTryClaim_ConsumesAndRoundTripsEntry()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var entry = new CompositePreviewStore.Entry(
@@ -44,38 +44,52 @@ public sealed class PersistentCompositeStorageTests
 
         var token = Guid.NewGuid().ToString("N");
         store.Write(token, entry);
-        var read = store.TryRead(token);
+        var read = store.TryClaim(token);
 
-        Assert.IsNotNull(read, "A freshly-written, unexpired entry must round-trip through TryRead.");
+        Assert.IsNotNull(read, "A freshly-written, unexpired entry must round-trip through TryClaim.");
         Assert.AreEqual("ws-1", read!.WorkspaceId);
         Assert.AreEqual(3, read.WorkspaceVersion);
         Assert.AreEqual("sample composite", read.Description);
         Assert.AreEqual(1, read.Mutations.Count);
         Assert.AreEqual(@"C:\proj\File.cs", read.Mutations[0].FilePath);
         Assert.AreEqual("// updated", read.Mutations[0].UpdatedContent);
+        Assert.IsNull(store.TryClaim(token), "A claimed persistent token must not be redeemable twice.");
     }
 
     [TestMethod]
-    public void TryRead_MissingToken_ReturnsNull()
+    public void TryClaim_MissingToken_ReturnsNull()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
-        Assert.IsNull(store.TryRead("no-such-token"));
+        Assert.IsNull(store.TryClaim("no-such-token"));
     }
 
     [TestMethod]
-    public void TryRead_DirectoryEnumerationThrowsIOException_ReturnsNull()
+    public void TryRead_CompatibilityEntryPoint_UsesOneTimeClaimSemantics()
+    {
+        var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var token = Guid.NewGuid().ToString("N");
+        store.Write(
+            token,
+            new CompositePreviewStore.Entry("ws-compat", 1, "compatibility", [], DateTime.UtcNow));
+
+        Assert.IsNotNull(store.TryRead(token));
+        Assert.IsNull(store.TryRead(token));
+    }
+
+    [TestMethod]
+    public void TryClaim_DirectoryEnumerationThrowsIOException_ReturnsNull()
     {
         var store = CreateStore(
             _ => ThrowOnMoveNext(new IOException("Injected enumeration race.")),
             File.GetLastWriteTimeUtc);
 
         Assert.IsNull(
-            store.TryRead(Guid.NewGuid().ToString("N")),
+            store.TryClaim(Guid.NewGuid().ToString("N")),
             "A directory removed during lazy enumeration must be treated as a cache miss.");
     }
 
     [TestMethod]
-    public void TryRead_LastWriteTimeThrowsIOException_ReturnsNull()
+    public void TryClaim_LastWriteTimeThrowsIOException_Propagates()
     {
         var token = Guid.NewGuid().ToString("N");
         var versionDirectory = Path.Combine(_root, "1");
@@ -90,25 +104,23 @@ public sealed class PersistentCompositeStorageTests
                 throw new IOException("Injected last-write-time race.");
             });
 
-        Assert.IsNull(
-            store.TryRead(token),
-            "A file removed between existence and timestamp checks must be treated as a cache miss.");
+        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token));
         Assert.IsTrue(timestampRead, "The test must reach the timestamp operation before asserting the race policy.");
     }
 
     [TestMethod]
-    public void TryRead_DirectoryEnumerationThrowsUnauthorizedAccess_Propagates()
+    public void TryClaim_DirectoryEnumerationThrowsUnauthorizedAccess_Propagates()
     {
         var store = CreateStore(
             _ => ThrowOnMoveNext(new UnauthorizedAccessException("Injected permissions failure.")),
             File.GetLastWriteTimeUtc);
 
         Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
-            store.TryRead(Guid.NewGuid().ToString("N")));
+            store.TryClaim(Guid.NewGuid().ToString("N")));
     }
 
     [TestMethod]
-    public void TryReadAndDelete_PathTraversalToken_CannotAccessOutsideRoot()
+    public void TryClaimAndDelete_PathTraversalToken_CannotAccessOutsideRoot()
     {
         var store = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
         var versionDirectory = Path.Combine(_root, "1");
@@ -123,7 +135,7 @@ public sealed class PersistentCompositeStorageTests
         {
             var traversalToken = $"../../{Path.GetFileNameWithoutExtension(outsidePath)}";
 
-            Assert.IsNull(store.TryRead(traversalToken));
+            Assert.IsNull(store.TryClaim(traversalToken));
             store.Delete(traversalToken);
 
             Assert.IsTrue(
@@ -184,15 +196,103 @@ public sealed class PersistentCompositeStorageTests
             "A failed atomic move must not leave an orphaned temporary payload.");
     }
 
+    [TestMethod]
+    public async Task TryClaim_TwoStorageInstances_RedeemExactlyOnceAsync()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        writer.Write(
+            token,
+            new CompositePreviewStore.Entry(
+                "ws-race",
+                11,
+                "atomic claim",
+                [new CompositeFileMutation(@"C:\proj\Claim.cs", "// claimed")],
+                DateTime.UtcNow));
+
+        var first = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        var second = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        using var start = new ManualResetEventSlim();
+        var claims = new[]
+        {
+            Task.Run(() => { start.Wait(); return first.TryClaim(token); }),
+            Task.Run(() => { start.Wait(); return second.TryClaim(token); }),
+        };
+
+        start.Set();
+        var results = await Task.WhenAll(claims);
+
+        Assert.AreEqual(1, results.Count(result => result is not null));
+        Assert.AreEqual(1, results.Count(result => result is null));
+        Assert.AreEqual("ws-race", results.Single(result => result is not null)!.WorkspaceId);
+    }
+
+    [TestMethod]
+    public void Delete_DirectoryEnumerationThrowsIOException_IsIdempotent()
+    {
+        var store = CreateStore(
+            _ => ThrowOnMoveNext(new IOException("Injected delete enumeration race.")),
+            File.GetLastWriteTimeUtc);
+
+        store.Delete(Guid.NewGuid().ToString("N"));
+    }
+
+    [TestMethod]
+    public void Delete_DirectoryEnumerationThrowsUnauthorizedAccess_Propagates()
+    {
+        var store = CreateStore(
+            _ => ThrowOnMoveNext(new UnauthorizedAccessException("Injected delete permissions failure.")),
+            File.GetLastWriteTimeUtc);
+
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() =>
+            store.Delete(Guid.NewGuid().ToString("N")));
+    }
+
+    [TestMethod]
+    public void TryClaim_ClaimDeletionFails_PropagatesBeforeReturningPayload()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        writer.Write(
+            token,
+            new CompositePreviewStore.Entry("ws-delete", 1, "delete failure", [], DateTime.UtcNow));
+        var store = CreateStore(
+            Directory.EnumerateDirectories,
+            File.GetLastWriteTimeUtc,
+            _ => throw new UnauthorizedAccessException("Injected claim cleanup denial."));
+
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() => store.TryClaim(token));
+    }
+
+    [TestMethod]
+    public void Constructor_ExpiredAbandonedClaim_RemovesClaim()
+    {
+        var versionDirectory = Path.Combine(_root, "1");
+        Directory.CreateDirectory(versionDirectory);
+        var claimPath = Path.Combine(
+            versionDirectory,
+            Guid.NewGuid().ToString("N") + ".json.claim");
+        File.WriteAllText(claimPath, "{}");
+        File.SetLastWriteTimeUtc(claimPath, DateTime.UtcNow - TimeSpan.FromMinutes(10));
+
+        _ = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+
+        Assert.IsFalse(
+            File.Exists(claimPath),
+            "Startup recovery must remove expired claims abandoned by a terminated process.");
+    }
+
     private PersistentCompositeStorage CreateStore(
         Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
-        Func<string, DateTime> getLastWriteTimeUtc) =>
+        Func<string, DateTime> getLastWriteTimeUtc,
+        Action<string>? deleteFile = null) =>
         new(
             _root,
             TimeSpan.FromMinutes(5),
             logger: null,
             enumerateDirectoriesForRead: enumerateDirectoriesForRead,
-            getLastWriteTimeUtc: getLastWriteTimeUtc);
+            getLastWriteTimeUtc: getLastWriteTimeUtc,
+            deleteFile: deleteFile ?? File.Delete);
 
     private static IEnumerable<string> ThrowOnMoveNext(Exception exception)
     {

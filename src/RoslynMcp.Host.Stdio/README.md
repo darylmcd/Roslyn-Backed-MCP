@@ -117,6 +117,12 @@ All variables below are **optional**. The server starts with the defaults listed
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
 | `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` | `10` | `evaluate_csharp` budget |
+| `ROSLYNMCP_SCRIPT_HEARTBEAT_MS` | `2000` | Progress heartbeat interval in milliseconds |
+| `ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS` | `5` | Elapsed time before the slow-script warning |
+| `ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS` | `10` | Grace after budget before the hard deadline |
+| `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `4` | Concurrent script-evaluation slots |
+| `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `5` | Capacity-slot acquisition timeout |
+| `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `8` | Abandoned-worker fail-fast limit |
 | `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Secret-safe structured unexpected-failure diagnostics; set to `stderr` for local operator capture |
 
 Example MCP client config with overrides:

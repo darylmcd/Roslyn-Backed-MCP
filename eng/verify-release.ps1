@@ -102,6 +102,84 @@ function Remove-PrivateTestTempRoot {
     }
 }
 
+function Resolve-DescendantPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Root,
+
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Description
+    )
+
+    $canonicalRoot = [System.IO.Path]::GetFullPath($Root)
+    $canonicalPath = [System.IO.Path]::GetFullPath($Path)
+    $relativePath = [System.IO.Path]::GetRelativePath($canonicalRoot, $canonicalPath)
+    $escapesRoot =
+        [System.IO.Path]::IsPathRooted($relativePath) -or
+        $relativePath -eq '..' -or
+        $relativePath.StartsWith(
+            "..$([System.IO.Path]::DirectorySeparatorChar)",
+            [System.StringComparison]::Ordinal) -or
+        $relativePath.StartsWith(
+            "..$([System.IO.Path]::AltDirectorySeparatorChar)",
+            [System.StringComparison]::Ordinal)
+    if ($relativePath -eq '.' -or $escapesRoot) {
+        throw "$Description must be an exact descendant of its repository-owned boundary."
+    }
+
+    return $canonicalPath
+}
+
+function Reset-VerifierOwnedDirectory {
+    param(
+        [Parameter(Mandatory)]
+        [string]$OutputBoundary,
+
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Description
+    )
+
+    $canonicalPath = Resolve-DescendantPath `
+        -Root $OutputBoundary `
+        -Path $Path `
+        -Description $Description
+    if (Test-Path -LiteralPath $canonicalPath) {
+        Remove-Item -LiteralPath $canonicalPath -Recurse -Force -ErrorAction Stop
+    }
+    New-Item -ItemType Directory -Path $canonicalPath -Force | Out-Null
+}
+
+function Remove-VerifierOwnedDirectory {
+    param(
+        [Parameter(Mandatory)]
+        [string]$OutputBoundary,
+
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Description
+    )
+
+    $canonicalPath = Resolve-DescendantPath `
+        -Root $OutputBoundary `
+        -Path $Path `
+        -Description $Description
+    if (Test-Path -LiteralPath $canonicalPath) {
+        Microsoft.PowerShell.Management\Remove-Item `
+            -LiteralPath $canonicalPath `
+            -Recurse `
+            -Force `
+            -ErrorAction Stop
+    }
+}
+
 function Assert-TestResultFile {
     param(
         [Parameter(Mandatory)]
@@ -155,22 +233,41 @@ $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
 $sampleSolutionPath = Join-Path $repoRoot "samples\SampleSolution\SampleSolution.slnx"
 $testProject = Join-Path $repoRoot "tests\RoslynMcp.Tests\RoslynMcp.Tests.csproj"
 $hostProject = Join-Path $repoRoot "src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj"
-$publishDir = Join-Path $repoRoot "$OutputRoot\publish\host-stdio"
-$manifestDir = Join-Path $repoRoot "$OutputRoot\manifests"
-$coverageDir = Join-Path $repoRoot "$OutputRoot\coverage"
-$testResultsDir = Join-Path $repoRoot "$OutputRoot\test-results"
+$requestedOutputRoot = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
+    $OutputRoot
+} else {
+    Join-Path $repoRoot $OutputRoot
+}
+$outputRootPath = Resolve-DescendantPath `
+    -Root $repoRoot `
+    -Path $requestedOutputRoot `
+    -Description 'OutputRoot'
+$publishDir = Join-Path $outputRootPath "publish\host-stdio"
+$manifestDir = Join-Path $outputRootPath "manifests"
+$coverageDir = Join-Path $outputRootPath "coverage"
+$testResultsDir = Join-Path $outputRootPath "test-results"
 $runSettingsPath = Join-Path $PSScriptRoot 'ci.runsettings'
 $hashManifestPath = Join-Path $manifestDir "host-stdio-sha256.txt"
 
 New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
 if (-not $TestShardOnly) {
-    New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
+    Reset-VerifierOwnedDirectory `
+        -OutputBoundary $outputRootPath `
+        -Path $publishDir `
+        -Description 'Publish directory'
+    Reset-VerifierOwnedDirectory `
+        -OutputBoundary $outputRootPath `
+        -Path $manifestDir `
+        -Description 'Manifest directory'
 }
 if (-not $NoCoverage) {
     New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
 }
 
+$primaryFailure = $null
+$cleanupFailures = [System.Collections.Generic.List[System.Exception]]::new()
+$testTempRoot = $null
+try {
 if (-not $TestShardOnly) {
     # Coordinated package families fail before restore so a split Dependabot update cannot
     # publish artifacts or reach MSBuildLocator's later runtime-asset failure.
@@ -324,76 +421,31 @@ $testTempRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
     "RoslynMcpTestRuns\$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
 Write-Host "Testhost temp root: $testTempRoot"
-$testFailure = $null
-try {
-    $testEnvironment = @(
-        "--environment", "TEMP=$testTempRoot",
-        "--environment", "TMP=$testTempRoot",
-        "--environment", "TMPDIR=$testTempRoot"
-    )
-    $testResultsOutputDirectory = if ($NoCoverage) { $testResultsDir } else { $coverageDir }
-    $testArguments = @(
-        'test',
-        $solutionPath,
-        '-c', $Configuration,
-        '--no-build',
-        '--nologo',
-        '--filter', $testFilter,
-        '--settings', $runSettingsPath,
-        '--results-directory', $testResultsOutputDirectory,
-        '--logger', 'console;verbosity=minimal',
-        '--logger', "trx;LogFileName=$trxPath")
-    if (-not $NoCoverage) {
-        $testArguments += '--collect:XPlat Code Coverage'
-    }
-    $testArguments += $testEnvironment
+$testEnvironment = @(
+    "--environment", "TEMP=$testTempRoot",
+    "--environment", "TMP=$testTempRoot",
+    "--environment", "TMPDIR=$testTempRoot"
+)
+$testResultsOutputDirectory = if ($NoCoverage) { $testResultsDir } else { $coverageDir }
+$testArguments = @(
+    'test',
+    $solutionPath,
+    '-c', $Configuration,
+    '--no-build',
+    '--nologo',
+    '--filter', $testFilter,
+    '--settings', $runSettingsPath,
+    '--results-directory', $testResultsOutputDirectory,
+    '--logger', 'console;verbosity=minimal',
+    '--logger', "trx;LogFileName=$trxPath")
+if (-not $NoCoverage) {
+    $testArguments += '--collect:XPlat Code Coverage'
+}
+$testArguments += $testEnvironment
 
-    & dotnet @testArguments
-    Invoke-DotnetStep "dotnet test"
-    Assert-TestResultFile -Path $trxPath
-}
-catch {
-    $testFailure = $_
-}
-
-$cleanupFailures = [System.Collections.Generic.List[System.Exception]]::new()
-
-# Child builds can leave VBCSCompiler/MSBuild servers holding files below the private temp
-# root. This is the repository's sanctioned Windows lock-release step; the runner executes
-# one validation job at a time, and hosted runners are single-job ephemeral machines.
-try {
-    dotnet build-server shutdown
-    Invoke-DotnetStep "dotnet build-server shutdown"
-}
-catch {
-    $cleanupFailures.Add($_.Exception)
-}
-
-try {
-    Remove-PrivateTestTempRoot -Path $testTempRoot
-}
-catch {
-    $cleanupFailures.Add($_.Exception)
-}
-
-if ($testFailure -and $cleanupFailures.Count -gt 0) {
-    $allFailures = [System.Collections.Generic.List[System.Exception]]::new()
-    $allFailures.Add($testFailure.Exception)
-    $allFailures.AddRange($cleanupFailures)
-    throw [System.AggregateException]::new(
-        'dotnet test failed and test-environment cleanup also failed.',
-        $allFailures)
-}
-
-if ($testFailure) {
-    throw $testFailure
-}
-
-if ($cleanupFailures.Count -gt 0) {
-    throw [System.AggregateException]::new(
-        'Test-environment cleanup failed.',
-        $cleanupFailures)
-}
+& dotnet @testArguments
+Invoke-DotnetStep "dotnet test"
+Assert-TestResultFile -Path $trxPath
 
 if (-not $TestShardOnly) {
     # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
@@ -402,15 +454,23 @@ if (-not $TestShardOnly) {
     dotnet publish $hostProject -c $Configuration --no-build -o $publishDir -p:PublishReadyToRun=false
     Invoke-DotnetStep "dotnet publish"
 
-    $hashLines = Get-ChildItem -Path $publishDir -File -Recurse |
+    $publishedFiles = @(Get-ChildItem -LiteralPath $publishDir -File -Recurse)
+    if ($publishedFiles.Count -eq 0) {
+        throw 'dotnet publish succeeded without producing any files.'
+    }
+
+    $hashLines = @($publishedFiles |
         Sort-Object FullName |
         ForEach-Object {
             $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             $relativePath = Resolve-Path -Relative $_.FullName
             "$hash  $relativePath"
-        }
+        })
+    if ($hashLines.Count -eq 0) {
+        throw 'Release publish output produced an empty SHA-256 manifest.'
+    }
 
-    Set-Content -Path $hashManifestPath -Value $hashLines
+    Set-Content -LiteralPath $hashManifestPath -Value $hashLines
 
     Write-Host "Publish directory: $publishDir"
     Write-Host "Hash manifest: $hashManifestPath"
@@ -420,4 +480,63 @@ if ($NoCoverage) {
     Write-Host "Code coverage: skipped (-NoCoverage)"
 } else {
     Write-Host "Code coverage (Cobertura): $coverageDir"
+}
+}
+catch {
+    $primaryFailure = $_.Exception
+}
+finally {
+    # Child builds can leave VBCSCompiler/MSBuild servers holding verifier-owned state.
+    # Attempt both cleanup actions exactly once, even when restore/build/planning/test/publish fails.
+    try {
+        dotnet build-server shutdown
+        Invoke-DotnetStep "dotnet build-server shutdown"
+    }
+    catch {
+        $cleanupFailures.Add($_.Exception)
+    }
+
+    if ($null -ne $testTempRoot) {
+        try {
+            Remove-PrivateTestTempRoot -Path $testTempRoot
+        }
+        catch {
+            $cleanupFailures.Add($_.Exception)
+        }
+    }
+}
+
+if ($null -ne $primaryFailure -or $cleanupFailures.Count -gt 0) {
+    foreach ($ownedOutput in @(
+        @{ Path = $publishDir; Description = 'Publish directory' },
+        @{ Path = $manifestDir; Description = 'Manifest directory' })) {
+        try {
+            Remove-VerifierOwnedDirectory `
+                -OutputBoundary $outputRootPath `
+                -Path $ownedOutput.Path `
+                -Description $ownedOutput.Description
+        }
+        catch {
+            $cleanupFailures.Add($_.Exception)
+        }
+    }
+}
+
+if ($null -ne $primaryFailure -and $cleanupFailures.Count -gt 0) {
+    $allFailures = [System.Collections.Generic.List[System.Exception]]::new()
+    $allFailures.Add($primaryFailure)
+    $allFailures.AddRange($cleanupFailures)
+    throw [System.AggregateException]::new(
+        'Release verification failed and verifier-owned cleanup also failed.',
+        $allFailures)
+}
+
+if ($null -ne $primaryFailure) {
+    throw $primaryFailure
+}
+
+if ($cleanupFailures.Count -gt 0) {
+    throw [System.AggregateException]::new(
+        'Verifier-owned cleanup failed.',
+        $cleanupFailures)
 }

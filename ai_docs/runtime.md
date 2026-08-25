@@ -82,6 +82,8 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `ScriptingServiceOptions.ConcurrencySlotAcquireTimeoutSeconds` | 5 seconds |
 | `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `ScriptingServiceOptions.MaxAbandonedEvaluations` | 8 |
 | `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` | `ScriptingServiceOptions.TimeoutSeconds` | 10 seconds |
+| `ROSLYNMCP_SCRIPT_HEARTBEAT_MS` | `ScriptingServiceOptions.HeartbeatIntervalMs` | 2000 milliseconds |
+| `ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS` | `ScriptingServiceOptions.StuckWarningSeconds` | 5 seconds |
 | `ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS` | `ScriptingServiceOptions.WatchdogGraceSeconds` | 10 seconds |
 
 ## Claude Code Plugin
