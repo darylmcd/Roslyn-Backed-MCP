@@ -19,7 +19,7 @@ public static class ExtractMethodTools
     [McpServerTool(Name = "extract_method_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "stable", true, false,
         "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values.")]
-    [Description("Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values. Selection must cover complete statements in the same block without return statements.")]
+    [Description("Preview extracting selected statements into a new method, inferring parameters and return values by data flow. Selection must cover complete statements in one block, with no return statements.")]
     public static Task<string> PreviewExtractMethod(
         IWorkspaceExecutionGate gate,
         IExtractMethodService extractMethodService,
@@ -58,7 +58,7 @@ public static class ExtractMethodTools
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,
         "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope.")]
-    [Description("Preview extracting a shared sub-expression at an example span into a synthesized static helper, then rewriting every structurally-identical call site in the example's containing type (or entire project when allowCrossFile=true). Refuses when the expression has fewer than 2 occurrences, when a candidate site's free-variable semantic types differ from the example, or when allowCrossFile=false and a hit resides in a different containing type. Complements extract_method_preview (statement-block, single-function) by handling the N-function shape.")]
+    [Description("Preview extracting a shared sub-expression into a static helper, rewriting every identical site in the containing type (or project when allowCrossFile=true). Handles the N-function shape extract_method_preview does not.")]
     public static Task<string> PreviewExtractSharedExpressionToHelper(
         IWorkspaceExecutionGate gate,
         IExtractMethodService extractMethodService,

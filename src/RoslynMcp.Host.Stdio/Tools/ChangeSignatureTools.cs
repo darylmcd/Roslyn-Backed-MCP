@@ -19,7 +19,7 @@ public static class ChangeSignatureTools
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically."),
-     Description("Preview a change to a method's signature: add, remove, rename, or reorder parameters. The declaration AND every callsite are rewritten in one preview token. For 'add', supply Name + ParameterType + DefaultValue. For 'remove', supply Name OR Position. For 'rename', supply Name (current) + NewName. For 'reorder', supply NewOrder as a comma-separated permutation of parameter names or 0-based indices (e.g. 'b,a,c' or '1,0,2'); positional callsites are reordered, all-named callsites are left as-is, mixed callsites are refused.")]
+     Description("Preview adding, removing, renaming, or reordering a method's parameters: the declaration and every callsite are rewritten under one preview token. Supply op plus its name/newName/parameterType/newOrder arguments.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
