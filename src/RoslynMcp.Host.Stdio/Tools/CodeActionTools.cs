@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
@@ -87,5 +88,8 @@ public static class CodeActionTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "apply_code_action", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            expectedKind: PreviewKind.CodeAction);
 }

@@ -299,7 +299,16 @@ public sealed class EditService : IEditService
             await SimulatePreviewAsync(initialSolution, fileEdits, ct, skipSyntaxCheck).ConfigureAwait(false);
 
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        // preview-token-apply-route-provenance: tag the token with its producer family so
+        // preview_multi_file_edit_apply can refuse a token minted elsewhere before mutating.
+        // diffTruncated: false reproduces exactly what the untagged 4-argument overload forwarded.
+        var token = _previewStore.Store(
+            workspaceId,
+            accumulator,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            diffTruncated: false,
+            kind: PreviewKind.MultiFileEdit);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }
 

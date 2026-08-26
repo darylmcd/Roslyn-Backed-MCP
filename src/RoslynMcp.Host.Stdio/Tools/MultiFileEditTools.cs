@@ -112,5 +112,8 @@ public static class MultiFileEditTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "preview_multi_file_edit_apply", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            expectedKind: PreviewKind.MultiFileEdit);
 }
