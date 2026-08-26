@@ -9,10 +9,19 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class SnippetAnalysisTools
 {
+    /// <remarks>
+    /// The <c>kind</c> parameter selects the wrapper the snippet is compiled inside:
+    /// <c>expression</c> (single expression), <c>statements</c> (void method body — use this for
+    /// code without a return value), <c>returnExpression</c> (<c>object?</c>-returning method
+    /// body — use this when you need <c>return &lt;value&gt;;</c>), <c>members</c> (class members),
+    /// and <c>program</c> (full compilation unit, the default). Diagnostic line <i>and</i> column
+    /// numbers are 1-based and relative to the user-supplied code (wrapper offsets are subtracted
+    /// server-side, UX-001 + FLAG-C), so positions always point inside the original snippet.
+    /// </remarks>
     [McpServerTool(Name = "analyze_snippet", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "stable", true, false,
         "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
-     Description("Analyze a C# code snippet for compilation errors and declared symbols without loading a full solution. Uses an ephemeral workspace for quick validation of code fragments, diffs, or pasted code. Kinds: 'expression' (single expression), 'statements' (void method body — use this for code without a return value), 'returnExpression' (object?-returning method body — use this when you need 'return <value>;'), 'members' (class members), 'program' (full compilation unit, default). Diagnostic line *and* column numbers are 1-based and relative to the user-supplied code (wrapper offsets are subtracted server-side, UX-001 + FLAG-C), so positions always point inside the original snippet.")]
+     Description("Analyze a C# snippet for compilation errors and declared symbols in an ephemeral workspace — no solution load. Use for fragments, diffs, or pasted code; `kind` selects the wrapper.")]
     public static async Task<string> AnalyzeSnippet(
         ISnippetAnalysisService snippetAnalysisService,
         [Description("The C# code to analyze")] string code,

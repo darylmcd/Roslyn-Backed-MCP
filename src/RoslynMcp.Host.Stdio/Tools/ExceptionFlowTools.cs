@@ -16,10 +16,23 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ExceptionFlowTools
 {
+    /// <remarks>
+    /// Catch sites whose declared type is assignable from the input carry the containing method,
+    /// a body excerpt (with the <c>when</c> filter prepended when present), and a
+    /// <c>rethrowAsTypeMetadataName</c> annotation when the body wraps the exception in
+    /// <c>throw new X(...)</c> of a different type. Catch sites are ranked type-specific
+    /// (exact-match) first so a broad <c>catch (Exception)</c> never displaces a precise handler
+    /// when results are truncated; untyped <c>catch { }</c> clauses are treated as catching
+    /// <c>System.Exception</c>. Throw sites whose thrown type is assignable to the input carry
+    /// the containing method, an <c>isUnhandledAtBoundary</c> flag (syntactic — true when the
+    /// throw is not lexically inside a <c>catch</c>), and an excerpt. <c>countOmitted</c> reports
+    /// how many catch+throw sites were dropped past <c>maxResults</c>. Pair handling and
+    /// origination sites for an exception-classification refactor.
+    /// </remarks>
     [McpServerTool(Name = "trace_exception_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Trace catch clauses that handle a given exception type."),
-     Description("Return both `catch` clauses (handling sites) and `throw new T(...)` sites (origination sites) across the workspace related to the input exception type. Catch sites whose declared type is assignable from the input carry the containing method, a body excerpt (with the `when` filter prepended when present), and a `rethrowAsTypeMetadataName` annotation when the body wraps the exception in `throw new X(...)` of a different type; catch sites are ranked type-specific (exact-match) first so a broad `catch (Exception)` never displaces a precise handler when results are truncated. Throw sites whose thrown type is assignable to the input carry the containing method, an `isUnhandledAtBoundary` flag (syntactic — true when the throw is not lexically inside a `catch`), and an excerpt. `countOmitted` reports how many catch+throw sites were dropped past `maxResults`. Untyped `catch { }` clauses are treated as catching `System.Exception`. Pair handling and origination sites for an exception-classification refactor.")]
+     Description("Return both `catch` handling sites and `throw new` origination sites for an exception type across the workspace. Use when `find_references` gives usage sites, not handling sites.")]
     public static Task<string> TraceExceptionFlow(
         IWorkspaceExecutionGate gate,
         IExceptionFlowService exceptionFlowService,

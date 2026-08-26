@@ -49,10 +49,18 @@ public static class SecurityTools
             c => securityService.GetAnalyzerStatusAsync(workspaceId, c),
             ct);
 
+    /// <remarks>
+    /// Returns affected packages with severity, advisory links, and project locations, sourced
+    /// from the NuGet vulnerability database via <c>dotnet list package</c>. The response
+    /// includes <c>IncludesTransitive</c>: when false, results match direct references only —
+    /// pass <c>includeTransitive=true</c> (and the CLI transitive flags) when you need full
+    /// transitive CVE coverage. The underlying CLI call needs a .NET 8+ SDK with JSON output
+    /// support.
+    /// </remarks>
     [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("security", "stable", true, false,
         "Scan NuGet references for known CVEs using dotnet list package --vulnerable."),
-     Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Response includes IncludesTransitive: when false, results match direct references only — use includeTransitive=true (and CLI transitive flags) when you need full transitive CVE coverage. Requires .NET 8+ SDK with JSON output support.")]
+     Description("Scan NuGet references for known CVEs via `dotnet list package`. Default includeTransitive=false returns direct references only; pass true for transitive coverage. Requires .NET 8+ SDK.")]
     public static Task<string> ScanNuGetVulnerabilities(
         IWorkspaceExecutionGate gate,
         INuGetDependencyService nuGetDependencyService,
