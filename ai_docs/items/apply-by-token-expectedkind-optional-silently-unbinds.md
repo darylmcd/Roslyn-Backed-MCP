@@ -18,3 +18,18 @@ Surfaced by the cold spec-compliance re-review of initiative `preview-token-rout
 ## Context
 
 Deliberately NOT fixed inside the route-binding children: it is out of their Scope and would breach their gate-forced file budgets. File after the family lands so the fix can cover every bound route at once.
+
+## Amendment — 2026-08-26 (cold code-quality review of PR #1383)
+
+A second defect lives on the same edit surface — fold it into this row rather than filing a sibling, since both rewrite `ApplyByTokenAsync`'s parameter list across every `*_apply` call site and two rows would collide as PRs.
+
+Add to Acceptance:
+
+- [ ] `RequireCompatibleProducer`'s mismatch message names the route the caller **actually invoked**, not `ApplyRouteFor(expectedKind)`.
+- [ ] One regression shape: a foreign-family token redeemed through `scaffold_type_apply` produces a message containing `scaffold_type_apply`, matching the invoked-route assertion the file-ops and editing route-binding test files already make.
+
+**Evidence (traced, not hypothesized).** `scaffold_type_apply` and `scaffold_test_apply` bind to `expectedKind: PreviewKind.FileCreate` because that is genuinely the producer kind. But the refusal message is built by deriving the route name from the kind: `PreviewToolFor(FileCreate)` returns `create_file_preview`, and `PreviewApplyRoutes["create_file_preview"]` is `create_file_apply`. So redeeming a foreign token through `scaffold_type_apply` reports *"not `create_file_apply`, which only accepts `create_file_preview` tokens"* — naming a route the caller never invoked.
+
+All six other routes bound during this sweep derive their own name correctly; these two are the first divergence, and they are divergent precisely because a producer kind can be shared by more than one apply route. Deriving the invoked route from the expected kind is therefore wrong in general, not just here.
+
+The scaffolding test added by #1383 asserts only the `rename_apply` half of the message and skips the invoked-route assertion its two sibling route-binding test files do make, which is why this shipped green.

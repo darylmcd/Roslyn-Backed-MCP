@@ -85,7 +85,7 @@
     {
       "id": "preview-token-route-binding-orchestration-family",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "preview-token-apply-route-binding-remaining-families",
       "backlogRowsClosed": [],
       "productionFilesTouched": 4,
@@ -111,10 +111,10 @@
       "dependsOn": [
         "preview-token-route-map-centralization"
       ],
-      "branch": null,
+      "branch": "remediation/preview-token-route-binding-orchestration-family",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1383",
+      "mergedAt": "2026-08-26T14:23:39Z",
       "notes": null,
       "fileSetHash": "a2fa9a9ccbc704b4117ccc2b4524f27a309d36db3f4a406a9d1fb6fc941c27bd",
       "stanzaHash": "4a7569acbdaf017138ef148191c38bbd518c4f2d3fdaa016568573520f346a8d",
