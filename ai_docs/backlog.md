@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-26T04:59:24Z
+**updated_at:** 2026-08-26T13:01:44Z
 
 ## Agent contract
 
@@ -89,6 +89,7 @@
 | `preview-token-apply-route-binding-remaining-families` | Medium | — | **Bind the remaining apply families to preview-token kinds** — 5 of ~20 `ApplyByTokenAsync` routes declare an expectedKind; the rest keep pre-binding behavior. Centralize the kind→route map while binding. [type: refactor] [source: PR #1354 follow-on] | L | items/preview-token-apply-route-binding-remaining-families.md |
 | `mcp-logging-wire-startup-marker-wait-race` | Medium | — | **De-flake the startup-marker stderr wait** — `McpLoggingLifecycleWireTests.WaitForLineAsync` times out claiming the marker never arrived while the captured stderr it prints contains it. [type: test] [source: 2026-08-26 backlog-sweep CI] | S | items/mcp-logging-wire-startup-marker-wait-race.md |
 | `apply-by-token-expectedkind-optional-silently-unbinds` | Medium | — | **Make the preview-token provenance binding non-optional** — `ApplyByTokenAsync`'s `expectedKind` is an optional parameter, so dropping it at a call site compiles green and silently reverts that route to permissive. [type: bug] [source: 2026-08-26 backlog-sweep spec review] | S | items/apply-by-token-expectedkind-optional-silently-unbinds.md |
+| `fixall-producer-kind-round-trip-coverage` | Medium | — | **Assert `fix_all_preview` mints `PreviewKind.FixAll`** — the producer half of the fix_all_apply binding is unasserted; blocked on the fixture not copying `.editorconfig` and FixAllService passing no AnalyzerOptions. [type: test] [source: 2026-08-26 backlog-sweep spec review] | S | items/fixall-producer-kind-round-trip-coverage.md |
 
 ## Low
 
