@@ -214,17 +214,17 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     /// The fourth producer round-trip, and the one the other three cannot stand in for:
     /// <c>FixAllService</c> is the single <c>Store</c> overload-switch in this change, so a
     /// wrong-overload edit there compiles cleanly and silently records
-    /// <see cref="PreviewKind.Unspecified"/> instead of <see cref="PreviewKind.FixAll"/> — the
-    /// exact defect the producer half exists to catch. Split from
-    /// <c>FilePreviews_RecordTheirOwnProducerKind</c> because it needs a diagnostic id with a
-    /// registered FixAll provider rather than a file-operation fixture.
+    /// <see cref="PreviewKind.Unspecified"/> instead of <see cref="PreviewKind.FixAll"/>.
     /// </summary>
     /// <remarks>
-    /// IDE0161 (ConvertNamespaceCodeFixProvider) loads reliably from Features, but whether it has
-    /// matches in the sample fixture drifts over time (see
-    /// <c>FixAllServiceGuidanceTests.PreviewFixAll_WithActiveProvider_DoesNotReturnEmptyGuidanceFalsely</c>).
-    /// When it produces no token this test reports <c>Inconclusive</c> rather than passing
-    /// vacuously — a silent no-op here would restore exactly the coverage gap it was added to close.
+    /// Anchored on IDE0161 (file-scoped namespace) because it both has a registered FixAll provider
+    /// AND has a guaranteed occurrence in the fixture:
+    /// <c>samples/SampleSolution/SampleLib/BlockScopedNamespaceProbe.cs</c> exists solely to be the
+    /// one block-scoped namespace in an otherwise file-scoped sample. That determinism is the point —
+    /// an earlier version of this test guarded a token-less run with <c>Assert.Inconclusive</c>, which
+    /// MSTest does not fail, so it skipped its own assertion on every run and reported green while
+    /// asserting nothing. Assert unconditionally here; if this starts reporting an empty token, the
+    /// fixture probe was removed or converted and THAT is the bug to fix.
     /// </remarks>
     [TestMethod]
     public async Task FixAllPreview_RecordsItsOwnProducerKind()
@@ -239,13 +239,10 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             projectName: null,
             CancellationToken.None).ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(fixAllPreview.PreviewToken))
-        {
-            Assert.Inconclusive(
-                "IDE0161 produced no fixable occurrences in the sample fixture, so the FixAll "
-                + "producer tagging could not be exercised. Guidance: "
-                + (fixAllPreview.GuidanceMessage ?? "(none)"));
-        }
+        Assert.IsFalse(
+            string.IsNullOrEmpty(fixAllPreview.PreviewToken),
+            "fix_all_preview must mint a token for IDE0161: BlockScopedNamespaceProbe.cs guarantees an "
+            + "occurrence. Guidance was: " + (fixAllPreview.GuidanceMessage ?? "(none)"));
 
         Assert.AreEqual(
             PreviewKind.FixAll,
