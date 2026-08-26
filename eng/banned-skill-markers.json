@@ -29,10 +29,7 @@
       "is \\*\\*not\\*\\* grounds to halt",
       "never itself grounds to halt"
     ],
-    "residualUnsweptAllowlist": [
-      "skills/version-bump/SKILL.md",
-      "skills/workspace-health/SKILL.md"
-    ]
+    "residualUnsweptAllowlist": []
   },
   "canonicalPrecheckBlocks": [
     {
