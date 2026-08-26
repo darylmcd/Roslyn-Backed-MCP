@@ -73,7 +73,9 @@ public sealed class DeadCodeService : IDeadCodeService
         }
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), "Remove dead code symbols", changes);
+        // preview-token-apply-route-provenance: tag the producer family so remove_dead_code_apply
+        // can refuse a foreign token before mutating the workspace.
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), "Remove dead code symbols", changes, PreviewKind.RemoveDeadCode);
         return new RefactoringPreviewDto(token, "Remove dead code symbols", changes, warnings.Count > 0 ? warnings : null);
     }
 

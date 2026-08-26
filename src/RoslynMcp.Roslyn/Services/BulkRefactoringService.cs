@@ -71,7 +71,9 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Replace {replacementCount} reference(s) of '{oldTypeName}' with '{newTypeName}' (scope: {normalizedScope})";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        // preview-token-apply-route-provenance: tag the producer family so bulk_replace_type_apply
+        // can refuse a foreign token before mutating the workspace.
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -271,7 +273,9 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             .OrderBy(u => u.FilePath, StringComparer.Ordinal)
             .ToList();
 
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        // preview-token-apply-route-provenance: replace_invocation_preview redeems through the
+        // SHARED bulk_replace_type_apply route, so it mints the same kind by design.
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.BulkReplaceType);
 
         return new RefactoringPreviewDto(
             token,

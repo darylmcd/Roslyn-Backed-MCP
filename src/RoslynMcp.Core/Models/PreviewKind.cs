@@ -70,4 +70,23 @@ public enum PreviewKind
 
     /// <summary>A move-type-to-its-own-file preview.</summary>
     MoveTypeToFile,
+
+    /// <summary>
+    /// A bulk reference-rewrite preview. Deliberately shared by TWO producers —
+    /// <c>bulk_replace_type_preview</c> and <c>replace_invocation_preview</c> — because both mint a
+    /// previewed <c>Solution</c> snapshot that is redeemed through the single
+    /// <c>bulk_replace_type_apply</c> route.
+    /// </summary>
+    /// <remarks>
+    /// Do NOT split this into one member per producer. The route guard's <c>expectedKind</c> is a
+    /// single value, not a set, so a second member would make one of the two producers' tokens
+    /// unredeemable at their shared apply route. The kind→<c>*_preview</c> map names
+    /// <c>bulk_replace_type_preview</c> (the route-eponymous producer) because the exhaustiveness
+    /// pin requires a real catalog tool name; a rejected <c>replace_invocation_preview</c> token is
+    /// therefore described by its sibling's label, which still points at the correct apply route.
+    /// </remarks>
+    BulkReplaceType,
+
+    /// <summary>A dead-code removal preview.</summary>
+    RemoveDeadCode,
 }

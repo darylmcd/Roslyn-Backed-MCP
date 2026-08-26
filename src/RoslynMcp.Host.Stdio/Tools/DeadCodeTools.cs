@@ -52,5 +52,8 @@ public static class DeadCodeTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "remove_dead_code_apply", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            expectedKind: PreviewKind.RemoveDeadCode);
 }

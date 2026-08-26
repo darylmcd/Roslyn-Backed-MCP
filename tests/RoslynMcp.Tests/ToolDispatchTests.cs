@@ -119,29 +119,94 @@ public sealed class ToolDispatchTests
             "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
     }
 
+    // preview-token-route-binding-bulk-family: the pre-binding escape test that stood here
+    // (ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance) is RETIRED, per parent Acceptance
+    // bullet 4 of preview-token-apply-route-binding-remaining-families. Every named apply route
+    // backed by IPreviewStore is now bound, so "a route that declares no expectedKind keeps its
+    // pre-binding behavior" is no longer a contract worth pinning -- leaving one unbound is a
+    // defect, not a residue.
+    //
+    // It was briefly re-labelled as an apply_with_verify pin instead of deleted. That was wrong on
+    // the facts: ApplyWithVerifyTool hand-rolls its own gate.RunWriteAsync body and never calls
+    // ToolDispatch.ApplyByTokenAsync (grep returns zero hits), so the renamed test attributed the
+    // pinned behavior to a tool that cannot execute it, and guarded a path no production caller
+    // reaches.
+    //
+    // The permissive-token contract that IS still real -- an Unspecified-kind token redeems
+    // anywhere, which is what out-of-tree IPreviewStore implementers rely on -- stays covered by
+    // ApplyByTokenAsync_UnspecifiedProducer_SkipsGuard_AndApplies and by
+    // ApplyByTokenAsync_UnspecifiedProducer_StillRedeemsOnNewlyBoundRoute below.
+
     /// <summary>
-    /// preview-token-apply-route-provenance: an UNBOUND route (the ~10 apply families that have
-    /// not declared a producer set) performs no enforcement — a concrete, unrelated producer kind
-    /// still redeems. Pins the deliberate residue so it is a visible contract, not an accident.
+    /// preview-token-route-binding-bulk-family: (a)/(b) — the two routes this change binds must
+    /// refuse a foreign token BEFORE the service call, naming the token's real producer family and
+    /// the route it belongs to. Mirrors
+    /// <see cref="ApplyByTokenAsync_IncompatibleProducer_RefusesBeforeServiceCall"/>.
     /// </summary>
     [TestMethod]
-    public async Task ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance()
+    [DataRow(PreviewKind.BulkReplaceType, "bulk_replace_type_apply")]
+    [DataRow(PreviewKind.RemoveDeadCode, "remove_dead_code_apply")]
+    public async Task ApplyByTokenAsync_ForeignTokenOnNewlyBoundRoute_RefusesBeforeServiceCall(
+        PreviewKind routeKind,
+        string invokedRoute)
     {
         var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-unbound", workspaceId: "ws-ub")
+        var serviceCallRan = false;
+        var store = new FakePreviewStore(token: "tok-foreign", workspaceId: "ws-fg")
         {
-            Kind = PreviewKind.FormatRange,
+            Kind = PreviewKind.SymbolRename,
         };
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                previewToken: "tok-foreign",
+                serviceCall: _ =>
+                {
+                    serviceCallRan = true;
+                    return Task.FromResult(new FakeResultDto("must-not-run", 0));
+                },
+                ct: CancellationToken.None,
+                expectedKind: routeKind));
+
+        Assert.IsFalse(serviceCallRan,
+            $"{invokedRoute} must refuse a rename token BEFORE any workspace mutation.");
+        StringAssert.Contains(ex.Message, "rename_preview",
+            "message must name the token's ACTUAL producer");
+        StringAssert.Contains(ex.Message, "rename_apply",
+            "message must name the route the token SHOULD be redeemed through");
+        StringAssert.Contains(ex.Message, invokedRoute,
+            "message must name the route that was wrongly invoked");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-bulk-family: (e) — the surviving permissive escape. An
+    /// out-of-tree <see cref="IPreviewStore"/> implementer (or any not-yet-tagged producer) returns
+    /// the interface default <see cref="PreviewKind.Unspecified"/>; binding these two routes must
+    /// NOT lock such a host out of them.
+    /// </summary>
+    [TestMethod]
+    [DataRow(PreviewKind.BulkReplaceType)]
+    [DataRow(PreviewKind.RemoveDeadCode)]
+    public async Task ApplyByTokenAsync_UnspecifiedProducer_StillRedeemsOnNewlyBoundRoute(
+        PreviewKind routeKind)
+    {
+        var gate = new FakeGate();
+        // Kind left at its default (Unspecified) — the out-of-tree / untagged store shape.
+        var store = new FakePreviewStore(token: "tok-oot", workspaceId: "ws-oot");
 
         var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
             gate,
             store,
-            previewToken: "tok-unbound",
-            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 3)),
-            ct: CancellationToken.None);
+            previewToken: "tok-oot",
+            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 4)),
+            ct: CancellationToken.None,
+            expectedKind: routeKind);
 
         StringAssert.Contains(result, "applied",
-            "A route that declares no expectedKind must keep its pre-binding behavior.");
+            "An out-of-tree IPreviewStore reports Unspecified — 'no provenance claim' — and must " +
+            "stay redeemable on every bound route.");
     }
 
     /// <summary>
@@ -214,6 +279,8 @@ public sealed class ToolDispatchTests
             (PreviewKind.ExtractInterface, "extract_interface_preview", "extract_interface_apply"),
             (PreviewKind.ExtractType, "extract_type_preview", "extract_type_apply"),
             (PreviewKind.MoveTypeToFile, "move_type_to_file_preview", "move_type_to_file_apply"),
+            (PreviewKind.BulkReplaceType, "bulk_replace_type_preview", "bulk_replace_type_apply"),
+            (PreviewKind.RemoveDeadCode, "remove_dead_code_preview", "remove_dead_code_apply"),
         ];
 
         foreach (var (kind, previewTool, applyRoute) in expected)

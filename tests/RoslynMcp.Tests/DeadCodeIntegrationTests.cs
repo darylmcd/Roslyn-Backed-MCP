@@ -55,6 +55,13 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
                 new RoslynMcp.Core.Models.DeadCodeRemovalDto([unusedField.SymbolHandle!]),
                 CancellationToken.None);
 
+            // preview-token-route-binding-bulk-family: (d) — the token must carry its producer
+            // family so remove_dead_code_apply's provenance guard has something to check.
+            Assert.AreEqual(
+                RoslynMcp.Core.Models.PreviewKind.RemoveDeadCode,
+                PreviewStore.PeekKind(preview.PreviewToken),
+                "remove_dead_code_preview must tag its token with PreviewKind.RemoveDeadCode.");
+
             var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);

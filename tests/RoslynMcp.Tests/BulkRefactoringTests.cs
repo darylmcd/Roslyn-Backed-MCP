@@ -29,6 +29,69 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
         Assert.IsFalse(string.IsNullOrWhiteSpace(result.PreviewToken));
     }
 
+    /// <summary>
+    /// preview-token-route-binding-bulk-family: (c)/(d) round-trip through the REAL
+    /// <see cref="RoslynMcp.Core.Services.IPreviewStore"/>. <c>bulk_replace_type_preview</c> must
+    /// tag its token so <c>bulk_replace_type_apply</c>'s provenance guard has something to check;
+    /// an untagged producer would silently keep the pre-binding permissive path.
+    /// </summary>
+    [TestMethod]
+    public async Task BulkReplaceType_Preview_TagsTokenWithBulkReplaceTypeKind()
+    {
+        var result = await BulkRefactoringService.PreviewBulkReplaceTypeAsync(
+            WorkspaceId, "IAnimal", "Shape", null, CancellationToken.None);
+
+        Assert.AreEqual(PreviewKind.BulkReplaceType, PreviewStore.PeekKind(result.PreviewToken),
+            "bulk_replace_type_preview must record its producer family so its apply route can " +
+            "refuse foreign tokens.");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-bulk-family: <c>replace_invocation_preview</c> deliberately
+    /// redeems through the SHARED <c>bulk_replace_type_apply</c> route, and
+    /// <c>ToolDispatch</c>'s <c>expectedKind</c> is single-valued — so it must mint the SAME kind.
+    /// A second enum member here would make one of the two producers' tokens unredeemable.
+    /// </summary>
+    [TestMethod]
+    public async Task ReplaceInvocation_Preview_TagsTokenWithTheSameSharedKind()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(copiedRoot, "SampleLib", "SharedKindFixture.cs"),
+                """
+                namespace SampleLib;
+
+                public static class SharedKindHelper
+                {
+                    public static string Build(int arg1, string arg2) => $"{arg1}-{arg2}";
+                    public static string Generate(string arg2, int arg1) => $"{arg1}-{arg2}";
+                    public static string Caller(int a, string b) => Build(a, b);
+                }
+                """,
+                CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                status.WorkspaceId,
+                oldMethod: "SampleLib.SharedKindHelper.Build(int, string)",
+                newMethod: "SampleLib.SharedKindHelper.Generate(string, int)",
+                scope: null,
+                CancellationToken.None);
+
+            Assert.AreEqual(PreviewKind.BulkReplaceType, PreviewStore.PeekKind(preview.PreviewToken),
+                "replace_invocation_preview shares bulk_replace_type_apply, so it must share the " +
+                "BulkReplaceType kind — a distinct member would be rejected at that route.");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
     [TestMethod]
     public async Task BulkReplaceType_NonExistentType_ThrowsInvalidOperation()
     {

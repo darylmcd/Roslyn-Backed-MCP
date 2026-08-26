@@ -221,6 +221,12 @@ internal static class ToolDispatch
             [PreviewKind.ExtractInterface] = "extract_interface_preview",
             [PreviewKind.ExtractType] = "extract_type_preview",
             [PreviewKind.MoveTypeToFile] = "move_type_to_file_preview",
+            // preview-token-route-binding-bulk-family: `replace_invocation_preview` shares this
+            // kind — it redeems through the same `bulk_replace_type_apply` route — so the map names
+            // the route-eponymous producer. See PreviewKind.BulkReplaceType for why the two
+            // producers deliberately collapse onto one member.
+            [PreviewKind.BulkReplaceType] = "bulk_replace_type_preview",
+            [PreviewKind.RemoveDeadCode] = "remove_dead_code_preview",
         };
 
     /// <summary>
