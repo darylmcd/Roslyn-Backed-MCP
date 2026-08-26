@@ -23,7 +23,7 @@ public static class ParameterObjectTools
     public static Task<string> PreviewParameterObject(
         IWorkspaceExecutionGate gate,
         IParameterObjectService parameterObjectService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Names of method parameters to group, in the order they should appear on the new record's primary constructor. Must contain at least two entries.")] string[] parameterNames,
         [Description("PascalCase name of the new record type (e.g. 'OrderRequest').")] string newTypeName,
         [Description("Optional: absolute path to the source file containing the method declaration")] string? filePath = null,

@@ -26,10 +26,10 @@ public static class ValidationBundleTools
     public static Task<string> ValidateWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Optional: explicit list of changed file paths. Pass as a native JSON array of absolute file paths, not a JSON-encoded string. Example: [\"/abs/path/a.cs\", \"/abs/path/b.cs\"]. When omitted, the change tracker's session-wide change set is used. Empty list means no test discovery.")] string[]? changedFilePaths = null,
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
-        [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the v1.18 shape.")] bool summary = false,
+        [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default: false.")] bool summary = false,
         [Description("Response shape: \"json\" (default) returns the indented JSON envelope; \"markdown\" returns a compact summary table built from the same DTO so the verdict is identical across shapes. Case-insensitive.")] string? responseFormat = null,
         CancellationToken ct = default) =>
         gate.RunReadAsync(workspaceId, async c =>
@@ -52,9 +52,9 @@ public static class ValidationBundleTools
     public static Task<string> ValidateRecentGitChanges(
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
-        [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the full response shape.")] bool summary = false,
+        [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default: false.")] bool summary = false,
         CancellationToken ct = default) =>
         ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
@@ -73,8 +73,8 @@ public static class ValidationBundleTools
     public static Task<string> WorkspaceForkApply(
         IWorkspaceExecutionGate gate,
         IWorkspaceForkApplyService forkApplyService,
-        [Description("The source workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("The preview token returned by an *_preview tool for the source workspace")] string previewToken,
+        [Description("Source workspace session id from workspace_load.")] string workspaceId,
+        [Description("Preview token from any *_preview tool.")] string previewToken,
         [Description("Fork retention policy: drop-on-success, drop-on-failure, drop-always, or keep. Default: drop-on-success.")] string retention = "drop-on-success",
         [Description("When true, runs related tests discovered by validate_workspace. If testFilter is supplied, runs that explicit filter instead.")] bool runTests = false,
         [Description("Optional explicit dotnet test filter to run against the fork when runTests=true.")] string? testFilter = null,

@@ -23,7 +23,7 @@ public static class ChangeSignatureTools
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Operation: 'add', 'remove', 'rename', or 'reorder'.")] string op,
         [Description("Optional: absolute path to the source file containing the method declaration")] string? filePath = null,
         [Description("Optional: 1-based line number of the method declaration")] int? line = null,
