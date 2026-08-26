@@ -204,7 +204,16 @@ public sealed class FixAllService : IFixAllService
         var newSolution = applyOp.ChangedSolution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Fix all '{diagnosticId}' ({scope}): {totalDiagCount} occurrences";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            // preview-token-apply-route-provenance: `diffTruncated: false` preserves the exact
+            // semantic of the prior 4-argument call (PreviewStore defaults the flag to false);
+            // `kind` lets fix_all_apply refuse a token minted by a different producer family.
+            diffTruncated: false,
+            kind: PreviewKind.FixAll);
 
         return new FixAllPreviewDto(
             PreviewToken: token,
