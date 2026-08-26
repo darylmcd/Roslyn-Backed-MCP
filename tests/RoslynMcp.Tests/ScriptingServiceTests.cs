@@ -56,7 +56,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
+            timeoutSecondsOverride: _workerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
         Assert.IsTrue(recovered.Success, recovered.Error);
         Assert.AreEqual("42", recovered.ResultValue);
         Assert.AreEqual(0, service.ActiveEvaluationCount);
@@ -71,7 +71,7 @@ public sealed class ScriptingServiceTests
     /// (row <c>timing-sensitive-test-assertions-flake-under-load</c>). Tests that genuinely assert
     /// timeout behaviour set their own budget explicitly and must not use this.
     /// </summary>
-    private const int WorkerSpawnTolerantTimeoutSeconds = 30;
+    private const int _workerSpawnTolerantTimeoutSeconds = 30;
 
     /// <summary>
     /// A deliberately non-cooperative script has TWO correct terminal shapes and which one wins is
@@ -310,7 +310,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             _ => Interlocked.Increment(ref observedHeartbeats),
-            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
+            timeoutSecondsOverride: _workerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsTrue(result.Success, result.Error);
         Assert.AreEqual("123", result.ResultValue);
@@ -489,7 +489,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
+            timeoutSecondsOverride: _workerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsTrue(result.Success, result.Error);
         Assert.AreEqual("55", result.ResultValue);
@@ -504,7 +504,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
+            timeoutSecondsOverride: _workerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Error?.Contains("InvalidOperationException", StringComparison.Ordinal), result.Error);
@@ -520,7 +520,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
+            timeoutSecondsOverride: _workerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsFalse(result.Success);
         Assert.IsNotNull(result.CompilationErrors);
