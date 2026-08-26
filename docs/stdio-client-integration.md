@@ -30,7 +30,39 @@ The official C# SDK performs this discovery-first negotiation automatically and 
 
 ### Response correlation
 
-RoslynMcp emits no protocol logging frames and workspace load/reload/close do not claim that the static resource catalog changed. Concurrent clients must still correlate responses by request `id`; operational logs remain on stderr. Operators can opt into secret-safe structured unexpected-failure events with `ROSLYNMCP_OBSERVABILITY_SINK=stderr`.
+RoslynMcp emits no protocol logging frames and workspace load/reload/close do not claim that the static resource catalog changed. Concurrent clients must still correlate responses by request `id`; operational logs remain on stderr. See [Operator observability](#operator-observability) for diagnostic sinks and correlation identifiers.
+
+## Operator observability
+
+`stdout` is reserved for MCP frames. The normal enabled `ILogger` stream goes to `stderr` with UTC
+timestamps and request scopes. Configure verbosity with the standard .NET environment keys:
+`Logging__LogLevel__Default=Debug` changes the default, while a category override such as
+`Logging__LogLevel__RoslynMcp=Debug` narrows the additional volume.
+
+`ROSLYNMCP_OBSERVABILITY_SINK` adds an operator-controlled diagnostic projection without changing
+the MCP protocol surface:
+
+| Value | Additional output |
+|---|---|
+| `disabled` (default) | None. Normal operational logs still go to `stderr`. |
+| `stderr` | Secret-safe JSON for unexpected failures is added to `stderr`. |
+| `file` | The full enabled `ILogger` stream is written as JSON lines under the per-user metadata root's `logs/` directory. Each process owns a 5 MiB current file plus one rotated file. |
+
+The file path is independent of the process working directory:
+
+| Platform/configuration | Log directory |
+|---|---|
+| Windows default | `%LOCALAPPDATA%/roslyn-mcp/logs/` |
+| `XDG_STATE_HOME` set | `$XDG_STATE_HOME/roslyn-mcp/logs/` |
+| Other fallback | The platform `LocalApplicationData/roslyn-mcp/logs/` directory; the system temp directory is the last resort when no local-application-data path exists. |
+
+JSON-lines records contain `ts`, `level`, `category`, `eventId`, `message`, and `correlationId`.
+Tool-call completion and failure records carry an outcome and elapsed milliseconds. The same request
+correlation identifier appears in public unexpected-error envelopes, so an operator can join a
+client-visible failure to local records without exposing exception messages or stack text.
+
+Use `server_heartbeat` for a cheap connection-state probe and `server_info` for connection state,
+version, capabilities, and surface counts. Neither requires a loaded workspace.
 
 ## Parameter naming
 
@@ -162,7 +194,7 @@ Console.WriteLine(ReadResponse(2));
 - **"Server not initialized"**: you skipped the `notifications/initialized` step after the `initialize` response.
 - **Parse errors on line 1**: you sent LSP `Content-Length:` headers. Drop them — NDJSON is one JSON object per line.
 - **`workspaceId` NotFound**: the host restarted; reload with `workspace_load`.
-- **No response at all**: check stderr. The server logs load errors and per-tool warnings there.
+- **No response at all**: check stderr, or the configured `file` sink. The server logs load errors and per-tool warnings there.
 
 ## Next steps
 

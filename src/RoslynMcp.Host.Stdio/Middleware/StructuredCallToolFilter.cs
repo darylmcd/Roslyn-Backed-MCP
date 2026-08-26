@@ -83,6 +83,11 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class StructuredCallToolFilter
 {
+    private static readonly EventId _toolCompletedEvent = new(2101, "ToolCompleted");
+    private static readonly EventId _toolCancelledEvent = new(2102, "ToolCancelled");
+    private static readonly EventId _toolInputRequiredEvent = new(2103, "ToolInputRequired");
+    private static readonly EventId _toolFailedEvent = new(2104, "ToolFailed");
+
     /// <summary>
     /// Decorator factory matching the SDK's <c>McpRequestFilter&lt;TParams, TResult&gt;</c>
     /// contract: receive <paramref name="next"/> (the handler already bound to the selected
@@ -105,6 +110,9 @@ internal static class StructuredCallToolFilter
 
             using var metricsScope = AmbientGateMetrics.BeginRequest();
             using var serverScope = RequestMcpServerContext.Begin(context.Server);
+            using var loggingScope = logger?.BeginScope(
+                "correlationId={CorrelationId}",
+                RequestCorrelationContext.Current ?? "unavailable");
             var stopwatch = Stopwatch.StartNew();
 
             try
@@ -301,9 +309,13 @@ internal static class StructuredCallToolFilter
                 }
 
                 var result = await next(context, cancellationToken).ConfigureAwait(false);
-                stopwatch.Stop();
-                CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
-                logger?.LogInformation("Tool {ToolName} completed successfully", toolName);
+                var elapsedMs = StopAndRecordElapsed(stopwatch);
+                logger?.LogInformation(
+                    _toolCompletedEvent,
+                    "Tool {ToolName} completed; outcome={Outcome}; elapsedMs={ElapsedMs}",
+                    toolName,
+                    "success",
+                    elapsedMs);
                 return InjectMetaIntoContent(
                     ApplyProtocolResultShape(context, result),
                     toolName);
@@ -312,7 +324,13 @@ internal static class StructuredCallToolFilter
             {
                 // Cancellation is a cooperative signal, not a tool error. Let the SDK
                 // translate it into the protocol-level cancellation envelope.
-                logger?.LogWarning("Tool {ToolName} was cancelled", toolName);
+                var elapsedMs = StopAndRecordElapsed(stopwatch);
+                logger?.LogWarning(
+                    _toolCancelledEvent,
+                    "Tool {ToolName} ended; outcome={Outcome}; elapsedMs={ElapsedMs}",
+                    toolName,
+                    "cancelled",
+                    elapsedMs);
                 throw;
             }
             catch (InputRequiredException inputRequired)
@@ -329,13 +347,18 @@ internal static class StructuredCallToolFilter
                     inputRequired,
                     context.Params?.Arguments,
                     ElicitationAllowlistPolicy.WorkspaceIdParameterName);
-                logger?.LogInformation("Tool {ToolName} returned an input-required signal", toolName);
+                var elapsedMs = StopAndRecordElapsed(stopwatch);
+                logger?.LogInformation(
+                    _toolInputRequiredEvent,
+                    "Tool {ToolName} ended; outcome={Outcome}; elapsedMs={ElapsedMs}",
+                    toolName,
+                    "input-required",
+                    elapsedMs);
                 throw;
             }
             catch (Exception ex)
             {
-                stopwatch.Stop();
-                CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+                var elapsedMs = StopAndRecordElapsed(stopwatch);
 
                 var isInternalError = IsInternalError(ex);
                 var level = isInternalError ? LogLevel.Error : LogLevel.Warning;
@@ -349,10 +372,11 @@ internal static class StructuredCallToolFilter
 
                 logger?.Log(
                     level,
-                    "Tool {ToolName} failed with {FailureKind}; correlationId={CorrelationId}",
+                    _toolFailedEvent,
+                    "Tool {ToolName} failed; outcome={Outcome}; elapsedMs={ElapsedMs}",
                     toolName,
                     isInternalError ? "unexpected-error" : "expected-error",
-                    RequestCorrelationContext.Current ?? "unavailable");
+                    elapsedMs);
 
                 // tool-call-error-envelope-wire-contract: failure envelopes are era-shaped
                 // exactly like success envelopes. Without this, a legacy (2025-11-25) session
@@ -362,6 +386,13 @@ internal static class StructuredCallToolFilter
                 return ApplyProtocolResultShape(context, BuildErrorResult(toolName, ex));
             }
         };
+    }
+
+    private static long StopAndRecordElapsed(Stopwatch stopwatch)
+    {
+        stopwatch.Stop();
+        CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
+        return stopwatch.ElapsedMilliseconds;
     }
 
     /// <summary>

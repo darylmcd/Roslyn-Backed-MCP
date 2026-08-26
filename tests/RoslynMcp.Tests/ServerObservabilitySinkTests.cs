@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
@@ -126,10 +127,63 @@ public sealed class ServerObservabilitySinkTests
         Assert.AreEqual(
             ServerObservabilitySinkKind.Stderr,
             ServerObservabilityOptions.Parse(" stderr ").Sink);
+        Assert.AreEqual(
+            ServerObservabilitySinkKind.File,
+            ServerObservabilityOptions.Parse(" file ").Sink);
 
         var exception = Assert.ThrowsExactly<ArgumentException>(
             () => ServerObservabilityOptions.Parse(_secretSentinel));
         Assert.IsFalse(exception.Message.Contains(_secretSentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void FileProvider_WritesScopedJsonLinesAndRotatesWithoutExceptionDetail()
+    {
+        var logDirectory = Path.Combine(
+            TestTempRoot.Current,
+            nameof(ServerObservabilitySinkTests),
+            Guid.NewGuid().ToString("N"));
+        var timestamp = new DateTimeOffset(2026, 8, 26, 12, 34, 56, 789, TimeSpan.Zero);
+        using var provider = new JsonLinesFileLoggerProvider(
+            logDirectory,
+            maxFileBytes: 450,
+            processId: 1234,
+            utcNow: () => timestamp);
+        using var loggerFactory = LoggerFactory.Create(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Trace);
+            logging.AddProvider(provider);
+        });
+        var logger = loggerFactory.CreateLogger("Synthetic.Category");
+
+        using (logger.BeginScope("correlationId={CorrelationId}", "correlation-123"))
+        {
+            logger.LogError(
+                new EventId(42, "SyntheticEvent"),
+                new InvalidOperationException(_secretSentinel),
+                "Safe message {Value}",
+                7);
+        }
+
+        var firstLine = File.ReadLines(provider.FilePath).Single();
+        using (var document = JsonDocument.Parse(firstLine))
+        {
+            var root = document.RootElement;
+            Assert.AreEqual("2026-08-26T12:34:56.789Z", root.GetProperty("ts").GetString());
+            Assert.AreEqual("Error", root.GetProperty("level").GetString());
+            Assert.AreEqual("Synthetic.Category", root.GetProperty("category").GetString());
+            Assert.AreEqual(42, root.GetProperty("eventId").GetInt32());
+            Assert.AreEqual("Safe message 7", root.GetProperty("message").GetString());
+            Assert.AreEqual("correlation-123", root.GetProperty("correlationId").GetString());
+        }
+
+        Assert.IsFalse(firstLine.Contains(_secretSentinel, StringComparison.Ordinal));
+
+        logger.LogWarning("{Payload}", new string('x', 500));
+
+        Assert.IsTrue(File.Exists(provider.RotatedFilePath));
+        Assert.AreEqual(firstLine, File.ReadLines(provider.RotatedFilePath).Single());
+        Assert.HasCount(1, File.ReadLines(provider.FilePath).ToArray());
     }
 
     private sealed class CapturingSink : IServerObservabilitySink

@@ -184,8 +184,12 @@ remain optional literal `env` overrides.
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview-token TTL |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
 | `ROSLYNMCP_TOOL_TIERS` | `stable,experimental` | Registered MCP surface tiers; set `stable` to expose the closed stable-only workflow (currently 94 callable tools) to clients that eagerly load discovery definitions; previews whose apply route is experimental are omitted, and experimental requires the stable baseline |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | `disabled` | Operator-side diagnostics: `disabled`, structured unexpected failures on `stderr`, or the full enabled `ILogger` stream as bounded JSON lines with `file` |
 
 Copy-ready examples live in [docs/mcp-json-examples/README.md](docs/mcp-json-examples/README.md). The full runtime/config surface is documented in [ai_docs/runtime.md](ai_docs/runtime.md).
+
+For log destinations, verbosity controls, correlation identifiers, and health probes, see the
+[stdio observability contract](docs/stdio-client-integration.md#operator-observability).
 
 ## Security
 

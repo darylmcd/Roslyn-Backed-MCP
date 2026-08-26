@@ -8,6 +8,7 @@ internal enum ServerObservabilitySinkKind
 {
     Disabled,
     Stderr,
+    File,
 }
 
 internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Sink)
@@ -19,8 +20,9 @@ internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Si
         {
             null or "" or "disabled" => new(ServerObservabilitySinkKind.Disabled),
             "stderr" => new(ServerObservabilitySinkKind.Stderr),
+            "file" => new(ServerObservabilitySinkKind.File),
             _ => throw new ArgumentException(
-                $"{EnvironmentVariableName} must be 'disabled' or 'stderr'.",
+                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file'.",
                 nameof(value)),
         };
 }
@@ -71,6 +73,32 @@ internal sealed class StderrServerObservabilitySink : IServerObservabilitySink
     }
 
     private static void WriteToStderr(string json) => Console.Error.WriteLine(json);
+}
+
+internal sealed class FileServerObservabilitySink : IServerObservabilitySink
+{
+    private readonly ILogger _logger;
+
+    public FileServerObservabilitySink(JsonLinesFileLoggerProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        _logger = provider.CreateLogger("RoslynMcp.ServerObservability");
+    }
+
+    public bool IsEnabled => true;
+
+    public void Write(ServerObservabilityEvent diagnosticEvent)
+    {
+        ArgumentNullException.ThrowIfNull(diagnosticEvent);
+        _logger.Log(
+            diagnosticEvent.Level,
+            new EventId(diagnosticEvent.EventId, diagnosticEvent.EventName),
+            "Unexpected {ExceptionCategory} failure; exceptionTypes={ExceptionTypes}; " +
+            "stackFrameCount={StackFrameCount}",
+            diagnosticEvent.Category,
+            string.Join(',', diagnosticEvent.Exception.ExceptionTypes),
+            diagnosticEvent.Exception.StackFrameCount);
+    }
 }
 
 /// <summary>

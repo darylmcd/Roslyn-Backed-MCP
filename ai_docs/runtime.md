@@ -74,7 +74,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
 | `ROSLYNMCP_ON_STALE` | `ExecutionGateOptions.OnStale` (`auto-reload`, `warn`, `off`) | `auto-reload` |
 | `ROSLYNMCP_TOOL_TIERS` | Registered MCP surface support tiers (`stable` or `stable,experimental`) across tools, prompts, and resources; experimental entries require the stable baseline; use `stable` for non-deferring clients | `stable,experimental` |
-| `ROSLYNMCP_OBSERVABILITY_SINK` | Secret-safe structured unexpected-failure diagnostics (`disabled` or local `stderr`); independent of MCP protocol logging | `disabled` |
+| `ROSLYNMCP_OBSERVABILITY_SINK` | Operator-side diagnostics: `disabled`, secret-safe structured unexpected failures on `stderr`, or the full enabled `ILogger` stream as bounded per-process JSON lines under the metadata root with `file`; independent of MCP protocol logging | `disabled` |
 | `ROSLYNMCP_SANCTIONED_ROOTS` | `SecurityOptions.SanctionedRoots` — canonical path-validation and solution-discovery boundary; delimit with `Path.PathSeparator` (`;` Windows, `:` macOS/Linux) | empty (path access denied) |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` |
 | `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `SecurityOptions.AllowRootExpansion` — server opt-in required in addition to a request's `expandSanctionedRoots=true`; widens each configured root by one parent for sibling worktrees | `false` |
@@ -107,8 +107,8 @@ Copy-ready `.mcp.json` examples live under `docs/mcp-json-examples/`.
 ## MCP Runtime Notes
 
 - `stdout` is reserved for MCP protocol traffic.
-- Operational logging goes to `stderr`.
-- For custom stdio clients, see `../docs/stdio-client-integration.md`.
+- Operational logging goes to `stderr`; the opt-in file sink is additive.
+- For custom stdio clients and the consumer-facing observability contract, see `../docs/stdio-client-integration.md#operator-observability`.
 
 ## Roslyn MCP Client Policy (AI sessions)
 
