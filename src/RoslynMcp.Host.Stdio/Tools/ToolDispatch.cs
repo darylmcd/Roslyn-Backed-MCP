@@ -211,6 +211,12 @@ internal static class ToolDispatch
             [PreviewKind.FormatRange] = "format_range_preview",
             [PreviewKind.OrganizeUsings] = "organize_usings_preview",
             [PreviewKind.CodeFix] = "code_fix_preview",
+            [PreviewKind.MultiFileEdit] = "preview_multi_file_edit",
+            [PreviewKind.FileCreate] = "create_file_preview",
+            [PreviewKind.FileDelete] = "delete_file_preview",
+            [PreviewKind.FileMove] = "move_file_preview",
+            [PreviewKind.CodeAction] = "preview_code_action",
+            [PreviewKind.FixAll] = "fix_all_preview",
         };
 
     /// <summary>

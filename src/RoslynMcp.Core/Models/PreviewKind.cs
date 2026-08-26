@@ -40,4 +40,22 @@ public enum PreviewKind
 
     /// <summary>A diagnostic code-fix preview.</summary>
     CodeFix,
+
+    /// <summary>A batched multi-file text-edit preview.</summary>
+    MultiFileEdit,
+
+    /// <summary>A source-file creation preview.</summary>
+    FileCreate,
+
+    /// <summary>A source-file deletion preview.</summary>
+    FileDelete,
+
+    /// <summary>A source-file move/rename preview.</summary>
+    FileMove,
+
+    /// <summary>A Roslyn code-action preview.</summary>
+    CodeAction,
+
+    /// <summary>A solution-wide fix-all preview.</summary>
+    FixAll,
 }
