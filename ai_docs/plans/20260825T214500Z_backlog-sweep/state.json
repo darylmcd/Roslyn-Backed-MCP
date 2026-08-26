@@ -565,7 +565,7 @@
     {
       "id": "preview-token-route-binding-multifile-codeaction",
       "order": 2.02,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 4,
       "testFilesAdded": 1,
       "estimatedContextTokens": 45000,
@@ -592,12 +592,15 @@
       "rowsClosedCount": 0,
       "fileSetHash": "aff5e2266345dd47ca8a7ff52e619b77bae791480b29c2d7dfc9651f38191e73",
       "stanzaHash": "d3a706887a18924e7e54c97bd7d89f64b390c02aa8f83a84fe75a18ba536aae3",
-      "reviewedStanzaHash": "d3a706887a18924e7e54c97bd7d89f64b390c02aa8f83a84fe75a18ba536aae3"
+      "reviewedStanzaHash": "d3a706887a18924e7e54c97bd7d89f64b390c02aa8f83a84fe75a18ba536aae3",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1376",
+      "mergedAt": "2026-08-26T13:50:14Z",
+      "branch": "remediation/preview-token-route-binding-multifile-codeaction"
     },
     {
       "id": "preview-token-route-binding-fileops-fixall",
       "order": 2.03,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 4,
       "testFilesAdded": 1,
       "estimatedContextTokens": 50000,
@@ -624,7 +627,10 @@
       "rowsClosedCount": 0,
       "fileSetHash": "05c676d7b6b3a2cc2ef253bc2d7d995f699a2214a2a1a0859279c87bf7197692",
       "stanzaHash": "da86e68038f1759da143eeb35db08de24559e88acf7ab65e883f45fed2119855",
-      "reviewedStanzaHash": "fc711fcdef18f7b0ec34d837f868381c00627a4a7a1b64815f3a621d018e340f"
+      "reviewedStanzaHash": "fc711fcdef18f7b0ec34d837f868381c00627a4a7a1b64815f3a621d018e340f",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1375",
+      "mergedAt": "2026-08-26T13:50:09Z",
+      "branch": "remediation/preview-token-route-binding-fileops-fixall"
     }
   ],
   "anchorVerification": "partial",
