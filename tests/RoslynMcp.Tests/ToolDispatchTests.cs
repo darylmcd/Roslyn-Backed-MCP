@@ -56,8 +56,7 @@ public sealed class ToolDispatchTests
                     return Task.FromResult(new FakeResultDto("must-not-run", 0));
                 },
                 ct: CancellationToken.None,
-                expectedKind: PreviewKind.SymbolRename,
-                applyRoute: "rename_apply"));
+                expectedKind: PreviewKind.SymbolRename));
 
         Assert.IsFalse(serviceCallRan, "Provenance guard must refuse the apply BEFORE the service call runs.");
         StringAssert.Contains(ex.Message, "code_fix_preview",
@@ -88,8 +87,7 @@ public sealed class ToolDispatchTests
             previewToken: "tok-match",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 1)),
             ct: CancellationToken.None,
-            expectedKind: PreviewKind.SymbolRename,
-            applyRoute: "rename_apply");
+            expectedKind: PreviewKind.SymbolRename);
 
         StringAssert.Contains(result, "applied");
     }
@@ -114,8 +112,7 @@ public sealed class ToolDispatchTests
             previewToken: "tok-untagged",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 2)),
             ct: CancellationToken.None,
-            expectedKind: PreviewKind.SymbolRename,
-            applyRoute: "rename_apply");
+            expectedKind: PreviewKind.SymbolRename);
 
         StringAssert.Contains(result, "applied",
             "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
@@ -144,6 +141,66 @@ public sealed class ToolDispatchTests
 
         StringAssert.Contains(result, "applied",
             "A route that declares no expectedKind must keep its pre-binding behavior.");
+    }
+
+    /// <summary>
+    /// preview-token-route-map-centralization: exhaustiveness pin. Every concrete
+    /// <see cref="PreviewKind"/> member must resolve to BOTH a <c>*_preview</c> tool name (via
+    /// <c>ToolDispatch._previewToolsByKind</c>) and a named <c>*_apply</c> route (via
+    /// <c>ServerSurfaceCatalog.PreviewApplyRoutes</c>). Adding a member without its two companion
+    /// entries fails HERE, at build time, instead of silently mis-directing a caller at redemption
+    /// time. Enumerated rather than hand-listed so the pin cannot go stale.
+    /// </summary>
+    [TestMethod]
+    public void PreviewKindRouteMap_EveryConcreteKind_ResolvesPreviewToolAndApplyRoute()
+    {
+        foreach (var kind in Enum.GetValues<PreviewKind>())
+        {
+            if (kind == PreviewKind.Unspecified)
+            {
+                // "No provenance claim" — permissive by the enum's own contract, deliberately unmapped.
+                continue;
+            }
+
+            var previewTool = ToolDispatch.PreviewToolFor(kind);
+            StringAssert.EndsWith(previewTool, "_preview",
+                $"PreviewKind.{kind} must map to a real *_preview tool name, not a catch-all phrase.");
+
+            var applyRoute = ToolDispatch.ApplyRouteFor(kind);
+            StringAssert.EndsWith(applyRoute, "_apply",
+                $"PreviewKind.{kind} must resolve to a real *_apply route name.");
+            Assert.AreNotEqual("apply_with_verify", applyRoute,
+                $"PreviewKind.{kind} must resolve to its OWN named apply route, not the generic fallback.");
+        }
+    }
+
+    /// <summary>
+    /// preview-token-route-map-centralization: the fail-loud arm. A concrete-but-unmapped kind
+    /// (simulated with an undefined enum value, so no scratch member has to be added) must throw
+    /// and name both map sites, replacing the old silent
+    /// <c>"an untagged *_preview tool"</c> / <c>"apply_with_verify"</c> catch-alls that told the
+    /// caller something factually wrong.
+    /// </summary>
+    [TestMethod]
+    public void PreviewKindRouteMap_UnmappedConcreteKind_ThrowsInsteadOfReportingACatchAll()
+    {
+        const PreviewKind Unmapped = (PreviewKind)999;
+
+        var previewEx = Assert.ThrowsExactly<InvalidOperationException>(
+            () => ToolDispatch.PreviewToolFor(Unmapped));
+        StringAssert.Contains(previewEx.Message, "999",
+            "the failure must name the unmapped member so the fix is mechanical");
+        StringAssert.Contains(previewEx.Message, "_previewToolsByKind",
+            "the failure must point at the kind → *_preview map site");
+        StringAssert.Contains(previewEx.Message, "PreviewApplyRoutes",
+            "the failure must point at the catalog map site too — both need the new entry");
+
+        var applyEx = Assert.ThrowsExactly<InvalidOperationException>(
+            () => ToolDispatch.ApplyRouteFor(Unmapped));
+        StringAssert.Contains(applyEx.Message, "999",
+            "the apply-route half must fail loud on the same unmapped member");
+        Assert.IsFalse(applyEx.Message.Contains("apply_with_verify", StringComparison.Ordinal),
+            "the generic route must no longer be offered as the answer for an unmapped kind");
     }
 
     // Distinguishable payload type so the assertions can inspect JSON structure.
