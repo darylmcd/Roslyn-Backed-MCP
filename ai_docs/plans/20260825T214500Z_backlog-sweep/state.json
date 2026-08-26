@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-08-25T21:53:59.769Z",
-  "backlogSnapshot": "2026-08-25T21:13:14Z",
+  "backlogSnapshot": "2026-08-26T15:14:00Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 2,
@@ -80,7 +80,7 @@
       "notes": null,
       "fileSetHash": "8fa564a62d609d8d4d99c8c7ce58f13e1cbb4eda440630e88e5dad99399b928d",
       "stanzaHash": "e6c74aaa656a402b88847a2aa2830c4763900b66305c5d90481a8a870a93ea9e",
-      "reviewedStanzaHash": "bfddd93dfcf86116f897590995e10bf23d7d0c34602c77cd2e3e94e955bee5b7"
+      "reviewedStanzaHash": "e6c74aaa656a402b88847a2aa2830c4763900b66305c5d90481a8a870a93ea9e"
     },
     {
       "id": "preview-token-route-binding-orchestration-family",
@@ -123,7 +123,7 @@
     {
       "id": "preview-token-route-binding-bulk-family",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "preview-token-apply-route-binding-remaining-families",
       "backlogRowsClosed": [
         "preview-token-apply-route-binding-remaining-families"
@@ -157,10 +157,10 @@
         "preview-token-route-binding-extraction-family",
         "preview-token-route-binding-orchestration-family"
       ],
-      "branch": null,
+      "branch": "remediation/preview-token-route-binding-bulk-family",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1384",
+      "mergedAt": "2026-08-26T15:12:01Z",
       "notes": null,
       "fileSetHash": "91208bf98535be8c493ca802219b53607bbd63d1d90d1c7de1c9c29a5452a601",
       "stanzaHash": "e19393697bd5688b5db67a0d76ed1cb387115193c20ec8199b61b417d185c679",
@@ -627,7 +627,7 @@
       "rowsClosedCount": 0,
       "fileSetHash": "05c676d7b6b3a2cc2ef253bc2d7d995f699a2214a2a1a0859279c87bf7197692",
       "stanzaHash": "da86e68038f1759da143eeb35db08de24559e88acf7ab65e883f45fed2119855",
-      "reviewedStanzaHash": "fc711fcdef18f7b0ec34d837f868381c00627a4a7a1b64815f3a621d018e340f",
+      "reviewedStanzaHash": "da86e68038f1759da143eeb35db08de24559e88acf7ab65e883f45fed2119855",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1375",
       "mergedAt": "2026-08-26T13:50:09Z",
       "branch": "remediation/preview-token-route-binding-fileops-fixall"
@@ -778,7 +778,7 @@
   },
   "conflictGraphInputHash": "63015e3ca7b8d493e849daf6dfdfc55160674e332d488c7522786b2d37ee0dac",
   "planHash": "d299e724d53bc3c584fa06413bae80efb960d8031b23f3374c88b42d462b767d",
-  "backlogSnapshotHash": "58156a68f68211a0ff6e3e0a7b431d23fa8a6ec064fef432a21a219f5e0207a7",
+  "backlogSnapshotHash": "313e7b1ea535337a74fd7374c9b6408afda226191ef8fb5c6e78811eb3f579cc",
   "reviewFindings": {
     "block": 0,
     "warn": 9,
@@ -894,6 +894,8 @@
       "evidence": "Carried forward from cycle 0: shares tests/RoslynMcp.Tests/ParameterDescriptionCanonicalizationTests.cs with initiative 14, and initiative 13 mints a new assembly-wide guard over the same phrasings; unmodeled by the production-file conflict graph."
     }
   ],
-  "reviewedPlanHash": "c2b5eb131e52329d4e9bb4ead370752bebbb32281ea1eac3222fcdf783c51782",
-  "reviewedBacklogSnapshotHash": "3e2bc9e6c8993ce4211693765bc91d8c2856e39970f8c4cac19e464bbbff1f1a"
+  "reviewedPlanHash": "d299e724d53bc3c584fa06413bae80efb960d8031b23f3374c88b42d462b767d",
+  "reviewedBacklogSnapshotHash": "313e7b1ea535337a74fd7374c9b6408afda226191ef8fb5c6e78811eb3f579cc",
+  "completed": true,
+  "completedAt": "2026-08-26T15:14:11.738Z"
 }
