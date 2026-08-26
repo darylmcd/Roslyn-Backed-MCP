@@ -24,14 +24,14 @@ public static class RefactoringTools
     public static Task<string> PreviewRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("The new name for the symbol")] string newName,
         [Description("Optional: absolute path to the source file containing the symbol")] string? filePath = null,
         [Description("Optional: 1-based line number of the symbol to rename")] int? line = null,
         [Description("Optional: 1-based column number of the symbol to rename")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
-        [Description("Item #8 — when true, replace per-file unified diffs with compact one-line summaries. The stored preview still carries every real edit, so rename_apply rewrites all references correctly. Use for high-fan-out symbols (>150 refs) where the full diff exceeds the MCP output cap.")] bool summary = false,
+        [Description("When true, replace per-file unified diffs with compact one-line summaries. The stored preview still carries every real edit, so rename_apply rewrites all references correctly. Use for high-fan-out symbols (>150 refs) where the full diff exceeds the MCP output cap.")] bool summary = false,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
@@ -46,7 +46,7 @@ public static class RefactoringTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by rename_preview")] string previewToken,
+        [Description("Preview token from rename_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -64,8 +64,8 @@ public static class RefactoringTools
     public static Task<string> PreviewOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file.")] string filePath,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
@@ -80,7 +80,7 @@ public static class RefactoringTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by organize_usings_preview")] string previewToken,
+        [Description("Preview token from organize_usings_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -98,8 +98,8 @@ public static class RefactoringTools
     public static Task<string> PreviewFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file.")] string filePath,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
@@ -114,7 +114,7 @@ public static class RefactoringTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by format_document_preview")] string previewToken,
+        [Description("Preview token from format_document_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -132,9 +132,9 @@ public static class RefactoringTools
     public static Task<string> PreviewCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Absolute path to the source file.")] string filePath,
         [Description("1-based line number")] int line,
         [Description("1-based column number")] int column,
         [Description("Optional: curated fix identifier from diagnostic_details")] string? fixId = null,
@@ -152,7 +152,7 @@ public static class RefactoringTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by code_fix_preview")] string previewToken,
+        [Description("Preview token from code_fix_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -171,8 +171,8 @@ public static class RefactoringTools
     public static Task<string> PreviewFormatRange(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file.")] string filePath,
         [Description("1-based start line of the range to format")] int startLine,
         [Description("1-based start column of the range to format")] int startColumn,
         [Description("1-based end line of the range to format")] int endLine,
@@ -192,7 +192,7 @@ public static class RefactoringTools
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by format_range_preview")] string previewToken,
+        [Description("Preview token from format_range_preview.")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -211,7 +211,7 @@ public static class RefactoringTools
     public static Task<string> FormatCheck(
         IWorkspaceExecutionGate gate,
         IFormatVerifyService formatVerifyService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("Optional: restrict the check to a specific project name. Defaults to all projects.")] string? projectName = null,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
