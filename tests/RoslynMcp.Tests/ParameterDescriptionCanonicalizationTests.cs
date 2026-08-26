@@ -11,8 +11,9 @@ namespace RoslynMcp.Tests;
 /// </summary>
 /// <remarks>
 /// Scope is deliberately limited to the tool types swept so far —
-/// <c>param-description-dedupe-edit-file-ops</c> (the first four) plus
-/// <c>param-description-dedupe-validation-signature</c> (the last four). The remaining
+/// <c>param-description-dedupe-edit-file-ops</c>, then
+/// <c>param-description-dedupe-validation-signature</c>, then
+/// <c>param-description-dedupe-refactoring-core</c> (the last four). The remaining
 /// <c>Tools/*.cs</c> files are still unswept, so a repo-wide assertion would red CI; later
 /// slices widen <see cref="SweptToolTypes"/>.
 /// </remarks>
@@ -29,6 +30,10 @@ public sealed class ParameterDescriptionCanonicalizationTests
         typeof(CrossProjectRefactoringTools),
         typeof(ChangeSignatureTools),
         typeof(ParameterObjectTools),
+        typeof(RefactoringTools),
+        typeof(RestructureTools),
+        typeof(ScriptingTools),
+        typeof(OperationTools),
     ];
 
     private const string CanonicalWorkspaceId = "Workspace session id from workspace_load.";
@@ -77,6 +82,11 @@ public sealed class ParameterDescriptionCanonicalizationTests
         (nameof(ParameterObjectTools), "dtoFolders", "native JSON array"),
         (nameof(ChangeSignatureTools), "metadataName", "NOT accepted"),
         (nameof(ChangeSignatureTools), "newOrder", "exactly once"),
+        (nameof(RefactoringTools), "summary", ">150 refs"),
+        (nameof(RestructureTools), "pattern", "__"),
+        (nameof(RestructureTools), "goal", "same syntactic kind"),
+        (nameof(OperationTools), "column", "UX-003"),
+        (nameof(ScriptingTools), "timeoutSeconds", "ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"),
     ];
 
     private static IEnumerable<(Type Type, MethodInfo Method, ParameterInfo Parameter, string Description)> SweptToolParameters()
