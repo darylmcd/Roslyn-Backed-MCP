@@ -14,10 +14,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ImpactSweepTools
 {
+    /// <remarks>
+    /// Pass <c>summary=true</c> (drops per-reference preview text) and/or
+    /// <c>maxItemsPerCategory</c> (caps each list) for high-fan-out symbols where the default
+    /// response exceeds the MCP cap — Jellyfin's 1452-reference <c>BaseItem</c> emits ~886 KB.
+    /// </remarks>
     [McpServerTool(Name = "symbol_impact_sweep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "experimental", true, false,
         "Sweep downstream impact of a symbol change: references + switch-exhaustiveness diagnostics + mapper-suffix callsites."),
-     Description("Sweep downstream impact of a symbol change: references, non-exhaustive switches (CS8509/CS8524/IDE0072), and mapper/converter-suffix callsites. Returns suggested-tasks list. Pass `summary=true` (drops per-ref preview text) and/or `maxItemsPerCategory` (caps each list) for high-fan-out symbols where the default response exceeds the MCP cap (Jellyfin's 1452-ref BaseItem: ~886 KB).")]
+     Description("Sweep downstream impact of a symbol change: references, non-exhaustive switches (CS8509/CS8524/IDE0072), and mapper/converter-suffix callsites. Returns a suggested-tasks list.")]
     public static Task<string> SweepSymbolImpact(
         IWorkspaceExecutionGate gate,
         IImpactSweepService impactSweepService,

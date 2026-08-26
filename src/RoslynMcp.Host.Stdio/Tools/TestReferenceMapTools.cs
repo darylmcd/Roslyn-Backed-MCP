@@ -14,10 +14,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class TestReferenceMapTools
 {
+    /// <remarks>
+    /// Responses paginate via <c>offset</c>/<c>limit</c>; <c>projectName</c> scopes both the
+    /// productive-symbol collection (when the name matches a productive project) and the test
+    /// scan (when it matches a test project).
+    /// </remarks>
     [McpServerTool(Name = "test_reference_map", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
         "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping."),
-     Description("Map productive source symbols to the test methods that reference them statically. Useful for identifying untested public/internal APIs without running tests. Responses paginate via offset/limit; projectName scopes both the productive-symbol collection (when the name matches a productive project) and the test scan (when it matches a test project).")]
+     Description("Map productive source symbols to the test methods that reference them statically, without running tests — identifies untested public/internal APIs.")]
     public static Task<string> BuildTestReferenceMap(
         IWorkspaceExecutionGate gate,
         ITestReferenceMapService testReferenceMapService,
