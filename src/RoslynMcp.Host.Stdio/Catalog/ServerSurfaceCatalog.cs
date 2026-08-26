@@ -66,6 +66,12 @@ public static partial class ServerSurfaceCatalog
             ["set_conditional_property_preview"] = "apply_project_mutation",
             ["remove_central_package_version_preview"] = "apply_project_mutation",
             ["scaffold_test_preview"] = "scaffold_test_apply",
+            // preview-token-route-binding-editing-substrate: gate-forced companions for the
+            // PreviewKind.MultiFileEdit / PreviewKind.FixAll members added in the same change.
+            // ToolDispatch.ApplyRouteFor derives its apply-route half from this dictionary, and
+            // the exhaustiveness pin requires every concrete PreviewKind to resolve through it.
+            ["preview_multi_file_edit"] = "preview_multi_file_edit_apply",
+            ["fix_all_preview"] = "fix_all_apply",
         };
 
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;

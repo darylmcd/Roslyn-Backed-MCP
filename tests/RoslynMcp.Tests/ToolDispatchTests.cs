@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
@@ -162,16 +163,71 @@ public sealed class ToolDispatchTests
                 continue;
             }
 
+            // preview-token-route-binding-editing-substrate: assert catalog MEMBERSHIP, not a
+            // `*_preview` / `*_apply` suffix convention. The live surface breaks that convention
+            // (`preview_code_action` / `apply_code_action`, `preview_multi_file_edit`), so a suffix
+            // check would reject correct mappings while still accepting an invented tool name.
             var previewTool = ToolDispatch.PreviewToolFor(kind);
-            StringAssert.EndsWith(previewTool, "_preview",
-                $"PreviewKind.{kind} must map to a real *_preview tool name, not a catch-all phrase.");
+            Assert.IsTrue(
+                ServerSurfaceCatalog.TryGetTool(previewTool, out var previewEntry),
+                $"PreviewKind.{kind} must map to a tool that actually exists in the server surface, " +
+                $"not a catch-all phrase; '{previewTool}' is not a catalog entry.");
+            Assert.IsTrue(previewEntry!.ReadOnly,
+                $"PreviewKind.{kind} must map to the token-ISSUING preview tool, not a mutating route.");
 
             var applyRoute = ToolDispatch.ApplyRouteFor(kind);
-            StringAssert.EndsWith(applyRoute, "_apply",
-                $"PreviewKind.{kind} must resolve to a real *_apply route name.");
+            Assert.IsTrue(
+                ServerSurfaceCatalog.TryGetTool(applyRoute, out var applyEntry),
+                $"PreviewKind.{kind} must resolve to a tool that actually exists in the server " +
+                $"surface; '{applyRoute}' is not a catalog entry.");
+            Assert.IsFalse(applyEntry!.ReadOnly,
+                $"PreviewKind.{kind} must resolve to a mutating apply route.");
             Assert.AreNotEqual("apply_with_verify", applyRoute,
                 $"PreviewKind.{kind} must resolve to its OWN named apply route, not the generic fallback.");
         }
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-editing-substrate: content pin for the centralized map. The
+    /// exhaustiveness test above proves every concrete kind resolves to SOMETHING real; this one
+    /// proves it resolves to the RIGHT thing, so a copy-paste slip between two neighbouring
+    /// producer families fails a test instead of shipping a misleading mismatch message.
+    /// Hand-listed on purpose — a table derived from the map under test would assert nothing.
+    /// </summary>
+    [TestMethod]
+    public void PreviewKindRouteMap_EachKind_ResolvesItsOwnProducerPair()
+    {
+        (PreviewKind Kind, string PreviewTool, string ApplyRoute)[] expected =
+        [
+            (PreviewKind.SymbolRename, "rename_preview", "rename_apply"),
+            (PreviewKind.FormatDocument, "format_document_preview", "format_document_apply"),
+            (PreviewKind.FormatRange, "format_range_preview", "format_range_apply"),
+            (PreviewKind.OrganizeUsings, "organize_usings_preview", "organize_usings_apply"),
+            (PreviewKind.CodeFix, "code_fix_preview", "code_fix_apply"),
+            (PreviewKind.MultiFileEdit, "preview_multi_file_edit", "preview_multi_file_edit_apply"),
+            (PreviewKind.FileCreate, "create_file_preview", "create_file_apply"),
+            (PreviewKind.FileDelete, "delete_file_preview", "delete_file_apply"),
+            (PreviewKind.FileMove, "move_file_preview", "move_file_apply"),
+            (PreviewKind.CodeAction, "preview_code_action", "apply_code_action"),
+            (PreviewKind.FixAll, "fix_all_preview", "fix_all_apply"),
+        ];
+
+        foreach (var (kind, previewTool, applyRoute) in expected)
+        {
+            Assert.AreEqual(previewTool, ToolDispatch.PreviewToolFor(kind),
+                $"PreviewKind.{kind} is mapped to the wrong *_preview producer.");
+            Assert.AreEqual(applyRoute, ToolDispatch.ApplyRouteFor(kind),
+                $"PreviewKind.{kind} resolves to the wrong apply route.");
+        }
+
+        var concreteKinds = Enum.GetValues<PreviewKind>()
+            .Where(static kind => kind != PreviewKind.Unspecified)
+            .ToArray();
+        CollectionAssert.AreEquivalent(
+            concreteKinds,
+            expected.Select(static row => row.Kind).ToArray(),
+            "A new concrete PreviewKind member must be added to this content pin too — otherwise a " +
+            "typo'd map entry ships silently once the exhaustiveness test is satisfied.");
     }
 
     /// <summary>

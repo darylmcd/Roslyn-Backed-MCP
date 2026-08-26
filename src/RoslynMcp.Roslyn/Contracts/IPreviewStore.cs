@@ -31,6 +31,31 @@ public interface IPreviewStore
     string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated);
 
     /// <summary>
+    /// <b>preview-token-apply-route-provenance:</b> same as the <paramref name="diffTruncated"/>-shaped
+    /// overload, but additionally records a machine-checkable <paramref name="kind"/> discriminator
+    /// identifying which producer family created the token, so an apply route can verify provenance
+    /// before mutating the workspace.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="changes"/>-shaped sibling below already covers producers that hand the
+    /// store a computed diff; this declaration covers the three producers that pass the truncation
+    /// flag directly (<c>EditService</c>, <c>CodeActionService</c>, <c>FixAllService</c>), which
+    /// could not be tagged at all while the concrete <c>PreviewStore</c> implemented this shape
+    /// without the interface declaring it. Default implementation drops <paramref name="kind"/> and
+    /// delegates to the untagged overload, so existing test fakes (and any out-of-tree
+    /// implementations) keep compiling; only stores that actually persist provenance override it.
+    /// </remarks>
+    /// <param name="kind">The producer family that created this preview.</param>
+    string Store(
+        string workspaceId,
+        Solution modifiedSolution,
+        int workspaceVersion,
+        string description,
+        bool diffTruncated,
+        PreviewKind kind)
+        => Store(workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated);
+
+    /// <summary>
     /// Item #4 — convenience overload: derives the truncated flag from the presence of
     /// <see cref="Helpers.SolutionDiffHelper.TruncatedSentinelFilePath"/> in <paramref name="changes"/>.
     /// </summary>
