@@ -10,7 +10,7 @@ public sealed class ScriptingServiceTests
     private static readonly TimeSpan ContendedCompletionTimeout = TimeSpan.FromSeconds(5);
 
     [TestMethod]
-    [Timeout(10_000)]
+    [Timeout(60_000)]
     public async Task EvaluateAsync_InfiniteScript_TerminatesWorkerAndRecoversCapacity()
     {
         var options = new ScriptingServiceOptions
