@@ -120,15 +120,18 @@ public sealed class ToolDispatchTests
     }
 
     /// <summary>
-    /// preview-token-apply-route-provenance: an UNBOUND route (the ~10 apply families that have
-    /// not declared a producer set) performs no enforcement — a concrete, unrelated producer kind
-    /// still redeems. Pins the deliberate residue so it is a visible contract, not an accident.
+    /// preview-token-route-binding-bulk-family: re-scoped from the old
+    /// <c>ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance</c>. "A route that declares no
+    /// expectedKind keeps its pre-binding behavior" is no longer the contract — the named apply
+    /// routes are bound, and leaving one unbound is now a defect, not a residue. What remains
+    /// deliberately unbound is the GENERIC route (<c>apply_with_verify</c>), which must accept a
+    /// token from ANY producer family because it is the documented cross-family escape hatch.
     /// </summary>
     [TestMethod]
-    public async Task ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance()
+    public async Task ApplyByTokenAsync_GenericApplyWithVerifyRoute_AcceptsAnyProducerFamily()
     {
         var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-unbound", workspaceId: "ws-ub")
+        var store = new FakePreviewStore(token: "tok-generic", workspaceId: "ws-gen")
         {
             Kind = PreviewKind.FormatRange,
         };
@@ -136,12 +139,85 @@ public sealed class ToolDispatchTests
         var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
             gate,
             store,
-            previewToken: "tok-unbound",
+            previewToken: "tok-generic",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 3)),
             ct: CancellationToken.None);
 
         StringAssert.Contains(result, "applied",
-            "A route that declares no expectedKind must keep its pre-binding behavior.");
+            "apply_with_verify omits expectedKind on purpose: it is the generic route every " +
+            "producer family may redeem through, including the newly bound bulk and dead-code kinds.");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-bulk-family: (a)/(b) — the two routes this change binds must
+    /// refuse a foreign token BEFORE the service call, naming the token's real producer family and
+    /// the route it belongs to. Mirrors
+    /// <see cref="ApplyByTokenAsync_IncompatibleProducer_RefusesBeforeServiceCall"/>.
+    /// </summary>
+    [TestMethod]
+    [DataRow(PreviewKind.BulkReplaceType, "bulk_replace_type_apply")]
+    [DataRow(PreviewKind.RemoveDeadCode, "remove_dead_code_apply")]
+    public async Task ApplyByTokenAsync_ForeignTokenOnNewlyBoundRoute_RefusesBeforeServiceCall(
+        PreviewKind routeKind,
+        string invokedRoute)
+    {
+        var gate = new FakeGate();
+        var serviceCallRan = false;
+        var store = new FakePreviewStore(token: "tok-foreign", workspaceId: "ws-fg")
+        {
+            Kind = PreviewKind.SymbolRename,
+        };
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+                gate,
+                store,
+                previewToken: "tok-foreign",
+                serviceCall: _ =>
+                {
+                    serviceCallRan = true;
+                    return Task.FromResult(new FakeResultDto("must-not-run", 0));
+                },
+                ct: CancellationToken.None,
+                expectedKind: routeKind));
+
+        Assert.IsFalse(serviceCallRan,
+            $"{invokedRoute} must refuse a rename token BEFORE any workspace mutation.");
+        StringAssert.Contains(ex.Message, "rename_preview",
+            "message must name the token's ACTUAL producer");
+        StringAssert.Contains(ex.Message, "rename_apply",
+            "message must name the route the token SHOULD be redeemed through");
+        StringAssert.Contains(ex.Message, invokedRoute,
+            "message must name the route that was wrongly invoked");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-bulk-family: (e) — the surviving permissive escape. An
+    /// out-of-tree <see cref="IPreviewStore"/> implementer (or any not-yet-tagged producer) returns
+    /// the interface default <see cref="PreviewKind.Unspecified"/>; binding these two routes must
+    /// NOT lock such a host out of them.
+    /// </summary>
+    [TestMethod]
+    [DataRow(PreviewKind.BulkReplaceType)]
+    [DataRow(PreviewKind.RemoveDeadCode)]
+    public async Task ApplyByTokenAsync_UnspecifiedProducer_StillRedeemsOnNewlyBoundRoute(
+        PreviewKind routeKind)
+    {
+        var gate = new FakeGate();
+        // Kind left at its default (Unspecified) — the out-of-tree / untagged store shape.
+        var store = new FakePreviewStore(token: "tok-oot", workspaceId: "ws-oot");
+
+        var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
+            gate,
+            store,
+            previewToken: "tok-oot",
+            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 4)),
+            ct: CancellationToken.None,
+            expectedKind: routeKind);
+
+        StringAssert.Contains(result, "applied",
+            "An out-of-tree IPreviewStore reports Unspecified — 'no provenance claim' — and must " +
+            "stay redeemable on every bound route.");
     }
 
     /// <summary>
@@ -214,6 +290,8 @@ public sealed class ToolDispatchTests
             (PreviewKind.ExtractInterface, "extract_interface_preview", "extract_interface_apply"),
             (PreviewKind.ExtractType, "extract_type_preview", "extract_type_apply"),
             (PreviewKind.MoveTypeToFile, "move_type_to_file_preview", "move_type_to_file_apply"),
+            (PreviewKind.BulkReplaceType, "bulk_replace_type_preview", "bulk_replace_type_apply"),
+            (PreviewKind.RemoveDeadCode, "remove_dead_code_preview", "remove_dead_code_apply"),
         ];
 
         foreach (var (kind, previewTool, applyRoute) in expected)

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -51,7 +52,12 @@ public static class BulkRefactoringTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "bulk_replace_type_apply", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            // Both bulk_replace_type_preview and replace_invocation_preview mint this kind — they
+            // deliberately share this single apply route.
+            expectedKind: PreviewKind.BulkReplaceType);
 
     // replace-invocation-pattern-refactor: method-level ergonomic pair to bulk_replace_type_preview.
     // Rewrites every invocation of FQ.Old(a,b,c) to FQ.New(b,c,a) with argument reorder derived
