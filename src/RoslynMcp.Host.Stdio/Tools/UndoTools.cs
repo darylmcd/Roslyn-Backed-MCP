@@ -17,7 +17,7 @@ public static class UndoTools
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,
         IUndoService undoService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(workspaceId))
@@ -67,7 +67,7 @@ public static class UndoTools
     public static Task<string> RevertApplyBySequence(
         IWorkspaceExecutionGate gate,
         IApplyUndoWorkflowService workflowService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         [Description("The sequence number reported by workspace_changes for the apply you want to revert")] int sequenceNumber,
         CancellationToken ct = default)
     {

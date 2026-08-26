@@ -30,7 +30,7 @@ public static class WorkspaceDriftTool
     public static Task<CallToolResult> WorkspaceDriftCheck(
         IWorkspaceExecutionGate gate,
         IWorkspaceDriftService driftService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
         CancellationToken ct = default)
         => gate.RunReadAsync(
             workspaceId,
