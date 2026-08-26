@@ -23,8 +23,8 @@ public static class EditorConfigTools
     public static Task<string> GetEditorConfigOptions(
         IWorkspaceExecutionGate gate,
         IEditorConfigService editorConfigService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file to inspect")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file to inspect.")] string filePath,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
@@ -39,8 +39,8 @@ public static class EditorConfigTools
     public static Task<string> SetEditorConfigOption(
         IWorkspaceExecutionGate gate,
         IEditorConfigService editorConfigService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to a C# source file whose .editorconfig should be updated")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the C# source file whose .editorconfig should be updated.")] string filePath,
         [Description("EditorConfig key (e.g. dotnet_diagnostic.CA1000.severity)")] string key,
         [Description("Value (e.g. warning, suggestion, silent, none)")] string value,
         CancellationToken ct = default)
