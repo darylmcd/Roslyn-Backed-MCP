@@ -17,17 +17,17 @@ namespace RoslynMcp.Tests;
 public sealed class MethodDescriptionDietServerSurfaceTests
 {
     /// <summary>Per-tool ceiling for a capability statement in this slice.</summary>
-    private const int MaxDescriptionCharacters = 200;
+    private const int _maxDescriptionCharacters = 200;
 
     /// <summary>
     /// Aggregate ceiling for the slice, per the initiative spec. Measured 2,826 chars across
-    /// 5 tools before the diet and 979 after. <see cref="MaxDescriptionCharacters"/> is a
+    /// 5 tools before the diet and 979 after. <see cref="_maxDescriptionCharacters"/> is a
     /// per-tool CEILING, not a target, so the aggregate is not bounded below by 5 x 200; this
     /// constant is the measured post-diet total plus a small drafting headroom.
     /// </summary>
-    private const int MaxAggregateDescriptionCharacters = 1_050;
+    private const int _maxAggregateDescriptionCharacters = 1_050;
 
-    private static readonly Type[] SliceToolTypes =
+    private static readonly Type[] _sliceToolTypes =
     [
         typeof(ServerTools),
         typeof(WorkflowRecommendationTools),
@@ -39,7 +39,7 @@ public sealed class MethodDescriptionDietServerSurfaceTests
     public void SliceToolDescriptions_AreCapabilityStatements()
     {
         var violations = EnumerateSliceTools()
-            .Where(entry => entry.Description.Length > MaxDescriptionCharacters)
+            .Where(entry => entry.Description.Length > _maxDescriptionCharacters)
             .OrderBy(entry => entry.Name, StringComparer.Ordinal)
             .Select(entry => $"{entry.Name}: {entry.Description.Length} chars")
             .ToArray();
@@ -47,7 +47,7 @@ public sealed class MethodDescriptionDietServerSurfaceTests
         Assert.AreEqual(
             0,
             violations.Length,
-            $"Method [Description] for these tools must be <= {MaxDescriptionCharacters} characters " +
+            $"Method [Description] for these tools must be <= {_maxDescriptionCharacters} characters " +
             "(what it does plus the one discriminating trigger); move operational detail to XML " +
             "<remarks>. Violations:\n  " + string.Join("\n  ", violations));
     }
@@ -63,9 +63,9 @@ public sealed class MethodDescriptionDietServerSurfaceTests
             "Expected the slice types to declare [McpServerTool] methods; reflection found none.");
 
         Assert.IsTrue(
-            total <= MaxAggregateDescriptionCharacters,
+            total <= _maxAggregateDescriptionCharacters,
             $"Aggregate method-description budget for the slice is " +
-            $"{MaxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
+            $"{_maxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
     }
 
     [TestMethod]
@@ -98,7 +98,7 @@ public sealed class MethodDescriptionDietServerSurfaceTests
     }
 
     private static IEnumerable<(string Name, string Description)> EnumerateSliceTools()
-        => SliceToolTypes
+        => _sliceToolTypes
             .SelectMany(type => type.GetMethods(
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
             .Select(method => new
