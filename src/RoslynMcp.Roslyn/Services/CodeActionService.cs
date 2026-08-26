@@ -149,7 +149,16 @@ public sealed class CodeActionService : ICodeActionService
         var newSolution = applyOp.ChangedSolution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Code action: {selectedAction.Title}";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        // preview-token-apply-route-provenance: tag the token with its producer family so
+        // apply_code_action can refuse a token minted elsewhere before mutating.
+        // diffTruncated: false reproduces exactly what the untagged 4-argument overload forwarded.
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            diffTruncated: false,
+            kind: PreviewKind.CodeAction);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
