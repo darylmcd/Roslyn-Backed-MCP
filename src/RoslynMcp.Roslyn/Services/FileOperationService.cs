@@ -50,7 +50,15 @@ public sealed class FileOperationService : IFileOperationService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Create file '{Path.GetFileName(fullPath)}' in project '{project.Name}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            // preview-token-apply-route-provenance: record this preview's producer family so
+            // the paired *_apply route can refuse a token minted by a different family.
+            kind: PreviewKind.FileCreate);
 
         _logger.LogInformation("Prepared create-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, null);
@@ -103,7 +111,15 @@ public sealed class FileOperationService : IFileOperationService
         var newSolution = solution.RemoveDocument(document.Id);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Delete file '{Path.GetFileName(fullPath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            // preview-token-apply-route-provenance: record this preview's producer family so
+            // the paired *_apply route can refuse a token minted by a different family.
+            kind: PreviewKind.FileDelete);
 
         _logger.LogInformation("Prepared delete-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, null);
@@ -153,7 +169,15 @@ public sealed class FileOperationService : IFileOperationService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Move file '{Path.GetFileName(sourcePath)}' to '{destinationPath}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            // preview-token-apply-route-provenance: record this preview's producer family so
+            // the paired *_apply route can refuse a token minted by a different family.
+            kind: PreviewKind.FileMove);
 
         _logger.LogInformation("Prepared move-file preview from {SourcePath} to {DestinationPath} in workspace {WorkspaceId}", sourcePath, destinationPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
