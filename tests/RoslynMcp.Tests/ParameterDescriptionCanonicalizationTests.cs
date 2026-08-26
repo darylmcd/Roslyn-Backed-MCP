@@ -10,9 +10,11 @@ namespace RoslynMcp.Tests;
 /// Slice-scoped ratchet for the parameter-description canonicalization sweep.
 /// </summary>
 /// <remarks>
-/// Scope is deliberately limited to the four tool types swept by
-/// <c>param-description-dedupe-edit-file-ops</c>. The remaining <c>Tools/*.cs</c> files are still
-/// unswept, so a repo-wide assertion would red CI; later slices widen <see cref="SweptToolTypes"/>.
+/// Scope is deliberately limited to the tool types swept so far —
+/// <c>param-description-dedupe-edit-file-ops</c> (the first four) plus
+/// <c>param-description-dedupe-validation-signature</c> (the last four). The remaining
+/// <c>Tools/*.cs</c> files are still unswept, so a repo-wide assertion would red CI; later
+/// slices widen <see cref="SweptToolTypes"/>.
 /// </remarks>
 [TestClass]
 public sealed class ParameterDescriptionCanonicalizationTests
@@ -23,12 +25,42 @@ public sealed class ParameterDescriptionCanonicalizationTests
         typeof(FileOperationTools),
         typeof(MSBuildTools),
         typeof(TypeMoveTools),
+        typeof(ValidationBundleTools),
+        typeof(CrossProjectRefactoringTools),
+        typeof(ChangeSignatureTools),
+        typeof(ParameterObjectTools),
     ];
 
     private const string CanonicalWorkspaceId = "Workspace session id from workspace_load.";
 
+    /// <summary>
+    /// (type name, method name, parameter name) triples whose <c>workspaceId</c> description is
+    /// deliberately non-canonical because it carries call-accuracy information the canonical
+    /// one-liner would lose. Mirrors <c>LoadBearingFilePathExceptions</c> in
+    /// <see cref="ParamDescriptionCanonicalFormCodeActionSuppressionTests"/>, but keyed by
+    /// type/method because this ratchet enumerates <see cref="Type"/> rather than tool name,
+    /// and each entry pins its exact allowed text so an exemption is a second canonical form
+    /// rather than an unguarded hole.
+    /// </summary>
+    private static readonly Dictionary<(string Type, string Method, string Parameter), string> _loadBearingWorkspaceIdExceptions =
+        new()
+        {
+            // workspace_fork_apply juggles TWO workspaces; "Source" is the disambiguator.
+            [(nameof(ValidationBundleTools), nameof(ValidationBundleTools.WorkspaceForkApply), "workspaceId")] =
+                "Source workspace session id from workspace_load.",
+        };
+
+    /// <summary>
+    /// The exact <c>workspaceId</c> description a site must carry: the canonical one-liner, or the
+    /// pinned text when the site is a declared load-bearing exception.
+    /// </summary>
+    private static string ExpectedWorkspaceId(string typeName, string methodName, string parameterName) =>
+        _loadBearingWorkspaceIdExceptions.TryGetValue((typeName, methodName, parameterName), out var exempted)
+            ? exempted
+            : CanonicalWorkspaceId;
+
     private static readonly Regex CanonicalPreviewToken =
-        new(@"^Preview token from [a-z0-9_]+_preview\.$", RegexOptions.Compiled);
+        new(@"^Preview token from (?:[a-z0-9_]+_preview\.|any \*_preview tool\.)$", RegexOptions.Compiled);
 
     private static readonly Regex CanonicalPath =
         new(@"^Absolute path to the .+\.$", RegexOptions.Compiled);
@@ -40,6 +72,11 @@ public sealed class ParameterDescriptionCanonicalizationTests
         (nameof(EditTools), "verify", "compile_check"),
         (nameof(EditTools), "autoRevertOnError", "Ignored when verify is false"),
         (nameof(MSBuildTools), "includedNames", "native JSON array"),
+        (nameof(ValidationBundleTools), "changedFilePaths", "native JSON array"),
+        (nameof(ValidationBundleTools), "retention", "drop-on-success"),
+        (nameof(ParameterObjectTools), "dtoFolders", "native JSON array"),
+        (nameof(ChangeSignatureTools), "metadataName", "NOT accepted"),
+        (nameof(ChangeSignatureTools), "newOrder", "exactly once"),
     ];
 
     private static IEnumerable<(Type Type, MethodInfo Method, ParameterInfo Parameter, string Description)> SweptToolParameters()
@@ -79,11 +116,18 @@ public sealed class ParameterDescriptionCanonicalizationTests
 
             switch (parameter.Name)
             {
-                case "workspaceId" when !string.Equals(description, CanonicalWorkspaceId, StringComparison.Ordinal):
-                    violations.Add($"{site}: expected \"{CanonicalWorkspaceId}\", got \"{description}\"");
+                case "workspaceId" when !string.Equals(
+                    description,
+                    ExpectedWorkspaceId(type.Name, method.Name, parameter.Name),
+                    StringComparison.Ordinal):
+                    violations.Add(
+                        $"{site}: expected \"{ExpectedWorkspaceId(type.Name, method.Name, parameter.Name)}\", "
+                        + $"got \"{description}\"");
                     break;
                 case "previewToken" when !CanonicalPreviewToken.IsMatch(description):
-                    violations.Add($"{site}: expected \"Preview token from <tool>_preview.\", got \"{description}\"");
+                    violations.Add(
+                        $"{site}: expected \"Preview token from <tool>_preview.\" or "
+                        + $"\"Preview token from any *_preview tool.\", got \"{description}\"");
                     break;
                 // Optional path parameters (e.g. TypeMoveTools.targetFilePath) keep their
                 // "Optional: ... defaults to ..." form — the defaulting rule is a discriminator,

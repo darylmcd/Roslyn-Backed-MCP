@@ -22,8 +22,8 @@ public static class CrossProjectRefactoringTools
     public static Task<string> PreviewMoveTypeToProject(
         IWorkspaceExecutionGate gate,
         ICrossProjectRefactoringService crossProjectRefactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file containing the type")] string sourceFilePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file containing the type.")] string sourceFilePath,
         [Description("Name of the type declaration to move")] string typeName,
         [Description("Target project name or project file path")] string targetProjectName,
         [Description("Optional: explicit namespace for the moved type. When null and preserveNamespace is false, uses the target project's default namespace.")] string? targetNamespace = null,
@@ -49,8 +49,8 @@ public static class CrossProjectRefactoringTools
     public static Task<string> PreviewExtractInterface(
         IWorkspaceExecutionGate gate,
         ICrossProjectRefactoringService crossProjectRefactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file containing the type")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file containing the type.")] string filePath,
         [Description("Name of the type declaration to extract from")] string typeName,
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
         [Description("Optional: target project name or project file path")] string? targetProjectName = null,
@@ -74,8 +74,8 @@ public static class CrossProjectRefactoringTools
     public static Task<string> PreviewDependencyInversion(
         IWorkspaceExecutionGate gate,
         ICrossProjectRefactoringService crossProjectRefactoringService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file containing the concrete type")] string filePath,
+        [Description("Workspace session id from workspace_load.")] string workspaceId,
+        [Description("Absolute path to the source file containing the concrete type.")] string filePath,
         [Description("Name of the concrete type to invert dependencies around")] string typeName,
         [Description("Target project name or project file path for the extracted interface")] string interfaceProjectName,
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
