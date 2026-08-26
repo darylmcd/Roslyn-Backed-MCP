@@ -211,6 +211,49 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// The fourth producer round-trip, and the one the other three cannot stand in for:
+    /// <c>FixAllService</c> is the single <c>Store</c> overload-switch in this change, so a
+    /// wrong-overload edit there compiles cleanly and silently records
+    /// <see cref="PreviewKind.Unspecified"/> instead of <see cref="PreviewKind.FixAll"/> — the
+    /// exact defect the producer half exists to catch. Split from
+    /// <c>FilePreviews_RecordTheirOwnProducerKind</c> because it needs a diagnostic id with a
+    /// registered FixAll provider rather than a file-operation fixture.
+    /// </summary>
+    /// <remarks>
+    /// IDE0161 (ConvertNamespaceCodeFixProvider) loads reliably from Features, but whether it has
+    /// matches in the sample fixture drifts over time (see
+    /// <c>FixAllServiceGuidanceTests.PreviewFixAll_WithActiveProvider_DoesNotReturnEmptyGuidanceFalsely</c>).
+    /// When it produces no token this test reports <c>Inconclusive</c> rather than passing
+    /// vacuously — a silent no-op here would restore exactly the coverage gap it was added to close.
+    /// </remarks>
+    [TestMethod]
+    public async Task FixAllPreview_RecordsItsOwnProducerKind()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var fixAllPreview = await FixAllService.PreviewFixAllAsync(
+            workspace.WorkspaceId,
+            diagnosticId: "IDE0161",
+            scope: "solution",
+            filePath: null,
+            projectName: null,
+            CancellationToken.None).ConfigureAwait(false);
+
+        if (string.IsNullOrEmpty(fixAllPreview.PreviewToken))
+        {
+            Assert.Inconclusive(
+                "IDE0161 produced no fixable occurrences in the sample fixture, so the FixAll "
+                + "producer tagging could not be exercised. Guidance: "
+                + (fixAllPreview.GuidanceMessage ?? "(none)"));
+        }
+
+        Assert.AreEqual(
+            PreviewKind.FixAll,
+            PreviewStore.PeekKind(fixAllPreview.PreviewToken),
+            "fix_all_preview must mint a FixAll token.");
+    }
+
+    /// <summary>
     /// The move preview's warning-collecting path (<c>updateNamespace: true</c>) shares the same
     /// <c>Store</c> call as the plain move, so tagging must not depend on whether warnings were
     /// collected.
