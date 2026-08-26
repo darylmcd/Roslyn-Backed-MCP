@@ -205,7 +205,7 @@
     {
       "id": "shipped-skills-prefix-batch-c2",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "shipped-skills-hardcode-bare-roslyn-tool-prefix",
       "backlogRowsClosed": [
         "shipped-skills-hardcode-bare-roslyn-tool-prefix"
@@ -232,10 +232,10 @@
       "dependsOn": [
         "shipped-skills-prefix-batch-c1"
       ],
-      "branch": null,
+      "branch": "remediation/shipped-skills-prefix-batch-c2",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1370",
+      "mergedAt": "2026-08-26T03:58:14Z",
       "notes": null,
       "fileSetHash": "f59b3fc9d1562927cb0f0243394fbf13a3f386e89f7345c6dac8f102f6fc6826",
       "stanzaHash": "82a1572816f2db57fba170c52690ed85a289c59f497afee7f0fc368ee6cc34b9",
@@ -460,7 +460,7 @@
     {
       "id": "param-description-dedupe-refactoring-core",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "parentRow": "param-description-dedupe",
       "backlogRowsClosed": [],
       "productionFilesTouched": 3,
@@ -483,10 +483,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/param-description-dedupe-refactoring-core",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1372",
+      "mergedAt": "2026-08-26T03:58:20Z",
       "notes": null,
       "fileSetHash": "365db7dad9666c1b50735abf9702ddd69a074d6b2241c86401db9514950085c8",
       "stanzaHash": "48b066c56b929c4c9a083a185545903b6f22d678cb4b2d0f1a436f82eaf5719c",
@@ -531,7 +531,7 @@
     {
       "id": "preview-token-route-binding-editing-substrate",
       "order": 2.01,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
       "estimatedContextTokens": 32000,
@@ -557,7 +557,10 @@
       "rowsClosedCount": 0,
       "fileSetHash": "d15b1d00ac0b9408575722eb1f3ecf5d8472fb3a755506a232a52332e0669fa7",
       "stanzaHash": "a5fce51f376ff16317df4c8ad375b5a803c8b2c37eff7108395a1e7280b144ad",
-      "reviewedStanzaHash": "a5fce51f376ff16317df4c8ad375b5a803c8b2c37eff7108395a1e7280b144ad"
+      "reviewedStanzaHash": "a5fce51f376ff16317df4c8ad375b5a803c8b2c37eff7108395a1e7280b144ad",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1371",
+      "mergedAt": "2026-08-26T03:26:18Z",
+      "branch": "remediation/preview-token-route-binding-editing-substrate"
     },
     {
       "id": "preview-token-route-binding-multifile-codeaction",
