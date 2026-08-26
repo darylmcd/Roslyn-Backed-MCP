@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -40,7 +41,26 @@ var observabilityOptions = ServerObservabilityOptions.Parse(
 
 // Redirect all logging to stderr so stdout remains clean for MCP protocol
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+builder.Logging.AddConsole(options =>
+{
+    options.FormatterName = ConsoleFormatterNames.Simple;
+    options.LogToStandardErrorThreshold = LogLevel.Trace;
+});
+builder.Services.Configure<SimpleConsoleFormatterOptions>(options =>
+{
+    options.IncludeScopes = true;
+    options.SingleLine = true;
+    options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z' ";
+    options.UseUtcTimestamp = true;
+});
+JsonLinesFileLoggerProvider? fileLoggerProvider = null;
+if (observabilityOptions.Sink == ServerObservabilitySinkKind.File)
+{
+    var metadataRoot = Path.GetDirectoryName(HostProcessMetadataStore.ResolveDefaultPath())
+        ?? throw new InvalidOperationException("The host-process metadata path has no directory.");
+    fileLoggerProvider = new JsonLinesFileLoggerProvider(Path.Combine(metadataRoot, "logs"));
+    builder.Logging.AddProvider(fileLoggerProvider);
+}
 
 // Bind options from environment variables (hardcoded defaults used when env vars are absent)
 // then register the entire host composition root via AddRoslynMcpHostServices — the same
@@ -58,6 +78,10 @@ builder.Services.AddSingleton<IServerObservabilitySink>(_ => observabilityOption
 {
     ServerObservabilitySinkKind.Disabled => new DisabledServerObservabilitySink(),
     ServerObservabilitySinkKind.Stderr => new StderrServerObservabilitySink(),
+    ServerObservabilitySinkKind.File =>
+        new FileServerObservabilitySink(
+            fileLoggerProvider ??
+            throw new InvalidOperationException("The file logger provider was not initialized.")),
     _ => throw new InvalidOperationException("Unsupported server observability sink."),
 });
 builder.Services

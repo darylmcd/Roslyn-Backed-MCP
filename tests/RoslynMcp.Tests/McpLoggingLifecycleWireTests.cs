@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Threading.Channels;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Diagnostics;
 
@@ -10,18 +11,24 @@ namespace RoslynMcp.Tests;
 public sealed class McpLoggingLifecycleWireTests
 {
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(60000)]
     public async Task ProductionHost_EmitsNoProtocolLoggingBeforeOrAfterInitialization()
     {
-        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var hostDll = typeof(HostAssemblyMarker).Assembly.Location;
         Assert.IsTrue(File.Exists(hostDll), $"Build the host before the wire test: {hostDll}");
+        var testRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(McpLoggingLifecycleWireTests),
+            Guid.NewGuid().ToString("N"));
+        var foreignWorkingDirectory = Path.Combine(testRoot, "foreign-cwd");
+        var stateRoot = Path.Combine(testRoot, "state");
+        Directory.CreateDirectory(foreignWorkingDirectory);
 
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo("dotnet", $"\"{hostDll}\"")
             {
-                WorkingDirectory = repositoryRoot,
+                WorkingDirectory = foreignWorkingDirectory,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -29,11 +36,12 @@ public sealed class McpLoggingLifecycleWireTests
                 CreateNoWindow = true,
             },
         };
-        process.StartInfo.Environment[ServerObservabilityOptions.EnvironmentVariableName] = "stderr";
+        process.StartInfo.Environment[ServerObservabilityOptions.EnvironmentVariableName] = "file";
+        process.StartInfo.Environment["XDG_STATE_HOME"] = stateRoot;
         Assert.IsTrue(process.Start());
 
-        var stdout = new ConcurrentQueue<string>();
-        var stderr = new ConcurrentQueue<string>();
+        var stdout = new CapturedLineStream();
+        var stderr = new CapturedLineStream();
         var stdoutPump = PumpLinesAsync(process.StandardOutput, stdout);
         var stderrPump = PumpLinesAsync(process.StandardError, stderr);
 
@@ -41,7 +49,7 @@ public sealed class McpLoggingLifecycleWireTests
         {
             await WaitForLineAsync(stderr, "Startup surface:");
             await Task.Delay(TimeSpan.FromMilliseconds(100));
-            Assert.IsEmpty(stdout, "The host emitted a protocol frame before initialize.");
+            Assert.IsEmpty(stdout.Snapshot(), "The host emitted a protocol frame before initialize.");
 
             await WriteMessageAsync(
                 process,
@@ -74,6 +82,13 @@ public sealed class McpLoggingLifecycleWireTests
                 .GetProperty("logging")
                 .GetBoolean());
 
+            await WriteMessageAsync(
+                process,
+                """
+                {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"workspace_load","arguments":{}}}
+                """);
+            await WaitForResponseAsync(stdout, id: 3);
+
             process.StandardInput.Close();
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
@@ -83,7 +98,7 @@ public sealed class McpLoggingLifecycleWireTests
             await Task.WhenAll(stdoutPump, stderrPump);
         }
 
-        foreach (var line in stdout)
+        foreach (var line in stdout.Snapshot())
         {
             using var document = JsonDocument.Parse(line);
             Assert.IsFalse(
@@ -92,7 +107,65 @@ public sealed class McpLoggingLifecycleWireTests
                 $"Protocol logging frame leaked onto stdout: {line}");
         }
 
-        Assert.IsNotEmpty(stderr, "Operational host logs must remain available on stderr.");
+        Assert.IsNotEmpty(stderr.Snapshot(), "Operational host logs must remain available on stderr.");
+
+        var logDirectory = Path.Combine(stateRoot, "roslyn-mcp", "logs");
+        var logFiles = Directory.GetFiles(logDirectory, "roslyn-mcp-*.jsonl");
+        Assert.HasCount(1, logFiles);
+        var records = File.ReadLines(logFiles[0])
+            .Select(static line => JsonDocument.Parse(line))
+            .ToArray();
+        try
+        {
+            Assert.IsTrue(records.Length > 1, "The file sink must capture the full ILogger stream.");
+            Assert.IsTrue(
+                records.Select(static record => record.RootElement.GetProperty("category").GetString())
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() > 1,
+                "The file sink captured only one logger category instead of the full stream.");
+            var completion = records.Single(record =>
+                record.RootElement.GetProperty("eventId").GetInt32() == 2101 &&
+                record.RootElement.GetProperty("message").GetString() is { } message &&
+                message.Contains("Tool server_info completed", StringComparison.Ordinal));
+            var completionRoot = completion.RootElement;
+            StringAssert.Contains(completionRoot.GetProperty("message").GetString(), "outcome=success");
+            StringAssert.Contains(completionRoot.GetProperty("message").GetString(), "elapsedMs=");
+            var correlationId = completionRoot.GetProperty("correlationId").GetString();
+            Assert.IsNotNull(correlationId);
+            Assert.AreEqual(32, correlationId.Length);
+            Assert.IsTrue(
+                correlationId.All(static value => value is >= '0' and <= '9' or >= 'a' and <= 'f'));
+            var timestamp = completionRoot.GetProperty("ts").GetString();
+            Assert.IsNotNull(timestamp);
+            Assert.IsTrue(timestamp.EndsWith('Z'));
+            Assert.IsTrue(DateTimeOffset.TryParse(timestamp, out _));
+
+            var failure = records.Single(record =>
+                record.RootElement.GetProperty("eventId").GetInt32() == 2104 &&
+                record.RootElement.GetProperty("message").GetString() is { } message &&
+                message.Contains("Tool workspace_load failed", StringComparison.Ordinal));
+            var failureRoot = failure.RootElement;
+            StringAssert.Contains(failureRoot.GetProperty("message").GetString(), "outcome=expected-error");
+            StringAssert.Contains(failureRoot.GetProperty("message").GetString(), "elapsedMs=");
+            var failureCorrelationId = failureRoot.GetProperty("correlationId").GetString();
+            Assert.IsNotNull(failureCorrelationId);
+            Assert.AreEqual(32, failureCorrelationId.Length);
+            Assert.AreNotEqual(
+                correlationId,
+                failureCorrelationId,
+                "Independent tool requests must carry independent correlation ids.");
+        }
+        finally
+        {
+            foreach (var record in records)
+            {
+                record.Dispose();
+            }
+        }
+
+        Assert.IsEmpty(
+            Directory.EnumerateFileSystemEntries(foreignWorkingDirectory).ToArray(),
+            "A foreign-CWD launch must not write logs or metadata into its working directory.");
     }
 
     private static async Task StopProcessAsync(Process process)
@@ -114,15 +187,17 @@ public sealed class McpLoggingLifecycleWireTests
         }
     }
 
-    private static async Task PumpLinesAsync(StreamReader reader, ConcurrentQueue<string> destination)
+    private static async Task PumpLinesAsync(StreamReader reader, CapturedLineStream destination)
     {
         while (await reader.ReadLineAsync() is { } line)
         {
             if (!string.IsNullOrWhiteSpace(line))
             {
-                destination.Enqueue(line);
+                destination.Add(line);
             }
         }
+
+        destination.Complete();
     }
 
     private static async Task WriteMessageAsync(Process process, string json)
@@ -132,45 +207,78 @@ public sealed class McpLoggingLifecycleWireTests
     }
 
     private static async Task<string> WaitForResponseAsync(
-        ConcurrentQueue<string> messages,
-        int id)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            foreach (var message in messages)
+        CapturedLineStream messages,
+        int id) =>
+        await messages.WaitForMatchAsync(
+            message =>
             {
                 using var document = JsonDocument.Parse(message);
-                if (document.RootElement.TryGetProperty("id", out var responseId) &&
+                return document.RootElement.TryGetProperty("id", out var responseId) &&
                     responseId.ValueKind == JsonValueKind.Number &&
-                    responseId.GetInt32() == id)
-                {
-                    return message;
-                }
-            }
-
-            await Task.Delay(20);
-        }
-
-        Assert.Fail($"Timed out waiting for MCP response id {id}. stdout={string.Join(" | ", messages)}");
-        return string.Empty;
-    }
+                    responseId.GetInt32() == id;
+            },
+            $"MCP response id {id}",
+            TimeSpan.FromSeconds(20));
 
     private static async Task WaitForLineAsync(
-        ConcurrentQueue<string> lines,
-        string expectedText)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (lines.Any(line => line.Contains(expectedText, StringComparison.Ordinal)))
-            {
-                return;
-            }
+        CapturedLineStream lines,
+        string expectedText) =>
+        _ = await lines.WaitForMatchAsync(
+            line => line.Contains(expectedText, StringComparison.Ordinal),
+            $"stderr marker '{expectedText}'",
+            TimeSpan.FromSeconds(20));
 
-            await Task.Delay(20);
+    private sealed class CapturedLineStream
+    {
+        private readonly ConcurrentQueue<string> _history = new();
+        private readonly Channel<string> _arrivals = Channel.CreateUnbounded<string>(
+            new UnboundedChannelOptions
+            {
+                SingleReader = true,
+                SingleWriter = true,
+            });
+
+        public void Add(string line)
+        {
+            _history.Enqueue(line);
+            Assert.IsTrue(_arrivals.Writer.TryWrite(line));
         }
 
-        Assert.Fail($"Timed out waiting for stderr marker '{expectedText}'. stderr={string.Join(" | ", lines)}");
+        public void Complete() => _arrivals.Writer.TryComplete();
+
+        public string[] Snapshot() => _history.ToArray();
+
+        public async Task<string> WaitForMatchAsync(
+            Func<string, bool> predicate,
+            string description,
+            TimeSpan timeout)
+        {
+            using var timeoutSource = new CancellationTokenSource(timeout);
+            try
+            {
+                await foreach (var line in _arrivals.Reader.ReadAllAsync(timeoutSource.Token))
+                {
+                    if (predicate(line))
+                    {
+                        return line;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
+            {
+            }
+
+            var snapshot = Snapshot();
+            var boundaryMatch = snapshot.FirstOrDefault(predicate);
+            if (boundaryMatch is not null)
+            {
+                return boundaryMatch;
+            }
+
+            Assert.Fail(
+                $"Timed out waiting for {description}. " +
+                $"Captured before the timeout boundary={string.Join(" | ", snapshot)}");
+            return string.Empty;
+        }
     }
 }
