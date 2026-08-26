@@ -9,10 +9,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class CouplingAnalysisTools
 {
+    /// <remarks>
+    /// <para>AfferentCoupling Ca counts incoming references (types that depend on this type); EfferentCoupling Ce counts outgoing references (types this type depends on). Instability I = Ce / (Ca + Ce) ranges 0 (maximally stable) to 1 (maximally unstable), and drives the stable / balanced / unstable / isolated classification.</para>
+    /// </remarks>
     [McpServerTool(Name = "get_coupling_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "stable", true, false,
         "Measure per-type afferent/efferent coupling + Martin's instability index."),
-     Description("Compute per-type coupling metrics (Martin): AfferentCoupling Ca (incoming refs), EfferentCoupling Ce (outgoing refs), Instability I = Ce / (Ca + Ce). Classifies types as stable / balanced / unstable / isolated. Companion to get_cohesion_metrics — cohesion looks inward, coupling looks outward.")]
+     Description("Compute per-type Martin coupling metrics: AfferentCoupling Ca, EfferentCoupling Ce, Instability I = Ce/(Ca+Ce). Classifies types stable / balanced / unstable / isolated. Companion to get_cohesion_metrics — cohesion looks inward, coupling outward.")]
     public static Task<string> GetCouplingMetrics(
         IWorkspaceExecutionGate gate,
         ICouplingAnalysisService couplingAnalysisService,
