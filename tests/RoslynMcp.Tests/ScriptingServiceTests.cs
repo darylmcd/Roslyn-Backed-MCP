@@ -56,12 +56,22 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: 5).ConfigureAwait(false);
+            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
         Assert.IsTrue(recovered.Success, recovered.Error);
         Assert.AreEqual("42", recovered.ResultValue);
         Assert.AreEqual(0, service.ActiveEvaluationCount);
         Assert.AreEqual(0, service.AbandonedEvaluationCount);
     }
+
+    /// <summary>
+    /// Script budget for tests whose script completes immediately and which are therefore asserting
+    /// an OUTCOME, not a latency. The cost these must absorb is worker-process spawn plus first-use
+    /// Roslyn script compilation, which under parallel-shard CI contention has been measured past a
+    /// 5-second budget and turned a correct result into a false timeout
+    /// (row <c>timing-sensitive-test-assertions-flake-under-load</c>). Tests that genuinely assert
+    /// timeout behaviour set their own budget explicitly and must not use this.
+    /// </summary>
+    private const int WorkerSpawnTolerantTimeoutSeconds = 30;
 
     /// <summary>
     /// A deliberately non-cooperative script has TWO correct terminal shapes and which one wins is
@@ -284,7 +294,7 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
-    [Timeout(10_000)]
+    [Timeout(60_000)]
     public async Task EvaluateAsync_LongRunningAsyncScript_ReportsHeartbeatProgress()
     {
         var options = new ScriptingServiceOptions
@@ -300,7 +310,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             _ => Interlocked.Increment(ref observedHeartbeats),
-            timeoutSecondsOverride: 5).ConfigureAwait(false);
+            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsTrue(result.Success, result.Error);
         Assert.AreEqual("123", result.ResultValue);
@@ -309,7 +319,7 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
-    [Timeout(10_000)]
+    [Timeout(60_000)]
     public async Task EvaluateAsync_CooperativeBudgetCancellation_ReturnsTimeoutInsteadOfRuntimeError()
     {
         var service = new ScriptingService(
@@ -329,7 +339,7 @@ public sealed class ScriptingServiceTests
             timeoutSecondsOverride: 1).ConfigureAwait(false);
 
         Assert.IsFalse(result.Success);
-        StringAssert.Contains(result.Error ?? string.Empty, "timed out after 1 seconds");
+        AssertTerminalTimeoutShape(result.Error ?? string.Empty);
         Assert.IsFalse(
             result.Error?.Contains("Runtime error", StringComparison.Ordinal) ?? false,
             "Cooperative budget cancellation must be classified at the supervisor boundary.");
@@ -479,7 +489,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: 5).ConfigureAwait(false);
+            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsTrue(result.Success, result.Error);
         Assert.AreEqual("55", result.ResultValue);
@@ -494,7 +504,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: 5).ConfigureAwait(false);
+            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Error?.Contains("InvalidOperationException", StringComparison.Ordinal), result.Error);
@@ -510,7 +520,7 @@ public sealed class ScriptingServiceTests
             imports: null,
             CancellationToken.None,
             onProgress: null,
-            timeoutSecondsOverride: 5).ConfigureAwait(false);
+            timeoutSecondsOverride: WorkerSpawnTolerantTimeoutSeconds).ConfigureAwait(false);
 
         Assert.IsFalse(result.Success);
         Assert.IsNotNull(result.CompilationErrors);
@@ -520,7 +530,7 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
-    [Timeout(10_000)]
+    [Timeout(60_000)]
     public async Task EvaluateAsync_OuterCancellation_PropagatesPromptly()
     {
         var options = new ScriptingServiceOptions { WatchdogGraceSeconds = 30 };
@@ -536,7 +546,7 @@ public sealed class ScriptingServiceTests
         try
         {
             Assert.IsTrue(
-                SpinWait.SpinUntil(() => service.ActiveEvaluationCount == 1, TimeSpan.FromSeconds(2)),
+                SpinWait.SpinUntil(() => service.ActiveEvaluationCount == 1, TimeSpan.FromSeconds(20)),
                 "The evaluation should acquire its capacity slot before cancellation.");
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -545,7 +555,10 @@ public sealed class ScriptingServiceTests
                 await evaluation.ConfigureAwait(false)).ConfigureAwait(false);
             sw.Stop();
 
-            Assert.IsTrue(sw.Elapsed.TotalSeconds < 3, $"Outer cancellation should propagate quickly, took {sw.Elapsed.TotalSeconds:F1}s");
+            // "Promptly" is relative to the 30s script budget this evaluation was given: the point
+            // is that outer cancellation does NOT wait for that budget to expire. A tight absolute
+            // bound measures runner load instead (row timing-sensitive-test-assertions-flake-under-load).
+            Assert.IsTrue(sw.Elapsed.TotalSeconds < 15, $"Outer cancellation should propagate well before the 30s script budget, took {sw.Elapsed.TotalSeconds:F1}s");
             Assert.AreEqual(0, service.ActiveEvaluationCount, "Outer cancellation should release the capacity slot.");
         }
         finally
