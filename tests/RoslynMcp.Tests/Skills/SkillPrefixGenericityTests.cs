@@ -32,11 +32,13 @@ public sealed class SkillPrefixGenericityTests
     /// <summary>
     /// Shrink ratchet. Five shipped skills still carried the pre-fix bare-prefix precheck when this
     /// gate landed (<c>semantic-find</c>, <c>test-coverage</c>, <c>trace-flow</c>,
-    /// <c>version-bump</c>, <c>workspace-health</c>). Batch c1 swept the first three, leaving
-    /// <c>version-bump</c> and <c>workspace-health</c>. The allowlist may only ever get SMALLER —
-    /// lowering this constant as the sweep batches land is the intended edit; raising it is not.
+    /// <c>version-bump</c>, <c>workspace-health</c>). Batch c1 swept the first three and batch c2
+    /// swept the last two, so the amnesty is now CLOSED: <c>residualUnsweptAllowlist</c> is empty
+    /// and every shipped skill is subject to the prefix-agnostic rule with zero exemptions. The
+    /// allowlist may only ever get SMALLER — this constant is pinned at 0 and raising it is not an
+    /// allowed edit; a new unswept skill must be swept, not re-amnestied.
     /// </summary>
-    private const int ResidualUnsweptRatchet = 2;
+    private const int ResidualUnsweptRatchet = 0;
 
     [TestMethod]
     public void PrefixAgnosticPolicy_IsPopulated()
