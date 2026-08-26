@@ -210,6 +210,10 @@ public sealed class ToolDispatchTests
             (PreviewKind.FileMove, "move_file_preview", "move_file_apply"),
             (PreviewKind.CodeAction, "preview_code_action", "apply_code_action"),
             (PreviewKind.FixAll, "fix_all_preview", "fix_all_apply"),
+            (PreviewKind.ExtractMethod, "extract_method_preview", "extract_method_apply"),
+            (PreviewKind.ExtractInterface, "extract_interface_preview", "extract_interface_apply"),
+            (PreviewKind.ExtractType, "extract_type_preview", "extract_type_apply"),
+            (PreviewKind.MoveTypeToFile, "move_type_to_file_preview", "move_type_to_file_apply"),
         ];
 
         foreach (var (kind, previewTool, applyRoute) in expected)

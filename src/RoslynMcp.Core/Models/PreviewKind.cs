@@ -58,4 +58,16 @@ public enum PreviewKind
 
     /// <summary>A solution-wide fix-all preview.</summary>
     FixAll,
+
+    /// <summary>A single-block extract-method preview.</summary>
+    ExtractMethod,
+
+    /// <summary>A same-project interface-extraction preview.</summary>
+    ExtractInterface,
+
+    /// <summary>A type-extraction preview.</summary>
+    ExtractType,
+
+    /// <summary>A move-type-to-its-own-file preview.</summary>
+    MoveTypeToFile,
 }
