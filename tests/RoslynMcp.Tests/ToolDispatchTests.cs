@@ -119,34 +119,23 @@ public sealed class ToolDispatchTests
             "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
     }
 
-    /// <summary>
-    /// preview-token-route-binding-bulk-family: re-scoped from the old
-    /// <c>ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance</c>. "A route that declares no
-    /// expectedKind keeps its pre-binding behavior" is no longer the contract — the named apply
-    /// routes are bound, and leaving one unbound is now a defect, not a residue. What remains
-    /// deliberately unbound is the GENERIC route (<c>apply_with_verify</c>), which must accept a
-    /// token from ANY producer family because it is the documented cross-family escape hatch.
-    /// </summary>
-    [TestMethod]
-    public async Task ApplyByTokenAsync_GenericApplyWithVerifyRoute_AcceptsAnyProducerFamily()
-    {
-        var gate = new FakeGate();
-        var store = new FakePreviewStore(token: "tok-generic", workspaceId: "ws-gen")
-        {
-            Kind = PreviewKind.FormatRange,
-        };
-
-        var result = await ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
-            gate,
-            store,
-            previewToken: "tok-generic",
-            serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 3)),
-            ct: CancellationToken.None);
-
-        StringAssert.Contains(result, "applied",
-            "apply_with_verify omits expectedKind on purpose: it is the generic route every " +
-            "producer family may redeem through, including the newly bound bulk and dead-code kinds.");
-    }
+    // preview-token-route-binding-bulk-family: the pre-binding escape test that stood here
+    // (ApplyByTokenAsync_UnboundRoute_DoesNotEnforceProvenance) is RETIRED, per parent Acceptance
+    // bullet 4 of preview-token-apply-route-binding-remaining-families. Every named apply route
+    // backed by IPreviewStore is now bound, so "a route that declares no expectedKind keeps its
+    // pre-binding behavior" is no longer a contract worth pinning -- leaving one unbound is a
+    // defect, not a residue.
+    //
+    // It was briefly re-labelled as an apply_with_verify pin instead of deleted. That was wrong on
+    // the facts: ApplyWithVerifyTool hand-rolls its own gate.RunWriteAsync body and never calls
+    // ToolDispatch.ApplyByTokenAsync (grep returns zero hits), so the renamed test attributed the
+    // pinned behavior to a tool that cannot execute it, and guarded a path no production caller
+    // reaches.
+    //
+    // The permissive-token contract that IS still real -- an Unspecified-kind token redeems
+    // anywhere, which is what out-of-tree IPreviewStore implementers rely on -- stays covered by
+    // ApplyByTokenAsync_UnspecifiedProducer_SkipsGuard_AndApplies and by
+    // ApplyByTokenAsync_UnspecifiedProducer_StillRedeemsOnNewlyBoundRoute below.
 
     /// <summary>
     /// preview-token-route-binding-bulk-family: (a)/(b) — the two routes this change binds must
