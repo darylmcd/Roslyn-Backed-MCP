@@ -8,10 +8,17 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class SuggestionTools
 {
+    /// <remarks>
+    /// Suggestions are ranked across three independent signals — complexity metrics, LCOM4
+    /// cohesion analysis, and unused-symbol detection — and each entry carries a severity, a
+    /// human-readable description, the target symbol's location, and the recommended tool
+    /// sequence to act on it. Use <c>limit</c> to cap the returned set and <c>projectName</c>
+    /// to scope the sweep to a single project.
+    /// </remarks>
     [McpServerTool(Name = "suggest_refactorings", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("advanced-analysis", "stable", true, false,
         "Analyze the workspace and return ranked refactoring suggestions based on complexity, cohesion (LCOM4), and unused symbol detection. Each suggestion includes severity, target, and recommended tool sequence.")]
-    [Description("Analyze the workspace and return ranked refactoring suggestions based on complexity metrics, cohesion analysis (LCOM4), and unused symbol detection. Each suggestion includes severity, description, target symbol location, and a recommended tool sequence.")]
+    [Description("Return ranked workspace refactoring suggestions from complexity metrics, cohesion (LCOM4), and unused-symbol detection; each carries severity, target location, and a recommended tool sequence.")]
     public static Task<string> SuggestRefactorings(
         IWorkspaceExecutionGate gate,
         IRefactoringSuggestionService suggestionService,
