@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-26T13:01:44Z
+**updated_at:** 2026-08-26T13:52:53Z
 
 ## Agent contract
 
@@ -90,6 +90,11 @@
 | `mcp-logging-wire-startup-marker-wait-race` | Medium | — | **De-flake the startup-marker stderr wait** — `McpLoggingLifecycleWireTests.WaitForLineAsync` times out claiming the marker never arrived while the captured stderr it prints contains it. [type: test] [source: 2026-08-26 backlog-sweep CI] | S | items/mcp-logging-wire-startup-marker-wait-race.md |
 | `apply-by-token-expectedkind-optional-silently-unbinds` | Medium | — | **Make the preview-token provenance binding non-optional** — `ApplyByTokenAsync`'s `expectedKind` is an optional parameter, so dropping it at a call site compiles green and silently reverts that route to permissive. [type: bug] [source: 2026-08-26 backlog-sweep spec review] | S | items/apply-by-token-expectedkind-optional-silently-unbinds.md |
 | `fixall-producer-kind-round-trip-coverage` | Medium | — | **Assert `fix_all_preview` mints `PreviewKind.FixAll`** — the producer half of the fix_all_apply binding is unasserted; blocked on the fixture not copying `.editorconfig` and FixAllService passing no AnalyzerOptions. [type: test] [source: 2026-08-26 backlog-sweep spec review] | S | items/fixall-producer-kind-round-trip-coverage.md |
+| `codeaction-preview-truncation-flag-hardcoded-false` | Medium | — | **Derive the code-action preview truncation flag** — `CodeActionService` hardcodes `diffTruncated: false` while holding the computed changes, so the apply-side truncation gate is dead for code-action tokens. [type: bug] [source: 2026-08-26 backlog-sweep code review] | M | items/codeaction-preview-truncation-flag-hardcoded-false.md |
+| `multifile-edit-preview-redemption-route-doc-drift` | Medium | — | **Fix the multi-file-edit redemption route in docs + tool Description** — four sites name `apply_composite_preview`, which cannot redeem a `preview_multi_file_edit` token (disjoint stores). Agent-visible. [type: bug] [source: 2026-08-26 backlog-sweep code review] | M | items/multifile-edit-preview-redemption-route-doc-drift.md |
+| `extraction-preview-producer-kind-tagging` | Medium | — | **Tag the extraction/move preview producers** — the four apply routes bound by #1377 declare a producer family but the producers still mint `Unspecified`, so intra-family cross-redemption is still accepted. [type: bug] [source: 2026-08-26 backlog-sweep code review] | M | items/extraction-preview-producer-kind-tagging.md |
+| `catalog-preview-apply-pairing-pin-all-tiers` | Medium | — | **Pin preview-to-apply catalog pairing for every tier** — the only existing invariant filters `SupportTier == "stable"`, which is why the missing `extract_interface_preview` entry went undetected. [type: test] [source: 2026-08-26 backlog-sweep code review] | S | items/catalog-preview-apply-pairing-pin-all-tiers.md |
+| `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
 
 ## Low
 
