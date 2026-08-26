@@ -72,6 +72,13 @@ public static partial class ServerSurfaceCatalog
             // the exhaustiveness pin requires every concrete PreviewKind to resolve through it.
             ["preview_multi_file_edit"] = "preview_multi_file_edit_apply",
             ["fix_all_preview"] = "fix_all_apply",
+            // preview-token-route-binding-extraction-family: this pairing was MISSING while its
+            // three extraction/move siblings (extract_method, extract_type, move_type_to_file)
+            // were present, so TryGetCompatibleApplyRoute reported no pairing for a route that
+            // has one — letting tier selection surface extract_interface_preview in a tier that
+            // excludes extract_interface_apply. Also a gate-forced companion for the
+            // PreviewKind.ExtractInterface member added in the same change.
+            ["extract_interface_preview"] = "extract_interface_apply",
         };
 
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;

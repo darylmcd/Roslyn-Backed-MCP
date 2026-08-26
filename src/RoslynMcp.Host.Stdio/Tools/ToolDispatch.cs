@@ -217,6 +217,10 @@ internal static class ToolDispatch
             [PreviewKind.FileMove] = "move_file_preview",
             [PreviewKind.CodeAction] = "preview_code_action",
             [PreviewKind.FixAll] = "fix_all_preview",
+            [PreviewKind.ExtractMethod] = "extract_method_preview",
+            [PreviewKind.ExtractInterface] = "extract_interface_preview",
+            [PreviewKind.ExtractType] = "extract_type_preview",
+            [PreviewKind.MoveTypeToFile] = "move_type_to_file_preview",
         };
 
     /// <summary>
