@@ -95,7 +95,10 @@ public static class ScaffoldingTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "scaffold_type_apply", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            expectedKind: PreviewKind.FileCreate);
 
     /// <remarks>
     /// When <c>referenceTestFile</c> is provided — or the test project contains a sibling
@@ -238,7 +241,10 @@ public static class ScaffoldingTools
             previewStore,
             previewToken,
             c => refactoringService.ApplyRefactoringAsync(previewToken, "scaffold_test_apply", c),
-            ct);
+            ct,
+            // preview-token-apply-route-provenance: bind this route to its producer family so a
+            // token minted by a different *_preview is refused before any workspace mutation.
+            expectedKind: PreviewKind.FileCreate);
 
     /// <remarks>
     /// Distinct from <c>scaffold_test_preview</c>, which adds a single method-focused test to an

@@ -2,6 +2,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.TestInfrastructure;
 
@@ -71,6 +72,78 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "namespace SampleLib.Generated");
         StringAssert.Contains(contents, "class Bird");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-orchestration-family: <c>scaffold_type_preview</c> mints through
+    /// <c>IFileOperationService.PreviewCreateFileAsync</c>, which records
+    /// <see cref="PreviewKind.FileCreate"/>. Same-family redemption through the newly bound
+    /// <c>scaffold_type_apply</c> shim must be unaffected.
+    /// </summary>
+    [TestMethod]
+    public async Task Scaffold_Type_Preview_Token_Carries_FileCreate_Provenance_And_Redeems()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetFilePath = workspace.GetPath("SampleLib", "Generated", "Bird.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTypeAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
+            CancellationToken.None);
+
+        Assert.AreEqual(PreviewKind.FileCreate, PreviewStore.PeekKind(preview.PreviewToken),
+            "scaffold_type_preview delegates to PreviewCreateFileAsync, so its token must record the "
+            + "file-creation producer family.");
+
+        var json = await ScaffoldingTools.ApplyScaffoldType(
+            WorkspaceExecutionGate,
+            RefactoringService,
+            PreviewStore,
+            preview.PreviewToken,
+            CancellationToken.None);
+
+        StringAssert.Contains(json, "\"success\": true", "Same-family redemption must still apply cleanly.");
+        Assert.IsTrue(File.Exists(targetFilePath), "Binding the route must not break the happy path.");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-orchestration-family: the fail-closed arm. A token minted by
+    /// <c>rename_preview</c> (<see cref="PreviewKind.SymbolRename"/>) redeemed through
+    /// <c>scaffold_type_apply</c> / <c>scaffold_test_apply</c> must be refused with a message naming
+    /// <c>rename_apply</c> as the correct route, and must leave the workspace untouched.
+    /// </summary>
+    [TestMethod]
+    [DataRow("scaffold_type_apply")]
+    [DataRow("scaffold_test_apply")]
+    public async Task Scaffold_Apply_Routes_Refuse_ForeignFamily_Rename_Token(string route)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogPath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalContents = await File.ReadAllTextAsync(dogPath, CancellationToken.None);
+
+        var document = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
+            .Projects.SelectMany(project => project.Documents)
+            .First(candidate => candidate.Name == "Dog.cs");
+        var renamePreview = await RefactoringService.PreviewRenameAsync(
+            workspace.WorkspaceId,
+            SymbolLocator.BySource(document.FilePath!, 5, 6),
+            "Doggo",
+            CancellationToken.None);
+
+        Assert.AreEqual(PreviewKind.SymbolRename, PreviewStore.PeekKind(renamePreview.PreviewToken));
+
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => route switch
+        {
+            "scaffold_type_apply" => ScaffoldingTools.ApplyScaffoldType(
+                WorkspaceExecutionGate, RefactoringService, PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
+            _ => ScaffoldingTools.ApplyScaffoldTest(
+                WorkspaceExecutionGate, RefactoringService, PreviewStore, renamePreview.PreviewToken, CancellationToken.None),
+        });
+
+        StringAssert.Contains(ex.Message, "rename_apply",
+            $"{route} must name the token's real apply route so the caller can recover.");
+        Assert.AreEqual(originalContents, await File.ReadAllTextAsync(dogPath, CancellationToken.None),
+            $"{route} must refuse the foreign token BEFORE any workspace mutation.");
     }
 
     [TestMethod]
@@ -965,6 +1038,43 @@ public class PlaywrightFlowTests
 
         StringAssert.Contains(dogContents, "Speak_Needs_Test");
         StringAssert.Contains(animalServiceContents, "GetAllAnimals_Needs_Test");
+    }
+
+    /// <summary>
+    /// preview-token-route-binding-orchestration-family: the permissive arm.
+    /// <c>scaffold_test_batch_preview</c> aggregates its own solution snapshot rather than
+    /// delegating to <c>PreviewCreateFileAsync</c>, so its token stays
+    /// <see cref="PreviewKind.Unspecified"/>. There is no <c>scaffold_test_batch_apply</c> route —
+    /// batch tokens are redeemed through <c>scaffold_test_apply</c>, which is now bound — so the
+    /// untagged-is-permissive contract is what keeps that flow working.
+    /// </summary>
+    [TestMethod]
+    public async Task Scaffold_Test_Batch_Token_Is_Untagged_And_Still_Redeems_Through_Scaffold_Test_Apply()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogPath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestBatchDto(
+                "SampleLib.Tests",
+                [new ScaffoldTestBatchTargetDto("Dog", "Speak")],
+                "auto"),
+            CancellationToken.None);
+
+        Assert.AreEqual(PreviewKind.Unspecified, PreviewStore.PeekKind(preview.PreviewToken),
+            "The batch scaffolder mints its own aggregate token and records no provenance.");
+
+        var json = await ScaffoldingTools.ApplyScaffoldTest(
+            WorkspaceExecutionGate,
+            RefactoringService,
+            PreviewStore,
+            preview.PreviewToken,
+            CancellationToken.None);
+
+        StringAssert.Contains(json, "\"success\": true");
+        Assert.IsTrue(File.Exists(dogPath),
+            "An untagged token must stay redeemable through a bound apply route.");
     }
 
     [TestMethod]
