@@ -10,7 +10,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// MCP tool entry points for file-operation refactorings (create / delete / move).
 /// WS1 phase 1.6 — the three <c>Apply*</c> methods (pure dispatch) delegate to
-/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>;
+/// <see cref="ToolDispatch"/>'s token-aware write dispatch;
 /// the <c>Preview*</c> methods keep their hand-written bodies because they
 /// perform async <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>
 /// calls inside the gate before dispatching to the service (validation must run
@@ -63,7 +63,8 @@ public static class FileOperationTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FileCreate);
+            expectedKind: PreviewKind.FileCreate,
+            invokedRoute: "create_file_apply");
 
     [McpServerTool(Name = "delete_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("file-operations", "stable", true, false,
@@ -103,7 +104,8 @@ public static class FileOperationTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FileDelete);
+            expectedKind: PreviewKind.FileDelete,
+            invokedRoute: "delete_file_apply");
 
     [McpServerTool(Name = "move_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("file-operations", "stable", true, false,
@@ -150,5 +152,6 @@ public static class FileOperationTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FileMove);
+            expectedKind: PreviewKind.FileMove,
+            invokedRoute: "move_file_apply");
 }

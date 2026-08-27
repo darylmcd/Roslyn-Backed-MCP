@@ -102,10 +102,12 @@ internal static class ToolDispatch
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
     /// <param name="expectedKind">
-    /// preview-token-apply-route-provenance: the producer family this route accepts. Defaults to
-    /// <see cref="PreviewKind.Unspecified"/> — "route not bound", no enforcement — so the ~10 apply
-    /// families that have not yet declared a producer set keep their existing behavior without an
-    /// edit. See <see cref="RequireCompatibleProducer"/> for the fail-open/fail-closed semantics.
+    /// preview-token-apply-route-provenance: the producer family this route accepts. Required so a
+    /// call site cannot silently become permissive by dropping its route binding.
+    /// </param>
+    /// <param name="invokedRoute">
+    /// The public MCP route the caller invoked. Required because a producer kind may be shared by
+    /// several routes, so it cannot be derived from <paramref name="expectedKind"/>.
     /// </param>
     /// <returns>
     /// The DTO serialized with <see cref="JsonDefaults.Indented"/>.
@@ -125,7 +127,8 @@ internal static class ToolDispatch
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct,
-        PreviewKind expectedKind = PreviewKind.Unspecified)
+        PreviewKind expectedKind,
+        string invokedRoute)
     {
         var wsId = RequirePreviewWorkspaceId(previewStore.PeekWorkspaceId, previewToken);
         return gate.RunWriteAsync(wsId, async c =>
@@ -133,7 +136,11 @@ internal static class ToolDispatch
             // preview-token-apply-route-provenance: refuse a token minted by a different producer
             // family BEFORE any mutation — and before the boundary revalidation below, so a
             // wrong-route redemption never reaches RevalidateChangedPathsAsync or TryApplyChanges.
-            RequireCompatibleProducer(previewStore, previewToken, expectedKind);
+            RequireCompatibleProducer(
+                previewStore,
+                previewToken,
+                expectedKind,
+                invokedRoute);
 
             // preview-apply-token-write-path-toctou: revalidate the preview's write set against
             // the sanctioned-root boundary AT REDEMPTION TIME, under the same write gate that
@@ -154,10 +161,9 @@ internal static class ToolDispatch
     /// <see cref="IPreviewStore.PeekChangedPaths(string)"/> "null means unknown, skip, never
     /// verified" convention:
     /// <list type="bullet">
-    ///   <item><paramref name="expectedKind"/> is <see cref="PreviewKind.Unspecified"/> — the route
-    ///     has not declared a producer set, so no enforcement (the ~10 other
-    ///     <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken, PreviewKind)"/>
-    ///     apply families are still in this state; binding them is a follow-up row).</item>
+    ///   <item><paramref name="expectedKind"/> is <see cref="PreviewKind.Unspecified"/> — an
+    ///     explicit permissive binding. In-tree apply shims pass a concrete kind; this arm remains
+    ///     for direct callers and compatibility with out-of-tree hosts.</item>
     ///   <item>The stored kind is <see cref="PreviewKind.Unspecified"/> — an untagged producer or an
     ///     out-of-tree store that does not track provenance. Permissive by the enum's own documented
     ///     contract; every apply route MUST accept it.</item>
@@ -174,7 +180,8 @@ internal static class ToolDispatch
     internal static void RequireCompatibleProducer(
         IPreviewStore previewStore,
         string previewToken,
-        PreviewKind expectedKind)
+        PreviewKind expectedKind,
+        string invokedRoute)
     {
         if (expectedKind == PreviewKind.Unspecified)
         {
@@ -190,7 +197,7 @@ internal static class ToolDispatch
         throw new InvalidOperationException(
             $"Preview token '{previewToken}' was produced by `{PreviewToolFor(actualKind)}`; " +
             $"redeem it via `{ApplyRouteFor(actualKind)}` (or the generic `apply_with_verify`), " +
-            $"not `{ApplyRouteFor(expectedKind)}`, which only accepts " +
+            $"not `{invokedRoute}`, which only accepts " +
             $"`{PreviewToolFor(expectedKind)}` tokens. No workspace changes were made.");
     }
 

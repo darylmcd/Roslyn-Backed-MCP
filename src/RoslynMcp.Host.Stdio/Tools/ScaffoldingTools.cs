@@ -98,7 +98,8 @@ public static class ScaffoldingTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FileCreate);
+            expectedKind: PreviewKind.FileCreate,
+            invokedRoute: "scaffold_type_apply");
 
     /// <remarks>
     /// When <c>referenceTestFile</c> is provided — or the test project contains a sibling
@@ -244,7 +245,8 @@ public static class ScaffoldingTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FileCreate);
+            expectedKind: PreviewKind.FileCreate,
+            invokedRoute: "scaffold_test_apply");
 
     /// <remarks>
     /// Distinct from <c>scaffold_test_preview</c>, which adds a single method-focused test to an

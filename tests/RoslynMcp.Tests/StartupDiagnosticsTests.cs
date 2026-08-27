@@ -265,6 +265,26 @@ public sealed class StartupDiagnosticsTests
             allSelected.Select(static entry => entry.Name).ToArray(),
             "The default all-tier surface must retain the catalog byte order and membership.");
 
+        var allNames = allSelected
+            .Select(static entry => entry.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var previewName in allNames.Where(static name => name.EndsWith("_preview", StringComparison.Ordinal)))
+        {
+            var siblingApply = previewName[..^"_preview".Length] + "_apply";
+            if (!allNames.Contains(siblingApply))
+            {
+                continue;
+            }
+
+            Assert.IsTrue(
+                ServerSurfaceCatalog.TryGetCompatibleApplyRoute(previewName, out var compatibleApply),
+                $"Token-issuing preview '{previewName}' has sibling '{siblingApply}' and must declare its compatible apply route regardless of support tier.");
+            Assert.AreEqual(
+                siblingApply,
+                compatibleApply,
+                $"Preview '{previewName}' must pair with its same-family apply route.");
+        }
+
         var stableNames = ServerSurfaceCatalog.SelectTools(ToolTierSelection.Parse("stable"))
             .Select(static entry => entry.Name)
             .ToHashSet(StringComparer.Ordinal);

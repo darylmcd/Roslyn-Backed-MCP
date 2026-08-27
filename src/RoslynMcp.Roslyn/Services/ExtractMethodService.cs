@@ -83,7 +83,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         var token = _previewStore.Store(
             // Item #4 — pass changes so the store knows whether the diff was truncated.
             workspaceId, newSolution,
-            _workspace.GetCurrentVersion(workspaceId), description);
+            _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.ExtractMethod);
 
         _logger.LogDebug("Extract method preview: {Description}", description);
 

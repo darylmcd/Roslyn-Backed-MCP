@@ -75,7 +75,7 @@ public sealed class MethodDescriptionDietScaffoldingMutationTests
             "Errors when the destination file already exists");
         AssertDescriptionContains(
             "apply_multi_file_edit",
-            "preview_multi_file_edit + apply_composite_preview");
+            "preview_multi_file_edit + preview_multi_file_edit_apply");
     }
 
     private static void AssertDescriptionContains(string toolName, string expected)

@@ -17,8 +17,8 @@ namespace RoslynMcp.Tests;
 /// <para>
 /// These tests exercise the SHIM methods, not <see cref="ToolDispatch"/> directly, so the binding
 /// itself (the <c>expectedKind:</c> argument on each call site) is what is pinned. A regression
-/// that drops the argument compiles green — the parameter is optional — and would only be caught
-/// here.
+/// that changes the declared kind remains covered here, while the required parameter now makes a
+/// dropped binding fail at compile time across every apply shim.
 /// </para>
 /// <para>
 /// The fakes are deliberately local duplicates of the ones nested inside <c>ToolDispatchTests</c>:
@@ -74,8 +74,8 @@ public sealed class ExtractionApplyRouteBindingTests
 
     /// <summary>
     /// The permissive arm: a token whose producer recorded no provenance
-    /// (<see cref="PreviewKind.Unspecified"/> — the state of every extraction producer today) must
-    /// still redeem on a bound route. Binding the routes must not break untagged producers.
+    /// (<see cref="PreviewKind.Unspecified"/>) must still redeem on a bound route. Binding the
+    /// routes must not break out-of-tree or legacy untagged producers.
     /// </summary>
     [TestMethod]
     public async Task ExtractionApplyRoutes_UnspecifiedProvenanceToken_StillRedeems()

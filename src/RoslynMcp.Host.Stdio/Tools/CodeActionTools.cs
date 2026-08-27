@@ -91,5 +91,6 @@ public static class CodeActionTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.CodeAction);
+            expectedKind: PreviewKind.CodeAction,
+            invokedRoute: "apply_code_action");
 }

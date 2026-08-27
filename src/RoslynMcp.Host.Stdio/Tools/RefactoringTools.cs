@@ -56,7 +56,8 @@ public static class RefactoringTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.SymbolRename);
+            expectedKind: PreviewKind.SymbolRename,
+            invokedRoute: "rename_apply");
 
     [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -90,7 +91,8 @@ public static class RefactoringTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.OrganizeUsings);
+            expectedKind: PreviewKind.OrganizeUsings,
+            invokedRoute: "organize_usings_apply");
 
     [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -124,7 +126,8 @@ public static class RefactoringTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FormatDocument);
+            expectedKind: PreviewKind.FormatDocument,
+            invokedRoute: "format_document_apply");
 
     [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -162,7 +165,8 @@ public static class RefactoringTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.CodeFix);
+            expectedKind: PreviewKind.CodeFix,
+            invokedRoute: "code_fix_apply");
 
     [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
@@ -202,7 +206,8 @@ public static class RefactoringTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FormatRange);
+            expectedKind: PreviewKind.FormatRange,
+            invokedRoute: "format_range_apply");
 
     [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,

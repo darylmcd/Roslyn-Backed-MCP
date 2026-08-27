@@ -109,7 +109,9 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
     }
 
     [TestMethod]
-    public void PreviewStore_Derives_Truncated_From_Sentinel_FilePath()
+    [DataRow(PreviewKind.CodeFix)]
+    [DataRow(PreviewKind.CodeAction)]
+    public async Task ChangesShapedPreview_DerivesTruncationAndRequiresForce(PreviewKind kind)
     {
         // The SolutionDiffHelper emits a synthetic FileChangeDto with
         // FilePath == TruncatedSentinelFilePath when its cap fires. The convenience Store
@@ -121,20 +123,34 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
             new(SolutionDiffHelper.TruncatedSentinelFilePath, "# FLAG-6A omitted 12 files"),
         };
 
-        var cleanChanges = new List<FileChangeDto>
-        {
-            new("Some/Real/File.cs", "@@ -1 +1 @@\n-old\n+new"),
-        };
+        var workspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        var token = PreviewStore.Store(
+            workspaceId,
+            solution,
+            WorkspaceManager.GetCurrentVersion(workspaceId),
+            $"{kind} sentinel truncation probe",
+            truncatedChanges,
+            kind);
 
-        // Quick path: using a fresh PreviewStore avoids touching the shared one.
-        var store = new RoslynMcp.Roslyn.Services.PreviewStore();
-        // Dummy solution placeholder won't be retrieved here — we only test flag derivation
-        // via Retrieve's shape.
-        // Skipped Solution build: this test is a narrow check on the Store overload routing.
-        // The integration tests above cover the end-to-end gate.
-        _ = truncatedChanges; _ = cleanChanges; _ = store; // silence warning if compile-only
-        Assert.IsTrue(truncatedChanges.Any(c => string.Equals(c.FilePath, SolutionDiffHelper.TruncatedSentinelFilePath, StringComparison.Ordinal)),
-            "Sentinel detection must work against the exposed constant.");
-        Assert.IsFalse(cleanChanges.Any(c => string.Equals(c.FilePath, SolutionDiffHelper.TruncatedSentinelFilePath, StringComparison.Ordinal)));
+        var stored = PreviewStore.Retrieve(token);
+        Assert.IsNotNull(stored);
+        Assert.IsTrue(stored.Value.DiffTruncated,
+            $"The changes-shaped {kind} producer contract must derive DiffTruncated from the sentinel.");
+        Assert.AreEqual(kind, PreviewStore.PeekKind(token));
+
+        var refused = await RefactoringService.ApplyRefactoringAsync(
+            token, "test_apply", force: false, CancellationToken.None);
+        Assert.IsFalse(refused.Success, $"A truncated {kind} preview must be refused without force.");
+        StringAssert.Contains(refused.Error!, "force");
+
+        var forced = await RefactoringService.ApplyRefactoringAsync(
+            token, "test_apply", force: true, CancellationToken.None);
+        if (!forced.Success && forced.Error is not null)
+        {
+            Assert.IsFalse(
+                forced.Error.Contains("truncated", StringComparison.OrdinalIgnoreCase),
+                $"force=true must bypass the {kind} truncation gate. Error was: {forced.Error}");
+        }
     }
 }

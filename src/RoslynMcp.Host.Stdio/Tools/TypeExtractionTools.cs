@@ -61,5 +61,6 @@ public static class TypeExtractionTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.ExtractType);
+            expectedKind: PreviewKind.ExtractType,
+            invokedRoute: "extract_type_apply");
 }

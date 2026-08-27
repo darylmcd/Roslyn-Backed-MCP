@@ -171,7 +171,13 @@ public sealed class TypeMoveService : ITypeMoveService
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to {targetFileName}";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            PreviewKind.MoveTypeToFile);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }

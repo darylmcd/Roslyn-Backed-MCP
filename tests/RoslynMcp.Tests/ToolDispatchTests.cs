@@ -57,7 +57,8 @@ public sealed class ToolDispatchTests
                     return Task.FromResult(new FakeResultDto("must-not-run", 0));
                 },
                 ct: CancellationToken.None,
-                expectedKind: PreviewKind.SymbolRename));
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply"));
 
         Assert.IsFalse(serviceCallRan, "Provenance guard must refuse the apply BEFORE the service call runs.");
         StringAssert.Contains(ex.Message, "code_fix_preview",
@@ -88,7 +89,8 @@ public sealed class ToolDispatchTests
             previewToken: "tok-match",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 1)),
             ct: CancellationToken.None,
-            expectedKind: PreviewKind.SymbolRename);
+            expectedKind: PreviewKind.SymbolRename,
+            invokedRoute: "rename_apply");
 
         StringAssert.Contains(result, "applied");
     }
@@ -113,7 +115,8 @@ public sealed class ToolDispatchTests
             previewToken: "tok-untagged",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 2)),
             ct: CancellationToken.None,
-            expectedKind: PreviewKind.SymbolRename);
+            expectedKind: PreviewKind.SymbolRename,
+            invokedRoute: "rename_apply");
 
         StringAssert.Contains(result, "applied",
             "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
@@ -168,7 +171,8 @@ public sealed class ToolDispatchTests
                     return Task.FromResult(new FakeResultDto("must-not-run", 0));
                 },
                 ct: CancellationToken.None,
-                expectedKind: routeKind));
+                expectedKind: routeKind,
+                invokedRoute: invokedRoute));
 
         Assert.IsFalse(serviceCallRan,
             $"{invokedRoute} must refuse a rename token BEFORE any workspace mutation.");
@@ -202,7 +206,8 @@ public sealed class ToolDispatchTests
             previewToken: "tok-oot",
             serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 4)),
             ct: CancellationToken.None,
-            expectedKind: routeKind);
+            expectedKind: routeKind,
+            invokedRoute: "test_apply");
 
         StringAssert.Contains(result, "applied",
             "An out-of-tree IPreviewStore reports Unspecified — 'no provenance claim' — and must " +
@@ -345,7 +350,9 @@ public sealed class ToolDispatchTests
             store,
             previewToken: "tok-1",
             serviceCall: _ => Task.FromResult(expected),
-            ct: CancellationToken.None);
+            ct: CancellationToken.None,
+            expectedKind: PreviewKind.SymbolRename,
+            invokedRoute: "rename_apply");
 
         // Gate verb must be Write — apply tools mutate the workspace.
         Assert.AreEqual(1, gate.WriteCallCount, "ApplyByTokenAsync must dispatch via RunWriteAsync");
@@ -376,7 +383,9 @@ public sealed class ToolDispatchTests
                 store,
                 previewToken: "bogus-token",
                 serviceCall: _ => Task.FromResult(new FakeResultDto("unused", 0)),
-                ct: CancellationToken.None));
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply"));
 
         Assert.AreEqual("bogus-token", ex.PreviewToken,
             "PreviewToken property must carry the rejected token for structured envelope use");
@@ -447,7 +456,9 @@ public sealed class ToolDispatchTests
                 seenByService = ct;
                 return Task.FromResult(new FakeResultDto("done", 1));
             },
-            ct: cts.Token);
+            ct: cts.Token,
+            expectedKind: PreviewKind.SymbolRename,
+            invokedRoute: "rename_apply");
 
         // The CT flowing into the service call is the gate's nested token (the gate may wrap
         // the caller's CT with per-request timeout linking). Assert it is at minimum usable —
@@ -481,7 +492,9 @@ public sealed class ToolDispatchTests
                 store,
                 previewToken: "tok-null-peek",
                 serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 1)),
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply");
 
             StringAssert.Contains(result, "applied",
                 "A null PeekChangedPaths (write set unknown) must skip revalidation, not refuse the apply.");
@@ -519,7 +532,9 @@ public sealed class ToolDispatchTests
                 store,
                 previewToken: "tok-null-snap",
                 serviceCall: _ => Task.FromResult(new FakeResultDto("applied", 2)),
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply");
 
             StringAssert.Contains(result, "applied",
                 "A null SecurityOptionsSnapshot (unbooted host) must skip revalidation, not refuse the apply.");
@@ -564,7 +579,9 @@ public sealed class ToolDispatchTests
                         serviceCallRan = true;
                         return Task.FromResult(new FakeResultDto("must-not-run", 0));
                     },
-                    ct: CancellationToken.None));
+                    ct: CancellationToken.None,
+                    expectedKind: PreviewKind.SymbolRename,
+                    invokedRoute: "rename_apply"));
 
             Assert.IsFalse(serviceCallRan, "Revalidation must refuse the apply BEFORE the service call runs.");
             Assert.AreEqual(1, gate.WriteCallCount, "Revalidation runs INSIDE the write gate.");

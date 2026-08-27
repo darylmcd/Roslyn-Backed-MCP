@@ -92,7 +92,7 @@ public interface IEditService
     /// <summary>
     /// Item 5: previews a multi-file edit batch. Edits are simulated in-memory against the
     /// current workspace snapshot, producing a per-file unified diff and a composite preview
-    /// token that can later be redeemed by <c>apply_composite_preview</c> to commit the batch
+    /// token that can later be redeemed by <c>preview_multi_file_edit_apply</c> to commit the batch
     /// atomically. No disk writes occur at preview time.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>

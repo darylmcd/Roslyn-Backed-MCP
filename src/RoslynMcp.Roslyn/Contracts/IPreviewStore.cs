@@ -39,7 +39,7 @@ public interface IPreviewStore
     /// <remarks>
     /// The <paramref name="changes"/>-shaped sibling below already covers producers that hand the
     /// store a computed diff; this declaration covers the three producers that pass the truncation
-    /// flag directly (<c>EditService</c>, <c>CodeActionService</c>, <c>FixAllService</c>), which
+    /// flag directly (<c>EditService</c> and <c>FixAllService</c>), which
     /// could not be tagged at all while the concrete <c>PreviewStore</c> implemented this shape
     /// without the interface declaring it. Default implementation drops <paramref name="kind"/> and
     /// delegates to the untagged overload, so existing test fakes (and any out-of-tree

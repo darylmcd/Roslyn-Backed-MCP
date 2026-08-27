@@ -102,7 +102,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                         serviceCallRan = true;
                         return Task.FromResult(new FakeResultDto("must-not-run"));
                     },
-                    ct: CancellationToken.None));
+                    ct: CancellationToken.None,
+                    expectedKind: PreviewKind.SymbolRename,
+                    invokedRoute: "rename_apply"));
 
             StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
             Assert.IsFalse(serviceCallRan,
@@ -146,7 +148,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                 store,
                 token,
                 serviceCall: _ => Task.FromResult(new FakeResultDto("applied")),
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply");
 
             StringAssert.Contains(result, "applied");
             Assert.AreEqual(1, gate.WriteCallCount);
@@ -192,7 +196,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                         serviceCallRan = true;
                         return Task.FromResult(new FakeResultDto("must-not-run"));
                     },
-                    ct: CancellationToken.None));
+                    ct: CancellationToken.None,
+                    expectedKind: PreviewKind.SymbolRename,
+                    invokedRoute: "rename_apply"));
 
             StringAssert.Contains(error.Message, "outside the configured sanctioned-root boundary");
             Assert.IsFalse(serviceCallRan);
@@ -337,7 +343,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                     store,
                     token,
                     serviceCall: _ => Task.FromResult(new FakeResultDto("must-not-run")),
-                    ct: CancellationToken.None));
+                    ct: CancellationToken.None,
+                    expectedKind: PreviewKind.SymbolRename,
+                    invokedRoute: "rename_apply"));
 
             // With the grant replayed, redemption re-derives the SAME boundary that admitted the
             // workspace and the apply succeeds.
@@ -347,7 +355,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                 store,
                 token,
                 serviceCall: _ => Task.FromResult(new FakeResultDto("applied")),
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.SymbolRename,
+                invokedRoute: "rename_apply");
 
             StringAssert.Contains(result, "applied");
         }
@@ -399,7 +409,9 @@ public sealed class PreviewApplyBoundaryRevalidationTests
                         serviceCallRan = true;
                         return Task.FromResult(new FakeResultDto("must-not-run"));
                     },
-                    ct: CancellationToken.None));
+                    ct: CancellationToken.None,
+                    expectedKind: PreviewKind.SymbolRename,
+                    invokedRoute: "rename_apply"));
 
             StringAssert.Contains(ex.Message, "outside the configured sanctioned-root boundary");
             Assert.IsFalse(serviceCallRan,

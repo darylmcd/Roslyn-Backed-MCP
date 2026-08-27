@@ -21,6 +21,7 @@ public enum UnexpectedExceptionCategory
     TestRun,
     ServerProcessMetadata,
     AnalysisScan,
+    MetaProjection,
 }
 
 /// <summary>

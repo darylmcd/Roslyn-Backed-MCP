@@ -55,5 +55,6 @@ public static class DeadCodeTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.RemoveDeadCode);
+            expectedKind: PreviewKind.RemoveDeadCode,
+            invokedRoute: "remove_dead_code_apply");
 }

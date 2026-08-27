@@ -57,7 +57,8 @@ public static class ExtractMethodTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.ExtractMethod);
+            expectedKind: PreviewKind.ExtractMethod,
+            invokedRoute: "extract_method_apply");
 
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,

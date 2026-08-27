@@ -151,13 +151,12 @@ public sealed class CodeActionService : ICodeActionService
         var description = $"Code action: {selectedAction.Title}";
         // preview-token-apply-route-provenance: tag the token with its producer family so
         // apply_code_action can refuse a token minted elsewhere before mutating.
-        // diffTruncated: false reproduces exactly what the untagged 4-argument overload forwarded.
         var token = _previewStore.Store(
             workspaceId,
             newSolution,
             _workspace.GetCurrentVersion(workspaceId),
             description,
-            diffTruncated: false,
+            changes,
             kind: PreviewKind.CodeAction);
 
         return new RefactoringPreviewDto(token, description, changes, null);

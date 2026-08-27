@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
@@ -32,7 +33,10 @@ internal static class StructuredCallContentProjector
     /// channels before this decorator runs; this class only augments object-rooted text.
     /// </para>
     /// </summary>
-    internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName)
+    internal static CallToolResult InjectMetaIntoContent(
+        CallToolResult result,
+        string toolName,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         if (result.Content is null || result.Content.Count == 0)
         {
@@ -44,7 +48,10 @@ internal static class StructuredCallContentProjector
             return result;
         }
 
-        var injected = ToolErrorHandler.InjectMetaIfPossible(text.Text, toolName);
+        var injected = ToolErrorHandler.InjectMetaIfPossible(
+            text.Text,
+            toolName,
+            exceptionReporter);
         var textChanged = !(ReferenceEquals(injected, text.Text) || injected == text.Text);
 
         if (!textChanged)
