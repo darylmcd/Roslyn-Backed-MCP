@@ -1,6 +1,6 @@
 # meta-projection-failure-observability — Observe unexpected text-metadata projection failures
 
-**row:** `meta-projection-failure-observability` · **pri:** `Low` · **size:** `S` · **deps:** `server-structured-observability-sink,tool-error-envelope-sensitive-detail-disclosure`
+**row:** `meta-projection-failure-observability` · **pri:** `Low` · **size:** `S` · **deps:** `tool-error-envelope-sensitive-detail-disclosure`
 
 ## Anchors
 

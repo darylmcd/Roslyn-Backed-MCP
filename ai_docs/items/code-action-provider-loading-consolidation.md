@@ -1,6 +1,6 @@
 # code-action-provider-loading-consolidation — Consolidate feature-provider loading
 
-**row:** `code-action-provider-loading-consolidation` · **pri:** `Medium` · **size:** `M` · **deps:** `public-exception-detail-policy,mcp-logging-stderr-otel-migration,fixall-provider-error-detail-redaction`
+**row:** `code-action-provider-loading-consolidation` · **pri:** `Medium` · **size:** `M` · **deps:** `public-exception-detail-policy,fixall-provider-error-detail-redaction`
 
 ## Anchors
 

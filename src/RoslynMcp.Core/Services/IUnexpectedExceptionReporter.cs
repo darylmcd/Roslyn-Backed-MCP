@@ -20,6 +20,7 @@ public enum UnexpectedExceptionCategory
     FlowAnalysis,
     TestRun,
     ServerProcessMetadata,
+    AnalysisScan,
 }
 
 /// <summary>

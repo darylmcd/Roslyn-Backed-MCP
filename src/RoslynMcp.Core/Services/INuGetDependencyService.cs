@@ -24,6 +24,13 @@ public interface INuGetDependencyService
     Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
         string workspaceId, CancellationToken ct, bool summary = false);
 
+    async Task<NuGetDependencyScanResult> GetNuGetDependenciesDetailedAsync(
+        string workspaceId, CancellationToken ct, bool summary = false)
+    {
+        var result = await GetNuGetDependenciesAsync(workspaceId, ct, summary).ConfigureAwait(false);
+        return new NuGetDependencyScanResult(result, IsComplete: true, FailedProjectCount: 0);
+    }
+
     /// <summary>
     /// Scans NuGet package references for known vulnerabilities using
     /// <c>dotnet list package --vulnerable</c>.

@@ -29,15 +29,30 @@ public sealed class ExceptionFlowService : IExceptionFlowService
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<ExceptionFlowService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> _rootLoader;
 
     public ExceptionFlowService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
-        ILogger<ExceptionFlowService> logger)
+        ILogger<ExceptionFlowService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspace, compilationCache, logger, exceptionReporter, static (tree, token) => tree.GetRootAsync(token))
+    {
+    }
+
+    internal ExceptionFlowService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<ExceptionFlowService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> rootLoader)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
+        _rootLoader = rootLoader;
     }
 
     /// <inheritdoc />
@@ -49,6 +64,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
         CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(exceptionTypeMetadataName);
+        ct.ThrowIfCancellationRequested();
 
         var cap = NormalizeMaxResults(maxResults);
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -63,11 +79,12 @@ public sealed class ExceptionFlowService : IExceptionFlowService
         var catchSites = new List<ExceptionCatchSiteDto>();
         var throwSites = new List<ExceptionThrowSiteDto>();
         var overflowBeyondCeiling = 0;
+        var failedDocumentCount = 0;
         string? resolvedDisplayName = null;
 
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
@@ -91,19 +108,19 @@ public sealed class ExceptionFlowService : IExceptionFlowService
 
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (ct.IsCancellationRequested) break;
+                ct.ThrowIfCancellationRequested();
                 if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 try
                 {
                     var semanticModel = compilation.GetSemanticModel(tree);
-                    var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                    var root = await _rootLoader(tree, ct).ConfigureAwait(false);
 
                     // ONE enumeration per tree. CatchClauseSyntax and the two throw-node kinds are
                     // disjoint node types, so a single DescendantNodes() walk classifies each.
                     foreach (var node in root.DescendantNodes())
                     {
-                        if (ct.IsCancellationRequested) break;
+                        ct.ThrowIfCancellationRequested();
 
                         switch (node)
                         {
@@ -135,9 +152,15 @@ public sealed class ExceptionFlowService : IExceptionFlowService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex,
-                        "Failed to walk catch/throw nodes in {Path}; skipping",
-                        tree.FilePath);
+                    failedDocumentCount++;
+                    var detail = UnexpectedExceptionReporting.Report(
+                        _exceptionReporter,
+                        ex,
+                        UnexpectedExceptionCategory.AnalysisScan).Public;
+                    _logger.LogWarning(
+                        "Exception-flow scan skipped one document after an unexpected failure; failedDocumentCount={FailedDocumentCount} correlationId={CorrelationId}",
+                        failedDocumentCount,
+                        detail.CorrelationId);
                 }
             }
         }
@@ -165,7 +188,9 @@ public sealed class ExceptionFlowService : IExceptionFlowService
             clippedCatchSites,
             clippedThrowSites,
             clippedThrowSites.Count,
-            countOmitted);
+            countOmitted,
+            IsComplete: failedDocumentCount == 0,
+            FailedDocumentCount: failedDocumentCount);
     }
 
     private static void AddBounded<T>(List<T> items, T item, ref int overflowBeyondCeiling)

@@ -1,3 +1,5 @@
+using RoslynMcp.Host.Stdio.Tools;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -69,6 +71,26 @@ public sealed class NuGetDependencySummaryTests : SharedWorkspaceTestBase
 
         Assert.IsTrue(summaryJson.Length < fullJson.Length,
             $"summary JSON must be strictly smaller than full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
+    }
+
+    [TestMethod]
+    public async Task GetNuGetDependencies_ToolModes_ExposeCompleteScanMetadata()
+    {
+        foreach (var summary in new[] { false, true })
+        {
+            var json = await AdvancedAnalysisTools.GetNuGetDependencies(
+                WorkspaceExecutionGate,
+                NuGetDependencyService,
+                WorkspaceId,
+                summary,
+                CancellationToken.None);
+
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var root = document.RootElement;
+            Assert.IsTrue(root.GetProperty("isComplete").GetBoolean());
+            Assert.AreEqual(0, root.GetProperty("failedProjectCount").GetInt32());
+            Assert.AreEqual("complete", root.GetProperty("totalCountMeaning").GetString());
+        }
     }
 
     [TestMethod]

@@ -291,11 +291,16 @@ public static class ReflectionUsageFixture
             Assert.IsTrue(summaryDoc.RootElement.GetProperty("summary").GetBoolean());
             Assert.AreEqual(0, summaryDoc.RootElement.GetProperty("count").GetInt32(),
                 "Summary mode must report count=0 because no item rows are emitted.");
+            Assert.IsTrue(summaryDoc.RootElement.GetProperty("isComplete").GetBoolean());
+            Assert.AreEqual(0, summaryDoc.RootElement.GetProperty("failedDocumentCount").GetInt32());
+            Assert.AreEqual("complete", summaryDoc.RootElement.GetProperty("totalCountMeaning").GetString());
 
             var unpagedTotal = unpagedDoc.RootElement.GetProperty("totalCount").GetInt32();
             var summaryTotal = summaryDoc.RootElement.GetProperty("totalCount").GetInt32();
             Assert.AreEqual(unpagedTotal, summaryTotal,
                 "Summary mode totalCount must match the full-collection total (computed off the full result set).");
+            Assert.IsTrue(unpagedDoc.RootElement.GetProperty("isComplete").GetBoolean());
+            Assert.AreEqual(0, unpagedDoc.RootElement.GetProperty("failedDocumentCount").GetInt32());
 
             // usageKindCounts dictionary mirrors usagesByKind keys but contains integer counts only.
             var counts = summaryDoc.RootElement.GetProperty("usageKindCounts");

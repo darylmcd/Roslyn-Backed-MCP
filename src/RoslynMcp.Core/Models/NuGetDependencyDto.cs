@@ -18,6 +18,16 @@ public sealed record NuGetDependencyResultDto(
     IReadOnlyList<NuGetPackageSummaryDto>? Summaries = null);
 
 /// <summary>
+/// Completeness-aware package graph scan. <see cref="Result"/> retains data from healthy
+/// projects; callers must treat its totals as observed lower bounds when
+/// <see cref="IsComplete"/> is <see langword="false"/>.
+/// </summary>
+public sealed record NuGetDependencyScanResult(
+    NuGetDependencyResultDto Result,
+    bool IsComplete,
+    int FailedProjectCount);
+
+/// <summary>
 /// Compact per-package summary used by <c>get_nuget_dependencies summary=true</c>.
 /// </summary>
 /// <param name="PackageId">Package id (unique across the workspace).</param>

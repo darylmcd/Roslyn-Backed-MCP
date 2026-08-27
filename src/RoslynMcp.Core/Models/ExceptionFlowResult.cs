@@ -13,6 +13,8 @@ namespace RoslynMcp.Core.Models;
 /// <param name="ThrowSites">The throw sites whose thrown type is assignable to the traced type, discovered in the same syntax-tree walk as the catch sites.</param>
 /// <param name="ThrowSiteCount">The number of throw sites in <paramref name="ThrowSites"/>.</param>
 /// <param name="CountOmitted">How many catch + throw sites were discovered beyond the cap and dropped from the response; <c>0</c> when nothing was truncated.</param>
+/// <param name="IsComplete"><see langword="false"/> when one or more documents could not be scanned.</param>
+/// <param name="FailedDocumentCount">Number of documents omitted after unexpected scan failures.</param>
 public sealed record ExceptionFlowResult(
     string ExceptionTypeMetadataName,
     string? ResolvedTypeDisplayName,
@@ -21,7 +23,9 @@ public sealed record ExceptionFlowResult(
     IReadOnlyList<ExceptionCatchSiteDto> CatchSites,
     IReadOnlyList<ExceptionThrowSiteDto> ThrowSites,
     int ThrowSiteCount,
-    int CountOmitted);
+    int CountOmitted,
+    bool IsComplete = true,
+    int FailedDocumentCount = 0);
 
 /// <summary>
 /// A single <c>catch</c> clause whose declared exception type is assignable from (or equal to)

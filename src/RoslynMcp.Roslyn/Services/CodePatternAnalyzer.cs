@@ -14,50 +14,93 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<CodePatternAnalyzer> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> _rootLoader;
 
-    public CodePatternAnalyzer(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<CodePatternAnalyzer> logger)
+    public CodePatternAnalyzer(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<CodePatternAnalyzer> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspace, compilationCache, logger, exceptionReporter, static (tree, token) => tree.GetRootAsync(token))
+    {
+    }
+
+    internal CodePatternAnalyzer(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<CodePatternAnalyzer> logger,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> rootLoader)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
+        _rootLoader = rootLoader;
     }
 
     public async Task<IReadOnlyList<ReflectionUsageDto>> FindReflectionUsagesAsync(
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
+        var scan = await FindReflectionUsagesDetailedAsync(workspaceId, projectFilter, ct).ConfigureAwait(false);
+        if (!scan.IsComplete)
+        {
+            throw new InvalidOperationException(
+                $"Reflection usage scan was incomplete: {scan.FailedDocumentCount} document(s) could not be analyzed.");
+        }
+
+        return scan.Usages;
+    }
+
+    public async Task<ReflectionUsageScanResult> FindReflectionUsagesDetailedAsync(
+        string workspaceId, string? projectFilter, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<ReflectionUsageDto>();
+        var failedDocumentCount = 0;
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (ct.IsCancellationRequested) break;
+                ct.ThrowIfCancellationRequested();
                 if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 try
                 {
                     var semanticModel = compilation.GetSemanticModel(tree);
-                    var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                    var root = await _rootLoader(tree, ct).ConfigureAwait(false);
 
                     CollectReflectionInvocations(root, semanticModel, results, ct);
                     CollectTypeofUsages(root, semanticModel, results, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex, "Failed to analyze syntax tree {Path} for reflection usages, skipping",
-                        tree.FilePath);
+                    failedDocumentCount++;
+                    var detail = UnexpectedExceptionReporting.Report(
+                        _exceptionReporter,
+                        ex,
+                        UnexpectedExceptionCategory.AnalysisScan).Public;
+                    _logger.LogWarning(
+                        "Reflection usage scan skipped one document after an unexpected failure; failedDocumentCount={FailedDocumentCount} correlationId={CorrelationId}",
+                        failedDocumentCount,
+                        detail.CorrelationId);
                 }
             }
         }
 
-        return results;
+        return new ReflectionUsageScanResult(
+            results,
+            IsComplete: failedDocumentCount == 0,
+            FailedDocumentCount: failedDocumentCount);
     }
 
     private static void CollectReflectionInvocations(
