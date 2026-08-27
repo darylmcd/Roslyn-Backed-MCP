@@ -24,6 +24,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
     private readonly IGatedCommandExecutor _executor;
     private readonly IMsBuildEvaluationService _msBuildEvaluation;
     private readonly ILogger<NuGetDependencyService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly ValidationServiceOptions _options;
 
     /// <summary>
@@ -47,12 +48,14 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         IGatedCommandExecutor executor,
         IMsBuildEvaluationService msBuildEvaluation,
         ILogger<NuGetDependencyService> logger,
-        ValidationServiceOptions? options = null)
+        ValidationServiceOptions? options = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _executor = executor;
         _msBuildEvaluation = msBuildEvaluation;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
         _options = options ?? new ValidationServiceOptions();
         _workspace.WorkspaceClosed += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
         // Item #7: reload typically coincides with a `dotnet restore`, which is exactly when
@@ -63,17 +66,33 @@ public sealed class NuGetDependencyService : INuGetDependencyService
     public async Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
         string workspaceId, CancellationToken ct, bool summary = false)
     {
+        var scan = await GetNuGetDependenciesDetailedAsync(workspaceId, ct, summary).ConfigureAwait(false);
+        if (!scan.IsComplete)
+        {
+            throw new InvalidOperationException(
+                $"NuGet dependency scan was incomplete: {scan.FailedProjectCount} project(s) could not be evaluated.");
+        }
+
+        return scan.Result;
+    }
+
+    public async Task<NuGetDependencyScanResult> GetNuGetDependenciesDetailedAsync(
+        string workspaceId, CancellationToken ct, bool summary = false)
+    {
+        ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var projectDtos = new List<NuGetProjectDto>();
         var packageMap = new Dictionary<(string Id, string Version), List<string>>();
+        var failedProjectCount = 0;
         var packagesPropsPath = MsBuildMetadataHelper.FindDirectoryPackagesProps(_workspace.GetStatus(workspaceId).LoadedPath);
 
         foreach (var project in solution.Projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
             if (project.FilePath is null) continue;
 
             var packages = new List<NuGetPackageReferenceDto>();
+            var projectPackageKeys = new List<(string Id, string Version)>();
 
             try
             {
@@ -101,19 +120,32 @@ public sealed class NuGetDependencyService : INuGetDependencyService
                     packages.Add(new NuGetPackageReferenceDto(id, version, resolvedCentral));
 
                     var displayVersion = GetDisplayVersion(version, resolvedCentral);
-                    var key = (id, displayVersion);
-                    if (!packageMap.TryGetValue(key, out var users))
-                    {
-                        users = [];
-                        packageMap[key] = users;
-                    }
-
-                    users.Add(project.Name);
+                    projectPackageKeys.Add((id, displayVersion));
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Failed to enumerate PackageReference items for {Project} via MSBuild", project.Name);
+                failedProjectCount++;
+                var detail = UnexpectedExceptionReporting.Report(
+                    _exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.AnalysisScan).Public;
+                _logger.LogWarning(
+                    "NuGet dependency scan skipped one project after an unexpected evaluation failure; failedProjectCount={FailedProjectCount} correlationId={CorrelationId}",
+                    failedProjectCount,
+                    detail.CorrelationId);
+                continue;
+            }
+
+            foreach (var key in projectPackageKeys)
+            {
+                if (!packageMap.TryGetValue(key, out var users))
+                {
+                    users = [];
+                    packageMap[key] = users;
+                }
+
+                users.Add(project.Name);
             }
 
             projectDtos.Add(new NuGetProjectDto(project.Name, project.FilePath, packages));
@@ -150,13 +182,19 @@ public sealed class NuGetDependencyService : INuGetDependencyService
                 .OrderBy(s => s.PackageId, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            return new NuGetDependencyResultDto(
-                Packages: [],
-                Projects: [],
-                Summaries: summaries);
+            return new NuGetDependencyScanResult(
+                new NuGetDependencyResultDto(
+                    Packages: [],
+                    Projects: [],
+                    Summaries: summaries),
+                IsComplete: failedProjectCount == 0,
+                FailedProjectCount: failedProjectCount);
         }
 
-        return new NuGetDependencyResultDto(packageDtos, projectDtos);
+        return new NuGetDependencyScanResult(
+            new NuGetDependencyResultDto(packageDtos, projectDtos),
+            IsComplete: failedProjectCount == 0,
+            FailedProjectCount: failedProjectCount);
     }
 
     private static string GetDisplayVersion(string version, string? resolvedCentralVersion)

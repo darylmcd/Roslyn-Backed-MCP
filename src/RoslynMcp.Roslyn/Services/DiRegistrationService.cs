@@ -18,6 +18,8 @@ public sealed class DiRegistrationService : IDiRegistrationService
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<DiRegistrationService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> _rootLoader;
 
     /// <summary>
     /// di-registrations-scan-caching: full scan is ~12 s on Jellyfin (40 projects, 187
@@ -50,11 +52,13 @@ public sealed class DiRegistrationService : IDiRegistrationService
         public ScanSnapshot(
             IReadOnlyList<DiRegistrationDto> raw,
             IReadOnlyList<DiRegistrationDto> legacyView,
-            IReadOnlySet<string> enumerableConsumedServiceTypes)
+            IReadOnlySet<string> enumerableConsumedServiceTypes,
+            int failedDocumentCount)
         {
             Raw = raw;
             LegacyView = legacyView;
             EnumerableConsumedServiceTypes = enumerableConsumedServiceTypes;
+            FailedDocumentCount = failedDocumentCount;
         }
 
         public IReadOnlyList<DiRegistrationDto> Raw { get; }
@@ -70,6 +74,10 @@ public sealed class DiRegistrationService : IDiRegistrationService
         /// </summary>
         public IReadOnlySet<string> EnumerableConsumedServiceTypes { get; }
 
+        public int FailedDocumentCount { get; }
+
+        public bool IsComplete => FailedDocumentCount == 0;
+
         public IReadOnlyList<DiRegistrationOverrideChainDto> GetOrBuildOverrideChains()
         {
             // Volatile single-writer read/write — worst case is two threads each compute once,
@@ -84,11 +92,24 @@ public sealed class DiRegistrationService : IDiRegistrationService
     public DiRegistrationService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
-        ILogger<DiRegistrationService> logger)
+        ILogger<DiRegistrationService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspace, compilationCache, logger, exceptionReporter, static (tree, token) => tree.GetRootAsync(token))
+    {
+    }
+
+    internal DiRegistrationService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<DiRegistrationService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Func<SyntaxTree, CancellationToken, Task<SyntaxNode>> rootLoader)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _exceptionReporter = exceptionReporter;
+        _rootLoader = rootLoader;
         _workspace.WorkspaceClosed += workspaceId => _scanCache.TryRemove(workspaceId, out _);
         // Item #7: also drop scan cache on reload so DI registrations reflect the new solution.
         _workspace.WorkspaceReloaded += workspaceId => _scanCache.TryRemove(workspaceId, out _);
@@ -97,15 +118,36 @@ public sealed class DiRegistrationService : IDiRegistrationService
     public async Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
+        var scan = await GetDiRegistrationsDetailedAsync(
+            workspaceId, projectFilter, includeOverrideChains: false, ct).ConfigureAwait(false);
+        if (!scan.IsComplete)
+        {
+            throw new InvalidOperationException(
+                $"DI registration scan was incomplete: {scan.FailedDocumentCount} document(s) could not be analyzed.");
+        }
+
+        return scan.Registrations;
+    }
+
+    public async Task<DiRegistrationScanResult> GetDiRegistrationsDetailedAsync(
+        string workspaceId,
+        string? projectFilter,
+        bool includeOverrideChains,
+        CancellationToken ct)
+    {
         var snapshot = await GetOrLoadSnapshotAsync(workspaceId, projectFilter, ct).ConfigureAwait(false);
-        return snapshot.LegacyView;
+        return new DiRegistrationScanResult(
+            snapshot.LegacyView,
+            includeOverrideChains ? snapshot.GetOrBuildOverrideChains() : [],
+            snapshot.IsComplete,
+            snapshot.FailedDocumentCount);
     }
 
     public async Task<DiRegistrationScanResult> GetDiRegistrationsWithOverridesAsync(
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
-        var snapshot = await GetOrLoadSnapshotAsync(workspaceId, projectFilter, ct).ConfigureAwait(false);
-        return new DiRegistrationScanResult(snapshot.LegacyView, snapshot.GetOrBuildOverrideChains());
+        return await GetDiRegistrationsDetailedAsync(
+            workspaceId, projectFilter, includeOverrideChains: true, ct).ConfigureAwait(false);
     }
 
     private async Task<ScanSnapshot> GetOrLoadSnapshotAsync(
@@ -137,7 +179,11 @@ public sealed class DiRegistrationService : IDiRegistrationService
         var legacyView = scan.Registrations.Count == 0
             ? (IReadOnlyList<DiRegistrationDto>)Array.Empty<DiRegistrationDto>()
             : scan.Registrations.Where(r => !IsTryAddMethod(r.RegistrationMethod)).ToList();
-        var snapshot = new ScanSnapshot(scan.Registrations, legacyView, scan.EnumerableConsumedServiceTypes);
+        var snapshot = new ScanSnapshot(
+            scan.Registrations,
+            legacyView,
+            scan.EnumerableConsumedServiceTypes,
+            scan.FailedDocumentCount);
 
         if (entry.ByFilter.Count >= MaxFilterEntriesPerWorkspace)
         {
@@ -157,7 +203,8 @@ public sealed class DiRegistrationService : IDiRegistrationService
     /// </summary>
     private sealed record ScanResult(
         IReadOnlyList<DiRegistrationDto> Registrations,
-        IReadOnlySet<string> EnumerableConsumedServiceTypes);
+        IReadOnlySet<string> EnumerableConsumedServiceTypes,
+        int FailedDocumentCount);
 
     private async Task<ScanResult> ScanProjectsAsync(
         string workspaceId, Solution solution, string? projectFilter, CancellationToken ct)
@@ -169,30 +216,38 @@ public sealed class DiRegistrationService : IDiRegistrationService
         // "intentional multi-registration" consumers — BuildOverrideChains must not flag earlier
         // registrations of these service types as dead.
         var enumerableConsumed = new HashSet<string>(StringComparer.Ordinal);
+        var failedDocumentCount = 0;
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (ct.IsCancellationRequested) break;
+                ct.ThrowIfCancellationRequested();
 
                 SemanticModel semanticModel;
                 SyntaxNode root;
                 try
                 {
                     semanticModel = compilation.GetSemanticModel(tree);
-                    root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                    root = await _rootLoader(tree, ct).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex, "Failed to analyze syntax tree {Path} for DI registrations, skipping",
-                        tree.FilePath);
+                    failedDocumentCount++;
+                    var detail = UnexpectedExceptionReporting.Report(
+                        _exceptionReporter,
+                        ex,
+                        UnexpectedExceptionCategory.AnalysisScan).Public;
+                    _logger.LogWarning(
+                        "DI registration scan skipped one document after an unexpected failure; failedDocumentCount={FailedDocumentCount} correlationId={CorrelationId}",
+                        failedDocumentCount,
+                        detail.CorrelationId);
                     continue;
                 }
 
@@ -211,7 +266,7 @@ public sealed class DiRegistrationService : IDiRegistrationService
             }
         }
 
-        return new ScanResult(results, enumerableConsumed);
+        return new ScanResult(results, enumerableConsumed, failedDocumentCount);
     }
 
     /// <summary>

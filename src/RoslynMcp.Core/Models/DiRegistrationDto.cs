@@ -58,7 +58,9 @@ public sealed record DiRegistrationOverrideChainDto(
 /// </summary>
 public sealed record DiRegistrationScanResult(
     IReadOnlyList<DiRegistrationDto> Registrations,
-    IReadOnlyList<DiRegistrationOverrideChainDto> OverrideChains);
+    IReadOnlyList<DiRegistrationOverrideChainDto> OverrideChains,
+    bool IsComplete = true,
+    int FailedDocumentCount = 0);
 
 /// <summary>
 /// Compact response shape for large DI registration scans. The detailed registration and
@@ -75,7 +77,10 @@ public sealed record DiRegistrationSummaryResultDto(
     int Offset,
     int Limit,
     bool HasMore,
-    IReadOnlyList<DiRegistrationOverrideChainSummaryDto> OverrideChains);
+    IReadOnlyList<DiRegistrationOverrideChainSummaryDto> OverrideChains,
+    bool IsComplete = true,
+    int FailedDocumentCount = 0,
+    string TotalCountMeaning = "complete");
 
 /// <summary>
 /// Compact per-service override-chain row used by <see cref="DiRegistrationSummaryResultDto"/>.

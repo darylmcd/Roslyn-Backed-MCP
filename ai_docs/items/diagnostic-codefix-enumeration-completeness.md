@@ -1,6 +1,6 @@
 # diagnostic-codefix-enumeration-completeness — Distinguish failed code-fix enumeration
 
-**row:** `diagnostic-codefix-enumeration-completeness` · **pri:** `Medium` · **size:** `M` · **deps:** `public-exception-detail-policy,mcp-logging-stderr-otel-migration,code-action-provider-loading-consolidation`
+**row:** `diagnostic-codefix-enumeration-completeness` · **pri:** `Medium` · **size:** `M` · **deps:** `public-exception-detail-policy,code-action-provider-loading-consolidation`
 
 ## Anchors
 

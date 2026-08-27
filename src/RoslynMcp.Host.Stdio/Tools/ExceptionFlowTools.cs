@@ -32,7 +32,7 @@ public static class ExceptionFlowTools
     [McpServerTool(Name = "trace_exception_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Trace catch clauses that handle a given exception type."),
-     Description("Return both `catch` handling sites and `throw new` origination sites for an exception type across the workspace. Use when `find_references` gives usage sites, not handling sites.")]
+     Description("Find catch handling sites and `throw new` origination sites for an exception type (usage sites, not handling sites). isComplete=false distinguishes scan failures from cap truncation.")]
     public static Task<string> TraceExceptionFlow(
         IWorkspaceExecutionGate gate,
         IExceptionFlowService exceptionFlowService,

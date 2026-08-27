@@ -12,6 +12,27 @@ public interface IDiRegistrationService
     Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
         string workspaceId, string? projectFilter, CancellationToken ct);
 
+    async Task<DiRegistrationScanResult> GetDiRegistrationsDetailedAsync(
+        string workspaceId,
+        string? projectFilter,
+        bool includeOverrideChains,
+        CancellationToken ct)
+    {
+        if (includeOverrideChains)
+        {
+            return await GetDiRegistrationsWithOverridesAsync(workspaceId, projectFilter, ct)
+                .ConfigureAwait(false);
+        }
+
+        var registrations = await GetDiRegistrationsAsync(workspaceId, projectFilter, ct)
+            .ConfigureAwait(false);
+        return new DiRegistrationScanResult(
+            registrations,
+            OverrideChains: [],
+            IsComplete: true,
+            FailedDocumentCount: 0);
+    }
+
     /// <summary>
     /// di-lifetime-mismatch-detection: extended scan that returns the same flat registration
     /// list plus a per-service-type override chain. Computed only when the caller opts in via

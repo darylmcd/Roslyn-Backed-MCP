@@ -52,7 +52,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect DI registration patterns in source."),
-     Description("Scan the solution for DI registrations (AddSingleton/AddScoped/AddTransient) and return the service-to-implementation mappings. Pass showLifetimeOverrides=true for per-service override chains and lifetime-mismatch flags.")]
+     Description("Scan the solution for DI registrations (AddSingleton/AddScoped/AddTransient) and return service-to-implementation mappings. isComplete=false means totals are observed lower bounds because documents failed.")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
@@ -67,13 +67,19 @@ public static class AdvancedAnalysisTools
         ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            var scan = await diRegistrationService.GetDiRegistrationsDetailedAsync(
+                workspaceId,
+                projectName,
+                showLifetimeOverrides,
+                c);
             if (!showLifetimeOverrides)
             {
-                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
+                var results = scan.Registrations;
                 if (summary)
                 {
                     return JsonSerializer.Serialize(
-                        BuildDiRegistrationSummary(results, [], offset, limit),
+                        BuildDiRegistrationSummary(
+                            results, [], offset, limit, scan.IsComplete, scan.FailedDocumentCount),
                         JsonDefaults.Indented);
                 }
 
@@ -89,6 +95,9 @@ public static class AdvancedAnalysisTools
                     offset,
                     limit,
                     hasMore = resultsHasMore,
+                    isComplete = scan.IsComplete,
+                    failedDocumentCount = scan.FailedDocumentCount,
+                    totalCountMeaning = scan.IsComplete ? "complete" : "observed-lower-bound",
                     registrations = pagedResults,
                 }, JsonDefaults.Indented);
             }
@@ -96,11 +105,16 @@ public static class AdvancedAnalysisTools
             // di-lifetime-mismatch-detection: opt-in path returns the (paged) registrations
             // list plus the per-service-type override chains. Override-chain output remains
             // unpaged in this mode — callers needing chain-level paging use summary=true.
-            var scan = await diRegistrationService.GetDiRegistrationsWithOverridesAsync(workspaceId, projectName, c);
             if (summary)
             {
                 return JsonSerializer.Serialize(
-                    BuildDiRegistrationSummary(scan.Registrations, scan.OverrideChains, offset, limit),
+                    BuildDiRegistrationSummary(
+                        scan.Registrations,
+                        scan.OverrideChains,
+                        offset,
+                        limit,
+                        scan.IsComplete,
+                        scan.FailedDocumentCount),
                     JsonDefaults.Indented);
             }
 
@@ -116,6 +130,9 @@ public static class AdvancedAnalysisTools
                 offset,
                 limit,
                 hasMore = registrationsHasMore,
+                isComplete = scan.IsComplete,
+                failedDocumentCount = scan.FailedDocumentCount,
+                totalCountMeaning = scan.IsComplete ? "complete" : "observed-lower-bound",
                 registrations = pagedRegistrations,
                 overrideChainCount = scan.OverrideChains.Count,
                 overrideChains = scan.OverrideChains,
@@ -127,7 +144,9 @@ public static class AdvancedAnalysisTools
         IReadOnlyList<DiRegistrationDto> registrations,
         IReadOnlyList<DiRegistrationOverrideChainDto> overrideChains,
         int offset,
-        int limit)
+        int limit,
+        bool isComplete,
+        int failedDocumentCount)
     {
         var clampedOffset = Math.Clamp(offset, 0, overrideChains.Count);
         var clampedLimit = Math.Clamp(limit, 1, 500);
@@ -159,7 +178,10 @@ public static class AdvancedAnalysisTools
             Offset: clampedOffset,
             Limit: clampedLimit,
             HasMore: clampedOffset + page.Count < overrideChains.Count,
-            OverrideChains: page);
+            OverrideChains: page,
+            IsComplete: isComplete,
+            FailedDocumentCount: failedDocumentCount,
+            TotalCountMeaning: isComplete ? "complete" : "observed-lower-bound");
     }
 
     [McpServerTool(Name = "get_complexity_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -188,7 +210,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_reflection_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find reflection-heavy call sites."),
-     Description("Find reflection API usage across the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.), bucketed by UsageKind — the call sites that make rename and dead-code removal unsafe.")]
+     Description("Find reflection API usage across the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.), bucketed by UsageKind. isComplete=false means totalCount is an observed lower bound because one or more documents failed.")]
     public static Task<string> FindReflectionUsages(
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,
@@ -202,7 +224,8 @@ public static class AdvancedAnalysisTools
         ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, projectName, c);
+            var scan = await codePatternAnalyzer.FindReflectionUsagesDetailedAsync(workspaceId, projectName, c);
+            var results = scan.Usages;
 
             // Summary mode: drop the item arrays and return only per-UsageKind counts plus the
             // total. usageKindCounts is computed on the FULL result set (not the paged slice)
@@ -225,6 +248,9 @@ public static class AdvancedAnalysisTools
                     offset,
                     limit,
                     hasMore = false,
+                    isComplete = scan.IsComplete,
+                    failedDocumentCount = scan.FailedDocumentCount,
+                    totalCountMeaning = scan.IsComplete ? "complete" : "observed-lower-bound",
                     usageKindCounts,
                 }, JsonDefaults.Indented);
             }
@@ -246,6 +272,9 @@ public static class AdvancedAnalysisTools
                 offset,
                 limit,
                 hasMore,
+                isComplete = scan.IsComplete,
+                failedDocumentCount = scan.FailedDocumentCount,
+                totalCountMeaning = scan.IsComplete ? "complete" : "observed-lower-bound",
                 usagesByKind = grouped,
             }, JsonDefaults.Indented);
         }, ct);
@@ -297,18 +326,27 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_nuget_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect NuGet package references and versions."),
-     Description("List every NuGet package reference across workspace projects, including which projects use each package. Use summary=true on multi-project solutions to collapse to per-package counts and distinct version counts.")]
+     Description("List NuGet package references across workspace projects. isComplete=false means totals are observed lower bounds because one or more projects failed evaluation; healthy project data is retained.")]
     public static Task<string> GetNuGetDependencies(
         IWorkspaceExecutionGate gate,
         INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true, returns a compact per-package summary `{packageId, version, projectCount, distinctVersionCount}` instead of the full per-project graph. Default false preserves the verbose shape.")] bool summary = false,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary),
-            ct);
+        => gate.RunReadAsync(workspaceId, async c =>
+        {
+            var scan = await nuGetDependencyService.GetNuGetDependenciesDetailedAsync(
+                workspaceId, c, summary).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new
+            {
+                packages = scan.Result.Packages,
+                projects = scan.Result.Projects,
+                summaries = scan.Result.Summaries,
+                isComplete = scan.IsComplete,
+                failedProjectCount = scan.FailedProjectCount,
+                totalCountMeaning = scan.IsComplete ? "complete" : "observed-lower-bound",
+            }, JsonDefaults.Indented);
+        }, ct);
 
     [McpServerTool(Name = "find_dead_locals", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,

@@ -381,6 +381,9 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(1, root.GetProperty("limit").GetInt32());
         Assert.IsTrue(root.GetProperty("hasMore").GetBoolean(),
             "limit=1 should surface hasMore when more override-chain summaries exist.");
+        Assert.IsTrue(root.GetProperty("isComplete").GetBoolean());
+        Assert.AreEqual(0, root.GetProperty("failedDocumentCount").GetInt32());
+        Assert.AreEqual("complete", root.GetProperty("totalCountMeaning").GetString());
         Assert.IsTrue(root.TryGetProperty("overrideChains", out var overrideChains));
         Assert.AreEqual(1, overrideChains.GetArrayLength());
         Assert.IsFalse(root.TryGetProperty("registrations", out _),
@@ -426,6 +429,8 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(100, rootDefault.GetProperty("limit").GetInt32());
         Assert.IsTrue(rootDefault.GetProperty("hasMore").GetBoolean(),
             "With 101 registrations and default limit=100, hasMore must be true.");
+        Assert.IsTrue(rootDefault.GetProperty("isComplete").GetBoolean());
+        Assert.AreEqual(0, rootDefault.GetProperty("failedDocumentCount").GetInt32());
         Assert.IsTrue(rootDefault.TryGetProperty("registrations", out var registrationsDefault));
         Assert.AreEqual(100, registrationsDefault.GetArrayLength(),
             "The paged registrations array must contain exactly limit entries.");
@@ -451,6 +456,8 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(TotalRegistrations, rootOverrides.GetProperty("totalCount").GetInt32());
         Assert.IsTrue(rootOverrides.GetProperty("hasMore").GetBoolean(),
             "hasMore must also be true on the overrides path with > limit registrations.");
+        Assert.IsTrue(rootOverrides.GetProperty("isComplete").GetBoolean());
+        Assert.AreEqual("complete", rootOverrides.GetProperty("totalCountMeaning").GetString());
         Assert.IsTrue(rootOverrides.TryGetProperty("registrations", out var registrationsOverrides));
         Assert.AreEqual(100, registrationsOverrides.GetArrayLength());
         Assert.IsTrue(rootOverrides.TryGetProperty("overrideChainCount", out _),
