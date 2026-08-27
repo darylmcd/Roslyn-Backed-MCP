@@ -107,6 +107,7 @@ internal static class StructuredCallToolFilter
             var logger = context.Services?
                 .GetService<ILoggerFactory>()?
                 .CreateLogger("RoslynMcp.StructuredCallToolFilter");
+            var exceptionReporter = context.Services?.GetService<IUnexpectedExceptionReporter>();
 
             using var metricsScope = AmbientGateMetrics.BeginRequest();
             using var serverScope = RequestMcpServerContext.Begin(context.Server);
@@ -140,7 +141,8 @@ internal static class StructuredCallToolFilter
                     CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                     return InjectMetaIntoContent(
                         ApplyProtocolResultShape(context, workspacePathRecovery),
-                        toolName);
+                        toolName,
+                        exceptionReporter);
                 }
 
                 // workspace-id-omitted-single-resolve: pre-dispatch workspaceId auto-resolution.
@@ -193,7 +195,8 @@ internal static class StructuredCallToolFilter
                             CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                             return InjectMetaIntoContent(
                                 ApplyProtocolResultShape(context, recovered),
-                                toolName);
+                                toolName,
+                                exceptionReporter);
                         }
 
                         // Declined or malformed request-scoped input is authoritative too: do
@@ -260,7 +263,8 @@ internal static class StructuredCallToolFilter
                                         toolName,
                                         new PublicArgumentException(
                                             fastFailMessage!,
-                                            ElicitationAllowlistPolicy.WorkspaceIdParameterName)));
+                                            ElicitationAllowlistPolicy.WorkspaceIdParameterName),
+                                        exceptionReporter));
 
                             case WorkspaceIdAutoResolution.NotApplicable:
                                 {
@@ -293,7 +297,8 @@ internal static class StructuredCallToolFilter
                                             CallMetricsRecorder.RecordElapsed(stopwatch.ElapsedMilliseconds);
                                             return InjectMetaIntoContent(
                                                 ApplyProtocolResultShape(context, recovered),
-                                                toolName);
+                                                toolName,
+                                                exceptionReporter);
                                         }
                                     }
 
@@ -318,7 +323,8 @@ internal static class StructuredCallToolFilter
                     elapsedMs);
                 return InjectMetaIntoContent(
                     ApplyProtocolResultShape(context, result),
-                    toolName);
+                    toolName,
+                    exceptionReporter);
             }
             catch (OperationCanceledException)
             {
@@ -363,7 +369,7 @@ internal static class StructuredCallToolFilter
                 var isInternalError = IsInternalError(ex);
                 var level = isInternalError ? LogLevel.Error : LogLevel.Warning;
                 if (isInternalError &&
-                    context.Services?.GetService<IUnexpectedExceptionReporter>() is { } reporter)
+                    exceptionReporter is { } reporter)
                 {
                     reporter.ReportUnexpected(
                         ex,
@@ -383,7 +389,9 @@ internal static class StructuredCallToolFilter
                 // received `resultType: "complete"` on every error frame — a field that
                 // protocol era does not define — because BuildErrorResult constructs a
                 // CallToolResult directly and the SDK stamps the discriminator by default.
-                return ApplyProtocolResultShape(context, BuildErrorResult(toolName, ex));
+                return ApplyProtocolResultShape(
+                    context,
+                    BuildErrorResult(toolName, ex, exceptionReporter));
             }
         };
     }
@@ -743,10 +751,16 @@ internal static class StructuredCallToolFilter
     /// throws. Visible to tests so the classifier→envelope→<c>_meta</c> pipeline can be
     /// asserted without standing up a real <c>RequestContext</c> / <c>McpServer</c>.
     /// </summary>
-    internal static CallToolResult BuildErrorResult(string toolName, Exception ex)
+    internal static CallToolResult BuildErrorResult(
+        string toolName,
+        Exception ex,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         var envelope = ToolErrorHandler.ClassifyAndFormat(ex, toolName);
-        var envelopeWithMeta = ToolErrorHandler.InjectMetaIfPossible(envelope, toolName);
+        var envelopeWithMeta = ToolErrorHandler.InjectMetaIfPossible(
+            envelope,
+            toolName,
+            exceptionReporter);
         return new CallToolResult
         {
             IsError = true,
@@ -760,8 +774,14 @@ internal static class StructuredCallToolFilter
     /// <see cref="StructuredCallContentProjector.InjectMetaIntoContent(CallToolResult, string)"/>;
     /// kept here to preserve the historical internal call surface used by <see cref="Create"/>.
     /// </summary>
-    internal static CallToolResult InjectMetaIntoContent(CallToolResult result, string toolName) =>
-        StructuredCallContentProjector.InjectMetaIntoContent(result, toolName);
+    internal static CallToolResult InjectMetaIntoContent(
+        CallToolResult result,
+        string toolName,
+        IUnexpectedExceptionReporter? exceptionReporter = null) =>
+        StructuredCallContentProjector.InjectMetaIntoContent(
+            result,
+            toolName,
+            exceptionReporter);
 
     /// <summary>
     /// Removes the July 2026 result discriminator for legacy sessions. Explicit

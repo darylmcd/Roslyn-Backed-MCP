@@ -77,7 +77,9 @@ public sealed class PreviewTokenStaleAcrossAutoReloadTests
                 store,
                 previewToken: token,
                 serviceCall: _ => Task.FromResult(new UnusedDto()),
-                ct: CancellationToken.None));
+                ct: CancellationToken.None,
+                expectedKind: PreviewKind.FileCreate,
+                invokedRoute: "create_file_apply"));
 
         var doc = JsonDocument.Parse(envelope);
         Assert.AreEqual("PreviewTokenStale",

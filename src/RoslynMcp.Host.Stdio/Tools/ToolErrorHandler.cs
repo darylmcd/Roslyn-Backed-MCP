@@ -33,6 +33,7 @@ internal static class MetaSerializer
 
 internal static class ToolErrorHandler
 {
+    private const string _roslynMcpMetaPropertyName = "roslynMcp";
     internal enum ToolErrorCategory
     {
         NotFound,
@@ -262,7 +263,11 @@ internal static class ToolErrorHandler
     /// never breaks a well-formed response. Exposed <c>internal</c> so the
     /// <c>StructuredCallToolFilter</c> can inject <c>_meta</c> on both success and error paths.
     /// </summary>
-    internal static string InjectMetaIfPossible(string json, string? source = null)
+    internal static string InjectMetaIfPossible(
+        string json,
+        string? source = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        Func<string, JsonNode?>? parseJson = null)
     {
         var snapshot = AmbientGateMetrics.Snapshot();
         if (snapshot is null)
@@ -274,7 +279,7 @@ internal static class ToolErrorHandler
 
         try
         {
-            var node = JsonNode.Parse(json);
+            var node = parseJson is null ? JsonNode.Parse(json) : parseJson(json);
             if (node is not JsonObject obj)
             {
                 System.Diagnostics.Trace.TraceWarning(
@@ -285,12 +290,43 @@ internal static class ToolErrorHandler
             var metaNode = JsonSerializer.SerializeToNode(snapshot, MetaSerializer.CamelCase);
             if (metaNode is null) return json;
 
-            obj["_meta"] = metaNode;
+            if (obj.TryGetPropertyValue("_meta", out var producerMeta))
+            {
+                if (producerMeta is not JsonObject producerMetaObject ||
+                    producerMetaObject.ContainsKey(_roslynMcpMetaPropertyName))
+                {
+                    UnexpectedExceptionReporting.Report(
+                        exceptionReporter,
+                        new InvalidOperationException("Text metadata projection collision."),
+                        UnexpectedExceptionCategory.MetaProjection);
+                    return json;
+                }
+
+                // `_meta.roslynMcp` is reserved for this decorator when a producer already owns
+                // the text-channel `_meta` object. Preserve every producer member losslessly.
+                producerMetaObject[_roslynMcpMetaPropertyName] = metaNode;
+            }
+            else
+            {
+                // Preserve the historical text shape when the producer does not supply metadata.
+                obj["_meta"] = metaNode;
+            }
+
             return obj.ToJsonString(JsonDefaults.Indented);
         }
-        catch
+        catch (JsonException)
         {
-            // Best-effort: never break a tool response over an injection failure.
+            // Non-JSON text is an ordinary compatibility pass-through, not a server fault.
+            return json;
+        }
+        catch (Exception ex)
+        {
+            // Projection is best-effort for the caller, but an unexpected implementation failure
+            // must remain observable through the secret-safe server diagnostics channel.
+            UnexpectedExceptionReporting.Report(
+                exceptionReporter,
+                ex,
+                UnexpectedExceptionCategory.MetaProjection);
             return json;
         }
     }

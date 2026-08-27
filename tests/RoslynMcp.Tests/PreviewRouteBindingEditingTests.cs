@@ -18,9 +18,8 @@ namespace RoslynMcp.Tests;
 /// own fail-open/fail-closed contract. What these cases guard is the half that lives in the tool
 /// shims: that <c>MultiFileEditTools.ApplyMultiFilePreview</c> and
 /// <c>CodeActionTools.ApplyCodeAction</c> actually declare the RIGHT
-/// <see cref="PreviewKind"/>. Dropping or mistyping either <c>expectedKind:</c> argument compiles
-/// cleanly and silently reverts the route to redeem-anything, so the shims are invoked directly
-/// here rather than re-testing the helper.
+/// <see cref="PreviewKind"/>. The required dispatch arguments make a dropped binding fail to
+/// compile; these shim-level tests still catch a concrete but incorrect kind or route name.
 /// </para>
 /// <para>
 /// <c>FakeGate</c> / <c>FakePreviewStore</c> in <c>ToolDispatchTests</c> are private nested types,

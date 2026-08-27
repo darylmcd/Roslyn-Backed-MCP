@@ -142,6 +142,8 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
 
         StringAssert.Contains(ex.Message, "rename_apply",
             $"{route} must name the token's real apply route so the caller can recover.");
+        StringAssert.Contains(ex.Message, route,
+            $"{route} must name the route the caller actually invoked.");
         Assert.AreEqual(originalContents, await File.ReadAllTextAsync(dogPath, CancellationToken.None),
             $"{route} must refuse the foreign token BEFORE any workspace mutation.");
     }

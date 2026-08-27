@@ -57,7 +57,8 @@ public static class BulkRefactoringTools
             // token minted by a different *_preview is refused before any workspace mutation.
             // Both bulk_replace_type_preview and replace_invocation_preview mint this kind — they
             // deliberately share this single apply route.
-            expectedKind: PreviewKind.BulkReplaceType);
+            expectedKind: PreviewKind.BulkReplaceType,
+            invokedRoute: "bulk_replace_type_apply");
 
     // replace-invocation-pattern-refactor: method-level ergonomic pair to bulk_replace_type_preview.
     // Rewrites every invocation of FQ.Old(a,b,c) to FQ.New(b,c,a) with argument reorder derived

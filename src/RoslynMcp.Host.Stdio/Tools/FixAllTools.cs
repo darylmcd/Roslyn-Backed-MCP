@@ -53,5 +53,6 @@ public static class FixAllTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.FixAll);
+            expectedKind: PreviewKind.FixAll,
+            invokedRoute: "fix_all_apply");
 }

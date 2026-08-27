@@ -279,7 +279,7 @@ public sealed class EditService : IEditService
     /// Item 5: preview a multi-file edit batch without writing to disk. Simulates every file's
     /// edits against a single Roslyn <c>Solution</c> snapshot, stores the mutated snapshot in
     /// <see cref="Contracts.IPreviewStore"/>, and returns per-file unified diffs plus a
-    /// composite preview token. Callers redeem via <c>apply_composite_preview</c>.
+    /// multi-file preview token. Callers redeem via <c>preview_multi_file_edit_apply</c>.
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
         string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false)
@@ -390,7 +390,7 @@ public sealed class EditService : IEditService
     /// <see cref="Contracts.IPreviewStore"/>. Used by <see cref="SymbolRefactorService.PreviewAsync"/>
     /// to chain ops in-memory so each op sees its predecessor's rewrites without the previous
     /// auto-apply-each-step disk write that fired before the agent ever called
-    /// <c>apply_composite_preview</c>.
+    /// <c>preview_multi_file_edit_apply</c>.
     /// </summary>
     internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description, IReadOnlyList<string>? Warnings)>
         PreviewMultiFileTextEditsOnSolutionAsync(

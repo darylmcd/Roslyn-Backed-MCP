@@ -71,7 +71,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
                     return Task.FromResult(new FakeDto("must-not-run"));
                 },
                 ct: CancellationToken.None,
-                expectedKind: routeKind));
+                expectedKind: routeKind,
+                invokedRoute: expectedRoute));
 
         Assert.IsFalse(serviceCallRan, "The provenance guard must refuse the apply BEFORE the service call runs.");
         StringAssert.Contains(ex.Message, "rename_preview", "message must name the token's ACTUAL producer");
@@ -96,7 +97,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             previewToken: "tok-match",
             serviceCall: _ => Task.FromResult(new FakeDto("applied")),
             ct: CancellationToken.None,
-            expectedKind: routeKind);
+            expectedKind: routeKind,
+            invokedRoute: "test_apply");
 
         StringAssert.Contains(result, "applied");
     }
@@ -123,7 +125,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             previewToken: "tok-untagged",
             serviceCall: _ => Task.FromResult(new FakeDto("applied")),
             ct: CancellationToken.None,
-            expectedKind: routeKind);
+            expectedKind: routeKind,
+            invokedRoute: "test_apply");
 
         StringAssert.Contains(result, "applied",
             "An Unspecified producer kind means 'no provenance claim' and must stay permissive.");
@@ -151,7 +154,8 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
                 previewToken: "tok-cross",
                 serviceCall: _ => Task.FromResult(new FakeDto("must-not-run")),
                 ct: CancellationToken.None,
-                expectedKind: PreviewKind.FileMove));
+                expectedKind: PreviewKind.FileMove,
+                invokedRoute: "move_file_apply"));
 
         StringAssert.Contains(ex.Message, "create_file_preview");
         StringAssert.Contains(ex.Message, "create_file_apply");

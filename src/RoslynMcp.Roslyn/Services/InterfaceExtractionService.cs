@@ -181,7 +181,13 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{interfaceName}' from '{typeName}' with {candidateMembers.Count} member(s)";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            PreviewKind.ExtractInterface);
 
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }

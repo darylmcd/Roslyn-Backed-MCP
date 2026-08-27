@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using ModelContextProtocol.Protocol;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
@@ -334,10 +335,25 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
             Assert.IsNotNull(result);
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.PreviewToken));
+            Assert.AreEqual(
+                PreviewKind.ExtractType,
+                PreviewStore.PeekKind(result.PreviewToken),
+                "extract_type_preview must record its producer family.");
+
+            var wrongRoute = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ExtractMethodTools.ApplyExtractMethod(
+                    WorkspaceExecutionGate,
+                    RefactoringService,
+                    PreviewStore,
+                    result.PreviewToken,
+                    CancellationToken.None));
+            StringAssert.Contains(wrongRoute.Message, "extract_type_apply");
+            StringAssert.Contains(wrongRoute.Message, "extract_method_apply");
         }
         finally
         {
             WorkspaceManager.Close(wsId);
+            QueueDirectoryForCleanup(solutionDir);
         }
     }
 

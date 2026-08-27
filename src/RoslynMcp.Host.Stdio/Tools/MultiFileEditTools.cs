@@ -11,7 +11,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// MCP tool entry points for direct multi-file text-edit apply/preview operations.
 /// WS1 phase 1.6 — <c>ApplyMultiFilePreview</c> (pure dispatch) delegates to
-/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>;
+/// <see cref="ToolDispatch"/>'s token-aware write dispatch;
 /// <c>ApplyMultiFileEdit</c> and <c>PreviewMultiFileEdit</c> keep their hand-written
 /// bodies because they perform per-file async path validation inside the gate
 /// before the service call (validation must run under the gate's cancellation
@@ -35,7 +35,7 @@ public static class MultiFileEditTools
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", false, true,
         "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
-     Description("Apply text edits to multiple files under one atomic pre-apply snapshot. Prefer preview_multi_file_edit + apply_composite_preview for review workflows.")]
+     Description("Apply text edits to multiple files under one atomic pre-apply snapshot. Prefer preview_multi_file_edit + preview_multi_file_edit_apply for review workflows.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -115,5 +115,6 @@ public static class MultiFileEditTools
             ct,
             // preview-token-apply-route-provenance: bind this route to its producer family so a
             // token minted by a different *_preview is refused before any workspace mutation.
-            expectedKind: PreviewKind.MultiFileEdit);
+            expectedKind: PreviewKind.MultiFileEdit,
+            invokedRoute: "preview_multi_file_edit_apply");
 }
