@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-28T14:17:12Z
+**updated_at:** 2026-08-28T16:17:09Z
 
 ## Agent contract
 
@@ -81,6 +81,8 @@
 | `breaking-fragment-major-escalation-unconfirmed` | Medium | — | **Breaking fragment silently escalates to major** — make `verify-breaking-version-bump.ps1` echo the fragment filename + body, and WARN on a lone breaking member of a non-breaking family, instead of permitting a major on a bare `Write-Host`. [type: bug] [source: 2026-08-28 release-cut] | S | items/breaking-fragment-major-escalation-unconfirmed.md |
 | `bulk-refactoring-test-workspace-leak-and-unguarded-cleanup` | Medium | — | **Close the leaked workspace and guard the fixture delete** — a new BulkRefactoringTests case loads a workspace it never closes and deletes the fixture in a bare `finally`, so a cleanup failure masks the real assertion. [type: test] [source: 2026-08-26 backlog-sweep code review] | S | items/bulk-refactoring-test-workspace-leak-and-unguarded-cleanup.md |
 | `replace-invocation-preview-apply-route-undocumented` | Medium | — | **Document + map `replace_invocation_preview`s shared apply route** — two producers now share `PreviewKind.BulkReplaceType` as an enforced contract, but the MCP schema names one and the catalog maps neither. [type: bug] [source: 2026-08-26 backlog-sweep code review] | M | items/replace-invocation-preview-apply-route-undocumented.md |
+| `ci-merge-gate-publish-gate-shape-divergence` | Medium | — | **Merge gate never runs the publish gate shape** — add an unsharded Windows `verify-release.ps1` leg before tag push; merge runs 4-way sharded, publish runs unsharded, so single-process defects surface only after tagging. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
+| `release-cut-step3-environment-precheck` | Medium | — | **Step 3 runs the heavy gate with no environment guard** — pre-check free memory and stray dotnet/testhost process count before `verify-release.ps1`, and triage a red against machine state before calling it a product failure. [type: tooling] [source: 2026-08-28 release-cut] | S | items/release-cut-step3-environment-precheck.md |
 
 ## Low
 
