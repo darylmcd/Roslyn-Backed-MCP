@@ -1,5 +1,0 @@
----
-category: Fixed
----
-
-- **Fixed:** an actionable domain-refusal message thrown as `InvalidOperationException` (e.g. `test_run`'s TUnit global.json opt-in guidance, `TreeNodeFilterTranslator`'s filter-translation refusals, the OR-filter restore-failure error) was silently replaced with the generic "Check the tool contract and retry." text at the public tool boundary — `ToolErrorHandler`'s generic `InvalidOperationException` handler defensively discards messages it doesn't recognize, since most such messages aren't written with public disclosure in mind. Added `PublicInvalidOperationException` (`RoslynMcp.Core.Services`), a marker analogous to the existing `PublicArgumentException`, for domain refusals whose message was already composed for the caller; `ToolErrorHandler` now returns that message verbatim instead of the generic fallback. `TestRunnerService` and `TreeNodeFilterTranslator`'s TUnit-specific refusals now throw this type. A plain `InvalidOperationException` is unaffected — this is opt-in per throw site, not a behavior change for the rest of the codebase.
