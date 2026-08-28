@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-27T14:20:19Z
+**updated_at:** 2026-08-28T14:17:12Z
 
 ## Agent contract
 
@@ -80,6 +80,7 @@
 | `preview-token-apply-route-binding-remaining-families` | Medium | — | **Bind the remaining apply families to preview-token kinds** — 5 of ~20 `ApplyByTokenAsync` routes declare an expectedKind; the rest keep pre-binding behavior. Centralize the kind→route map while binding. [type: refactor] [source: PR #1354 follow-on] | L | items/preview-token-apply-route-binding-remaining-families.md |
 | `fixall-producer-kind-round-trip-coverage` | Medium | — | **Assert `fix_all_preview` mints `PreviewKind.FixAll`** — the producer half of the fix_all_apply binding is unasserted; blocked on the fixture not copying `.editorconfig` and FixAllService passing no AnalyzerOptions. [type: test] [source: 2026-08-26 backlog-sweep spec review] | S | items/fixall-producer-kind-round-trip-coverage.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
+| `breaking-fragment-major-escalation-unconfirmed` | Medium | — | **Breaking fragment silently escalates to major** — make `verify-breaking-version-bump.ps1` echo the fragment filename + body, and WARN on a lone breaking member of a non-breaking family, instead of permitting a major on a bare `Write-Host`. [type: bug] [source: 2026-08-28 release-cut] | S | items/breaking-fragment-major-escalation-unconfirmed.md |
 
 ## Low
 
