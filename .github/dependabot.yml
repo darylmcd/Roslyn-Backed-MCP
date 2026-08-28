@@ -75,3 +75,26 @@ updates:
           # MCP SDK updates require a dedicated ADR/wire/notices review and
           # therefore must never share the routine servicing PR.
           - "ModelContextProtocol"
+
+    # MSBuild 18.x is blocked, not merely unreviewed. Bumping the
+    # msbuild-compile-family to 18.x drags Microsoft.NET.StringTools 18.x in
+    # transitively, and Microsoft.Build.Locator 1.11.2 then fails the build with
+    # MSBL001 because StringTools carries no ExcludeAssets="runtime"
+    # PrivateAssets="all" of its own (the four Microsoft.Build.* refs in
+    # RoslynMcp.Roslyn.csproj already have it; StringTools is unpinned).
+    # PR #1330 was closed on this basis.
+    #
+    # Lift this ignore only when BOTH hold:
+    #   1. Microsoft.NET.StringTools is centrally pinned in
+    #      Directory.Packages.props and referenced with ExcludeAssets="runtime"
+    #      PrivateAssets="all", matching the existing Microsoft.Build.* refs; and
+    #   2. a green sdk-floor leg proves MSBL001 is satisfied at the 10.0.400 floor.
+    ignore:
+      - dependency-name: "Microsoft.Build"
+        versions: [">=18.0.0"]
+      - dependency-name: "Microsoft.Build.Framework"
+        versions: [">=18.0.0"]
+      - dependency-name: "Microsoft.Build.Tasks.Core"
+        versions: [">=18.0.0"]
+      - dependency-name: "Microsoft.Build.Utilities.Core"
+        versions: [">=18.0.0"]
