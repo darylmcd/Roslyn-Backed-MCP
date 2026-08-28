@@ -27,7 +27,7 @@ pwsh -NoProfile -File eng/update-claude-plugin.ps1
 The script replicates `/plugin marketplace update` + `/plugin install` without going through the client:
 
 - `git pull`s the marketplace clone at `~/.claude/plugins/marketplaces/roslyn-mcp-marketplace/`
-- Re-syncs the plugin cache at `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/<new-version>/` from git-tracked files only (710+ files at 1.29.0)
+- Re-syncs the plugin cache at `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/<new-version>/` from the git-tracked files matching `.claude-plugin/package-allowlist.txt` — read that file for the authoritative set. It admits consumer-facing files only (skills, `hooks/hooks.json`, the `.claude-plugin/*.json` manifests, `manifest.json`, LICENSE, README, notices, and a few `docs/*.md`), so the copied-file count is tens rather than hundreds. That is not a truncated copy: the server binary is fetched by the release-pinned `dnx` launch instead of being carried in the cache.
 - Prunes stale `<old-version>/` cache directories
 - Updates `installed_plugins.json` + `known_marketplaces.json` with the new version, commit SHA, and UTC timestamp
 
