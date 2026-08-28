@@ -8,7 +8,9 @@ public sealed record DiagnosticDetailsDto(
     string? Description,
     string? HelpLinkUri,
     IReadOnlyList<CodeFixOptionDto> SupportedFixes,
-    string? GuidanceMessage = null);
+    string? GuidanceMessage = null,
+    bool FixEnumerationComplete = true,
+    int FailedProviderCount = 0);
 
 /// <summary>
 /// Represents a code fix option available for a diagnostic.

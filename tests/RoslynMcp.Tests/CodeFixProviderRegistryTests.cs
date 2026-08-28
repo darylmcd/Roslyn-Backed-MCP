@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Services;
 
@@ -49,6 +52,44 @@ public sealed class CodeFixProviderRegistryTests
         Assert.IsNull(registry.FirstProviderFor("ZZ9999"));
     }
 
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void Registry_DetailedProjectionPreservesCompletenessAndFailsClosedOnFalseAbsence(
+        bool loadFailed,
+        bool includeHealthyProvider)
+    {
+        var providers = includeHealthyProvider
+            ? ImmutableArray.Create<CodeFixProvider>(new TestCodeFixProvider())
+            : ImmutableArray<CodeFixProvider>.Empty;
+        var failures = loadFailed
+            ? ImmutableArray.Create(new FeatureProviderLoadFailure(
+                FeatureProviderLoadFailureKind.ConstructorFailure,
+                nameof(TestCodeFixProvider)))
+            : ImmutableArray<FeatureProviderLoadFailure>.Empty;
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>(providers, failures),
+            _ => new FeatureProviderLoadResult<CodeFixProvider>([], []));
+
+        var detailed = registry.GetProvidersForDetailed("TEST0001");
+
+        Assert.AreEqual(includeHealthyProvider ? 1 : 0, detailed.Providers.Count);
+        Assert.AreEqual(!loadFailed, detailed.IsComplete);
+        Assert.AreEqual(loadFailed ? 1 : 0, detailed.FailedProviderCount);
+        Assert.AreEqual(includeHealthyProvider ? 1 : 0, detailed.LoadedProviderCount);
+        if (loadFailed && !includeHealthyProvider)
+        {
+            Assert.ThrowsExactly<InvalidOperationException>(() =>
+                registry.GetProvidersFor("TEST0001"));
+        }
+        else
+        {
+            Assert.AreEqual(includeHealthyProvider ? 1 : 0, registry.GetProvidersFor("TEST0001").Count);
+        }
+    }
+
     /// <summary>
     /// Validates the documented limitation: CA-series rules from Microsoft.CodeAnalysis.NetAnalyzers
     /// (e.g. CA1826, CA1848) return empty <c>supportedFixes</c> from the static-reflection registry
@@ -81,5 +122,14 @@ public sealed class CodeFixProviderRegistryTests
                 "and are not enumerable via static reflection. Callers must use get_code_actions + " +
                 "preview_code_action to apply CA fixes at a specific document location.");
         }
+    }
+
+    private sealed class TestCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["TEST0001"];
+
+        public override FixAllProvider? GetFixAllProvider() => null;
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context) => Task.CompletedTask;
     }
 }

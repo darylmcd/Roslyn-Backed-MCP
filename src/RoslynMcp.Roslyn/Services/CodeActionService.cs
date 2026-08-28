@@ -1,18 +1,24 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CodeRefactorings;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
-using System.Collections.Immutable;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class CodeActionService : ICodeActionService
 {
+    private static readonly Action<ILogger, string, string, string, string, string, Exception?> LogProviderExecutionFailed =
+        LoggerMessage.Define<string, string, string, string, string>(
+            LogLevel.Debug,
+            new EventId(1, nameof(LogProviderExecutionFailed)),
+            "{ProviderKind} provider {Provider} failed with {ExceptionType}; category={Category}; correlationId={CorrelationId}");
+
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
     private readonly ILogger<CodeActionService> _logger;
@@ -25,15 +31,36 @@ public sealed class CodeActionService : ICodeActionService
         IPreviewStore previewStore,
         ILogger<CodeActionService> logger,
         IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(
+            workspace,
+            previewStore,
+            logger,
+            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(logger, exceptionReporter),
+            () => CSharpFeatureProviderLoader.Load<CodeRefactoringProvider>(logger, exceptionReporter),
+            exceptionReporter)
     {
+    }
+
+    internal CodeActionService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ILogger<CodeActionService> logger,
+        Func<FeatureProviderLoadResult<CodeFixProvider>> codeFixProviderLoader,
+        Func<FeatureProviderLoadResult<CodeRefactoringProvider>> codeRefactoringProviderLoader,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(previewStore);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(codeFixProviderLoader);
+        ArgumentNullException.ThrowIfNull(codeRefactoringProviderLoader);
+
         _workspace = workspace;
         _previewStore = previewStore;
         _logger = logger;
         _exceptionReporter = exceptionReporter;
-        _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
-            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
-        _codeRefactoringProviders = new Lazy<FeatureProviderLoadResult<CodeRefactoringProvider>>(
-            () => CSharpFeatureProviderLoader.Load<CodeRefactoringProvider>(_logger, _exceptionReporter));
+        _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(codeFixProviderLoader);
+        _codeRefactoringProviders = new Lazy<FeatureProviderLoadResult<CodeRefactoringProvider>>(codeRefactoringProviderLoader);
     }
 
     public async Task<CodeActionListDto> GetCodeActionsAsync(
@@ -228,15 +255,7 @@ public sealed class CodeActionService : ICodeActionService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    var details = UnexpectedExceptionReporting.Report(
-                        _exceptionReporter,
-                        ex,
-                        UnexpectedExceptionCategory.AnalysisScan);
-                    _logger.LogDebug(
-                        "Code fix provider {Provider} failed with {ExceptionType}; correlationId={CorrelationId}",
-                        provider.GetType().Name,
-                        details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
-                        details.Public.CorrelationId);
+                    ReportProviderFailure("Code fix", provider.GetType(), ex);
                 }
             }
         }
@@ -258,17 +277,25 @@ public sealed class CodeActionService : ICodeActionService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                var details = UnexpectedExceptionReporting.Report(
-                    _exceptionReporter,
-                    ex,
-                    UnexpectedExceptionCategory.AnalysisScan);
-                _logger.LogDebug(
-                    "Code refactoring provider {Provider} failed with {ExceptionType}; correlationId={CorrelationId}",
-                    provider.GetType().Name,
-                    details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
-                    details.Public.CorrelationId);
+                ReportProviderFailure("Code refactoring", provider.GetType(), ex);
             }
         }
+    }
+
+    private void ReportProviderFailure(string providerKind, Type providerType, Exception exception)
+    {
+        var details = UnexpectedExceptionReporting.Report(
+            _exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.AnalysisScan);
+        LogProviderExecutionFailed(
+            _logger,
+            providerKind,
+            providerType.Name,
+            details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
+            UnexpectedExceptionCategory.AnalysisScan.ToString(),
+            details.Public.CorrelationId,
+            null);
     }
 
     private static TextSpan CreateSpan(SourceText text, int startLine, int startColumn, int? endLine, int? endColumn)

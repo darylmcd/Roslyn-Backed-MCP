@@ -163,6 +163,42 @@ public sealed class FormatterBaselineContractTests
                 @"^\s*dotnet_naming_rule\.private_fields_should_be_camel_case\.severity\s*=\s*warning\s*$",
                 RegexOptions.Multiline),
             "The IDE1006 source rule must remain at 'warning'; downgrading it would relabel the debt away.");
+        Assert.IsTrue(
+            Regex.IsMatch(
+                editorConfig,
+                @"^\s*dotnet_naming_symbols\.private_constants\.required_modifiers\s*=\s*const\s*$",
+                RegexOptions.Multiline),
+            "Private constants must use the modifier-specific exemption instead of inheriting the instance-field rule.");
+        Assert.IsTrue(
+            Regex.IsMatch(
+                editorConfig,
+                @"^\s*dotnet_naming_symbols\.private_static_readonly_fields\.required_modifiers\s*=\s*static,\s*readonly\s*$",
+                RegexOptions.Multiline),
+            "Private static readonly fields must use the modifier-specific exemption instead of inheriting the instance-field rule.");
+    }
+
+    [TestMethod]
+    public void GeneratorAndGate_ImportOneSharedDiagnosticGrammar()
+    {
+        var contract = LoadRepositoryFile("eng", "format-diagnostic-contract.ps1");
+        var consumers = new[]
+        {
+            LoadRepositoryFile("eng", "generate-format-baseline.ps1"),
+            LoadRepositoryFile("eng", "verify-changed-format.ps1"),
+        };
+
+        StringAssert.Contains(contract, "$formatDiagnosticPattern =");
+        StringAssert.Contains(contract, "$formatTruncationMarker =");
+        foreach (var consumer in consumers)
+        {
+            StringAssert.Contains(consumer, "format-diagnostic-contract.ps1");
+            Assert.IsFalse(
+                Regex.IsMatch(
+                    consumer,
+                    @"^\s*\$(?:formatDiagnosticPattern|diagnosticPattern|formatTruncationMarker|truncationMarker)\s*=",
+                    RegexOptions.Multiline),
+                "Formatter grammar consumers must not redeclare the shared regex or truncation marker.");
+        }
     }
 
     [TestMethod]
