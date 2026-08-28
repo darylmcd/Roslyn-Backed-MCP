@@ -47,11 +47,11 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path -Path $PSScriptRoot -ChildPath 'format-diagnostic-contract.ps1')
 
 $schemaVersion = 1
 $solutionFileName = 'RoslynMcp.slnx'
 $formatArguments = @('format', $solutionFileName, '--verify-no-changes', '--no-restore')
-$truncationMarker = 'Required references did not load'
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath '..'))
 $solutionPath = Join-Path -Path $repositoryRoot -ChildPath $solutionFileName
@@ -100,17 +100,16 @@ if ($formatExitCode -ne 0 -and $formatExitCode -ne 2) {
     throw "dotnet format exited with unexpected code $formatExitCode.`n$($formatOutput -join [System.Environment]::NewLine)"
 }
 
-$truncated = @($formatOutput | Where-Object { $_ -like "*$truncationMarker*" })
+$truncated = @($formatOutput | Where-Object { $_ -like "*$formatTruncationMarker*" })
 if ($truncated.Count -gt 0) {
     throw "dotnet format produced a truncated inventory (unrestored projects were skipped): $($truncated[0])"
 }
 
-$diagnosticPattern = '^(?<path>.+?)\((?<line>\d+),(?<column>\d+)\): (?<severity>error|warning) (?<id>[A-Za-z0-9_]+): (?<message>.*?)(?: \[(?<project>[^\]]+)\])?$'
 $findingKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 $findingsByFile = @{}
 
 foreach ($line in $formatOutput) {
-    $match = [regex]::Match($line, $diagnosticPattern)
+    $match = [regex]::Match($line, $formatDiagnosticPattern)
     if (-not $match.Success) {
         continue
     }

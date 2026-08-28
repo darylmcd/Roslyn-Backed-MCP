@@ -1,19 +1,29 @@
 using System.Collections.Concurrent;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class DiagnosticService : IDiagnosticService
 {
+    private static readonly Action<ILogger, string, string, string, string, Exception?> LogProviderEnumerationFailed =
+        LoggerMessage.Define<string, string, string, string>(
+            LogLevel.Debug,
+            new EventId(1, nameof(LogProviderEnumerationFailed)),
+            "Code fix provider {Provider} failed during diagnostic enumeration with {ExceptionType}; category={Category}; correlationId={CorrelationId}");
+
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ICodeFixProviderRegistry _codeFixRegistry;
+    private readonly ILogger<DiagnosticService> _logger;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     /// <summary>
     /// Cache of full per-project diagnostic lists, keyed by workspaceId. The detail-lookup
@@ -44,11 +54,15 @@ public sealed class DiagnosticService : IDiagnosticService
     public DiagnosticService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
-        ICodeFixProviderRegistry codeFixRegistry)
+        ICodeFixProviderRegistry codeFixRegistry,
+        ILogger<DiagnosticService>? logger = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _codeFixRegistry = codeFixRegistry;
+        _logger = logger ?? NullLogger<DiagnosticService>.Instance;
+        _exceptionReporter = exceptionReporter;
         _workspace.WorkspaceClosed += InvalidateWorkspaceCaches;
         // Item #7: `compile-check-stale-assembly-refs-post-reload` — drop cached analyzer
         // results synchronously on reload. The version check on read still catches stale
@@ -417,13 +431,15 @@ public sealed class DiagnosticService : IDiagnosticService
     private async Task<DiagnosticDetailsDto> BuildDetailsDtoAsync(
         Diagnostic diagnostic, Solution solution, string filePath, CancellationToken ct)
     {
-        var supportedFixes = await GetSupportedFixesAsync(diagnostic, solution, filePath, ct).ConfigureAwait(false);
+        var fixEnumeration = await GetSupportedFixesAsync(diagnostic, solution, filePath, ct).ConfigureAwait(false);
         return new DiagnosticDetailsDto(
             Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
             Description: BuildDiagnosticDescription(diagnostic),
             HelpLinkUri: BuildHelpLink(diagnostic.Id),
-            SupportedFixes: supportedFixes,
-            GuidanceMessage: GetFixGuidance(diagnostic.Id, supportedFixes));
+            SupportedFixes: fixEnumeration.Fixes,
+            GuidanceMessage: GetFixGuidance(diagnostic.Id, fixEnumeration),
+            FixEnumerationComplete: fixEnumeration.IsComplete,
+            FailedProviderCount: fixEnumeration.FailedProviderCount);
     }
 
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
@@ -501,20 +517,23 @@ public sealed class DiagnosticService : IDiagnosticService
     /// fix.
     /// </para>
     /// <para>
-    /// Returns an empty list when no providers are loaded for the id, when the file does
-    /// not resolve to a project Document, or when registered actions throw during
-    /// enumeration. Callers receive the same envelope shape regardless and can rely on
-    /// <see cref="DiagnosticDetailsDto.GuidanceMessage"/> to direct them to
-    /// get_code_actions + preview_code_action when no curated fixes are available.
+    /// Returns an empty fix list when no providers are loaded for the id. When a provider load
+    /// or action enumeration fails, healthy actions are retained and the result is marked
+    /// incomplete so callers never interpret a recovered failure as authoritative absence.
+    /// Cancellation always propagates.
     /// </para>
     /// </summary>
-    private async Task<IReadOnlyList<CodeFixOptionDto>> GetSupportedFixesAsync(
+    private async Task<SupportedFixEnumerationResult> GetSupportedFixesAsync(
         Diagnostic diagnostic, Solution solution, string filePath, CancellationToken ct)
     {
-        var providers = _codeFixRegistry.GetProvidersFor(diagnostic.Id, solution);
+        var providerLookup = _codeFixRegistry.GetProvidersForDetailed(diagnostic.Id, solution);
+        var providers = providerLookup.Providers;
         if (providers.Count == 0)
         {
-            return [];
+            return new SupportedFixEnumerationResult(
+                [],
+                providerLookup.IsComplete,
+                providerLookup.FailedProviderCount);
         }
 
         // Prefer the document derived from the diagnostic's own location — when the diagnostic
@@ -542,19 +561,24 @@ public sealed class DiagnosticService : IDiagnosticService
         // best effort, so just report them by id without enumerating actions.
         if (document is null)
         {
-            return ProjectProvidersToFixOptions(providers, diagnostic.Id);
+            return new SupportedFixEnumerationResult(
+                ProjectProvidersToFixOptions(providers, diagnostic.Id),
+                providerLookup.IsComplete,
+                providerLookup.FailedProviderCount);
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var results = new List<CodeFixOptionDto>();
+        var failedProviderCount = providerLookup.FailedProviderCount;
         foreach (var provider in providers)
         {
             // Prefer the in-process variant from RefactoringService — same provider type +
             // diagnostic + document arguments, no apply. Each provider may register multiple
             // actions; capture them all so callers see every option (e.g. "Remove using" plus
             // "Remove and sort usings" for CS8019).
-            var actions = await CaptureRegisteredActionsAsync(provider, document, diagnostic, ct).ConfigureAwait(false);
-            foreach (var action in actions)
+            var actionEnumeration = await CaptureRegisteredActionsAsync(provider, document, diagnostic, ct).ConfigureAwait(false);
+            failedProviderCount += actionEnumeration.FailedProviderCount;
+            foreach (var action in actionEnumeration.Actions)
             {
                 var fixId = action.EquivalenceKey ?? action.Title ?? provider.GetType().Name;
                 if (!seen.Add(fixId))
@@ -568,7 +592,10 @@ public sealed class DiagnosticService : IDiagnosticService
             }
         }
 
-        return results;
+        return new SupportedFixEnumerationResult(
+            results,
+            IsComplete: providerLookup.IsComplete && failedProviderCount == 0,
+            FailedProviderCount: failedProviderCount);
     }
 
     /// <summary>
@@ -604,7 +631,7 @@ public sealed class DiagnosticService : IDiagnosticService
         return $"Code fix \"{action.Title}\" registered by {provider.GetType().Name} ({assemblyName}).";
     }
 
-    private static async Task<IReadOnlyList<CodeAction>> CaptureRegisteredActionsAsync(
+    private async Task<CodeFixActionEnumerationResult> CaptureRegisteredActionsAsync(
         CodeFixProvider provider, Document document, Diagnostic diagnostic, CancellationToken ct)
     {
         var captured = new List<CodeAction>();
@@ -616,13 +643,21 @@ public sealed class DiagnosticService : IDiagnosticService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Best-effort enumeration: a provider that throws while inspecting the
-            // diagnostic location should not crash diagnostic_details for unrelated callers.
-            // The empty-actions case falls through to "no curated fixes" guidance.
-            return [];
+            var details = UnexpectedExceptionReporting.Report(
+                _exceptionReporter,
+                ex,
+                UnexpectedExceptionCategory.AnalysisScan);
+            LogProviderEnumerationFailed(
+                _logger,
+                provider.GetType().Name,
+                details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
+                UnexpectedExceptionCategory.AnalysisScan.ToString(),
+                details.Public.CorrelationId,
+                null);
+            return new CodeFixActionEnumerationResult([], FailedProviderCount: 1);
         }
 
-        return captured;
+        return new CodeFixActionEnumerationResult(captured, FailedProviderCount: 0);
     }
 
     /// <summary>
@@ -630,9 +665,19 @@ public sealed class DiagnosticService : IDiagnosticService
     /// fixes were resolved, points callers at get_code_actions + preview_code_action so they
     /// get a uniform fallback path regardless of which analyzer pack is loaded.
     /// </summary>
-    private static string? GetFixGuidance(string diagnosticId, IReadOnlyList<CodeFixOptionDto> supportedFixes)
+    private static string? GetFixGuidance(
+        string diagnosticId,
+        SupportedFixEnumerationResult fixEnumeration)
     {
-        if (supportedFixes.Count > 0)
+        if (!fixEnumeration.IsComplete)
+        {
+            return $"Code fix enumeration for '{diagnosticId}' was incomplete because " +
+                   $"{fixEnumeration.FailedProviderCount} provider(s) failed. Any listed fixes are partial. " +
+                   "Use get_code_actions at the diagnostic location to retry IDE-supplied actions, " +
+                   "and use the correlation id from server diagnostics when investigating repeated failures.";
+        }
+
+        if (fixEnumeration.Fixes.Count > 0)
         {
             return null;
         }
@@ -642,6 +687,15 @@ public sealed class DiagnosticService : IDiagnosticService
                "then preview_code_action to apply one. If you expected an analyzer-supplied fix, " +
                "verify the analyzer NuGet package is restored and listed in list_analyzers.";
     }
+
+    private sealed record SupportedFixEnumerationResult(
+        IReadOnlyList<CodeFixOptionDto> Fixes,
+        bool IsComplete,
+        int FailedProviderCount);
+
+    private sealed record CodeFixActionEnumerationResult(
+        IReadOnlyList<CodeAction> Actions,
+        int FailedProviderCount);
 
     private static bool DiagnosticMatchesLocation(Diagnostic diagnostic, string diagnosticId, string filePath, int line, int column)
     {

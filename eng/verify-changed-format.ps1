@@ -13,7 +13,8 @@ Algorithm:
   1. Resolve the changed set with `git diff --name-only --diff-filter=ACMR <BaseRef>...HEAD`,
      filtered to `*.cs` files that still exist on disk. An empty set exits 0 immediately.
   2. Run `dotnet format <solution> --verify-no-changes --no-restore` scoped to that set and
-     parse every reported diagnostic.
+     parse the formatter diagnostics FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE. Compiler
+     and analyzer diagnostics remain owned by the build/analyzer gates.
   3. Bucket the findings per (file, diagnostic id) and compare the observed count against the
      count the tracked baseline records for that same pair.
        * observed <= baseline  -> PRE-EXISTING. Reported as explicitly tracked debt, not a failure.
@@ -53,6 +54,10 @@ Skip the `dotnet restore` precondition. Only safe when the caller already restor
 
 .PARAMETER Quiet
 Suppress the per-file informational listing. Failures and the terminal summary are always printed.
+
+.PARAMETER DotnetCommand
+Executable used for dotnet restore/format. Defaults to dotnet; exposed so the fail-closed process
+contract can be tested without replacing the machine-wide SDK.
 #>
 param(
     [string]$BaseRef = "origin/main",
@@ -63,18 +68,24 @@ param(
 
     [switch]$NoRestore,
 
-    [switch]$Quiet
+    [switch]$Quiet,
+
+    [ValidateNotNullOrEmpty()]
+    [string]$DotnetCommand = "dotnet"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path -Path $PSScriptRoot -ChildPath "format-diagnostic-contract.ps1")
 
 # Beyond this many characters of `--include` payload the argument is dropped and the
 # PowerShell-side filter alone scopes the result. Keeps the gate correct on rename-heavy or
 # very wide pull requests instead of failing on a command line the OS refuses to launch.
 $includeArgumentBudget = 20000
-$truncationMarker = "Required references did not load"
 $gatedDiagnosticIds = @("FINALNEWLINE", "IDE1006", "IMPORTS", "WHITESPACE")
+$gatedDiagnosticIdSet = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]$gatedDiagnosticIds,
+    [System.StringComparer]::Ordinal)
 
 function Resolve-RepositoryRoot {
     $global:LASTEXITCODE = 0
@@ -163,7 +174,7 @@ try {
 
     if (-not $NoRestore) {
         $global:LASTEXITCODE = 0
-        $restoreOutput = @(& dotnet restore $resolvedSolutionPath 2>&1 | ForEach-Object { $_.ToString() })
+        $restoreOutput = @(& $DotnetCommand restore $resolvedSolutionPath 2>&1 | ForEach-Object { $_.ToString() })
         if ($global:LASTEXITCODE -ne 0) {
             throw "dotnet restore failed with exit code $($global:LASTEXITCODE):`n$($restoreOutput -join [System.Environment]::NewLine)"
         }
@@ -187,7 +198,7 @@ try {
     }
 
     $global:LASTEXITCODE = 0
-    $formatOutput = @(& dotnet @formatArguments 2>&1 | ForEach-Object { $_.ToString() })
+    $formatOutput = @(& $DotnetCommand @formatArguments 2>&1 | ForEach-Object { $_.ToString() })
     $formatExitCode = $global:LASTEXITCODE
 }
 finally {
@@ -198,21 +209,18 @@ if ($formatExitCode -ne 0 -and $formatExitCode -ne 2) {
     throw "dotnet format exited with unexpected code $formatExitCode.`n$($formatOutput -join [System.Environment]::NewLine)"
 }
 
-$truncated = @($formatOutput | Where-Object { $_ -like "*$truncationMarker*" })
+$truncated = @($formatOutput | Where-Object { $_ -like "*$formatTruncationMarker*" })
 if ($truncated.Count -gt 0) {
     throw "dotnet format produced a truncated report (unrestored projects were skipped), so the gate cannot prove the changed files are clean: $($truncated[0])"
 }
 
-# Same diagnostic grammar the baseline generator parses, so the gate and the inventory can never
-# disagree about what counts as a finding.
-$diagnosticPattern = '^(?<path>.+?)\((?<line>\d+),(?<column>\d+)\): (?<severity>error|warning) (?<id>[A-Za-z0-9_]+): (?<message>.*?)(?: \[(?<project>[^\]]+)\])?$'
 $changedFileSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$changedFiles, [System.StringComparer]::OrdinalIgnoreCase)
 $findingKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 $observedCounts = @{}
 $observedMessages = @{}
 
 foreach ($line in $formatOutput) {
-    $match = [regex]::Match($line, $diagnosticPattern)
+    $match = [regex]::Match($line, $formatDiagnosticPattern)
     if (-not $match.Success) {
         continue
     }
@@ -223,6 +231,10 @@ foreach ($line in $formatOutput) {
     }
 
     $diagnosticId = $match.Groups["id"].Value
+    if (-not $gatedDiagnosticIdSet.Contains($diagnosticId)) {
+        continue
+    }
+
     # A file owned by more than one project is reported once per owning project; de-duplicate on
     # position so multi-targeted projects cannot inflate the count past the baseline and red the gate.
     $key = "$relativePath|$diagnosticId|$($match.Groups['line'].Value)|$($match.Groups['column'].Value)"

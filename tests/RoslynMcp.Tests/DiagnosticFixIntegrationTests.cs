@@ -1,9 +1,18 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+
 namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
 [TestClass]
 public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 {
+    private const string SensitiveProviderFailure = "sensitive diagnostic provider C:\\secret\\code.cs";
+
     private static string WorkspaceId { get; set; } = null!;
 
     [ClassInitialize]
@@ -198,6 +207,177 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         finally
         {
             DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("healthy", 1, true, 0)]
+    [DataRow("throwing", 0, false, 1)]
+    [DataRow("mixed", 1, false, 1)]
+    [DataRow("cancelled", 0, false, 0)]
+    public async Task DiagnosticDetails_ReportsProviderEnumerationOutcome(
+        string scenario,
+        int expectedFixCount,
+        bool expectedComplete,
+        int expectedFailureCount)
+    {
+        var (filePath, line, column) = await FindDiagnosticLocationAsync("CS0414");
+        var cancellation = new OperationCanceledException("provider cancellation");
+        var providers = scenario switch
+        {
+            "healthy" => new CodeFixProvider[] { new HealthyCodeFixProvider() },
+            "throwing" => [new ThrowingCodeFixProvider(new InvalidOperationException(SensitiveProviderFailure))],
+            "mixed" =>
+            [
+                new HealthyCodeFixProvider(),
+                new ThrowingCodeFixProvider(new InvalidOperationException(SensitiveProviderFailure)),
+            ],
+            "cancelled" => [new ThrowingCodeFixProvider(cancellation)],
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, "Unknown provider scenario."),
+        };
+        var logger = new CaptureLogger<DiagnosticService>();
+        var reporter = new RecordingUnexpectedExceptionReporter("diagnostic-correlation");
+        var service = new DiagnosticService(
+            WorkspaceManager,
+            new CompilationCache(WorkspaceManager),
+            new StaticCodeFixProviderRegistry(providers),
+            logger,
+            reporter);
+
+        if (scenario == "cancelled")
+        {
+            try
+            {
+                await service.GetDiagnosticDetailsAsync(
+                    WorkspaceId,
+                    "CS0414",
+                    filePath,
+                    line,
+                    column,
+                    CancellationToken.None);
+                Assert.Fail("Provider cancellation must propagate.");
+            }
+            catch (OperationCanceledException actual)
+            {
+                Assert.AreSame(cancellation, actual);
+            }
+
+            Assert.AreEqual(0, reporter.Reports.Count);
+            return;
+        }
+
+        var details = await service.GetDiagnosticDetailsAsync(
+            WorkspaceId,
+            "CS0414",
+            filePath,
+            line,
+            column,
+            CancellationToken.None);
+
+        Assert.IsNotNull(details);
+        Assert.AreEqual(expectedFixCount, details.SupportedFixes.Count);
+        Assert.AreEqual(expectedComplete, details.FixEnumerationComplete);
+        Assert.AreEqual(expectedFailureCount, details.FailedProviderCount);
+        if (expectedComplete)
+        {
+            Assert.IsNull(details.GuidanceMessage);
+            Assert.AreEqual(0, reporter.Reports.Count);
+        }
+        else
+        {
+            Assert.IsNotNull(details.GuidanceMessage);
+            StringAssert.Contains(details.GuidanceMessage, "incomplete");
+            Assert.IsFalse(
+                details.GuidanceMessage.Contains("No code fix provider is currently loaded", StringComparison.Ordinal),
+                "A provider crash must not be projected as authoritative provider absence.");
+            Assert.AreEqual(expectedFailureCount, reporter.Reports.Count);
+            Assert.IsTrue(reporter.Reports.All(report =>
+                report.Category == UnexpectedExceptionCategory.AnalysisScan));
+            Assert.AreEqual(expectedFailureCount, logger.Entries.Count);
+            foreach (var entry in logger.Entries)
+            {
+                Assert.IsNull(entry.Exception);
+                StringAssert.Contains(entry.Message, "InvalidOperationException");
+                StringAssert.Contains(entry.Message, "category=AnalysisScan");
+                StringAssert.Contains(entry.Message, "correlationId=diagnostic-correlation");
+                Assert.IsFalse(entry.Message.Contains(SensitiveProviderFailure, StringComparison.Ordinal));
+                Assert.IsFalse(entry.Message.Contains(filePath, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+    }
+
+    private static async Task<(string FilePath, int Line, int Column)> FindDiagnosticLocationAsync(
+        string diagnosticId)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var document = solution.Projects
+            .SelectMany(project => project.Documents)
+            .First(candidate => candidate.Name == "DiagnosticsProbe.cs");
+        var syntaxTree = await document.GetSyntaxTreeAsync(CancellationToken.None);
+        Assert.IsNotNull(syntaxTree);
+        var compilation = await document.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var diagnostic = compilation.GetDiagnostics(CancellationToken.None)
+            .First(candidate =>
+                candidate.Id == diagnosticId &&
+                candidate.Location.SourceTree == syntaxTree);
+        var start = diagnostic.Location.GetLineSpan().StartLinePosition;
+        return (document.FilePath!, start.Line + 1, start.Character + 1);
+    }
+
+    private sealed class StaticCodeFixProviderRegistry(IReadOnlyList<CodeFixProvider> providers)
+        : ICodeFixProviderRegistry
+    {
+        public IReadOnlyList<CodeFixProvider> GetProvidersFor(
+            string diagnosticId,
+            Solution? solution = null) =>
+            providers;
+
+        public CodeFixProvider? FirstProviderFor(
+            string diagnosticId,
+            Solution? solution = null) =>
+            providers.FirstOrDefault();
+    }
+
+    private sealed class HealthyCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+
+        public override FixAllProvider? GetFixAllProvider() => null;
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Test provider fix",
+                    _ => Task.FromResult(context.Document),
+                    equivalenceKey: "test-provider-fix"),
+                context.Diagnostics[0]);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingCodeFixProvider(Exception exception) : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+
+        public override FixAllProvider? GetFixAllProvider() => null;
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context) =>
+            Task.FromException(exception);
+    }
+
+    private sealed class RecordingUnexpectedExceptionReporter(string correlationId)
+        : IUnexpectedExceptionReporter
+    {
+        public List<(Exception Exception, UnexpectedExceptionCategory Category)> Reports { get; } = [];
+
+        public UnexpectedExceptionDetails ReportUnexpected(
+            Exception exception,
+            UnexpectedExceptionCategory category)
+        {
+            Reports.Add((exception, category));
+            return PublicExceptionDetailPolicy.ProjectUnexpected(exception, correlationId);
         }
     }
 }

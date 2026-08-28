@@ -24,15 +24,9 @@ namespace RoslynMcp.Tests.Skills;
 [TestClass]
 public sealed class ChangedFormatGateScriptTests
 {
-    // Expressed as properties rather than `private const` / `private static readonly` fields on
-    // purpose: .editorconfig's private_fields naming rule declares `applicable_kinds = field` with no
-    // required modifiers, so it demands a leading underscore on constants too. The repository's real
-    // convention is PascalCase constants, and every such field is tracked debt in eng/format-baseline.json.
-    // A new file must not add to that inventory, and must not rename constants to satisfy a rule the
-    // repository does not actually follow.
-    private static string BaseBranchName => "gate-base";
+    private const string BaseBranchName = "gate-base";
 
-    private static string ProjectFileName => "Probe.csproj";
+    private const string ProjectFileName = "Probe.csproj";
 
     /// <summary>
     /// A file carrying exactly one <c>IDE1006</c> finding, mirrored by <see cref="BaselineWithOneDirtyIde1006"/>.
@@ -173,6 +167,25 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
+    public void Gate_PascalCaseConstantsAndStaticReadonlyFields_Pass()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+
+        WriteRepositoryFile(
+            "Clean.cs",
+            "using System;\n\nnamespace Probe;\n\npublic sealed class Clean\n{\n" +
+            "    private const int MaxItems = 2;\n" +
+            "    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(1);\n\n" +
+            "    public int Value => MaxItems + DefaultTimeout.Seconds;\n}\n");
+        CommitAll("use repository constant naming convention");
+
+        var result = RunGate();
+
+        Assert.AreEqual(0, result.ExitCode, Describe("PascalCase constants and static readonly fields are exempt", result));
+        StringAssert.Contains(result.StdOut, "0 new finding(s)", Describe("The exemption must not produce IDE1006", result));
+    }
+
+    [TestMethod]
     public void Gate_ChangedFileIsMissingItsFinalNewline_FailsWithAFinalNewlineFinding()
     {
         SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
@@ -243,6 +256,60 @@ public sealed class ChangedFormatGateScriptTests
             Describe("The failure must show the observed-vs-baseline count that proves concealment", result));
     }
 
+    [TestMethod]
+    public void Gate_NonFormatterDiagnosticOnChangedFile_IsIgnored()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        CommitAll("clean edit with unrelated diagnostic output");
+
+        var result = RunGateWithFakeDotnet(
+            $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): error CS9999: compiler diagnostic [Probe.csproj]",
+            exitCode: 2);
+
+        Assert.AreEqual(0, result.ExitCode, Describe("Compiler diagnostics are owned by the build gate", result));
+        StringAssert.Contains(result.StdOut, "0 new finding(s)", Describe("No formatter finding was introduced", result));
+    }
+
+    [TestMethod]
+    public void Gate_MissingBaseRef_FailsWithFetchGuidance()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        CommitAll("clean edit");
+
+        var result = RunGate(baseRef: "missing-base-ref");
+
+        Assert.AreNotEqual(0, result.ExitCode, Describe("An unresolvable base ref must fail closed", result));
+        StringAssert.Contains(result.StdErr, "Fetch the base ref", Describe("The failure must carry corrective guidance", result));
+    }
+
+    [TestMethod]
+    public void Gate_TruncatedFormatterReport_FailsClosed()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        CommitAll("clean edit");
+
+        var result = RunGateWithFakeDotnet("Required references did not load for Probe.csproj", exitCode: 0);
+
+        Assert.AreNotEqual(0, result.ExitCode, Describe("A truncated formatter report must fail closed", result));
+        StringAssert.Contains(result.StdErr, "truncated report", Describe("The failure must identify report truncation", result));
+    }
+
+    [TestMethod]
+    public void Gate_UnexpectedFormatterExitCode_FailsClosed()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        CommitAll("clean edit");
+
+        var result = RunGateWithFakeDotnet("formatter process failed", exitCode: 7);
+
+        Assert.AreNotEqual(0, result.ExitCode, Describe("An unexpected formatter exit must fail closed", result));
+        StringAssert.Contains(result.StdErr, "unexpected code 7", Describe("The failure must preserve the exit code", result));
+    }
+
     private static string ResolveScriptPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -269,8 +336,21 @@ public sealed class ChangedFormatGateScriptTests
             "dotnet_naming_rule.private_fields_should_be_camel_case.severity = warning\n" +
             "dotnet_naming_rule.private_fields_should_be_camel_case.symbols = private_fields\n" +
             "dotnet_naming_rule.private_fields_should_be_camel_case.style = camel_case_underscore\n" +
+            "dotnet_naming_rule.private_constants_are_exempt.severity = none\n" +
+            "dotnet_naming_rule.private_constants_are_exempt.symbols = private_constants\n" +
+            "dotnet_naming_rule.private_constants_are_exempt.style = pascal_case\n" +
+            "dotnet_naming_rule.private_static_readonly_fields_are_exempt.severity = none\n" +
+            "dotnet_naming_rule.private_static_readonly_fields_are_exempt.symbols = private_static_readonly_fields\n" +
+            "dotnet_naming_rule.private_static_readonly_fields_are_exempt.style = pascal_case\n" +
+            "dotnet_naming_symbols.private_constants.applicable_kinds = field\n" +
+            "dotnet_naming_symbols.private_constants.applicable_accessibilities = private\n" +
+            "dotnet_naming_symbols.private_constants.required_modifiers = const\n" +
+            "dotnet_naming_symbols.private_static_readonly_fields.applicable_kinds = field\n" +
+            "dotnet_naming_symbols.private_static_readonly_fields.applicable_accessibilities = private\n" +
+            "dotnet_naming_symbols.private_static_readonly_fields.required_modifiers = static, readonly\n" +
             "dotnet_naming_symbols.private_fields.applicable_kinds = field\n" +
             "dotnet_naming_symbols.private_fields.applicable_accessibilities = private\n" +
+            "dotnet_naming_style.pascal_case.capitalization = pascal_case\n" +
             "dotnet_naming_style.camel_case_underscore.required_prefix = _\n" +
             "dotnet_naming_style.camel_case_underscore.capitalization = camel_case\n");
 
@@ -312,22 +392,43 @@ public sealed class ChangedFormatGateScriptTests
             $"git {string.Join(' ', arguments)} failed in the fixture repository. stdout={result.StdOut} stderr={result.StdErr}");
     }
 
-    private ProcessResult RunGate()
+    private ProcessResult RunGate(string? baseRef = null, string? dotnetCommand = null)
     {
         var scriptPath = ResolveScriptPath();
         Assert.IsTrue(File.Exists(scriptPath), $"verify-changed-format.ps1 was not found at '{scriptPath}'.");
 
-        return RunProcess(
-            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            _repositoryDirectory,
+        var arguments = new List<string>
+        {
             "-NoProfile",
             "-NonInteractive",
             "-File",
             scriptPath,
             "-BaseRef",
-            BaseBranchName,
+            baseRef ?? BaseBranchName,
             "-SolutionPath",
-            ProjectFileName);
+            ProjectFileName,
+        };
+        if (dotnetCommand is not null)
+        {
+            arguments.Add("-NoRestore");
+            arguments.Add("-DotnetCommand");
+            arguments.Add(dotnetCommand);
+        }
+
+        return RunProcess(
+            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+            _repositoryDirectory,
+            [.. arguments]);
+    }
+
+    private ProcessResult RunGateWithFakeDotnet(string output, int exitCode)
+    {
+        var fakeDotnetPath = Path.Combine(_repositoryDirectory, "fake-dotnet.ps1");
+        var escapedOutput = output.Replace("'", "''", StringComparison.Ordinal);
+        WriteRepositoryFile(
+            "fake-dotnet.ps1",
+            $"param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RemainingArguments)\nWrite-Output '{escapedOutput}'\nexit {exitCode}\n");
+        return RunGate(dotnetCommand: fakeDotnetPath);
     }
 
     private static ProcessResult RunProcess(string fileName, string workingDirectory, params string[] arguments)

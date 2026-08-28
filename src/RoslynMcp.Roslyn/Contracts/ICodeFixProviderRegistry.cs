@@ -12,6 +12,26 @@ namespace RoslynMcp.Roslyn.Services;
 public interface ICodeFixProviderRegistry
 {
     /// <summary>
+    /// Returns every matching provider together with whether provider discovery completed, how
+    /// many provider loads failed, and how many providers loaded overall. Missing parameterless
+    /// constructors are intentional skips, not failures, because those providers require
+    /// workspace services this registry cannot construct. The default projection preserves
+    /// compatibility for external implementations that cannot report loader internals; registries
+    /// with completeness data should override it.
+    /// </summary>
+    CodeFixProviderLookupResult GetProvidersForDetailed(
+        string diagnosticId,
+        Solution? solution = null)
+    {
+        var providers = GetProvidersFor(diagnosticId, solution);
+        return new CodeFixProviderLookupResult(
+            providers,
+            IsComplete: true,
+            FailedProviderCount: 0,
+            LoadedProviderCount: providers.Count);
+    }
+
+    /// <summary>
     /// Returns every provider known to the registry that supports
     /// <paramref name="diagnosticId"/>. Pass the active <paramref name="solution"/> to
     /// include providers from the solution's analyzer references.
@@ -24,3 +44,12 @@ public interface ICodeFixProviderRegistry
     /// </summary>
     CodeFixProvider? FirstProviderFor(string diagnosticId, Solution? solution = null);
 }
+
+/// <summary>
+/// Completeness-aware result for code-fix provider discovery.
+/// </summary>
+public sealed record CodeFixProviderLookupResult(
+    IReadOnlyList<CodeFixProvider> Providers,
+    bool IsComplete,
+    int FailedProviderCount,
+    int LoadedProviderCount);

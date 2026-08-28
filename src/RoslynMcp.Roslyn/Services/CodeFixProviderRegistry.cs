@@ -1,10 +1,10 @@
-using RoslynMcp.Core.Services;
+using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Reflection;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -21,9 +21,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
 {
-    private readonly ILogger<CodeFixProviderRegistry> _logger;
-    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _staticProviders;
+    private readonly Func<string, FeatureProviderLoadResult<CodeFixProvider>> _analyzerProviderLoader;
 
     /// <summary>
     /// Cache of providers loaded from individual analyzer assembly paths. Many projects share
@@ -36,11 +35,58 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
     public CodeFixProviderRegistry(
         ILogger<CodeFixProviderRegistry> logger,
         IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(
+            logger,
+            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(logger, exceptionReporter),
+            analyzerPath => CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
+                () => Assembly.LoadFrom(analyzerPath),
+                logger,
+                exceptionReporter))
     {
-        _logger = logger;
-        _exceptionReporter = exceptionReporter;
-        _staticProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
-            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
+    }
+
+    internal CodeFixProviderRegistry(
+        ILogger<CodeFixProviderRegistry> logger,
+        Func<FeatureProviderLoadResult<CodeFixProvider>> staticProviderLoader,
+        Func<string, FeatureProviderLoadResult<CodeFixProvider>> analyzerProviderLoader)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(staticProviderLoader);
+        ArgumentNullException.ThrowIfNull(analyzerProviderLoader);
+
+        _staticProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(staticProviderLoader);
+        _analyzerProviderLoader = analyzerProviderLoader;
+    }
+
+    public CodeFixProviderLookupResult GetProvidersForDetailed(
+        string diagnosticId,
+        Solution? solution = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticId);
+
+        var staticResult = _staticProviders.Value;
+        var results = staticResult.Providers
+            .Where(provider => provider.FixableDiagnosticIds.Contains(diagnosticId))
+            .ToList();
+        var failedProviderCount = staticResult.FailedProviderCount;
+        var loadedProviderCount = staticResult.Providers.Length;
+
+        if (solution is not null)
+        {
+            foreach (var loadResult in EnumerateProjectProviderResults(solution))
+            {
+                failedProviderCount += loadResult.FailedProviderCount;
+                loadedProviderCount += loadResult.Providers.Length;
+                results.AddRange(loadResult.Providers.Where(provider =>
+                    provider.FixableDiagnosticIds.Contains(diagnosticId)));
+            }
+        }
+
+        return new CodeFixProviderLookupResult(
+            results,
+            IsComplete: failedProviderCount == 0,
+            FailedProviderCount: failedProviderCount,
+            LoadedProviderCount: loadedProviderCount);
     }
 
     /// <summary>
@@ -50,21 +96,15 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
     /// </summary>
     public IReadOnlyList<CodeFixProvider> GetProvidersFor(string diagnosticId, Solution? solution = null)
     {
-        var staticResult = _staticProviders.Value;
-        var results = staticResult.Providers
-            .Where(provider => provider.FixableDiagnosticIds.Contains(diagnosticId))
-            .ToList();
-
-        if (solution is not null)
+        var result = GetProvidersForDetailed(diagnosticId, solution);
+        if (!result.IsComplete && result.LoadedProviderCount == 0)
         {
-            foreach (var loadResult in EnumerateProjectProviderResults(solution))
-            {
-                results.AddRange(loadResult.Providers.Where(provider =>
-                    provider.FixableDiagnosticIds.Contains(diagnosticId)));
-            }
+            throw new InvalidOperationException(
+                $"Code fix provider discovery for '{diagnosticId}' was incomplete; " +
+                $"{result.FailedProviderCount} provider load(s) failed.");
         }
 
-        return results;
+        return result.Providers;
     }
 
     /// <summary>
@@ -92,8 +132,5 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
     }
 
     private FeatureProviderLoadResult<CodeFixProvider> LoadProvidersFromAssembly(string analyzerPath) =>
-        CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
-            () => Assembly.LoadFrom(analyzerPath),
-            _logger,
-            _exceptionReporter);
+        _analyzerProviderLoader(analyzerPath);
 }

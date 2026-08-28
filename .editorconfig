@@ -38,12 +38,30 @@ csharp_prefer_braces = when_multiline:suggestion
 csharp_style_namespace_declarations = file_scoped:warning
 
 # Naming conventions
+dotnet_naming_rule.private_constants_are_exempt.severity = none
+dotnet_naming_rule.private_constants_are_exempt.symbols = private_constants
+dotnet_naming_rule.private_constants_are_exempt.style = pascal_case
+
+dotnet_naming_rule.private_static_readonly_fields_are_exempt.severity = none
+dotnet_naming_rule.private_static_readonly_fields_are_exempt.symbols = private_static_readonly_fields
+dotnet_naming_rule.private_static_readonly_fields_are_exempt.style = pascal_case
+
 dotnet_naming_rule.private_fields_should_be_camel_case.severity = warning
 dotnet_naming_rule.private_fields_should_be_camel_case.symbols = private_fields
 dotnet_naming_rule.private_fields_should_be_camel_case.style = camel_case_underscore
 
+dotnet_naming_symbols.private_constants.applicable_kinds = field
+dotnet_naming_symbols.private_constants.applicable_accessibilities = private
+dotnet_naming_symbols.private_constants.required_modifiers = const
+
+dotnet_naming_symbols.private_static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_readonly_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_readonly_fields.required_modifiers = static, readonly
+
 dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
 
 dotnet_naming_style.camel_case_underscore.required_prefix = _
 dotnet_naming_style.camel_case_underscore.capitalization = camel_case

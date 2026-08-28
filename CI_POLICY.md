@@ -53,7 +53,7 @@ The router emits typed leg fields. Keep their concerns separate:
 | Exact declared SDK floor | Concurrent `sdk-floor` job on code PRs, dispatch, and schedule; exact version assertion + restore/build + representative MSBuildWorkspace load |
 | Publish/hash | Artifact-owning non-doc leg |
 | Fail-closed NuGet vulnerability audit | Artifact-owning non-doc leg |
-| Changed-file formatter gate | Artifact-owning non-doc pull-request leg; new findings on touched files fail, tracked baseline debt is reported not suppressed |
+| Changed-file formatter gate | Artifact-owning non-doc pull-request leg; new FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE findings on touched files fail, tracked baseline debt is reported not suppressed |
 | `host-stdio-publish`, `release-manifests` | Artifact-owning non-doc leg; 14 days |
 | Per-leg timing summary + TRX (`test-results-<leg>`) | Every pull-request/test leg, generated/uploaded with `always()`; 14 days |
 | Cobertura + HTML `code-coverage` | Dispatch/schedule artifact owner; 30 days |
