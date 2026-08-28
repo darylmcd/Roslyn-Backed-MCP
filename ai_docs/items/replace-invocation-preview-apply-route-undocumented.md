@@ -1,5 +1,7 @@
 # replace-invocation-preview-apply-route-undocumented — document and map replace_invocation_preview's shared apply route
 
+**row:** `replace-invocation-preview-apply-route-undocumented` · **pri:** `Medium` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/BulkRefactoringTools.cs` (the `bulk_replace_type_apply` `previewToken` description, and `replace_invocation_preview`'s description)

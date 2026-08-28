@@ -1,5 +1,7 @@
 # bulk-refactoring-test-workspace-leak-and-unguarded-cleanup — close the leaked workspace and guard the fixture delete
 
+**row:** `bulk-refactoring-test-workspace-leak-and-unguarded-cleanup` · **pri:** `Medium` · **size:** `S` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+
 ## Anchors
 
 - `tests/RoslynMcp.Tests/BulkRefactoringTests.cs` (`ReplaceInvocation_Preview_TagsTokenWithTheSameSharedKind` — the workspace load and its bare `finally`)
