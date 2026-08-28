@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-28T16:17:09Z
+**updated_at:** 2026-08-28T17:15:55Z
 
 ## Agent contract
 
@@ -81,7 +81,6 @@
 | `breaking-fragment-major-escalation-unconfirmed` | Medium | — | **Breaking fragment silently escalates to major** — make `verify-breaking-version-bump.ps1` echo the fragment filename + body, and WARN on a lone breaking member of a non-breaking family, instead of permitting a major on a bare `Write-Host`. [type: bug] [source: 2026-08-28 release-cut] | S | items/breaking-fragment-major-escalation-unconfirmed.md |
 | `bulk-refactoring-test-workspace-leak-and-unguarded-cleanup` | Medium | — | **Close the leaked workspace and guard the fixture delete** — a new BulkRefactoringTests case loads a workspace it never closes and deletes the fixture in a bare `finally`, so a cleanup failure masks the real assertion. [type: test] [source: 2026-08-26 backlog-sweep code review] | S | items/bulk-refactoring-test-workspace-leak-and-unguarded-cleanup.md |
 | `replace-invocation-preview-apply-route-undocumented` | Medium | — | **Document + map `replace_invocation_preview`s shared apply route** — two producers now share `PreviewKind.BulkReplaceType` as an enforced contract, but the MCP schema names one and the catalog maps neither. [type: bug] [source: 2026-08-26 backlog-sweep code review] | M | items/replace-invocation-preview-apply-route-undocumented.md |
-| `ci-merge-gate-publish-gate-shape-divergence` | Medium | — | **Merge gate never runs the publish gate shape** — add an unsharded Windows `verify-release.ps1` leg before tag push; merge runs 4-way sharded, publish runs unsharded, so single-process defects surface only after tagging. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
 | `release-cut-step3-environment-precheck` | Medium | — | **Step 3 runs the heavy gate with no environment guard** — pre-check free memory and stray dotnet/testhost process count before `verify-release.ps1`, and triage a red against machine state before calling it a product failure. [type: tooling] [source: 2026-08-28 release-cut] | S | items/release-cut-step3-environment-precheck.md |
 
 ## Low
@@ -181,6 +180,7 @@
 | `dependency-gate-process-tests-runner-adoption` | Low | powershell-script-test-runner-foundation | Adopt shared process runner in dependency gate tests — replace duplicated PowerShell launch, timeout, process-tree termination, root-reap, and output-drain plumbing without weakening fail-closed assertions. [type: test-refactor] [source: 2026-08-24 loaded-machine gate failure] | S | items/dependency-gate-process-tests-runner-adoption.md |
 | `mstest-cooperative-timeout-token-flow` | Low | — | Make cooperative test timeouts cancel owned work — flow MSTest cancellation through the third-party notice verifier and elicitation coordinator so hung work cannot outlive the advertised ceiling. [type: test-correctness] [source: 2026-08-24 adjacent review] | S | items/mstest-cooperative-timeout-token-flow.md |
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
+| `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
 
 ## Defer
 

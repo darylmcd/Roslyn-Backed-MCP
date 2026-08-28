@@ -16,7 +16,7 @@
 
 ## Evidence
 
-- 2026-08-28 release cut: Step 3 returned exit 1 with an `AccessViolationException` in analyzer reflection. Root-caused across ~40 minutes to a product defect that did not exist — the box had 1.9 GB free of 31.4 GB and 31 leaked `dotnet`-family processes. After cleanup the same suite passed 2726/2726 in 19m37s. Each killed attempt leaked more hosts, compounding the condition.
+- 2026-08-28 release cut: Step 3 returned exit 1 with an `AccessViolationException` in analyzer reflection. Root-caused across ~40 minutes to a product defect that did not exist — the box had 1.9 GB free of 31.4 GB and 31 leaked `dotnet`-family processes. After cleanup the same suite passed 2726/2726 twice (19m37s, then 16m06s on the release commit). Killed retries left further orphaned hosts behind; whether they measurably worsened each subsequent run was not instrumented.
 
 ## Context
 
@@ -27,5 +27,5 @@ The trap is that the signature is expensive to disbelieve. It looks like a real 
 ## Notes
 
 - The check is cheap: free-memory and a process count, seconds at most, against a gate that costs ~20 minutes.
-- Failure/kill cleanup matters as much as the pre-check — the compounding came from killed runs, not the first one.
+- Failure/kill cleanup matters as much as the pre-check: killed runs leave orphaned test hosts and build servers that the next attempt inherits.
 - Related to `ci-merge-gate-publish-gate-shape-divergence`: a green unsharded CI leg would give an independent signal to check a local red against.
