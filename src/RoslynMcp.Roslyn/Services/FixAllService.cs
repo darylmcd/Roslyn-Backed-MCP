@@ -20,7 +20,7 @@ public sealed class FixAllService : IFixAllService
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<FixAllService> _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
-    private readonly Lazy<ImmutableArray<CodeFixProvider>> _codeFixProviders;
+    private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _codeFixProviders;
     private readonly Lazy<ImmutableArray<DiagnosticAnalyzer>> _analyzers;
 
     public FixAllService(
@@ -35,7 +35,8 @@ public sealed class FixAllService : IFixAllService
         _compilationCache = compilationCache;
         _logger = logger;
         _exceptionReporter = exceptionReporter;
-        _codeFixProviders = new Lazy<ImmutableArray<CodeFixProvider>>(LoadCodeFixProviders);
+        _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
+            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
         _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(LoadAnalyzers);
     }
 
@@ -79,12 +80,13 @@ public sealed class FixAllService : IFixAllService
         string? filePath, string? projectName, CancellationToken ct)
     {
         var fixAllScope = ParseScope(scope);
+        ValidateRequiredScopeInputs(fixAllScope, filePath, projectName);
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        var staticProviders = _codeFixProviders.Value;
+        var staticProviders = _codeFixProviders.Value.Providers;
         var analyzerAssemblyProviders = LoadCodeFixProvidersFromAnalyzerReferences(solution);
         var provider = FindCodeFixProvider(staticProviders, diagnosticId)
-            ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId);
+            ?? FindCodeFixProvider(analyzerAssemblyProviders.Providers, diagnosticId);
         if (provider is null)
         {
             return new FixAllPreviewDto(
@@ -267,6 +269,26 @@ public sealed class FixAllService : IFixAllService
         return (solutionDoc, solutionProject);
     }
 
+    private static void ValidateRequiredScopeInputs(
+        FixAllScope scope,
+        string? filePath,
+        string? projectName)
+    {
+        if (scope == FixAllScope.Document && string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new ArgumentException(
+                "filePath is required when scope is 'document'.",
+                nameof(filePath));
+        }
+
+        if (scope == FixAllScope.Project && string.IsNullOrWhiteSpace(projectName))
+        {
+            throw new ArgumentException(
+                "projectName is required when scope is 'project'. Use workspace_status to list loaded projects.",
+                nameof(projectName));
+        }
+    }
+
     private static FixAllScope ParseScope(string scope) => scope.ToLowerInvariant() switch
     {
         "document" => FixAllScope.Document,
@@ -386,9 +408,10 @@ public sealed class FixAllService : IFixAllService
     private static CodeFixProvider? FindCodeFixProvider(ImmutableArray<CodeFixProvider> providers, string diagnosticId) =>
         providers.FirstOrDefault(p => p.FixableDiagnosticIds.Contains(diagnosticId));
 
-    private ImmutableArray<CodeFixProvider> LoadCodeFixProvidersFromAnalyzerReferences(Solution solution)
+    private FeatureProviderLoadResult<CodeFixProvider> LoadCodeFixProvidersFromAnalyzerReferences(Solution solution)
     {
-        var list = new List<CodeFixProvider>();
+        var providers = ImmutableArray.CreateBuilder<CodeFixProvider>();
+        var failures = ImmutableArray.CreateBuilder<FeatureProviderLoadFailure>();
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var project in solution.Projects)
         {
@@ -399,31 +422,18 @@ public sealed class FixAllService : IFixAllService
                 var analyzerPath = afr.Display;
                 if (string.IsNullOrWhiteSpace(analyzerPath) || !paths.Add(analyzerPath))
                     continue;
-                try
-                {
-                    var assembly = Assembly.LoadFrom(analyzerPath);
-                    foreach (var t in assembly.GetTypes())
-                    {
-                        if (t.IsAbstract || !typeof(CodeFixProvider).IsAssignableFrom(t))
-                            continue;
-                        if (t.GetConstructor(Type.EmptyTypes) is null)
-                            continue;
-                        if (Activator.CreateInstance(t) is not CodeFixProvider p)
-                            continue;
-                        list.Add(p);
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogDebug(ex, "Could not load code fix providers from analyzer assembly {Path}", analyzerPath);
-                }
+                var result = CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
+                    () => Assembly.LoadFrom(analyzerPath),
+                    _logger,
+                    _exceptionReporter);
+                providers.AddRange(result.Providers);
+                failures.AddRange(result.Failures);
             }
         }
 
-        if (list.Count > 0)
-            _logger.LogInformation("FixAllService loaded {Count} code fix provider(s) from project analyzer references", list.Count);
-
-        return [.. list];
+        return new FeatureProviderLoadResult<CodeFixProvider>(
+            providers.ToImmutable(),
+            failures.ToImmutable());
     }
 
     private static ImmutableArray<DiagnosticAnalyzer> CollectProjectAnalyzersForDiagnosticId(
@@ -448,71 +458,8 @@ public sealed class FixAllService : IFixAllService
         return [.. set];
     }
 
-    private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()
-    {
-        try
-        {
-            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
-            if (featuresAssembly is null)
-            {
-                _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly");
-                return [];
-            }
-
-            var candidateTypes = featuresAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && typeof(CodeFixProvider).IsAssignableFrom(t))
-                .ToList();
-
-            var providers = candidateTypes
-                .Select(t =>
-                {
-                    try { return (CodeFixProvider?)Activator.CreateInstance(t); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
-                })
-                .Where(p => p is not null)
-                .Cast<CodeFixProvider>()
-                .ToImmutableArray();
-
-            var skipped = candidateTypes.Count - providers.Length;
-            _logger.LogInformation(
-                "FixAllService loaded {Loaded} code fix providers from CSharp Features ({Skipped} skipped — no parameterless constructor)",
-                providers.Length, skipped);
-            return providers;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "Failed to load code fix providers for FixAll");
-            return [];
-        }
-    }
-
-    private ImmutableArray<DiagnosticAnalyzer> LoadAnalyzers()
-    {
-        try
-        {
-            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
-            if (featuresAssembly is null) return [];
-
-            var analyzers = featuresAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t))
-                .Select(t =>
-                {
-                    try { return (DiagnosticAnalyzer?)Activator.CreateInstance(t); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
-                })
-                .Where(a => a is not null)
-                .Cast<DiagnosticAnalyzer>()
-                .ToImmutableArray();
-
-            _logger.LogInformation("FixAllService loaded {Count} diagnostic analyzers from CSharp Features", analyzers.Length);
-            return analyzers;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "Failed to load diagnostic analyzers for FixAll");
-            return [];
-        }
-    }
+    private ImmutableArray<DiagnosticAnalyzer> LoadAnalyzers() =>
+        CSharpFeatureProviderLoader.Load<DiagnosticAnalyzer>(_logger, _exceptionReporter).Providers;
 
     /// <summary>
     /// Builds the guidance message for the "no occurrences" empty-result path. A provider IS

@@ -57,6 +57,8 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? scopedWorkspaceId = null;
+        Exception? primaryFailure = null;
 
         try
         {
@@ -75,8 +77,9 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
                 CancellationToken.None);
 
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            scopedWorkspaceId = status.WorkspaceId;
             var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
-                status.WorkspaceId,
+                scopedWorkspaceId,
                 oldMethod: "SampleLib.SharedKindHelper.Build(int, string)",
                 newMethod: "SampleLib.SharedKindHelper.Generate(string, int)",
                 scope: null,
@@ -86,9 +89,25 @@ public sealed class BulkRefactoringTests : SharedWorkspaceTestBase
                 "replace_invocation_preview shares bulk_replace_type_apply, so it must share the " +
                 "BulkReplaceType kind — a distinct member would be rejected at that route.");
         }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
         finally
         {
-            DeleteDirectoryIfExists(copiedRoot);
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Replace-invocation assertion and fixture cleanup both failed.",
+                primaryFailure,
+                CleanupFailureCollector.FromAction(() =>
+                {
+                    if (scopedWorkspaceId is not null)
+                    {
+                        WorkspaceManager.Close(scopedWorkspaceId);
+                    }
+                }),
+                CleanupFailureCollector.FromAction(
+                    () => TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot)));
         }
     }
 

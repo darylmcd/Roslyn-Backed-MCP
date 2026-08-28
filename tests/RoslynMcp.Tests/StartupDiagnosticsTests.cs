@@ -285,6 +285,11 @@ public sealed class StartupDiagnosticsTests
                 $"Preview '{previewName}' must pair with its same-family apply route.");
         }
 
+        Assert.IsTrue(ServerSurfaceCatalog.TryGetCompatibleApplyRoute(
+            "replace_invocation_preview",
+            out var invocationApplyRoute));
+        Assert.AreEqual("bulk_replace_type_apply", invocationApplyRoute);
+
         var stableNames = ServerSurfaceCatalog.SelectTools(ToolTierSelection.Parse("stable"))
             .Select(static entry => entry.Name)
             .ToHashSet(StringComparer.Ordinal);

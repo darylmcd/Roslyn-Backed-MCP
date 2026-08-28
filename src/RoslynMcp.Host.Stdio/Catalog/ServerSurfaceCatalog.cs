@@ -49,6 +49,7 @@ public static partial class ServerSurfaceCatalog
             ["preview_code_action"] = "apply_code_action",
             ["move_type_to_file_preview"] = "move_type_to_file_apply",
             ["bulk_replace_type_preview"] = "bulk_replace_type_apply",
+            ["replace_invocation_preview"] = "bulk_replace_type_apply",
             ["extract_type_preview"] = "extract_type_apply",
             ["extract_method_preview"] = "extract_method_apply",
             ["format_range_preview"] = "format_range_apply",

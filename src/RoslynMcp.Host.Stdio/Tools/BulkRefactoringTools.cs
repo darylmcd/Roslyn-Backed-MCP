@@ -39,13 +39,13 @@ public static class BulkRefactoringTools
 
     [McpServerTool(Name = "bulk_replace_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
-        "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
-     Description("Apply a previously previewed bulk type replacement")]
+        "Apply a previewed bulk type replacement or invocation rewrite. Redeems tokens from bulk_replace_type_preview and replace_invocation_preview."),
+     Description("Apply a token returned by bulk_replace_type_preview or replace_invocation_preview")]
     public static Task<string> ApplyBulkReplaceType(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         IPreviewStore previewStore,
-        [Description("The preview token returned by bulk_replace_type_preview")] string previewToken,
+        [Description("The preview token returned by bulk_replace_type_preview or replace_invocation_preview")] string previewToken,
         CancellationToken ct = default)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
@@ -67,8 +67,8 @@ public static class BulkRefactoringTools
     // which the shared apply path redeems via the preview token.
     [McpServerTool(Name = "replace_invocation_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
-        "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Takes two FQ signatures and disambiguates overloads by parameter-type list."),
-     Description("Preview rewriting every call-site of oldMethod with a call to newMethod whose parameter list is a permutation of oldMethod's. Supply fully-qualified signatures like 'Namespace.Type.Old(P1, P2, P3)' and 'Namespace.Type.New(P2, P3, P1)' — the parameter-type list disambiguates overloads; parameter-name equality (old P1 ↔ new P1) derives the reorder. Positional call sites are reordered; named-argument call sites keep their names and shuffle lexically into the new parameter order.")]
+        "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Redeem the token with bulk_replace_type_apply."),
+     Description("Preview rewriting every call-site of oldMethod with a call to newMethod whose parameter list is a permutation of oldMethod's. Supply fully-qualified signatures like 'Namespace.Type.Old(P1, P2, P3)' and 'Namespace.Type.New(P2, P3, P1)' — the parameter-type list disambiguates overloads; parameter-name equality (old P1 ↔ new P1) derives the reorder. Positional call sites are reordered; named-argument call sites keep their names and shuffle lexically into the new parameter order. Redeem the preview token with bulk_replace_type_apply.")]
     public static Task<string> PreviewReplaceInvocation(
         IWorkspaceExecutionGate gate,
         IBulkRefactoringService bulkRefactoringService,

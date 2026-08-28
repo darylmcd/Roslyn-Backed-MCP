@@ -27,7 +27,7 @@ public static class FixAllTools
         [Description("Diagnostic identifier to fix everywhere, e.g. CS8019, IDE0005")] string diagnosticId,
         [Description("Scope of the fix: 'document', 'project', or 'solution'")] string scope,
         [Description("Required when scope is 'document': absolute path to the source file")] string? filePath = null,
-        [Description("Optional: project name when scope is 'project'")] string? projectName = null,
+        [Description("Required when scope is 'project': the project name")] string? projectName = null,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
