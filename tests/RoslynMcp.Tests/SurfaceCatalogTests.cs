@@ -158,16 +158,36 @@ public sealed class SurfaceCatalogTests
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
-        // The full changed-tool set: get_completions (summary) and server_info (outputSchema)
-        // pre-date this catalog version; the three workspace-status-family tools below changed
-        // their outputSchema because restore-required-vs-build-conflation added `buildRequired`
-        // to WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
+        // The full changed-tool set: get_completions, bulk_replace_type_apply, and
+        // replace_invocation_preview changed summary; server_info changed outputSchema. The three
+        // workspace-status-family tools below changed outputSchema because
+        // restore-required-vs-build-conflation added `buildRequired` to
+        // WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
         CollectionAssert.AreEquivalent(
-            new[] { "get_completions", "server_info", "workspace_status", "workspace_health", "workspace_list" },
+            new[]
+            {
+                "get_completions",
+                "bulk_replace_type_apply",
+                "replace_invocation_preview",
+                "server_info",
+                "workspace_status",
+                "workspace_health",
+                "workspace_list",
+            },
             diff.Tools.Changed.Select(entry => entry.Name).ToArray());
 
-        var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "get_completions");
-        CollectionAssert.AreEqual(new[] { "summary" }, changedTool.ChangedFields.Select(field => field.Field).ToArray());
+        foreach (var summaryToolName in new[]
+                 {
+                     "get_completions",
+                     "bulk_replace_type_apply",
+                     "replace_invocation_preview",
+                 })
+        {
+            var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
+            CollectionAssert.AreEqual(
+                new[] { "summary" },
+                changedSummaryTool.ChangedFields.Select(field => field.Field).ToArray());
+        }
 
         var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
         CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
@@ -184,7 +204,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(4, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(5, diff.Summary.Changed);
+        Assert.AreEqual(7, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -200,7 +220,16 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
         CollectionAssert.AreEquivalent(
-            new[] { "get_completions", "server_info", "workspace_status", "workspace_health", "workspace_list" },
+            new[]
+            {
+                "get_completions",
+                "bulk_replace_type_apply",
+                "replace_invocation_preview",
+                "server_info",
+                "workspace_status",
+                "workspace_health",
+                "workspace_list",
+            },
             changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
     }
 

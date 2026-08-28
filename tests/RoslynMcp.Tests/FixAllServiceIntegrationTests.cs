@@ -68,19 +68,21 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
     /// previewing fixes against the wrong project.
     /// </summary>
     [TestMethod]
-    public async Task PreviewFixAll_ProjectScope_BlankProjectName_Throws_Instead_Of_Targeting_First_Project()
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("   ")]
+    public async Task PreviewFixAll_ProjectScope_BlankProjectName_Throws_Instead_Of_Targeting_First_Project(
+        string? projectName)
     {
-        // IDE0161 has a real registered FixAll provider (see CompilationCacheAdoptionTests'
-        // solution-scope usage), so this call reaches ResolveTargets instead of returning early
-        // via the no-provider guidance path (as CS8019 would) — exercising the actual
-        // scope == "project" + blank projectName guard this test is meant to pin.
+        // CS8019 has no FixAll provider in this workspace. The validation must still run first,
+        // otherwise provider discovery masks the malformed project-scoped request.
         var ex = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
             await FixAllService.PreviewFixAllAsync(
                 WorkspaceId,
-                diagnosticId: "IDE0161",
+                diagnosticId: "CS8019",
                 scope: "project",
                 filePath: null,
-                projectName: "   ",
+                projectName: projectName,
                 CancellationToken.None).ConfigureAwait(false)).ConfigureAwait(false);
 
         StringAssert.Contains(ex.Message, "projectName");

@@ -8,7 +8,6 @@ using Microsoft.CodeAnalysis.CodeRefactorings;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
-using System.Reflection;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -17,16 +16,24 @@ public sealed class CodeActionService : ICodeActionService
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
     private readonly ILogger<CodeActionService> _logger;
-    private readonly Lazy<ImmutableArray<CodeFixProvider>> _codeFixProviders;
-    private readonly Lazy<ImmutableArray<CodeRefactoringProvider>> _codeRefactoringProviders;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _codeFixProviders;
+    private readonly Lazy<FeatureProviderLoadResult<CodeRefactoringProvider>> _codeRefactoringProviders;
 
-    public CodeActionService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<CodeActionService> logger)
+    public CodeActionService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ILogger<CodeActionService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _logger = logger;
-        _codeFixProviders = new Lazy<ImmutableArray<CodeFixProvider>>(LoadCodeFixProviders);
-        _codeRefactoringProviders = new Lazy<ImmutableArray<CodeRefactoringProvider>>(LoadCodeRefactoringProviders);
+        _exceptionReporter = exceptionReporter;
+        _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
+            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
+        _codeRefactoringProviders = new Lazy<FeatureProviderLoadResult<CodeRefactoringProvider>>(
+            () => CSharpFeatureProviderLoader.Load<CodeRefactoringProvider>(_logger, _exceptionReporter));
     }
 
     public async Task<CodeActionListDto> GetCodeActionsAsync(
@@ -198,7 +205,7 @@ public sealed class CodeActionService : ICodeActionService
 
         if (diagnostics.IsEmpty) return;
 
-        foreach (var provider in _codeFixProviders.Value)
+        foreach (var provider in _codeFixProviders.Value.Providers)
         {
             var fixableDiagnosticIds = provider.FixableDiagnosticIds;
             var relevantDiagnostics = diagnostics
@@ -221,7 +228,15 @@ public sealed class CodeActionService : ICodeActionService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogDebug(ex, "Code fix provider {Provider} failed", provider.GetType().Name);
+                    var details = UnexpectedExceptionReporting.Report(
+                        _exceptionReporter,
+                        ex,
+                        UnexpectedExceptionCategory.AnalysisScan);
+                    _logger.LogDebug(
+                        "Code fix provider {Provider} failed with {ExceptionType}; correlationId={CorrelationId}",
+                        provider.GetType().Name,
+                        details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
+                        details.Public.CorrelationId);
                 }
             }
         }
@@ -229,7 +244,7 @@ public sealed class CodeActionService : ICodeActionService
 
     private async Task CollectRefactoringsAsync(Document document, TextSpan span, List<CodeAction> actions, CancellationToken ct)
     {
-        foreach (var provider in _codeRefactoringProviders.Value)
+        foreach (var provider in _codeRefactoringProviders.Value.Providers)
         {
             var context = new CodeRefactoringContext(
                 document,
@@ -243,7 +258,15 @@ public sealed class CodeActionService : ICodeActionService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogDebug(ex, "Code refactoring provider {Provider} failed", provider.GetType().Name);
+                var details = UnexpectedExceptionReporting.Report(
+                    _exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.AnalysisScan);
+                _logger.LogDebug(
+                    "Code refactoring provider {Provider} failed with {ExceptionType}; correlationId={CorrelationId}",
+                    provider.GetType().Name,
+                    details.Server.ExceptionTypes.FirstOrDefault() ?? "unknown",
+                    details.Public.CorrelationId);
             }
         }
     }
@@ -268,67 +291,4 @@ public sealed class CodeActionService : ICodeActionService
         return TextSpan.FromBounds(startPosition, Math.Max(startPosition, lineEnd));
     }
 
-    private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()
-    {
-        try
-        {
-            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
-            if (featuresAssembly is null)
-            {
-                _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code fix providers");
-                return [];
-            }
-
-            var providers = featuresAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && typeof(CodeFixProvider).IsAssignableFrom(t))
-                .Select(t =>
-                {
-                    try { return (CodeFixProvider?)Activator.CreateInstance(t); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
-                })
-                .Where(p => p is not null)
-                .Cast<CodeFixProvider>()
-                .ToImmutableArray();
-
-            _logger.LogInformation("Loaded {Count} code fix providers from Microsoft.CodeAnalysis.CSharp.Features", providers.Length);
-            return providers;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "Failed to load code fix providers");
-            return [];
-        }
-    }
-
-    private ImmutableArray<CodeRefactoringProvider> LoadCodeRefactoringProviders()
-    {
-        try
-        {
-            var featuresAssembly = CSharpFeaturesAssemblyLoader.TryLoad();
-            if (featuresAssembly is null)
-            {
-                _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code refactoring providers");
-                return [];
-            }
-
-            var providers = featuresAssembly.GetTypes()
-                .Where(t => !t.IsAbstract && typeof(CodeRefactoringProvider).IsAssignableFrom(t))
-                .Select(t =>
-                {
-                    try { return (CodeRefactoringProvider?)Activator.CreateInstance(t); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
-                })
-                .Where(p => p is not null)
-                .Cast<CodeRefactoringProvider>()
-                .ToImmutableArray();
-
-            _logger.LogInformation("Loaded {Count} code refactoring providers from Microsoft.CodeAnalysis.CSharp.Features", providers.Length);
-            return providers;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "Failed to load code refactoring providers");
-            return [];
-        }
-    }
 }
