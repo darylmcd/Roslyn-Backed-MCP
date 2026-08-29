@@ -19,10 +19,13 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class StructuredCallElicitationCoordinatorTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     [Timeout(30_000, CooperativeCancellation = true)]
     public async Task TryRecoverMissingWorkspacePathAsync_CancelledWhenDispatchCompletes_DoesNotReturnSuccess()
     {
+        var testCancellationToken = TestContext.CancellationToken;
         var capabilities = new ClientCapabilities
         {
             Elicitation = new ElicitationCapability { Form = new FormElicitationCapability() },
@@ -32,9 +35,9 @@ public sealed class StructuredCallElicitationCoordinatorTests
             clientCapabilities: capabilities,
             clientHandlers: new McpClientHandlers(),
             disposalFailureContext: "workspace-path-post-dispatch-cancellation",
-            cancellationToken: CancellationToken.None,
+            cancellationToken: testCancellationToken,
             protocolVersion: null);
-        using var cts = new CancellationTokenSource();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(testCancellationToken);
         var dispatchCount = 0;
         var context = new RequestContext<CallToolRequestParams>(
             harness.Server,

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Diagnostics;
 
@@ -89,6 +90,16 @@ public sealed class McpLoggingLifecycleWireTests
                 """);
             await WaitForResponseAsync(stdout, id: 3);
 
+            // Complete one final request immediately before EOF. The SDK transport owns its
+            // buffered stdout stream and flushes every send; a Console.Out shutdown hook cannot
+            // reach that buffer. The final frame must remain observable through clean EOF.
+            await WriteMessageAsync(
+                process,
+                """
+                {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"server_heartbeat","arguments":{}}}
+                """);
+            await WaitForResponseAsync(stdout, id: 4);
+
             process.StandardInput.Close();
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
@@ -97,6 +108,10 @@ public sealed class McpLoggingLifecycleWireTests
             await StopProcessAsync(process);
             await Task.WhenAll(stdoutPump, stderrPump);
         }
+
+        Assert.IsTrue(
+            stdout.Snapshot().Any(line => HasResponseId(line, 4)),
+            "The final response queued immediately before stdin EOF must be flushed by the SDK transport.");
 
         foreach (var line in stdout.Snapshot())
         {
@@ -166,6 +181,39 @@ public sealed class McpLoggingLifecycleWireTests
         Assert.IsEmpty(
             Directory.EnumerateFileSystemEntries(foreignWorkingDirectory).ToArray(),
             "A foreign-CWD launch must not write logs or metadata into its working directory.");
+    }
+
+    [TestMethod]
+    public void TransportDisconnectDiagnostics_EmitsTypeAndCorrelationWithoutRawDetail()
+    {
+        const string secretMessage = "provider-secret-disconnect-detail";
+        const string secretPath = "C:/private/customer/solution.slnx";
+        var logger = new ListLogger<McpLoggingLifecycleWireTests>();
+
+        var correlationId = TransportDisconnectDiagnostics.Log(
+            logger,
+            new IOException($"{secretMessage} at {secretPath}"));
+
+        Assert.HasCount(1, logger.Entries);
+        var entry = logger.Entries[0];
+        Assert.AreEqual(LogLevel.Warning, entry.Level);
+        Assert.IsNull(entry.Exception, "Transport disconnects must not attach the raw exception object.");
+        StringAssert.Contains(entry.Message, "category=transport-disconnected");
+        StringAssert.Contains(entry.Message, "exceptionType=IOException");
+        StringAssert.Contains(entry.Message, $"correlationId={correlationId}");
+        Assert.IsFalse(entry.Message.Contains(secretMessage, StringComparison.Ordinal));
+        Assert.IsFalse(entry.Message.Contains(secretPath, StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(32, correlationId.Length);
+        Assert.IsTrue(correlationId.All(static character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f'));
+    }
+
+    private static bool HasResponseId(string message, int id)
+    {
+        using var document = JsonDocument.Parse(message);
+        return document.RootElement.TryGetProperty("id", out var responseId) &&
+            responseId.ValueKind == JsonValueKind.Number &&
+            responseId.GetInt32() == id;
     }
 
     private static async Task StopProcessAsync(Process process)

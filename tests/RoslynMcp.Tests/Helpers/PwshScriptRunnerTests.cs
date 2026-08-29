@@ -53,7 +53,9 @@ public sealed class PwshScriptRunnerTests
 
     [TestMethod]
     [TestCategory("Process")]
-    public async Task RunAsync_TimeoutTerminatesChildProcessTree()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RunAsync_CancellationTerminatesChildProcessTree(bool callerCancellation)
     {
         var fixtureRoot = CreateFixtureRoot();
         try
@@ -68,13 +70,26 @@ public sealed class PwshScriptRunnerTests
                 "$child.Id | Set-Content -LiteralPath $ChildPidPath\n" +
                 "Start-Sleep -Seconds 30\n");
 
-            var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
-                PwshScriptRunner.RunAsync(
-                    ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
-                    timeout: TimeSpan.FromSeconds(2),
-                    description: "process-tree fixture"));
+            using var cancellation = new CancellationTokenSource();
+            if (callerCancellation)
+            {
+                cancellation.CancelAfter(TimeSpan.FromSeconds(2));
+                await Assert.ThrowsExactlyAsync<TaskCanceledException>(() =>
+                    PwshScriptRunner.RunAsync(
+                        ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
+                        cancellationToken: cancellation.Token,
+                        description: "caller-cancelled process-tree fixture"));
+            }
+            else
+            {
+                var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                    PwshScriptRunner.RunAsync(
+                        ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
+                        timeout: TimeSpan.FromSeconds(2),
+                        description: "timed-out process-tree fixture"));
+                StringAssert.Contains(exception.Message, "timed out");
+            }
 
-            StringAssert.Contains(exception.Message, "timed out");
             Assert.IsTrue(File.Exists(childPidPath), "The fixture did not start its child process.");
             var childPid = int.Parse(await File.ReadAllTextAsync(childPidPath), System.Globalization.CultureInfo.InvariantCulture);
             Assert.IsTrue(

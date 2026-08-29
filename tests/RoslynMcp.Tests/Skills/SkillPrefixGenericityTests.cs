@@ -137,31 +137,9 @@ public sealed class SkillPrefixGenericityTests
 
             foreach (var block in policy.CanonicalPrecheckBlocks)
             {
-                var anchor = new Regex(block.AnchorPattern);
-                for (var i = 0; i < lines.Length; i++)
-                {
-                    if (!anchor.IsMatch(lines[i]))
-                    {
-                        continue;
-                    }
-
-                    matched++;
-                    var extracted = Extract(lines, i, block.TerminatorPattern);
-                    if (extracted.Count < block.Text.Length)
-                    {
-                        drift.Add($"{relative}:{i + 1}: block '{block.Id}' truncated to {extracted.Count} lines (expected >= {block.Text.Length}).");
-                        continue;
-                    }
-
-                    for (var k = 0; k < block.Text.Length; k++)
-                    {
-                        if (!string.Equals(extracted[k], block.Text[k], StringComparison.Ordinal))
-                        {
-                            drift.Add($"{relative}:{i + 1 + k}: block '{block.Id}' drifted -> {extracted[k]}");
-                            break;
-                        }
-                    }
-                }
+                var blockDrift = FindCanonicalBlockDrift(relative, lines, block, out var blockMatches);
+                matched += blockMatches;
+                drift.AddRange(blockDrift);
             }
         }
 
@@ -181,13 +159,11 @@ public sealed class SkillPrefixGenericityTests
         var mutated = (string[])block.Text.Clone();
         mutated[2] = mutated[2].Replace("**once**", "**Once**", StringComparison.Ordinal);
 
-        Assert.AreNotEqual(
-            block.Text[2],
-            mutated[2],
-            "Fixture setup failed — the mutation did not change the line.");
-        Assert.IsFalse(
-            block.Text.SequenceEqual(mutated, StringComparer.Ordinal),
-            "A one-character drift inside the canonical block must not compare equal.");
+        var drift = FindCanonicalBlockDrift("mutated-skill.md", mutated, block, out var matches);
+
+        Assert.AreEqual(1, matches, "The fixture must exercise the canonical anchor path.");
+        Assert.HasCount(1, drift, "A one-character mutation must produce exactly one drift entry.");
+        StringAssert.Contains(drift[0], "block 'connectivity-precheck-section' drifted");
     }
 
     [TestMethod]
@@ -199,21 +175,24 @@ public sealed class SkillPrefixGenericityTests
             .Concat(["Note: this skill reports server status, so a failing precheck is itself the answer.", string.Empty])
             .ToArray();
 
-        // The gate compares the canonical text as the LEADING slice, so appended per-skill prose
-        // must still pass while the canonical portion stays byte-identical.
-        var extracted = Extract(withTrailer, 0, terminatorPattern: null);
-        Assert.HasCount(1, extracted, "Fixture setup failed — a null terminator must extract exactly one line.");
+        var drift = FindCanonicalBlockDrift("trailing-prose-skill.md", withTrailer, block, out var matches);
 
-        Assert.IsTrue(
-            withTrailer.Length > block.Text.Length,
-            "Fixture setup failed — no trailer was appended.");
-        for (var k = 0; k < block.Text.Length; k++)
-        {
-            Assert.AreEqual(
-                block.Text[k],
-                withTrailer[k],
-                $"Line {k} of the canonical block diverged under a per-skill trailer.");
-        }
+        Assert.AreEqual(1, matches, "The fixture must exercise the canonical anchor path.");
+        Assert.IsEmpty(drift, "Per-skill prose after the canonical leading block must remain valid.");
+    }
+
+    [TestMethod]
+    public void CanonicalBlockIdentity_DetectsATruncatedBlock()
+    {
+        var policy = LoadPolicy();
+        var block = policy.CanonicalPrecheckBlocks.Single(b => b.Id == "connectivity-precheck-section");
+        var truncated = block.Text[..^1];
+
+        var drift = FindCanonicalBlockDrift("truncated-skill.md", truncated, block, out var matches);
+
+        Assert.AreEqual(1, matches, "The fixture must exercise the canonical anchor path.");
+        Assert.HasCount(1, drift, "A truncated canonical block must produce exactly one drift entry.");
+        StringAssert.Contains(drift[0], "truncated to");
     }
 
     [TestMethod]
@@ -270,6 +249,44 @@ public sealed class SkillPrefixGenericityTests
         }
 
         return extracted;
+    }
+
+    private static List<string> FindCanonicalBlockDrift(
+        string relative,
+        string[] lines,
+        CanonicalBlock block,
+        out int matches)
+    {
+        var drift = new List<string>();
+        var anchor = new Regex(block.AnchorPattern);
+        matches = 0;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!anchor.IsMatch(lines[i]))
+            {
+                continue;
+            }
+
+            matches++;
+            var extracted = Extract(lines, i, block.TerminatorPattern);
+            if (extracted.Count < block.Text.Length)
+            {
+                drift.Add($"{relative}:{i + 1}: block '{block.Id}' truncated to {extracted.Count} lines (expected >= {block.Text.Length}).");
+                continue;
+            }
+
+            for (var k = 0; k < block.Text.Length; k++)
+            {
+                if (!string.Equals(extracted[k], block.Text[k], StringComparison.Ordinal))
+                {
+                    drift.Add($"{relative}:{i + 1 + k}: block '{block.Id}' drifted -> {extracted[k]}");
+                    break;
+                }
+            }
+        }
+
+        return drift;
     }
 
     private static IEnumerable<(string Relative, string[] Lines)> EnumerateShippedSkillFiles(

@@ -21,20 +21,20 @@
       "(?i)verif(?:y|ies|ying)\\b[^.]*\\x60mcp__[A-Za-z0-9_-]*roslyn[A-Za-z0-9_-]*__[a-z_]+\\x60[^.]*(?:appears|is present|tool surface)"
     ],
     "exemptSpans": [
-      "examples, not an allowed list",
-      "never hard-code it",
-      "The prefix does not matter",
-      "under whichever prefix",
-      "whichever prefix your (?:own )?(?:client|tool surface)",
-      "is \\*\\*not\\*\\* grounds to halt",
-      "never itself grounds to halt"
+      "(?i)examples, not an allowed list",
+      "(?i)never hard-code it",
+      "(?i)The prefix does not matter",
+      "(?i)under whichever prefix",
+      "(?i)whichever prefix your (?:own )?(?:client|tool surface)",
+      "(?i)is \\*\\*not\\*\\* grounds to halt",
+      "(?i)never itself grounds to halt"
     ],
     "residualUnsweptAllowlist": []
   },
   "canonicalPrecheckBlocks": [
     {
       "id": "connectivity-precheck-section",
-      "anchorPattern": "^## Connectivity precheck\\s*$",
+      "anchorPattern": "(?i)^## Connectivity precheck\\s*$",
       "terminatorPattern": "^## ",
       "text": [
         "## Connectivity precheck",
@@ -56,7 +56,7 @@
     },
     {
       "id": "tool-prefix-inline-blockquote",
-      "anchorPattern": "^> \\*\\*Tool prefix — resolve it once from `server",
+      "anchorPattern": "(?i)^> \\*\\*Tool prefix — resolve it once from `server",
       "terminatorPattern": null,
       "text": [
         "> **Tool prefix — resolve it once from `server_info`, then pin it.** Your MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool surfaces as `mcp__roslyn__server_info` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__server_info` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — every prefix is valid, and a missing specific prefix literal is never itself grounds to halt. Resolve the prefix **once**, at the first gate, then pin it. **(1) Scan** your current tool surface for **every** tool whose name ends in `server_info`. `server_info` is a common MCP tool name, so there may be more than one candidate and some may belong to other servers entirely. **(2) Identify** the Roslyn one by its **response shape**, never by its prefix: a Roslyn `server_info` response carries `connection.state`, `catalogVersion`, and `surface.*`. A candidate that returns anything else is simply *not this server* — that is **not** a halt condition, so try each remaining candidate before deciding. **(3) Pin** the winning candidate's prefix and resolve **every** later bare tool name in this skill — including its phase sub-files (`workspace_load`, `find_references`, `get_symbol_outline`, …) — under **that one pinned prefix only**. Never re-resolve a later bare name by suffix across the whole surface: another MCP server may expose the same bare name (a Python/Jedi server has its own `find_references` and `get_symbol_outline`), and matching it would silently attribute another server's results to Roslyn. Every gate in this skill — including its phase sub-files — halts only when **no** tool ending in `server_info` returns a Roslyn-shaped response."

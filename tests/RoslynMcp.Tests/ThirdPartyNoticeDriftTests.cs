@@ -1,11 +1,13 @@
-using System.Diagnostics;
 using System.Text.Json;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
 [TestClass]
 public sealed class ThirdPartyNoticeDriftTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     public void NoticeGenerator_HasNoLiveRegistryDependency()
     {
@@ -26,6 +28,7 @@ public sealed class ThirdPartyNoticeDriftTests
     [Timeout(60_000, CooperativeCancellation = true)]
     public async Task VerifyMode_UsesEveryCentralPin_AndRejectsNonMcpLicenseDrift()
     {
+        var cancellationToken = TestContext.CancellationToken;
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var packages = ReadCentralPackages(repositoryRoot);
         var mcpVersion = packages.Single(package => package.Id == "ModelContextProtocol").Version;
@@ -39,17 +42,17 @@ public sealed class ThirdPartyNoticeDriftTests
             File.Copy(Path.Combine(repositoryRoot, "Directory.Packages.props"), packagesPath);
             File.Copy(Path.Combine(repositoryRoot, "THIRD-PARTY-NOTICES.md"), Path.Combine(fixtureRoot, "THIRD-PARTY-NOTICES.md"));
 
-            var current = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot);
+            var current = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken);
             Assert.AreEqual(0, current.ExitCode, current.AllOutput);
 
-            var packagesText = await File.ReadAllTextAsync(packagesPath);
+            var packagesText = await File.ReadAllTextAsync(packagesPath, cancellationToken);
             packagesText = packagesText.Replace(
                 $"<PackageVersion Include=\"ModelContextProtocol\" Version=\"{mcpVersion}\" />",
                 "<PackageVersion Include=\"ModelContextProtocol\" Version=\"99.0.0-test\" />",
                 StringComparison.Ordinal);
-            await File.WriteAllTextAsync(packagesPath, packagesText);
+            await File.WriteAllTextAsync(packagesPath, packagesText, cancellationToken);
 
-            var pinDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot);
+            var pinDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken);
             Assert.AreNotEqual(0, pinDrift.ExitCode, "Intentional central-pin drift must fail verification.");
             StringAssert.Contains(pinDrift.AllOutput, "Unable to read authoritative restored package metadata");
 
@@ -71,7 +74,7 @@ public sealed class ThirdPartyNoticeDriftTests
             license.Value = "MIT";
             nuspec.Save(mutatedNuspec);
 
-            var licenseDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, fixturePackagesRoot);
+            var licenseDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, fixturePackagesRoot, cancellationToken);
             Assert.AreNotEqual(0, licenseDrift.ExitCode, "Authoritative license drift must fail verification.");
             StringAssert.Contains(licenseDrift.AllOutput, "declares license 'MIT'");
             StringAssert.Contains(licenseDrift.AllOutput, "reviewed attribution");
@@ -120,51 +123,28 @@ public sealed class ThirdPartyNoticeDriftTests
             package.Version.ToLowerInvariant(),
             package.Id.ToLowerInvariant() + ".nuspec");
 
-    private static async Task<PwshResult> RunVerifierAsync(
+    private static Task<PwshScriptResult> RunVerifierAsync(
         string repositoryRoot,
         string fixtureRoot,
-        string packageMetadataRoot)
+        string packageMetadataRoot,
+        CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(Path.Combine(repositoryRoot, "eng", "update-third-party-notices.ps1"));
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(fixtureRoot);
-        startInfo.ArgumentList.Add("-PackageMetadataRoot");
-        startInfo.ArgumentList.Add(packageMetadataRoot);
-        startInfo.ArgumentList.Add("-Verify");
-        startInfo.ArgumentList.Add("-VerifyRestoredLicenses");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to start third-party notice verifier.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Third-party notice verifier timed out after 30 seconds.");
-        }
-
-        return new(process.ExitCode, await stdoutTask, await stderrTask);
-    }
-
-    private sealed record PwshResult(int ExitCode, string StdOut, string StdErr)
-    {
-        public string AllOutput => PowerShellOutputNormalizer.Normalize(StdOut + Environment.NewLine + StdErr);
+        return PwshScriptRunner.RunAsync(
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                Path.Combine(repositoryRoot, "eng", "update-third-party-notices.ps1"),
+                "-RepoRoot",
+                fixtureRoot,
+                "-PackageMetadataRoot",
+                packageMetadataRoot,
+                "-Verify",
+                "-VerifyRestoredLicenses",
+            ],
+            timeout: TimeSpan.FromSeconds(30),
+            cancellationToken: cancellationToken,
+            description: "third-party notice verifier");
     }
 
     private sealed record CentralPackage(string Id, string Version);

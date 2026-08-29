@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -24,6 +25,28 @@ public abstract class IsolatedWorkspaceTestBase : TestBase
                 _ = await scope.LoadAsync(token).ConfigureAwait(false);
             },
             ct).ConfigureAwait(false);
+    }
+
+    protected static Task RestoreWorkspaceAsync(
+        IsolatedWorkspaceScope workspace,
+        CancellationToken ct = default) =>
+        RestoreWorkspaceAsync(workspace, DotnetCommandRunner, ct);
+
+    internal static async Task RestoreWorkspaceAsync(
+        IsolatedWorkspaceScope workspace,
+        IDotnetCommandRunner commandRunner,
+        CancellationToken ct = default)
+    {
+        var execution = await commandRunner.RunAsync(
+            workingDirectory: workspace.RootPath,
+            targetPath: workspace.SolutionPath,
+            arguments: ["restore", workspace.SolutionPath, "--nologo"],
+            ct).ConfigureAwait(false);
+
+        Assert.IsTrue(
+            execution.Succeeded,
+            $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} " +
+            $"StdOut={execution.StdOut} StdErr={execution.StdErr}");
     }
 
     internal static async Task<TResource> InitializeWithCleanupAsync<TResource>(

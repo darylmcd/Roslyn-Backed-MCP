@@ -377,25 +377,6 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         File.WriteAllText(workspace.SolutionPath, string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
-    /// <summary>
-    /// Runs <c>dotnet restore</c> on <paramref name="workspace"/>.SolutionPath so newly-written
-    /// sibling test projects acquire their <c>obj/project.assets.json</c> before the workspace
-    /// is loaded. The shipping sample-solution copy is restored ahead-of-time by
-    /// <c>verify-release.ps1</c>; tests that mutate the project graph must restore the deltas.
-    /// </summary>
-    private static async Task RestoreWorkspaceAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
-    {
-        var execution = await DotnetCommandRunner.RunAsync(
-            workingDirectory: workspace.RootPath,
-            targetPath: workspace.SolutionPath,
-            arguments: ["restore", workspace.SolutionPath, "--nologo"],
-            ct).ConfigureAwait(false);
-
-        Assert.IsTrue(
-            execution.Succeeded,
-            $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
-    }
-
     // ── build-test-services-swallowed-exceptions-no-logging ──
     // These two cases exercise the previously-silent bare-catch fallbacks in
     // ScaffoldingService (test-framework detection and test-project validation). The

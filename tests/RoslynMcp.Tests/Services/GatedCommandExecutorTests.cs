@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Diagnostics;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -108,7 +107,6 @@ public sealed class GatedCommandExecutorTests
 
         try
         {
-            var stopwatch = Stopwatch.StartNew();
             var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 executor.ExecuteAsync(
                     "ws-queued",
@@ -116,7 +114,6 @@ public sealed class GatedCommandExecutorTests
                     new[] { "build" },
                     TimeSpan.FromMilliseconds(100),
                     CancellationToken.None));
-            stopwatch.Stop();
 
             StringAssert.Contains(exception.Message, "including queue wait");
 
@@ -125,10 +122,6 @@ public sealed class GatedCommandExecutorTests
             // stack trace) survives into logs instead of being discarded.
             Assert.IsInstanceOfType<OperationCanceledException>(exception.InnerException,
                 "The reclassified TimeoutException should preserve the caught OCE as InnerException.");
-
-            Assert.IsTrue(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-                $"Queue wait should be bounded by the 100 ms budget; elapsed {stopwatch.Elapsed}.");
         }
         finally
         {

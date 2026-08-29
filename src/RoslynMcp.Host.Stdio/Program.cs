@@ -22,18 +22,6 @@ if (args is [ScriptWorkerProtocol.WorkerArgument])
     return;
 }
 
-// mcp-stdio-console-flush-on-exit: belt-and-suspenders synchronous flush hook that fires
-// on every process-exit path (graceful, abrupt, AppDomain unload). Pre-fix the host
-// flushed in the ApplicationStopping callback + after RunAsync returns, but on stdin-EOF
-// the SDK transport could exit fast enough that buffered MCP JSON responses were lost
-// before the async FlushAsync completed (IT-Chat-Bot 2026-04-13 §9.4: clients received
-// 0 bytes). The ProcessExit handler runs synchronously during runtime teardown — anything
-// still in the stdout buffer at that moment makes it to the pipe.
-AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-{
-    StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "process-exit");
-};
-
 var builder = Host.CreateApplicationBuilder(args);
 var toolTierSelection = ToolTierSelection.Parse(ReadEnv(ToolTierSelection.EnvironmentVariableName));
 var observabilityOptions = ServerObservabilityOptions.Parse(
@@ -95,6 +83,9 @@ builder.Services
         };
         options.ServerInstructions = ServerInstructions.For(toolTierSelection);
     })
+    // ModelContextProtocol 2.2.0 owns a BufferedStream over standard output and flushes after
+    // every send. Keep Console.Out out of shutdown handling: it is a different writer and cannot
+    // flush the SDK-owned transport buffer.
     .WithStdioServerTransport()
     .WithToolsFromAssembly()
     .WithResourcesFromAssembly()
@@ -208,9 +199,6 @@ lifetime.ApplicationStopping.Register(() =>
     // idle-eviction code that knows specifically why it terminated will pass its own reason.
     hostProcessMetadataStore.WriteCurrent(recycleReason: "graceful");
 
-    // Flush stdout so buffered MCP JSON responses are delivered before the process exits.
-    // Without this, non-SDK clients using bash pipes may receive 0 bytes on stdout.
-    StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "application-stopping");
 });
 
 // compile-check-not-connected-raw-transport-error-envelope (path b): if the SDK's
@@ -228,22 +216,10 @@ catch (Exception ex) when (
     ex is IOException ||
     (ex is InvalidOperationException && ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase)))
 {
-    // Transport-layer disconnect: the MCP client closed the pipe. Log to stderr
-    // (stdout is likely closed) and let the process exit gracefully. The
-    // ApplicationStopping handler already ran or will run via the ProcessExit hook.
-    Console.Error.WriteLine(
-        $"[roslyn-mcp] Transport disconnected during RunAsync ({ex.GetType().Name}: {ex.Message}). " +
-        "This is normal on client-side session close.");
+    // Transport-layer disconnect: the MCP client closed the pipe. The ILogger console provider
+    // owns stderr; do not project exception messages or paths into the operator sink.
+    TransportDisconnectDiagnostics.Log(startupLogger, ex);
 }
-
-// Belt-and-suspenders: flush stdout after the host stops in case the
-// ApplicationStopping handler didn't run (e.g., on abrupt shutdown).
-// Both the sync and async overloads — sync ensures the buffer is drained before
-// any subsequent disposal/IO; async re-flushes any encoder writes that batched
-// behind the sync call. The ProcessExit handler at the top of this file is the
-// final fallback for stdin-EOF cases where RunAsync may not return cleanly.
-StdioShutdownFlusher.Flush(Console.Out, Console.Error.WriteLine, "post-run");
-await StdioShutdownFlusher.FlushAsync(Console.Out, Console.Error.WriteLine, "post-run-async");
 
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {

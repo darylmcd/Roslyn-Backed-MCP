@@ -94,10 +94,12 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task DotnetCommandRunner_CancellationKillFailure_LogsWarningWithoutChangingCancellation()
     {
+        const string secretTargetPath = "C:/secret/customer/repository.slnx";
+        const string secretFailureDetail = "provider-secret-kill-detail";
         var logger = new ListLogger<DotnetCommandRunner>();
         var runner = new DotnetCommandRunner(
             outputLimit: 1024,
-            killProcessTree: _ => throw new InvalidOperationException("simulated kill failure"),
+            killProcessTree: _ => throw new InvalidOperationException(secretFailureDetail),
             logger);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -105,16 +107,19 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
             runner.RunAsync(
                 Environment.CurrentDirectory,
-                targetPath: "dotnet-info",
+                targetPath: secretTargetPath,
                 arguments: ["--info"],
                 cts.Token));
 
         var entry = logger.Entries.SingleOrDefault(candidate =>
             candidate.Level == LogLevel.Warning &&
-            candidate.Message.Contains("Failed to kill dotnet process tree", StringComparison.Ordinal) &&
-            candidate.Exception is InvalidOperationException);
+            candidate.Message.Contains("Failed to kill dotnet process tree", StringComparison.Ordinal));
 
         Assert.AreNotEqual(default, entry, "Cancellation kill failures should be observable without changing cancellation semantics.");
+        Assert.IsNull(entry.Exception, "Kill failures must not attach raw exception detail to logs.");
+        StringAssert.Contains(entry.Message, "exceptionType=InvalidOperationException");
+        Assert.IsFalse(entry.Message.Contains(secretTargetPath, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(entry.Message.Contains(secretFailureDetail, StringComparison.Ordinal));
     }
 
     private sealed class HangingDotnetCommandRunner : IDotnetCommandRunner

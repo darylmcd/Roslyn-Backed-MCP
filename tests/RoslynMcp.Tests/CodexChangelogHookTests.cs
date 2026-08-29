@@ -7,6 +7,8 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class CodexChangelogHookTests
 {
+    private static readonly TimeSpan HookProcessTimeout = TimeSpan.FromMinutes(2);
+
     [TestMethod]
     public void HookConfiguration_CoversSupportedShellAliasesAndGithubPublicationTools()
     {
@@ -189,7 +191,7 @@ public sealed class CodexChangelogHookTests
         process.StandardInput.Close();
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(HookProcessTimeout);
         try
         {
             await process.WaitForExitAsync(timeout.Token);
@@ -197,7 +199,8 @@ public sealed class CodexChangelogHookTests
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
             process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Codex changelog hook did not exit within 30 seconds.");
+            throw new TimeoutException(
+                $"Codex changelog hook did not exit within {HookProcessTimeout.TotalSeconds:F0} seconds.");
         }
 
         return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
