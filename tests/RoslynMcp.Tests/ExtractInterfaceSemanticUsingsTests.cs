@@ -131,7 +131,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -202,7 +202,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -303,7 +303,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -401,7 +401,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -481,7 +481,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 
@@ -547,22 +547,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         finally
         {
             WorkspaceManager.Close(workspaceId);
-            TryDeleteDirectory(solutionDir);
-        }
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cleanup.
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
         }
     }
 }

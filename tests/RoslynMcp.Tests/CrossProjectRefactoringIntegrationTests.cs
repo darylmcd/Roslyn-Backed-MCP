@@ -670,24 +670,6 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         StringAssert.Contains(consumerContents, "IAnimalService service");
     }
 
-    /// <summary>
-    /// Runs <c>dotnet restore</c> on the copied solution so newly-added projects acquire their
-    /// <c>obj/project.assets.json</c> (and transitive project-reference graph) before the workspace
-    /// is loaded. Mirrors the restore helper in <c>ScaffoldingFirstTestFileTests</c>.
-    /// </summary>
-    private static async Task RestoreWorkspaceAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
-    {
-        var execution = await DotnetCommandRunner.RunAsync(
-            workingDirectory: workspace.RootPath,
-            targetPath: workspace.SolutionPath,
-            arguments: ["restore", workspace.SolutionPath, "--nologo"],
-            ct).ConfigureAwait(false);
-
-        Assert.IsTrue(
-            execution.Succeeded,
-            $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
-    }
-
     private static void AddProjectWithReferenceToCopiedSolution(
         string copiedRoot,
         string projectName,

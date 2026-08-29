@@ -4,6 +4,46 @@ namespace RoslynMcp.Tests;
 public sealed class TestFixtureFileSystemTests
 {
     [TestMethod]
+    public void DeleteDirectoryIfExists_LockedReadOnlyFile_RetriesAndSurfacesTerminalFailure()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Windows file-sharing semantics are required for this regression.");
+        }
+
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(TestFixtureFileSystemTests),
+            Guid.NewGuid().ToString("N"));
+        var lockedFile = Path.Combine(fixtureRoot, "locked.txt");
+        Directory.CreateDirectory(fixtureRoot);
+        File.WriteAllText(lockedFile, "fixture");
+        File.SetAttributes(lockedFile, FileAttributes.ReadOnly);
+
+        try
+        {
+            using (var lockStream = new FileStream(
+                lockedFile,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            {
+                _ = Assert.Throws<IOException>(() =>
+                    TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot));
+            }
+
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+            Assert.IsFalse(
+                Directory.Exists(fixtureRoot),
+                "The shared helper must clear read-only state and delete once the lock is released.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     public void CreateSampleSolutionCopy_SkipsBinDirectoriesAndTransientScratchFiles()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpFixtureTests", Guid.NewGuid().ToString("N"));

@@ -18,3 +18,4 @@
 ## Evidence
 
 The current opt-in reinstall target kills every Windows process named `roslynmcp.exe`. That can terminate unrelated MCP sessions and has no ownership proof, so the destructive boundary is broader than the requested reinstall operation.
+2026-08-29 adjacent review: justfile:119 duplicates the same image-wide taskkill boundary as the csproj reinstall target. Include both call sites in the ownership-scoped replacement and regression.

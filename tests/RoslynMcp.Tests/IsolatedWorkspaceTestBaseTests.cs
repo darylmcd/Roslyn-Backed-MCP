@@ -1,8 +1,43 @@
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
 public sealed class IsolatedWorkspaceTestBaseTests
 {
+    [TestMethod]
+    public async Task RestoreWorkspaceAsync_FailureRetainsExitCodeAndBothOutputStreams()
+    {
+        var scope = CreateScope(
+            closeWorkspace: _ => true,
+            deleteRoot: _ => { });
+        var runner = new FixtureCommandRunner(
+            new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: ["restore"],
+                WorkingDirectory: "fixture-root",
+                TargetPath: "fixture-root/SampleSolution.slnx",
+                ExitCode: 17,
+                Succeeded: false,
+                DurationMs: 1,
+                StdOut: "restore-stdout-sentinel",
+                StdErr: "restore-stderr-sentinel"));
+
+        var failure = await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            IsolatedWorkspaceTestBase.RestoreWorkspaceAsync(
+                scope,
+                runner,
+                CancellationToken.None));
+
+        StringAssert.Contains(failure.Message, "ExitCode=17");
+        StringAssert.Contains(failure.Message, "restore-stdout-sentinel");
+        StringAssert.Contains(failure.Message, "restore-stderr-sentinel");
+        CollectionAssert.AreEqual(
+            new[] { "restore", "fixture-root/SampleSolution.slnx", "--nologo" },
+            runner.Arguments.ToArray());
+    }
+
     [TestMethod]
     public async Task InitializeWithCleanupAsync_WhenInitializationFails_DisposesAndPreservesFailure()
     {
@@ -139,4 +174,20 @@ public sealed class IsolatedWorkspaceTestBaseTests
     }
 
     private sealed class FixtureException(string message) : Exception(message);
+
+    private sealed class FixtureCommandRunner(CommandExecutionDto result) : IDotnetCommandRunner
+    {
+        public IReadOnlyList<string> Arguments { get; private set; } = [];
+
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Arguments = arguments;
+            return Task.FromResult(result);
+        }
+    }
 }
