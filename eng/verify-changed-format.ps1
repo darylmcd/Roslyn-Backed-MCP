@@ -10,8 +10,9 @@ red every pull request. This script gates the only thing a pull request is respo
 the files it actually touches, minus the debt those files already carried.
 
 Algorithm:
-  1. Resolve the changed set with `git diff --name-only --diff-filter=ACMR <BaseRef>...HEAD`,
-     filtered to `*.cs` files that still exist on disk. An empty set exits 0 immediately.
+  1. Resolve the changed set as the union of committed pull-request changes, staged changes,
+     unstaged changes, and untracked `*.cs` files. Filter it to files that still exist on disk.
+     An empty set exits 0 immediately.
   2. Run `dotnet format <solution> --verify-no-changes --no-restore` scoped to that set and
      parse the formatter diagnostics FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE. Compiler
      and analyzer diagnostics remain owned by the build/analyzer gates.
@@ -150,13 +151,31 @@ foreach ($entry in @($baselineDocument.files)) {
 Push-Location -LiteralPath $repositoryRoot
 try {
     $global:LASTEXITCODE = 0
-    $diffOutput = @(& git diff --name-only --diff-filter=ACMR "$BaseRef...HEAD" -- "*.cs" 2>&1 | ForEach-Object { $_.ToString() })
+    $committedDiffOutput = @(& git diff --name-only --diff-filter=ACMR "$BaseRef...HEAD" -- "*.cs" 2>&1 | ForEach-Object { $_.ToString() })
     if ($global:LASTEXITCODE -ne 0) {
-        throw "Unable to diff against '$BaseRef'. Fetch the base ref (CI uses fetch-depth: 0) before running the formatter gate.`n$($diffOutput -join [System.Environment]::NewLine)"
+        throw "Unable to diff against '$BaseRef'. Fetch the base ref (CI uses fetch-depth: 0) before running the formatter gate.`n$($committedDiffOutput -join [System.Environment]::NewLine)"
+    }
+
+    $global:LASTEXITCODE = 0
+    $stagedDiffOutput = @(& git diff --cached --name-only --diff-filter=ACMR -- "*.cs" 2>&1 | ForEach-Object { $_.ToString() })
+    if ($global:LASTEXITCODE -ne 0) {
+        throw "Unable to resolve staged C# changes.`n$($stagedDiffOutput -join [System.Environment]::NewLine)"
+    }
+
+    $global:LASTEXITCODE = 0
+    $unstagedDiffOutput = @(& git diff --name-only --diff-filter=ACMR -- "*.cs" 2>&1 | ForEach-Object { $_.ToString() })
+    if ($global:LASTEXITCODE -ne 0) {
+        throw "Unable to resolve unstaged C# changes.`n$($unstagedDiffOutput -join [System.Environment]::NewLine)"
+    }
+
+    $global:LASTEXITCODE = 0
+    $untrackedOutput = @(& git ls-files --others --exclude-standard -- "*.cs" 2>&1 | ForEach-Object { $_.ToString() })
+    if ($global:LASTEXITCODE -ne 0) {
+        throw "Unable to resolve untracked C# files.`n$($untrackedOutput -join [System.Environment]::NewLine)"
     }
 
     $changedFiles = [string[]]@(
-        $diffOutput |
+        @($committedDiffOutput; $stagedDiffOutput; $unstagedDiffOutput; $untrackedOutput) |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             ForEach-Object { $_.Trim().Replace("\", "/") } |
             Where-Object { [System.IO.File]::Exists((Join-Path -Path $repositoryRoot -ChildPath $_)) } |

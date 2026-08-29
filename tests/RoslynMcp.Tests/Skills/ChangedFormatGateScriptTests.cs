@@ -129,6 +129,30 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
+    public void Gate_TrackedStagedAndUntrackedLocalCSharpChanges_AreAllGated()
+    {
+        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        WriteRepositoryFile("Staged.cs", CleanFile.Replace("class Clean", "class Staged", StringComparison.Ordinal));
+        RunGit("add", "Staged.cs");
+        WriteRepositoryFile("Untracked.cs", CleanFile.Replace("class Clean", "class Untracked", StringComparison.Ordinal));
+
+        var result = RunGateWithFakeDotnet(
+            string.Join(
+                "\n",
+                $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): warning IDE1006: tracked local change [Probe.csproj]",
+                $"{Path.Combine(_repositoryDirectory, "Staged.cs")}(1,1): warning IDE1006: staged local change [Probe.csproj]",
+                $"{Path.Combine(_repositoryDirectory, "Untracked.cs")}(1,1): warning IDE1006: untracked local change [Probe.csproj]"),
+            exitCode: 2);
+
+        Assert.AreEqual(1, result.ExitCode, Describe("Every local C# change state must be formatter-gated before commit", result));
+        StringAssert.Contains(result.StdErr, "Clean.cs", Describe("The tracked worktree change must be gated", result));
+        StringAssert.Contains(result.StdErr, "Staged.cs", Describe("The staged addition must be gated", result));
+        StringAssert.Contains(result.StdErr, "Untracked.cs", Describe("The untracked addition must be gated", result));
+    }
+
+    [TestMethod]
     public void Gate_ChangedFileIntroducesUnsortedUsings_FailsWithAnImportsFinding()
     {
         SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
@@ -424,10 +448,12 @@ public sealed class ChangedFormatGateScriptTests
     private ProcessResult RunGateWithFakeDotnet(string output, int exitCode)
     {
         var fakeDotnetPath = Path.Combine(_repositoryDirectory, "fake-dotnet.ps1");
-        var escapedOutput = output.Replace("'", "''", StringComparison.Ordinal);
+        var outputCommands = string.Join(
+            "\n",
+            output.Split('\n').Select(line => $"Write-Output '{line.TrimEnd('\r').Replace("'", "''", StringComparison.Ordinal)}'"));
         WriteRepositoryFile(
             "fake-dotnet.ps1",
-            $"param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RemainingArguments)\nWrite-Output '{escapedOutput}'\nexit {exitCode}\n");
+            $"param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RemainingArguments)\n{outputCommands}\nexit {exitCode}\n");
         return RunGate(dotnetCommand: fakeDotnetPath);
     }
 

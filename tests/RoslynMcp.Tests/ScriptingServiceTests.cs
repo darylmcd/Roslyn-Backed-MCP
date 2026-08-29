@@ -712,7 +712,11 @@ public sealed class ScriptingServiceTests
         private sealed class Session : IScriptWorkerSession
         {
             public string Name => "failing-cleanup-worker";
-            public bool WaitForExit(int milliseconds) => false;
+            public bool WaitForExit(int milliseconds)
+            {
+                Thread.Sleep(milliseconds);
+                return false;
+            }
             public ScriptExecutionOutcome GetOutcome() => throw new InvalidOperationException("not exited");
             public void Terminate() => throw new InvalidOperationException("terminate sentinel");
             public void Dispose() => throw new IOException("dispose sentinel");

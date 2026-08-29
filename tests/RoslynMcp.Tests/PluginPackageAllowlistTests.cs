@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -6,25 +6,28 @@ namespace RoslynMcp.Tests;
 public sealed class PluginPackageAllowlistTests
 {
     [TestMethod]
-    public void VerifyPluginPackageFiles_PassesCanonicalAllowlist()
+    [TestCategory("Process")]
+    public async Task VerifyPluginPackageFiles_PassesCanonicalAllowlist()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var result = RunVerifier(repoRoot);
+        var result = await RunVerifierAsync(repoRoot);
 
         Assert.AreEqual(0, result.ExitCode, result.StdErr + result.StdOut);
         StringAssert.Contains(result.StdOut, "Plugin package allowlist verified");
     }
 
     [TestMethod]
-    public void VerifyPluginPackageFiles_RejectsRepoInternalAllowlistEntry()
+    [TestCategory("Process")]
+    public async Task VerifyPluginPackageFiles_RejectsRepoInternalAllowlistEntry()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var badAllowlist = Path.Combine(Path.GetTempPath(), $"bad-plugin-allowlist-{Guid.NewGuid():N}.txt");
+        var fixtureRoot = CreateFixtureRoot();
+        var badAllowlist = Path.Combine(fixtureRoot, "bad-plugin-allowlist.txt");
         File.WriteAllText(badAllowlist, "ai_docs/**");
 
         try
         {
-            var result = RunVerifier(repoRoot, allowlistPath: badAllowlist);
+            var result = await RunVerifierAsync(repoRoot, allowlistPath: badAllowlist);
 
             Assert.AreNotEqual(0, result.ExitCode,
                 "Repo-internal allowlist entries such as ai_docs/** must be rejected.");
@@ -32,20 +35,22 @@ public sealed class PluginPackageAllowlistTests
         }
         finally
         {
-            File.Delete(badAllowlist);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
     }
 
     [TestMethod]
-    public void VerifyPluginPackageFiles_FailsUnexpectedCandidateFile()
+    [TestCategory("Process")]
+    public async Task VerifyPluginPackageFiles_FailsUnexpectedCandidateFile()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var candidateList = Path.Combine(Path.GetTempPath(), $"plugin-candidates-{Guid.NewGuid():N}.txt");
+        var fixtureRoot = CreateFixtureRoot();
+        var candidateList = Path.Combine(fixtureRoot, "plugin-candidates.txt");
         File.WriteAllLines(candidateList, [".claude-plugin/plugin.json", "src/RoslynMcp.Host.Stdio/Program.cs"]);
 
         try
         {
-            var result = RunVerifier(repoRoot, candidateFileListPath: candidateList);
+            var result = await RunVerifierAsync(repoRoot, candidateFileListPath: candidateList);
 
             Assert.AreNotEqual(0, result.ExitCode,
                 "Candidate cache contents must fail when a repo-internal source file is present.");
@@ -53,54 +58,53 @@ public sealed class PluginPackageAllowlistTests
         }
         finally
         {
-            File.Delete(candidateList);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
     }
 
-    private static PwshResult RunVerifier(
+    private static Task<PwshScriptResult> RunVerifierAsync(
         string repoRoot,
         string? allowlistPath = null,
         string? candidateFileListPath = null)
     {
         var scriptPath = Path.Combine(repoRoot, "eng", "verify-plugin-package-files.ps1");
-        var startInfo = new ProcessStartInfo
+        var arguments = new List<string>
         {
-            FileName = ResolvePwsh(),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            scriptPath,
+            "-RepoRoot",
+            repoRoot,
         };
-
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-ExecutionPolicy");
-        startInfo.ArgumentList.Add("Bypass");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(repoRoot);
 
         if (allowlistPath is not null)
         {
-            startInfo.ArgumentList.Add("-AllowlistPath");
-            startInfo.ArgumentList.Add(allowlistPath);
+            arguments.Add("-AllowlistPath");
+            arguments.Add(allowlistPath);
         }
 
         if (candidateFileListPath is not null)
         {
-            startInfo.ArgumentList.Add("-CandidateFileListPath");
-            startInfo.ArgumentList.Add(candidateFileListPath);
+            arguments.Add("-CandidateFileListPath");
+            arguments.Add(candidateFileListPath);
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        return new PwshResult(process.ExitCode, stdout, stderr);
+        return PwshScriptRunner.RunAsync(
+            arguments,
+            workingDirectory: repoRoot,
+            timeout: TimeSpan.FromSeconds(60),
+            description: "plugin package allowlist verifier");
     }
 
-    private static string ResolvePwsh() => OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
-
-    private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
+    private static string CreateFixtureRoot()
+    {
+        var path = Path.Combine(
+            TestTempRoot.Current,
+            nameof(PluginPackageAllowlistTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
 }

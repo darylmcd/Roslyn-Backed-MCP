@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -228,6 +228,59 @@ public sealed class BreakingVersionGateTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task BreakingVersionGate_MajorSurfacesBodyAndWarnsOnlyForNonBreakingFamilySiblings()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var scriptPath = Path.Combine(repositoryRoot, "eng", "verify-breaking-version-bump.ps1");
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(BreakingVersionGateTests),
+            Guid.NewGuid().ToString("N"));
+        var testCase = new GateCase(
+            "breaking family",
+            BumpType: "major",
+            FragmentCategory: "Changed — BREAKING",
+            TopVersion: "4.0.0",
+            PrecedingVersion: "3.0.0",
+            TopHasBreakingSection: false,
+            RequireConsumedFragments: false,
+            ExpectedExitCode: 0,
+            ExpectedText: "Breaking fragments permit requested major bump");
+
+        try
+        {
+            WriteFixture(fixtureRoot, testCase);
+            var fragmentDirectory = Path.Combine(fixtureRoot, "changelog.d");
+            var breakingPath = Path.Combine(fragmentDirectory, "contract-family-breaking.md");
+            File.Move(Path.Combine(fragmentDirectory, "pending.md"), breakingPath);
+            WriteFragment(
+                Path.Combine(fragmentDirectory, "contract-family-safe.md"),
+                "Fixed",
+                "Sibling safe change.");
+
+            var familyResult = await RunGateAsync(scriptPath, fixtureRoot, "major", false);
+            var familyOutput = PowerShellOutputNormalizer.Normalize(familyResult.AllOutput);
+            Assert.AreEqual(0, familyResult.ExitCode, familyResult.AllOutput);
+            StringAssert.Contains(familyOutput, "contract-family-breaking.md");
+            StringAssert.Contains(familyOutput, "Fixture contract change.");
+            StringAssert.Contains(familyOutput, "Breaking fragment family mismatch");
+            StringAssert.Contains(familyOutput, "contract-family-safe.md");
+
+            File.Delete(Path.Combine(fragmentDirectory, "contract-family-safe.md"));
+            var loneResult = await RunGateAsync(scriptPath, fixtureRoot, "major", false);
+            Assert.AreEqual(0, loneResult.ExitCode, loneResult.AllOutput);
+            Assert.IsFalse(
+                loneResult.AllOutput.Contains("Breaking fragment family mismatch", StringComparison.Ordinal),
+                loneResult.AllOutput);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task ManualPublisher_StopsBeforePackagingWhenReleaseGateExitsNonzero()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -252,38 +305,23 @@ public sealed class BreakingVersionGateTests
                 Path.Combine(packageDirectory, "Darylmcd.RoslynMcp.9.9.9.nupkg"),
                 "not a real package");
 
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-File");
-            startInfo.ArgumentList.Add(Path.Combine(engDirectory, "publish-nuget.ps1"));
-            startInfo.ArgumentList.Add("-Version");
-            startInfo.ArgumentList.Add("9.9.9");
-            startInfo.Environment["NUGET_API_KEY"] = "fixture-not-a-secret";
+            var result = await PwshScriptRunner.RunAsync(
+                [
+                    "-NoProfile",
+                    "-File",
+                    Path.Combine(engDirectory, "publish-nuget.ps1"),
+                    "-Version",
+                    "9.9.9",
+                ],
+                environment: new Dictionary<string, string?>
+                {
+                    ["NUGET_API_KEY"] = "fixture-not-a-secret",
+                },
+                timeout: TimeSpan.FromSeconds(30),
+                description: "manual publisher fixture");
 
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Could not start the manual publisher fixture.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-            {
-                process.Kill(entireProcessTree: true);
-                throw new TimeoutException("Manual publisher fixture did not exit within 30 seconds.");
-            }
-
-            var output = await stdoutTask + await stderrTask;
-            Assert.AreNotEqual(0, process.ExitCode, output);
+            var output = result.AllOutput;
+            Assert.AreNotEqual(0, result.ExitCode, output);
             StringAssert.Contains(output, "Release validation failed with exit code 37.");
             Assert.IsFalse(
                 output.Contains("Packing ", StringComparison.Ordinal),
@@ -341,51 +379,47 @@ public sealed class BreakingVersionGateTests
             """);
     }
 
-    private static async Task<PwshResult> RunGateAsync(
+    private static void WriteFragment(string path, string category, string body)
+    {
+        File.WriteAllText(
+            path,
+            $$"""
+            ---
+            category: {{category}}
+            ---
+
+            - **{{category}}:** {{body}}
+            """);
+    }
+
+    private static Task<PwshScriptResult> RunGateAsync(
         string scriptPath,
         string fixtureRoot,
         string? bumpType,
         bool requireConsumedFragments)
     {
-        var startInfo = new ProcessStartInfo
+        var arguments = new List<string>
         {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            "-NoProfile",
+            "-File",
+            scriptPath,
+            "-RepoRoot",
+            fixtureRoot,
         };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("-RepoRoot");
-        startInfo.ArgumentList.Add(fixtureRoot);
         if (bumpType is not null)
         {
-            startInfo.ArgumentList.Add("-BumpType");
-            startInfo.ArgumentList.Add(bumpType);
+            arguments.Add("-BumpType");
+            arguments.Add(bumpType);
         }
         if (requireConsumedFragments)
         {
-            startInfo.ArgumentList.Add("-RequireConsumedFragments");
+            arguments.Add("-RequireConsumedFragments");
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("Breaking-version gate did not exit within 30 seconds.");
-        }
-
-        return new PwshResult(process.ExitCode, await stdoutTask, await stderrTask);
+        return PwshScriptRunner.RunAsync(
+            arguments,
+            timeout: TimeSpan.FromSeconds(30),
+            description: "breaking-version gate");
     }
 
     private sealed record GateCase(
@@ -398,6 +432,4 @@ public sealed class BreakingVersionGateTests
         bool RequireConsumedFragments,
         int ExpectedExitCode,
         string ExpectedText);
-
-    private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
 }

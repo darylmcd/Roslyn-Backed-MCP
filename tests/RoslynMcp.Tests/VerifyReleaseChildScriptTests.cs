@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -813,7 +813,7 @@ public sealed class VerifyReleaseChildScriptTests
             $"Unexpected private test-root shape: {canonicalPath}");
     }
 
-    private static async Task<PwshResult> RunVerifyReleaseAsync(
+    private static Task<PwshScriptResult> RunVerifyReleaseAsync(
         ReleaseFixture fixture,
         bool requireConsumedFragments,
         string? cleanupMode = null,
@@ -826,83 +826,70 @@ public sealed class VerifyReleaseChildScriptTests
         int testShardIndex = 0,
         int testShardCount = 1)
     {
-        var startInfo = new ProcessStartInfo
+        var arguments = new List<string>
         {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = fixture.RepositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            "-NoProfile",
+            "-File",
+            fixture.ScriptPath,
+            "-NoCoverage",
         };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(fixture.ScriptPath);
-        startInfo.ArgumentList.Add("-NoCoverage");
         if (requireConsumedFragments)
         {
-            startInfo.ArgumentList.Add("-RequireConsumedFragments");
+            arguments.Add("-RequireConsumedFragments");
         }
         if (testShardOnly)
         {
-            startInfo.ArgumentList.Add("-TestShardOnly");
+            arguments.Add("-TestShardOnly");
         }
-        startInfo.ArgumentList.Add("-TestShardIndex");
-        startInfo.ArgumentList.Add(testShardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("-TestShardCount");
-        startInfo.ArgumentList.Add(testShardCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        arguments.Add("-TestShardIndex");
+        arguments.Add(testShardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        arguments.Add("-TestShardCount");
+        arguments.Add(testShardCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (outputRoot is not null)
         {
-            startInfo.ArgumentList.Add("-OutputRoot");
-            startInfo.ArgumentList.Add(outputRoot);
+            arguments.Add("-OutputRoot");
+            arguments.Add(outputRoot);
         }
 
-        startInfo.Environment["ROSLYNMCP_DOTNET_SENTINEL"] = fixture.DotnetSentinelPath;
-        startInfo.Environment["ROSLYNMCP_DOTNET_ARGUMENTS"] = fixture.DotnetArgumentsPath;
+        var environment = new Dictionary<string, string?>
+        {
+            ["ROSLYNMCP_DOTNET_SENTINEL"] = fixture.DotnetSentinelPath,
+            ["ROSLYNMCP_DOTNET_ARGUMENTS"] = fixture.DotnetArgumentsPath,
+        };
         if (cleanupMode is not null)
         {
-            startInfo.Environment["ROSLYNMCP_CLEANUP_MODE"] = cleanupMode;
-            startInfo.Environment["ROSLYNMCP_CLEANUP_ATTEMPTS"] = Path.Combine(
+            environment["ROSLYNMCP_CLEANUP_MODE"] = cleanupMode;
+            environment["ROSLYNMCP_CLEANUP_ATTEMPTS"] = Path.Combine(
                 fixture.RepositoryRoot,
                 "cleanup-attempts.txt");
-            startInfo.Environment["ROSLYNMCP_CLEANUP_TARGET"] = Path.Combine(
+            environment["ROSLYNMCP_CLEANUP_TARGET"] = Path.Combine(
                 fixture.RepositoryRoot,
                 "cleanup-target.txt");
         }
 
         if (failDotnetTest)
         {
-            startInfo.Environment["ROSLYNMCP_DOTNET_TEST_FAIL"] = "1";
+            environment["ROSLYNMCP_DOTNET_TEST_FAIL"] = "1";
         }
         if (failDotnetStep is not null)
         {
-            startInfo.Environment["ROSLYNMCP_DOTNET_FAIL_STEP"] = failDotnetStep;
+            environment["ROSLYNMCP_DOTNET_FAIL_STEP"] = failDotnetStep;
         }
         if (trxMode is not null)
         {
-            startInfo.Environment["ROSLYNMCP_DOTNET_TRX_MODE"] = trxMode;
+            environment["ROSLYNMCP_DOTNET_TRX_MODE"] = trxMode;
         }
         if (publishMode is not null)
         {
-            startInfo.Environment["ROSLYNMCP_DOTNET_PUBLISH_MODE"] = publishMode;
+            environment["ROSLYNMCP_DOTNET_PUBLISH_MODE"] = publishMode;
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("verify-release fixture did not exit within 30 seconds.");
-        }
-
-        return new PwshResult(process.ExitCode, await stdoutTask, await stderrTask);
+        return PwshScriptRunner.RunAsync(
+            arguments,
+            workingDirectory: fixture.RepositoryRoot,
+            environment: environment,
+            timeout: TimeSpan.FromSeconds(30),
+            description: "verify-release fixture");
     }
 
     private enum FailureMode
@@ -940,6 +927,4 @@ public sealed class VerifyReleaseChildScriptTests
         bool FailDotnetTest);
 
     private sealed record TrxCase(string Mode, string ExpectedText);
-
-    private sealed record PwshResult(int ExitCode, string StdOut, string StdErr);
 }
