@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-29T16:18:07Z
+**updated_at:** 2026-08-29T17:20:43Z
 
 ## Agent contract
 
@@ -71,7 +71,6 @@
 | `skill-prefix-guard-tests-assert-bcl-not-gate` | Medium | — | **Make the skill-prefix guard tests exercise the gate** — two canonical-block tests assert BCL string/array semantics instead of the gate's extract-and-compare, so drift detection has no negative-path coverage. [type: test] [source: PR #1353 review] | S | items/skill-prefix-guard-tests-assert-bcl-not-gate.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
 | `release-cut-step3-environment-precheck` | Medium | — | **Step 3 runs the heavy gate with no environment guard** — pre-check free memory and stray dotnet/testhost process count before `verify-release.ps1`, and triage a red against machine state before calling it a product failure. [type: tooling] [source: 2026-08-28 release-cut] | S | items/release-cut-step3-environment-precheck.md |
-| `test-run-nested-git-child-hang` | Medium | — | **Fix test_run nested Git child hang** — Remove the environment or lifecycle difference that makes a PowerShell child's git ls-files hang only under MCP test_run; keep bounded cleanup. [type: bug] [source: 2026-08-29 remediation] | M | items/test-run-nested-git-child-hang.md |
 
 ## Low
 
@@ -166,6 +165,7 @@
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
 | `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
 | `diagnostic-supported-fix-enumeration-collaborator-extraction` | Low | — | **Extract supported-fix enumeration** — move provider lookup, action capture, completeness aggregation, redacted failure reporting, and guidance projection behind one collaborator. [type: refactor] [source: 2026-08-28 adjacent complexity review] | M | items/diagnostic-supported-fix-enumeration-collaborator-extraction.md |
+| `dotnet-command-runner-kill-log-path-redaction` | Low | — | **Redact command-runner kill-failure logs** — remove raw target paths and exception payloads while retaining stable process, reason, and failure-type fields. [type: diagnostics] [source: test-run child hang adjacent review] | S | items/dotnet-command-runner-kill-log-path-redaction.md |
 
 ## Defer
 
