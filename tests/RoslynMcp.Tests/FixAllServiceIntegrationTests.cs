@@ -1,3 +1,6 @@
+using Microsoft.CodeAnalysis.CodeFixes;
+using RoslynMcp.Roslyn.Services;
+
 namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
@@ -87,5 +90,62 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
 
         StringAssert.Contains(ex.Message, "projectName");
         Assert.AreEqual("projectName", ex.ParamName);
+    }
+
+    [TestMethod]
+    [DataRow("document")]
+    [DataRow("project")]
+    [DataRow("solution")]
+    public async Task TargetResolutionAndDiagnosticCollection_PreserveScopeBehavior(string scope)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var diagnosticDocument = solution.Projects
+            .SelectMany(project => project.Documents)
+            .First(document => document.Name == "DiagnosticsProbe.cs");
+        var filePath = scope == "document" ? diagnosticDocument.FilePath : null;
+        var projectName = scope == "project" ? diagnosticDocument.Project.Name : null;
+        var request = FixAllTargetResolver.ParseAndValidate(scope, filePath, projectName);
+        var target = FixAllTargetResolver.Resolve(solution, request);
+        var collector = new FixAllDiagnosticCollector(new CompilationCache(WorkspaceManager));
+
+        var diagnostics = await collector.CollectAsync(
+            new FixAllDiagnosticCollectionContext(
+                WorkspaceId,
+                solution,
+                "CS0414",
+                request.Scope,
+                target.Document,
+                target.Project,
+                []),
+            CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsTrue(
+            diagnostics.Values.SelectMany(items => items).Any(diagnostic => diagnostic.Id == "CS0414"),
+            $"Expected compiler fallback to collect CS0414 at {scope} scope.");
+
+        if (request.Scope == FixAllScope.Document)
+        {
+            Assert.IsTrue(diagnostics.Keys.All(document => document.Id == diagnosticDocument.Id));
+        }
+        else if (request.Scope == FixAllScope.Project)
+        {
+            Assert.IsTrue(diagnostics.Keys.All(document => document.Project.Id == diagnosticDocument.Project.Id));
+        }
+    }
+
+    [TestMethod]
+    [DataRow("document", null, null, "filePath")]
+    [DataRow("project", null, null, "projectName")]
+    [DataRow("invalid", null, null, "scope")]
+    public void TargetResolution_RejectsMalformedInputBeforeWorkspaceLookup(
+        string scope,
+        string? filePath,
+        string? projectName,
+        string expectedParameter)
+    {
+        var exception = Assert.ThrowsExactly<ArgumentException>(() =>
+            FixAllTargetResolver.ParseAndValidate(scope, filePath, projectName));
+
+        Assert.AreEqual(expectedParameter, exception.ParamName);
     }
 }

@@ -1,7 +1,13 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -214,26 +220,75 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             "move_file_preview must mint a FileMove token.");
     }
 
-    // NOTE — the fourth producer round-trip (fix_all_preview mints PreviewKind.FixAll) is NOT
-    // asserted here, and that is a KNOWN, TRACKED GAP rather than an oversight. Two structural
-    // blockers make it unreachable from this fixture, both traced in-source:
-    //
-    //   1. TestInfrastructure/TestFixtureFileSystem.cs CopyRepositorySupportFiles copies only
-    //      Directory.Build.props, Directory.Packages.props, global.json and BannedSymbols.txt --
-    //      the repository .editorconfig is never copied into the isolated workspace, and samples/
-    //      carries no .editorconfig of its own.
-    //   2. FixAllService's compilation.WithAnalyzers(relevantAnalyzers) call passes no
-    //      AnalyzerOptions, so no editorconfig-derived option reaches an IDE analyzer even if one
-    //      were copied.
-    //
-    // Consequently every editorconfig-driven IDE diagnostic (IDE0161 among them) resolves to its
-    // Roslyn default and reports zero occurrences, FixAllService returns PreviewToken: "" at its
-    // totalDiagCount == 0 guard, and any round-trip assertion is unreachable. Two earlier attempts
-    // to close this inline failed for exactly that reason -- the first passed vacuously behind an
-    // Assert.Inconclusive, the second added a sample fixture file that still could not raise the
-    // diagnostic and additionally collided with DeadCodeIntegrationTests.
-    //
-    // Row: fixall-producer-kind-round-trip-coverage.
+    [TestMethod]
+    public async Task FixAllPreview_RecordsFixAllProducerKind()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var service = new FixAllService(
+            WorkspaceManager,
+            PreviewStore,
+            new CompilationCache(WorkspaceManager),
+            NullLogger<FixAllService>.Instance,
+            [new TestFixAllCodeFixProvider()]);
+
+        var preview = await service.PreviewFixAllAsync(
+            workspace.WorkspaceId,
+            diagnosticId: "CS0414",
+            scope: "solution",
+            filePath: null,
+            projectName: null,
+            CancellationToken.None);
+
+        Assert.IsFalse(
+            string.IsNullOrWhiteSpace(preview.PreviewToken),
+            preview.GuidanceMessage ?? "fix_all_preview did not mint a token for the CS0414 fixture.");
+        Assert.AreEqual(
+            PreviewKind.FixAll,
+            PreviewStore.PeekKind(preview.PreviewToken),
+            "fix_all_preview must mint a FixAll token.");
+    }
+
+    private sealed class TestFixAllCodeFixProvider : CodeFixProvider
+    {
+        public override ImmutableArray<string> FixableDiagnosticIds => ["CS0414"];
+
+        public override FixAllProvider GetFixAllProvider() => new TestFixAllProvider();
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Test fix",
+                    _ => Task.FromResult(context.Document),
+                    equivalenceKey: "test-fix"),
+                context.Diagnostics);
+            return Task.CompletedTask;
+        }
+
+        private sealed class TestFixAllProvider : FixAllProvider
+        {
+            public override Task<CodeAction?> GetFixAsync(FixAllContext fixAllContext)
+            {
+                var document = fixAllContext.Document
+                    ?? throw new InvalidOperationException("The test FixAll context requires a document.");
+                CodeAction action = CodeAction.Create(
+                    "Test fix all",
+                    cancellationToken => AddMarkerAsync(document, cancellationToken),
+                    equivalenceKey: "test-fix");
+                return Task.FromResult<CodeAction?>(action);
+            }
+
+            private static async Task<Solution> AddMarkerAsync(
+                Document document,
+                CancellationToken cancellationToken)
+            {
+                var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                var changedText = text.WithChanges(
+                    new TextChange(new TextSpan(text.Length, 0), "\n// fix-all producer test\n"));
+                return document.Project.Solution.WithDocumentText(document.Id, changedText);
+            }
+        }
+    }
 
     /// <summary>
     /// The move preview's warning-collecting path (<c>updateNamespace: true</c>) shares the same

@@ -17,7 +17,7 @@ public sealed class FixAllService : IFixAllService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
-    private readonly ICompilationCache _compilationCache;
+    private readonly FixAllDiagnosticCollector _diagnosticCollector;
     private readonly ILogger<FixAllService> _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _codeFixProviders;
@@ -29,19 +29,49 @@ public sealed class FixAllService : IFixAllService
         ICompilationCache compilationCache,
         ILogger<FixAllService> logger,
         IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspace, previewStore, compilationCache, logger, exceptionReporter, null)
+    {
+    }
+
+    internal FixAllService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache,
+        ILogger<FixAllService> logger,
+        ImmutableArray<CodeFixProvider> codeFixProviders,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(
+            workspace,
+            previewStore,
+            compilationCache,
+            logger,
+            exceptionReporter,
+            new FeatureProviderLoadResult<CodeFixProvider>(codeFixProviders, []))
+    {
+    }
+
+    private FixAllService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache,
+        ILogger<FixAllService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        FeatureProviderLoadResult<CodeFixProvider>? codeFixProviderOverride)
     {
         _workspace = workspace;
         _previewStore = previewStore;
-        _compilationCache = compilationCache;
+        _diagnosticCollector = new FixAllDiagnosticCollector(compilationCache);
         _logger = logger;
         _exceptionReporter = exceptionReporter;
         _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
-            () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
-        _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(LoadAnalyzers);
+            () => codeFixProviderOverride ??
+                  CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
+        _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(
+            () => codeFixProviderOverride is null ? LoadAnalyzers() : []);
     }
 
     /// <summary>
-    /// Chooses which analyzers feed <see cref="CollectDiagnosticsAsync"/> for fix-all.
+    /// Chooses which analyzers feed <see cref="FixAllDiagnosticCollector.CollectAsync"/> for fix-all.
     /// IDE* rules merge Roslyn Features analyzers with project analyzers; all other IDs use
     /// project analyzers when any support the diagnostic (e.g. SCS*, MA*, third-party), else none
     /// (compiler-only fallback in collection).
@@ -79,8 +109,8 @@ public sealed class FixAllService : IFixAllService
         string workspaceId, string diagnosticId, string scope,
         string? filePath, string? projectName, CancellationToken ct)
     {
-        var fixAllScope = ParseScope(scope);
-        ValidateRequiredScopeInputs(fixAllScope, filePath, projectName);
+        var targetRequest = FixAllTargetResolver.ParseAndValidate(scope, filePath, projectName);
+        var fixAllScope = targetRequest.Scope;
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
         var staticProviders = _codeFixProviders.Value.Providers;
@@ -115,15 +145,22 @@ public sealed class FixAllService : IFixAllService
         }
 
         // Determine target document and project
-        var (targetDocument, targetProject) = ResolveTargets(solution, fixAllScope, filePath, projectName);
+        var target = FixAllTargetResolver.Resolve(solution, targetRequest);
 
         var projectAnalyzers = CollectProjectAnalyzersForDiagnosticId(solution, diagnosticId);
         var analyzersForCollection = SelectAnalyzersForFixAllCollection(
             diagnosticId, _analyzers.Value, projectAnalyzers);
 
-        var diagnosticsMap = await CollectDiagnosticsAsync(
-            workspaceId, _compilationCache, solution, diagnosticId, fixAllScope, targetDocument, targetProject,
-            analyzersForCollection, ct).ConfigureAwait(false);
+        var diagnosticsMap = await _diagnosticCollector.CollectAsync(
+            new FixAllDiagnosticCollectionContext(
+                workspaceId,
+                solution,
+                diagnosticId,
+                fixAllScope,
+                target.Document,
+                target.Project,
+                analyzersForCollection),
+            ct).ConfigureAwait(false);
 
         var totalDiagCount = diagnosticsMap.Values.Sum(d => d.Length);
         if (totalDiagCount == 0)
@@ -142,7 +179,7 @@ public sealed class FixAllService : IFixAllService
 
         // Use the FixAllProvider to compute the fix
         var fixAllContext = new FixAllContext(
-            document: targetDocument,
+            document: target.Document,
             codeFixProvider: provider,
             scope: fixAllScope,
             codeActionEquivalenceKey: equivalenceKey,
@@ -225,78 +262,6 @@ public sealed class FixAllService : IFixAllService
             Changes: changes);
     }
 
-    private static (Document targetDocument, Project targetProject) ResolveTargets(
-        Solution solution, FixAllScope fixAllScope, string? filePath, string? projectName)
-    {
-        if (fixAllScope == FixAllScope.Document)
-        {
-            if (string.IsNullOrWhiteSpace(filePath))
-                throw new ArgumentException("filePath is required when scope is 'document'.");
-
-            var doc = SymbolResolver.FindDocument(solution, filePath)
-                ?? throw new FileNotFoundException($"Document not found: {filePath}");
-            return (doc, doc.Project);
-        }
-
-        if (fixAllScope == FixAllScope.Project)
-        {
-            if (string.IsNullOrWhiteSpace(projectName))
-            {
-                // fixall-blank-projectname-silent-wrong-target: ProjectFilterHelper treats a blank
-                // projectName as "no filter" (returns every project), which used to make the
-                // FirstOrDefault below silently resolve to solution.Projects.First() instead of
-                // erroring. Mirror MsBuildEvaluationService.ResolveRoslynProject's guard so scope
-                // 'project' fails loud on a missing/whitespace projectName instead of guessing.
-                throw new ArgumentException(
-                    "The 'projectName' parameter is required when scope is 'project'. Pass the project name, " +
-                    "e.g. { \"scope\": \"project\", \"projectName\": \"MyApp.Core\" }.",
-                    nameof(projectName));
-            }
-
-            var projects = ProjectFilterHelper.FilterProjects(solution, projectName);
-            var proj = projects.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Project not found: {projectName}");
-            var doc = proj.Documents.FirstOrDefault()
-                ?? throw new InvalidOperationException("Project has no documents.");
-            return (doc, proj);
-        }
-
-        // Solution scope
-        var solutionProject = solution.Projects.FirstOrDefault()
-            ?? throw new InvalidOperationException("Solution has no projects.");
-        var solutionDoc = solutionProject.Documents.FirstOrDefault()
-            ?? throw new InvalidOperationException("Solution has no documents.");
-        return (solutionDoc, solutionProject);
-    }
-
-    private static void ValidateRequiredScopeInputs(
-        FixAllScope scope,
-        string? filePath,
-        string? projectName)
-    {
-        if (scope == FixAllScope.Document && string.IsNullOrWhiteSpace(filePath))
-        {
-            throw new ArgumentException(
-                "filePath is required when scope is 'document'.",
-                nameof(filePath));
-        }
-
-        if (scope == FixAllScope.Project && string.IsNullOrWhiteSpace(projectName))
-        {
-            throw new ArgumentException(
-                "projectName is required when scope is 'project'. Use workspace_status to list loaded projects.",
-                nameof(projectName));
-        }
-    }
-
-    private static FixAllScope ParseScope(string scope) => scope.ToLowerInvariant() switch
-    {
-        "document" => FixAllScope.Document,
-        "project" => FixAllScope.Project,
-        "solution" => FixAllScope.Solution,
-        _ => throw new ArgumentException($"Invalid scope '{scope}'. Must be 'document', 'project', or 'solution'.")
-    };
-
     /// <summary>
     /// Obtains the correct equivalence key by invoking the provider on a sample diagnostic.
     /// The FixAllProvider requires the exact key the provider registers — fabricated keys always fail.
@@ -335,74 +300,6 @@ public sealed class FixAllService : IFixAllService
 
         // Fallback: use provider type name (may not work, but better than nothing)
         return provider.GetType().Name;
-    }
-
-    private static async Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>> CollectDiagnosticsAsync(
-        string workspaceId, ICompilationCache compilationCache,
-        Solution solution, string diagnosticId, FixAllScope scope,
-        Document targetDocument, Project targetProject,
-        ImmutableArray<DiagnosticAnalyzer> analyzers, CancellationToken ct)
-    {
-        var builder = ImmutableDictionary.CreateBuilder<Document, ImmutableArray<Diagnostic>>();
-
-        IEnumerable<Project> projects = scope == FixAllScope.Solution
-            ? solution.Projects
-            : [targetProject];
-
-        foreach (var project in projects)
-        {
-            ct.ThrowIfCancellationRequested();
-            var compilation = await compilationCache
-                .GetCompilationAsync(workspaceId, project, ct)
-                .ConfigureAwait(false);
-            if (compilation is null) continue;
-
-            IEnumerable<Diagnostic> allDiagnostics;
-
-            if (!analyzers.IsDefaultOrEmpty)
-            {
-                // For IDE diagnostics, run analyzers to get them
-                var relevantAnalyzers = analyzers
-                    .Where(a => a.SupportedDiagnostics.Any(d => d.Id == diagnosticId))
-                    .ToImmutableArray();
-
-                if (!relevantAnalyzers.IsEmpty)
-                {
-                    var compilationWithAnalyzers = compilation.WithAnalyzers(relevantAnalyzers);
-                    var analyzerDiags = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
-                    allDiagnostics = analyzerDiags
-                        .Where(d => d.Id == diagnosticId && d.Location.IsInSource);
-                }
-                else
-                {
-                    // Fall back to compiler diagnostics
-                    allDiagnostics = compilation.GetDiagnostics(ct)
-                        .Where(d => d.Id == diagnosticId && d.Location.IsInSource);
-                }
-            }
-            else
-            {
-                allDiagnostics = compilation.GetDiagnostics(ct)
-                    .Where(d => d.Id == diagnosticId && d.Location.IsInSource);
-            }
-
-            var byTree = allDiagnostics.GroupBy(d => d.Location.SourceTree);
-
-            foreach (var group in byTree)
-            {
-                if (group.Key is null) continue;
-
-                var doc = project.GetDocument(group.Key);
-                if (doc is null) continue;
-
-                if (scope == FixAllScope.Document && doc.Id != targetDocument.Id)
-                    continue;
-
-                builder[doc] = group.ToImmutableArray();
-            }
-        }
-
-        return builder.ToImmutable();
     }
 
     private static CodeFixProvider? FindCodeFixProvider(ImmutableArray<CodeFixProvider> providers, string diagnosticId) =>
