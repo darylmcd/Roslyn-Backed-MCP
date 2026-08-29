@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -228,6 +229,107 @@ public sealed class FixAllServiceTests
         {
             public override Task<CodeAction?> GetFixAsync(FixAllContext fixAllContext)
                 => throw new InvalidOperationException("Sequence contains no elements");
+        }
+    }
+
+    [TestMethod]
+    public async Task GetEquivalenceKeyAsync_ReportsFailureAndContinuesWithoutSensitiveDetail()
+    {
+        const string sentinel = "SECRET-SENTINEL-C:/private/equivalence-key.cs";
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var firstDocumentId = DocumentId.CreateNewId(projectId);
+        var secondDocumentId = DocumentId.CreateNewId(projectId);
+        var solution = workspace.CurrentSolution
+            .AddProject(projectId, "Fixture", "Fixture", LanguageNames.CSharp)
+            .AddDocument(
+                firstDocumentId,
+                "A.cs",
+                SourceText.From("class A { }"),
+                filePath: "C:/fixture/A.cs")
+            .AddDocument(
+                secondDocumentId,
+                "B.cs",
+                SourceText.From("class B { }"),
+                filePath: "C:/fixture/B.cs");
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+
+        var firstDocument = workspace.CurrentSolution.GetDocument(firstDocumentId)!;
+        var secondDocument = workspace.CurrentSolution.GetDocument(secondDocumentId)!;
+        var diagnostics = ImmutableDictionary<Document, ImmutableArray<Diagnostic>>.Empty
+            .Add(firstDocument, [await CreateDiagnosticAsync(firstDocument)])
+            .Add(secondDocument, [await CreateDiagnosticAsync(secondDocument)]);
+        var provider = new FailFirstCodeFixProvider(sentinel);
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var logger = new ListLogger<FixAllService>();
+        var service = new FixAllService(
+            null!,
+            null!,
+            null!,
+            logger,
+            [provider],
+            reporter);
+
+        string equivalenceKey;
+        using (RequestCorrelationContext.Begin())
+        {
+            equivalenceKey = await service.GetEquivalenceKeyAsync(
+                provider,
+                IdeDescriptor.Id,
+                diagnostics,
+                CancellationToken.None);
+        }
+
+        Assert.AreEqual("healthy-key", equivalenceKey);
+        Assert.AreEqual(2, provider.InvocationCount);
+        Assert.HasCount(1, sink.Events);
+        Assert.HasCount(1, logger.Entries);
+        Assert.AreEqual(Microsoft.Extensions.Logging.LogLevel.Warning, logger.Entries.Single().Level);
+        Assert.IsNull(logger.Entries.Single().Exception);
+        var boundaryJson = JsonSerializer.Serialize(new
+        {
+            equivalenceKey,
+            ServerEvent = sink.Events.Single(),
+            Log = logger.Entries.Single().Message,
+        });
+        Assert.IsFalse(boundaryJson.Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    private static async Task<Diagnostic> CreateDiagnosticAsync(Document document)
+    {
+        var tree = await document.GetSyntaxTreeAsync();
+        Assert.IsNotNull(tree);
+        return Diagnostic.Create(
+            IdeDescriptor,
+            Location.Create(
+                tree,
+                new TextSpan(0, 1)));
+    }
+
+    private sealed class FailFirstCodeFixProvider(string sentinel) : CodeFixProvider
+    {
+        public int InvocationCount { get; private set; }
+
+        public override ImmutableArray<string> FixableDiagnosticIds => [IdeDescriptor.Id];
+
+        public override FixAllProvider? GetFixAllProvider() => null;
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            InvocationCount++;
+            if (InvocationCount == 1)
+            {
+                throw new InvalidOperationException(sentinel);
+            }
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Healthy fix",
+                    _ => Task.FromResult(context.Document),
+                    equivalenceKey: "healthy-key"),
+                context.Diagnostics);
+            return Task.CompletedTask;
         }
     }
 

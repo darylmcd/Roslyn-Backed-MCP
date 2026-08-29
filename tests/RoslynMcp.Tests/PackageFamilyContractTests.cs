@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -7,7 +7,6 @@ namespace RoslynMcp.Tests;
 public sealed class PackageFamilyContractTests
 {
     private const int ProcessTimeoutSeconds = 60;
-    private const int CleanupTimeoutSeconds = 15;
     private const int TestTimeoutMilliseconds = 90_000;
 
     public TestContext TestContext { get; set; } = null!;
@@ -308,99 +307,25 @@ public sealed class PackageFamilyContractTests
     private static string MatrixRow(string packageId, string version) =>
         $"| `{packageId}` | `{version}` | `Directory.Packages.props` | fixture |";
 
-    private async Task<PowerShellResult> RunPowerShellAsync(
+    private Task<PwshScriptResult> RunPowerShellAsync(
         string repositoryRoot,
         string workingDirectory,
         string scriptName,
         params string[] arguments)
     {
-        var startInfo = new ProcessStartInfo
+        var processArguments = new List<string>
         {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            Path.Combine(repositoryRoot, "eng", scriptName),
         };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(Path.Combine(repositoryRoot, "eng", scriptName));
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start '{scriptName}'.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(ProcessTimeoutSeconds));
-        using var waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            timeout.Token,
-            TestContext.CancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(waitCancellation.Token);
-            var capturedOutput = await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(waitCancellation.Token);
-            return new(process.ExitCode, capturedOutput[0], capturedOutput[1]);
-        }
-        catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
-        {
-            var output = await RequestTerminationAndDrainAsync(
-                process,
-                stdoutTask,
-                stderrTask,
-                scriptName);
-            throw new TimeoutException(
-                $"'{scriptName}' timed out after {ProcessTimeoutSeconds} seconds. Output:{Environment.NewLine}{output}",
-                exception);
-        }
-        catch (OperationCanceledException) when (TestContext.CancellationToken.IsCancellationRequested)
-        {
-            await RequestTerminationAndDrainAsync(process, stdoutTask, stderrTask, scriptName);
-            throw;
-        }
-    }
-
-    private static async Task<string> RequestTerminationAndDrainAsync(
-        Process process,
-        Task<string> stdoutTask,
-        Task<string> stderrTask,
-        string description)
-    {
-        if (!process.HasExited)
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException) when (process.HasExited)
-            {
-                // The process exited between the state check and the kill request.
-            }
-        }
-
-        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(CleanupTimeoutSeconds));
-        try
-        {
-            await process.WaitForExitAsync(cleanupTimeout.Token);
-            var capturedOutput = await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(cleanupTimeout.Token);
-            return PowerShellOutputNormalizer.Normalize(
-                capturedOutput[0] + Environment.NewLine + capturedOutput[1]);
-        }
-        catch (OperationCanceledException exception) when (cleanupTimeout.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"{description} did not exit and close redirected streams within " +
-                $"{CleanupTimeoutSeconds} seconds after process-tree termination was requested.",
-                exception);
-        }
-    }
-
-    private sealed record PowerShellResult(int ExitCode, string StdOut, string StdErr)
-    {
-        public string AllOutput => PowerShellOutputNormalizer.Normalize(StdOut + Environment.NewLine + StdErr);
+        processArguments.AddRange(arguments);
+        return PwshScriptRunner.RunAsync(
+            processArguments,
+            workingDirectory: workingDirectory,
+            timeout: TimeSpan.FromSeconds(ProcessTimeoutSeconds),
+            cancellationToken: TestContext.CancellationToken,
+            description: scriptName);
     }
 }

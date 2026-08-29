@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -130,7 +130,7 @@ public sealed class TestResultsSummaryContractTests
         return fixtureRoot;
     }
 
-    private static Task<ProcessResult> RunScriptAsync(params string[] arguments)
+    private static Task<PwshScriptResult> RunScriptAsync(params string[] arguments)
     {
         var processArguments = new List<string>
         {
@@ -148,56 +148,22 @@ public sealed class TestResultsSummaryContractTests
         "eng",
         "summarize-test-results.ps1");
 
-    private static async Task<ProcessResult> RunPowerShellAsync(
+    private static Task<PwshScriptResult> RunPowerShellAsync(
         IEnumerable<string> arguments,
         IReadOnlyDictionary<string, string?>? environment)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = TestFixtureFileSystem.FindRepositoryRoot(),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-        if (environment is not null)
-        {
-            foreach (var (name, value) in environment)
-            {
-                startInfo.Environment[name] = value;
-            }
-        }
+        => PwshScriptRunner.RunAsync(
+            arguments,
+            workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
+            environment: environment,
+            timeout: _processTimeout,
+            description: "test-results summarizer");
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(_processTimeout);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException(
-                $"Test-results summarizer did not exit within {_processTimeout.TotalSeconds} seconds.");
-        }
-
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
-    }
-
-    private static void AssertSucceeded(ProcessResult result) => Assert.AreEqual(
+    private static void AssertSucceeded(PwshScriptResult result) => Assert.AreEqual(
         0,
         result.ExitCode,
         $"Script failed. stdout={result.StdOut} stderr={result.StdErr}");
 
-    private static void AssertFailedWith(ProcessResult result, string expectedDiagnostic)
+    private static void AssertFailedWith(PwshScriptResult result, string expectedDiagnostic)
     {
         Assert.AreNotEqual(
             0,
@@ -205,8 +171,6 @@ public sealed class TestResultsSummaryContractTests
             $"Script unexpectedly succeeded. stdout={result.StdOut} stderr={result.StdErr}");
         StringAssert.Contains(result.StdOut + result.StdErr, expectedDiagnostic);
     }
-
-    private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 
     private const string FirstTrx = """
         <?xml version="1.0" encoding="utf-8"?>

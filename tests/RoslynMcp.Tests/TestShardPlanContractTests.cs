@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -200,55 +200,34 @@ public sealed class TestShardPlanContractTests
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("Planner returned JSON null.");
 
-    private static void AssertSucceeded(ProcessResult result)
+    private static void AssertSucceeded(PwshScriptResult result)
         => Assert.AreEqual(
             0,
             result.ExitCode,
             $"Planner failed. stdout={result.StdOut} stderr={result.StdErr}");
 
-    private static async Task<ProcessResult> RunPlannerAsync(
+    private static Task<PwshScriptResult> RunPlannerAsync(
         string testAssemblyPath,
         int shardCount,
         int shardIndex)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var plannerPath = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = repositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(plannerPath);
-        startInfo.ArgumentList.Add("-TestAssemblyPath");
-        startInfo.ArgumentList.Add(testAssemblyPath);
-        startInfo.ArgumentList.Add("-TestShardCount");
-        startInfo.ArgumentList.Add(shardCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("-TestShardIndex");
-        startInfo.ArgumentList.Add(shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(_processTimeout);
-        try
-        {
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException(
-                $"Test-shard planner did not exit within {_processTimeout.TotalSeconds} seconds.");
-        }
-
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+        return PwshScriptRunner.RunAsync(
+            [
+                "-NoProfile",
+                "-File",
+                plannerPath,
+                "-TestAssemblyPath",
+                testAssemblyPath,
+                "-TestShardCount",
+                shardCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "-TestShardIndex",
+                shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ],
+            workingDirectory: repositoryRoot,
+            timeout: _processTimeout,
+            description: "test-shard planner");
     }
 
     private sealed record InvalidCase(
@@ -276,6 +255,4 @@ public sealed class TestShardPlanContractTests
         int StaticCaseWeight,
         string[] Classes,
         string Filter);
-
-    private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 }

@@ -266,16 +266,21 @@ public sealed class FixAllService : IFixAllService
     /// Obtains the correct equivalence key by invoking the provider on a sample diagnostic.
     /// The FixAllProvider requires the exact key the provider registers — fabricated keys always fail.
     /// </summary>
-    private static async Task<string> GetEquivalenceKeyAsync(
+    internal async Task<string> GetEquivalenceKeyAsync(
         CodeFixProvider provider, string diagnosticId,
         ImmutableDictionary<Document, ImmutableArray<Diagnostic>> diagnosticsMap,
         CancellationToken ct)
     {
         // Find the first diagnostic to use as a sample
-        foreach (var (doc, diagnostics) in diagnosticsMap)
+        foreach (var (doc, diagnostics) in diagnosticsMap.OrderBy(
+                     entry => entry.Key.FilePath,
+                     StringComparer.OrdinalIgnoreCase))
         {
             var sampleDiag = diagnostics.FirstOrDefault(d => d.Id == diagnosticId);
-            if (sampleDiag is null) continue;
+            if (sampleDiag is null)
+            {
+                continue;
+            }
 
             string? capturedKey = null;
 
@@ -290,12 +295,22 @@ public sealed class FixAllService : IFixAllService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Some providers may fail on specific diagnostics; try the next one
+                var detail = UnexpectedExceptionReporting.Report(
+                    _exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.FixAll);
+                _logger.LogWarning(
+                    "Code fix provider registration failed while resolving an equivalence key for " +
+                    "{DiagnosticId}; continuing with the next occurrence. correlationId={CorrelationId}",
+                    diagnosticId,
+                    detail.Public.CorrelationId);
                 continue;
             }
 
             if (capturedKey is not null)
+            {
                 return capturedKey;
+            }
         }
 
         // Fallback: use provider type name (may not work, but better than nothing)

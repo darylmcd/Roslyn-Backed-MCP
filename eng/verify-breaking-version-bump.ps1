@@ -63,6 +63,19 @@ function Get-FragmentCategory {
     return $null
 }
 
+function Get-FragmentFamilyStem {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($Name)
+    $segments = @($baseName -split '-' | Where-Object { $_.Length -gt 0 })
+    if ($segments.Count -lt 3) {
+        return $null
+    }
+
+    $suffixWidth = if ($segments.Count -ge 5) { 2 } else { 1 }
+    return ($segments[0..($segments.Count - $suffixWidth - 1)] -join '-')
+}
+
 $fragmentDirectory = Join-Path $resolvedRepoRoot 'changelog.d'
 $fragments = @()
 if (Test-Path -LiteralPath $fragmentDirectory -PathType Container) {
@@ -94,6 +107,33 @@ if ($breakingFragments.Count -gt 0) {
     }
 
     if ($BumpType -eq 'major') {
+        foreach ($fragment in $breakingFragments) {
+            Write-Host "BREAKING FRAGMENT CONFIRMATION: $($fragment.Name)"
+            Write-Host (Get-Content -LiteralPath $fragment.FullName -Raw)
+
+            $familyStem = Get-FragmentFamilyStem -Name $fragment.Name
+            if (-not [string]::IsNullOrWhiteSpace($familyStem)) {
+                $familySiblings = @(
+                    $fragments |
+                        Where-Object {
+                            $_.Name -ne $fragment.Name -and
+                            [System.IO.Path]::GetFileNameWithoutExtension($_.Name).StartsWith(
+                                "$familyStem-",
+                                [System.StringComparison]::Ordinal)
+                        }
+                )
+                $breakingSiblings = @(
+                    $familySiblings |
+                        Where-Object { (Get-FragmentCategory -Path $_.FullName) -eq 'Changed — BREAKING' }
+                )
+                if ($familySiblings.Count -gt 0 -and $breakingSiblings.Count -eq 0) {
+                    Write-Warning (
+                        "Breaking fragment family mismatch for '$($fragment.Name)': " +
+                        'all sibling fragments are non-breaking: ' +
+                        ($familySiblings.Name -join ', '))
+                }
+            }
+        }
         Write-Host "Breaking fragments permit requested major bump: $fragmentNames"
     }
     else {

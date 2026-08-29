@@ -20,7 +20,16 @@ GitHub warns that fork pull requests can modify workflow YAML and execute danger
 
 Runner id 22 (`darylmcd-windows-dev`) was deregistered on 2026-08-24. The repository runner API then reported zero registered runners, so public-repository workflow YAML can no longer select the local machine. Keep that inventory empty. See GitHub's [secure-use reference](https://docs.github.com/en/actions/reference/security/secure-use) and [runner-group access controls](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
 
-Remote deregistration stopped the corresponding Windows service, but the non-elevated session could not change its delayed `Auto` startup mode or delete it. The configured `C:\Users\daryl\actions-runner\bin\RunnerService.exe` path remains absent. After verifying that the repository runner inventory and runner-process set were empty, the retired installation's two dangling junctions and its 1.21 GiB quarantine were removed. Only the orphaned service record and post-reboot proof still require elevated/local cleanup; that security task is tracked in `ai_docs/backlog.md`.
+Remote deregistration stopped the corresponding Windows service. The retired installation's two dangling junctions and 1.21 GiB quarantine were removed after the repository runner inventory and runner-process set were verified empty. A post-reboot check on 2026-08-29 completed the retirement proof:
+
+| Check | Result |
+|---|---|
+| Last boot (UTC) | `2026-08-29T06:49:09.5000000Z` |
+| Service `actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev` | Absent |
+| Repository runner API | `total_count=0` |
+| `Runner.Listener.exe`, `Runner.Worker.exe`, `RunnerService.exe` | 0 processes |
+| `C:\Users\daryl\actions-runner` | Absent |
+| `C:\Users\daryl\actions-runner.retired-20260824` | Absent |
 
 ## Safe hybrid prerequisites
 
