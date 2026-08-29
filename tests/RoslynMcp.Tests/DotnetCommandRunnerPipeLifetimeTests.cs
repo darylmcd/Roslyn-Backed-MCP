@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -17,14 +16,14 @@ namespace RoslynMcp.Tests;
 public class DotnetCommandRunnerPipeLifetimeTests
 {
     [ClassInitialize]
-    public static void ClassInit(TestContext _)
+    public static async Task ClassInit(TestContext _)
     {
         // Kill every warm build server (MSBuild node pool AND VBCSCompiler) so the
         // regression test's build deterministically spawns FRESH server processes — only
         // freshly spawned descendants inherit this process's redirected pipe handles
         // (pre-existing servers hold someone else's), and the inherited-handle case is
         // the one the bounded post-exit drain exists for.
-        ShutdownBuildServers();
+        await ShutdownBuildServersAsync();
     }
 
     [TestMethod]
@@ -34,6 +33,7 @@ public class DotnetCommandRunnerPipeLifetimeTests
 
         Assert.AreEqual("dotnet", startInfo.FileName);
         Assert.AreEqual("1", startInfo.Environment["MSBUILDDISABLENODEREUSE"]);
+        Assert.IsTrue(startInfo.RedirectStandardInput);
         Assert.IsTrue(startInfo.RedirectStandardOutput);
         Assert.IsTrue(startInfo.RedirectStandardError);
         CollectionAssert.AreEqual(new[] { "build", "x.slnx" }, startInfo.ArgumentList);
@@ -48,6 +48,31 @@ public class DotnetCommandRunnerPipeLifetimeTests
             @"C:\sdk\dotnet.exe");
 
         Assert.AreEqual(@"C:\sdk\dotnet.exe", startInfo.FileName);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [Timeout(30_000)]
+    public async Task RunAsync_ProvidesImmediateStandardInputEof()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var runner = new DotnetCommandRunner();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var execution = await runner.RunAsync(
+            repoRoot,
+            "stdin-probe",
+            [
+                "-NoProfile",
+                "-Command",
+                "$inputText = [Console]::In.ReadToEnd(); Write-Output \"stdin-length=$($inputText.Length)\"",
+            ],
+            earlyKillPatterns: null,
+            executablePath: OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+            timeout.Token);
+
+        Assert.AreEqual(0, execution.ExitCode, execution.StdErr);
+        StringAssert.Contains(execution.StdOut, "stdin-length=0");
     }
 
     [TestMethod]
@@ -117,32 +142,34 @@ public class DotnetCommandRunnerPipeLifetimeTests
     }
 
     [ClassCleanup]
-    public static void ClassCleanup()
+    public static async Task ClassCleanup()
     {
         // The regression test intentionally leaves -nodeReuse:true worker nodes behind;
         // shut them down so they don't linger 15 minutes on the host (the exact resource
         // rot the runner's MSBUILDDISABLENODEREUSE default prevents elsewhere).
-        ShutdownBuildServers();
+        await ShutdownBuildServersAsync();
     }
 
-    private static void ShutdownBuildServers()
+    private static async Task ShutdownBuildServersAsync()
     {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var runner = new DotnetCommandRunner();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
         try
         {
-            using var shutdown = Process.Start(new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                ArgumentList = { "build-server", "shutdown" },
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            });
-            shutdown?.WaitForExit(30_000);
+            var execution = await runner.RunAsync(
+                repoRoot,
+                "build-server",
+                ["build-server", "shutdown"],
+                timeout.Token);
+            Assert.AreEqual(0, execution.ExitCode, execution.StdErr + execution.StdOut);
         }
-        catch (Exception)
+        catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
         {
-            // Best-effort: a failed shutdown must not fail the suite.
+            throw new TimeoutException(
+                "dotnet build-server shutdown did not complete within 30 seconds.",
+                exception);
         }
     }
 

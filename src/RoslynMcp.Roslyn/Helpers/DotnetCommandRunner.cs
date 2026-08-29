@@ -112,6 +112,9 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         using var process = new Process { StartInfo = startInfo };
         var stopwatch = Stopwatch.StartNew();
         process.Start();
+        // Commands run non-interactively. Closing a dedicated stdin pipe prevents the child
+        // process tree from inheriting the stdio host's long-lived MCP protocol input stream.
+        process.StandardInput.Close();
 
         using var cancellationRegistration = ct.Register(static state =>
         {
@@ -163,6 +166,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         {
             FileName = executablePath,
             WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

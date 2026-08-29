@@ -24,6 +24,7 @@ internal static class PwshScriptRunner
         {
             FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
             WorkingDirectory = workingDirectory ?? string.Empty,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -44,6 +45,9 @@ internal static class PwshScriptRunner
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Could not start {description}.");
+        // These verifier processes are non-interactive. Some execute native grandchildren
+        // (notably Git), which must see EOF instead of inheriting a test host's open stdin pipe.
+        process.StandardInput.Close();
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         using var timeoutCancellation = timeout is null
