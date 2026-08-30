@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
@@ -9,38 +7,16 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Stable diagnostics facade. Query orchestration and source lookup live in focused internal
+/// collaborators; this type owns the public contract and detail DTO assembly.
+/// </summary>
 public sealed class DiagnosticService : IDiagnosticService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ICompilationCache _compilationCache;
-    private readonly ILogger<DiagnosticService> _logger;
+    private readonly DiagnosticQueryService _queryService;
+    private readonly DiagnosticDocumentLookup _documentLookup;
     private readonly SupportedFixEnumerationService _supportedFixEnumeration;
-
-    /// <summary>
-    /// Cache of full per-project diagnostic lists, keyed by workspaceId. The detail-lookup
-    /// path (<see cref="GetDiagnosticDetailsAsync"/>) is almost always called immediately
-    /// after <see cref="GetDiagnosticsAsync"/>, so we keep the warm Diagnostic objects
-    /// around to skip recompiling and re-running analyzers. Invalidates on workspace
-    /// version bump.
-    /// </summary>
-    private readonly ConcurrentDictionary<string, DiagnosticCacheEntry> _diagnosticCache = new();
-
-    private sealed record DiagnosticCacheEntry(int Version, IReadOnlyList<Diagnostic> Diagnostics);
-
-    /// <summary>
-    /// project-diagnostics-large-solution-perf: per-workspace cache of the full result DTO
-    /// keyed on the (version, projectFilter, fileFilter, severityFilter, diagnosticIdFilter)
-    /// tuple so repeat full-scan callers (e.g. polling agents, dashboards) don't re-run
-    /// analyzers every time. Cap at 8 entries per workspace (LRU-ish — last write wins on
-    /// the same key, oldest entries trimmed when the workspace version bumps).
-    /// </summary>
-    private readonly ConcurrentDictionary<string, ResultCacheEntry> _resultCache = new();
-
-    private sealed record ResultCacheEntry(int Version, ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto> Results);
-
-    private sealed record ResultCacheKey(string? ProjectFilter, string? FileFilter, string? SeverityFilter, string? DiagnosticIdFilter);
-
-    private const int MaxResultCacheEntriesPerWorkspace = 8;
 
     public DiagnosticService(
         IWorkspaceManager workspace,
@@ -50,265 +26,37 @@ public sealed class DiagnosticService : IDiagnosticService
         IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
-        _compilationCache = compilationCache;
-        _logger = logger ?? NullLogger<DiagnosticService>.Instance;
+        var effectiveLogger = logger ?? NullLogger<DiagnosticService>.Instance;
+        _queryService = new DiagnosticQueryService(workspace, compilationCache);
+        _documentLookup = new DiagnosticDocumentLookup(compilationCache);
         _supportedFixEnumeration = new SupportedFixEnumerationService(
             codeFixRegistry,
-            _logger,
+            effectiveLogger,
             exceptionReporter);
-        _workspace.WorkspaceClosed += InvalidateWorkspaceCaches;
-        // Drop cached analyzer results synchronously on reload. The version check on read still catches stale
-        // entries, but keeping stale results around for a read-window on large solutions
-        // wastes memory (~50–200 KB per analyzer pass) and risks a narrow race where a
-        // filtered read could return a partial stale result.
-        _workspace.WorkspaceReloaded += InvalidateWorkspaceCaches;
-    }
-
-    private void InvalidateWorkspaceCaches(string workspaceId)
-    {
-        _resultCache.TryRemove(workspaceId, out _);
-        _diagnosticCache.TryRemove(workspaceId, out _);
+        _workspace.WorkspaceClosed += _queryService.InvalidateWorkspaceCaches;
+        _workspace.WorkspaceReloaded += _queryService.InvalidateWorkspaceCaches;
     }
 
     public bool TryGetCachedWorkspaceDiagnostics(
         string workspaceId,
-        out DiagnosticsResultDto? diagnostics)
-    {
-        diagnostics = null;
-        var version = _workspace.GetCurrentVersion(workspaceId);
-        if (!_resultCache.TryGetValue(workspaceId, out var entry) || entry.Version != version)
-        {
-            return false;
-        }
+        out DiagnosticsResultDto? diagnostics) =>
+        _queryService.TryGetCachedWorkspaceDiagnostics(workspaceId, out diagnostics);
 
-        foreach (var cached in entry.Results)
-        {
-            var key = cached.Key;
-            // Severity changes the returned rows but not aggregate totals. The support-bundle
-            // cache-only path consumes totals, so any current full-workspace severity entry is valid.
-            if (key.ProjectFilter is null
-                && key.FileFilter is null
-                && key.DiagnosticIdFilter is null)
-            {
-                diagnostics = cached.Value;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
-        string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct)
-    {
-        // project-diagnostics-large-solution-perf: per-(version, filters) result cache so
-        // repeat callers don't pay the analyzer cost twice. Invalidates on workspace version
-        // bump (LoadIntoSessionAsync, ReloadAsync) and on workspace close.
-        var version = _workspace.GetCurrentVersion(workspaceId);
-        var cacheKey = new ResultCacheKey(projectFilter, fileFilter, severityFilter, diagnosticIdFilter);
-        if (_resultCache.TryGetValue(workspaceId, out var entry) && entry.Version == version
-            && entry.Results.TryGetValue(cacheKey, out var cachedResult))
-        {
-            return cachedResult;
-        }
-
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        // Default to Info when no filter so totals align with the first page (Warning hid Info-only
-        // solutions). Hidden remains excluded in CollectDiagnostics. Payload size is capped by
-        // project_diagnostics limit (default 200), not by raising the severity floor.
-        DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Info;
-
-        // Workspace diagnostics already arrive normalized via WorkspaceDiagnosticSeverityClassifier
-        // (applied in WorkspaceManager.LoadIntoSessionAsync at ingress).
-        var rawWorkspace = (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).WorkspaceDiagnostics;
-        // Apply file filter to workspace diagnostics, but build BOTH a filtered list (for the
-        // returned WorkspaceDiagnostics array) and an unfiltered count basis (for TotalXxx).
-        var workspaceMatchingFile = fileFilter is null
-            ? rawWorkspace
-            : rawWorkspace.Where(d => d.FilePath is not null &&
-                string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(fileFilter), StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        var workspaceDiagnostics = FilterDiagnostics(workspaceMatchingFile, fileFilter: null, minSeverity: minSeverity);
-
-        var projects = solution.Projects
-            .Where(p => projectFilter is null || string.Equals(p.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        var projectTasks = projects.Select(project =>
-            CollectProjectDiagnosticsAsync(workspaceId, project, fileFilter, diagnosticIdFilter, minSeverity, ct));
-
-        var results = await Task.WhenAll(projectTasks).ConfigureAwait(false);
-        var compilerDiagnostics = results.SelectMany(r => r.compilerFiltered).ToList();
-        var analyzerDiagnostics = results.SelectMany(r => r.analyzerFiltered).ToList();
-        var compilerAllDiagnostics = results.SelectMany(r => r.compilerAll).ToList();
-        var analyzerAllDiagnostics = results.SelectMany(r => r.analyzerAll).ToList();
-
-        // Cache the unfiltered Diagnostic objects so the detail-lookup path (which is
-        // almost always called next) can skip recompilation. Only cache when this call
-        // covered the whole solution; partial filters would produce a misleading cache.
-        if (projectFilter is null && fileFilter is null)
-        {
-            var allRaw = results.SelectMany(r => r.raw).ToList();
-            _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allRaw);
-        }
-
-        // Counts are over the file-scoped (but severity-unfiltered) result so callers can see
-        // the full shape of the queried scope even when severityFilter narrows the returned set.
-        // BUG fix (project-diagnostics-filter-totals): previously these counts double-applied
-        // the severity filter, so `severity=Error` reported `totalWarnings=0` even when the
-        // same workspace had hundreds of warnings.
-        var compilerErrors = compilerAllDiagnostics.Count(d => d.Severity == "Error");
-        var analyzerErrors = analyzerAllDiagnostics.Count(d => d.Severity == "Error");
-        var workspaceErrors = workspaceMatchingFile.Count(d => d.Severity == "Error");
-
-        var totalWarnings = compilerAllDiagnostics.Count(d => d.Severity == "Warning")
-            + analyzerAllDiagnostics.Count(d => d.Severity == "Warning")
-            + workspaceMatchingFile.Count(d => d.Severity == "Warning");
-        var totalInfo = compilerAllDiagnostics.Count(d => d.Severity == "Info")
-            + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
-            + workspaceMatchingFile.Count(d => d.Severity == "Info");
-
-        var result = new DiagnosticsResultDto(
-            workspaceDiagnostics,
-            compilerDiagnostics,
-            analyzerDiagnostics,
-            TotalErrors: compilerErrors + analyzerErrors + workspaceErrors,
-            TotalWarnings: totalWarnings,
-            TotalInfo: totalInfo,
-            CompilerErrors: compilerErrors,
-            AnalyzerErrors: analyzerErrors,
-            WorkspaceErrors: workspaceErrors);
-
-        // project-diagnostics-large-solution-perf: store in result cache for repeat callers.
-        // Bound entries per workspace to avoid memory growth on chatty filter combinations.
-        var workspaceEntry = _resultCache.AddOrUpdate(
+    public Task<DiagnosticsResultDto> GetDiagnosticsAsync(
+        string workspaceId,
+        string? projectFilter,
+        string? fileFilter,
+        string? severityFilter,
+        string? diagnosticIdFilter,
+        CancellationToken ct) =>
+        _queryService.GetDiagnosticsAsync(
             workspaceId,
-            _ => new ResultCacheEntry(version, new ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto>()),
-            (_, existing) => existing.Version == version
-                ? existing
-                : new ResultCacheEntry(version, new ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto>()));
-        if (workspaceEntry.Results.Count >= MaxResultCacheEntriesPerWorkspace)
-        {
-            // Simple LRU-ish: drop one arbitrary entry. Full LRU isn't worth a list here —
-            // typical agent usage hits 1-3 distinct filter combos per session.
-            var someKey = workspaceEntry.Results.Keys.FirstOrDefault();
-            if (someKey is not null) workspaceEntry.Results.TryRemove(someKey, out _);
-        }
-        workspaceEntry.Results[cacheKey] = result;
-
-        return result;
-    }
-
-    private async Task<(List<DiagnosticDto> compilerAll, List<DiagnosticDto> compilerFiltered,
-        List<DiagnosticDto> analyzerAll, List<DiagnosticDto> analyzerFiltered, List<Diagnostic> raw)>
-        CollectProjectDiagnosticsAsync(
-            string workspaceId, Project project, string? fileFilter, string? diagnosticIdFilter,
-            DiagnosticSeverity? minSeverity, CancellationToken ct)
-    {
-        var compilerAll = new List<DiagnosticDto>();
-        var compilerFiltered = new List<DiagnosticDto>();
-        var analyzerAll = new List<DiagnosticDto>();
-        var analyzerFiltered = new List<DiagnosticDto>();
-        var raw = new List<Diagnostic>();
-
-        var snapshot = await _compilationCache
-            .GetCompilationSnapshotAsync(workspaceId, project, ct)
-            .ConfigureAwait(false);
-        if (snapshot is null)
-        {
-            var miss = new DiagnosticDto(
-                "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
-                "Error", "Workspace", project.FilePath, null, null, null, null, Location: null);
-            compilerAll.Add(miss);
-            compilerFiltered.Add(miss);
-            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
-        }
-
-        CollectDiagnostics(
-            snapshot.Compilation.GetDiagnostics(ct).Concat(snapshot.GeneratorDiagnostics),
-            fileFilter,
-            diagnosticIdFilter,
-            minSeverity,
-            raw, compilerAll, compilerFiltered);
-
-        // project-diagnostics-large-solution-perf: when severity floor == Error, skip the
-        // analyzer pass entirely if no loaded descriptor on this project has DefaultSeverity ==
-        // Error. Most CA*/IDE* analyzers default to Warning, so this short-circuits the most
-        // expensive call (CompilationWithAnalyzers.GetAnalyzerDiagnosticsAsync) on a strict
-        // severity=Error scope, dropping ~25 s of Jellyfin's 35 s call.
-        if (minSeverity == DiagnosticSeverity.Error && !ProjectHasErrorDefaultAnalyzer(project))
-        {
-            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
-        }
-
-        var compilationWithAnalyzers = await _compilationCache
-            .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
-            .ConfigureAwait(false);
-        if (compilationWithAnalyzers is not null)
-        {
-            var analyzerDiags = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
-            CollectDiagnostics(analyzerDiags, fileFilter, diagnosticIdFilter, minSeverity,
-                raw, analyzerAll, analyzerFiltered);
-        }
-
-        return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
-    }
-
-    /// <summary>
-    /// Returns true if the project loads any analyzer descriptor whose DefaultSeverity is
-    /// Error. When false and the caller asked for severity=Error only, the analyzer pass can
-    /// be skipped entirely. Conservative: any descriptor with default-Error keeps the pass on.
-    /// .editorconfig overrides could still escalate Warning→Error, but that's a corner case
-    /// not yet visible to this method without running each analyzer.
-    /// </summary>
-    private static bool ProjectHasErrorDefaultAnalyzer(Project project)
-    {
-        foreach (var reference in project.AnalyzerReferences)
-        {
-            foreach (var analyzer in reference.GetAnalyzers(project.Language))
-            {
-                foreach (var descriptor in analyzer.SupportedDiagnostics)
-                {
-                    if (descriptor.DefaultSeverity == DiagnosticSeverity.Error)
-                        return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static void CollectDiagnostics(
-        IEnumerable<Diagnostic> diagnostics, string? fileFilter, string? diagnosticIdFilter,
-        DiagnosticSeverity? minSeverity,
-        List<Diagnostic> raw, List<DiagnosticDto> all, List<DiagnosticDto> filtered)
-    {
-        foreach (var diagnostic in diagnostics)
-        {
-            raw.Add(diagnostic);
-            if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
-            if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
-            if (diagnosticIdFilter is not null &&
-                !string.Equals(diagnostic.Id, diagnosticIdFilter, StringComparison.OrdinalIgnoreCase)) continue;
-
-            var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
-            all.Add(dto);
-            if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
-                filtered.Add(dto);
-        }
-    }
-
-    /// <summary>
-    /// Returns true when the diagnostic's source path matches the optional file filter.
-    /// In-memory diagnostics with no source location pass through unconditionally.
-    /// </summary>
-    private static bool MatchesFileFilter(Diagnostic diagnostic, string? fileFilter)
-    {
-        if (fileFilter is null) return true;
-        if (!diagnostic.Location.IsInSource) return false;
-
-        var diagnosticPath = diagnostic.Location.GetLineSpan().Path;
-        return string.Equals(Path.GetFullPath(diagnosticPath), Path.GetFullPath(fileFilter), StringComparison.OrdinalIgnoreCase);
-    }
+            new DiagnosticQueryFilters(
+                projectFilter,
+                fileFilter,
+                severityFilter,
+                diagnosticIdFilter),
+            ct);
 
     public async Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
         string workspaceId,
@@ -318,116 +66,45 @@ public sealed class DiagnosticService : IDiagnosticService
         int column,
         CancellationToken ct)
     {
-        // Fast path: most callers invoke this immediately after GetDiagnosticsAsync, so the
-        // exact Diagnostic they want is already in the cache. Skip the recompile entirely.
         var version = _workspace.GetCurrentVersion(workspaceId);
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        if (_diagnosticCache.TryGetValue(workspaceId, out var cached) && cached.Version == version)
+        _queryService.TryGetCachedDiagnostics(
+            workspaceId,
+            version,
+            out var cachedDiagnostics);
+
+        var lookup = await _documentLookup.FindAsync(
+            workspaceId,
+            solution,
+            new DiagnosticLookupTarget(
+                diagnosticId,
+                filePath,
+                line,
+                column),
+            cachedDiagnostics,
+            ct).ConfigureAwait(false);
+        if (lookup.FullScanDiagnostics is not null)
         {
-            foreach (var d in cached.Diagnostics)
-            {
-                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
-                {
-                    return await BuildDetailsDtoAsync(d, solution, filePath, ct).ConfigureAwait(false);
-                }
-            }
+            _queryService.CacheDiagnostics(
+                workspaceId,
+                version,
+                lookup.FullScanDiagnostics);
         }
 
-        // Cold path: cache miss (no prior list call, or workspace was reloaded).
-        // diagnostic-details-perf-budget-overrun: short-circuit to a single-document
-        // diagnostic scan when we can resolve the supplied filePath to specific Document(s)
-        // in the solution. This avoids the solution-wide compile + analyzer pass (previously
-        // ~16s on large solutions) in favor of a per-document syntax+semantic+analyzer scan
-        // that finishes in <2s. The detail tool's contract already requires filePath + line +
-        // column, so this path is always available for the diagnostic_details caller.
-        var diagnostic = await FindDiagnosticInDocumentAsync(workspaceId, solution, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-        if (diagnostic is not null)
-        {
-            return await BuildDetailsDtoAsync(diagnostic, solution, filePath, ct).ConfigureAwait(false);
-        }
-
-        // If the file did not resolve to any Document (e.g., a generated file path, or a
-        // workspace-level diagnostic with no source location), fall back to the legacy
-        // solution-wide search so we don't regress discoverability.
-        var fallbackDiagnostic = await FindDiagnosticAsync(workspaceId, solution, version, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-        return fallbackDiagnostic is null
+        return lookup.Diagnostic is null
             ? null
-            : await BuildDetailsDtoAsync(fallbackDiagnostic, solution, filePath, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// diagnostic-details-perf-budget-overrun: single-document diagnostic scan. Resolves
-    /// <paramref name="filePath"/> to the matching Document(s) via
-    /// <see cref="Solution.GetDocumentIdsWithFilePath"/> and runs only the per-document
-    /// analyzer + compiler passes needed to find the target diagnostic. Returns null when
-    /// the file does not resolve to any Document; caller falls back to the full scan.
-    /// </summary>
-    private async Task<Diagnostic?> FindDiagnosticInDocumentAsync(
-        string workspaceId,
-        Solution solution,
-        string diagnosticId,
-        string filePath,
-        int line,
-        int column,
-        CancellationToken ct)
-    {
-        var documentIds = solution.GetDocumentIdsWithFilePath(filePath);
-        if (documentIds.IsDefaultOrEmpty) return null;
-
-        foreach (var documentId in documentIds)
-        {
-            var document = solution.GetDocument(documentId);
-            if (document is null) continue;
-
-            var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
-            if (tree is null) continue;
-
-            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, document.Project, ct).ConfigureAwait(false);
-            if (compilation is null) continue;
-
-            // Compiler diagnostics scoped to the single syntax tree — avoids walking every
-            // tree in the compilation.
-            var compilerDiagnostics = compilation.GetDiagnostics(ct).Where(d => d.Location.SourceTree == tree);
-            foreach (var d in compilerDiagnostics)
-            {
-                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
-                    return d;
-            }
-
-            // Analyzer diagnostics scoped to the single document. We use the syntax- and
-            // semantic-diagnostic APIs on CompilationWithAnalyzers so analyzers registered
-            // via RegisterSyntaxTreeAction / RegisterSemanticModelAction / RegisterSymbolAction
-            // only run for this document's tree + model.
-            var compilationWithAnalyzers = await _compilationCache
-                .GetCompilationWithAnalyzersAsync(workspaceId, document.Project, ct)
-                .ConfigureAwait(false);
-            if (compilationWithAnalyzers is null) continue;
-
-            var syntaxAnalyzerDiagnostics = await compilationWithAnalyzers
-                .GetAnalyzerSyntaxDiagnosticsAsync(tree, ct).ConfigureAwait(false);
-            foreach (var d in syntaxAnalyzerDiagnostics)
-            {
-                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
-                    return d;
-            }
-
-            var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-            if (semanticModel is null) continue;
-
-            var semanticAnalyzerDiagnostics = await compilationWithAnalyzers
-                .GetAnalyzerSemanticDiagnosticsAsync(semanticModel, filterSpan: null, ct).ConfigureAwait(false);
-            foreach (var d in semanticAnalyzerDiagnostics)
-            {
-                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
-                    return d;
-            }
-        }
-
-        return null;
+            : await BuildDetailsDtoAsync(
+                lookup.Diagnostic,
+                solution,
+                filePath,
+                ct).ConfigureAwait(false);
     }
 
     private async Task<DiagnosticDetailsDto> BuildDetailsDtoAsync(
-        Diagnostic diagnostic, Solution solution, string filePath, CancellationToken ct)
+        Diagnostic diagnostic,
+        Solution solution,
+        string filePath,
+        CancellationToken ct)
     {
         var fixEnumeration = await _supportedFixEnumeration
             .EnumerateAsync(diagnostic, solution, filePath, ct)
@@ -437,128 +114,27 @@ public sealed class DiagnosticService : IDiagnosticService
             Description: BuildDiagnosticDescription(diagnostic),
             HelpLinkUri: BuildHelpLink(diagnostic.Id),
             SupportedFixes: fixEnumeration.Fixes,
-            GuidanceMessage: SupportedFixEnumerationService.GetGuidance(diagnostic.Id, fixEnumeration),
+            GuidanceMessage: SupportedFixEnumerationService.GetGuidance(
+                diagnostic.Id,
+                fixEnumeration),
             FixEnumerationComplete: fixEnumeration.IsComplete,
             FailedProviderCount: fixEnumeration.FailedProviderCount);
     }
 
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
     {
-        var fromDesc = diagnostic.Descriptor.Description.ToString();
-        if (!string.IsNullOrWhiteSpace(fromDesc))
-            return fromDesc;
+        var fromDescription = diagnostic.Descriptor.Description.ToString();
+        if (!string.IsNullOrWhiteSpace(fromDescription))
+        {
+            return fromDescription;
+        }
 
         var fromFormat = diagnostic.Descriptor.MessageFormat.ToString();
-        if (!string.IsNullOrWhiteSpace(fromFormat))
-            return fromFormat;
-
-        return diagnostic.GetMessage();
-    }
-
-    private static DiagnosticSeverity? ParseSeverity(string? severityFilter) =>
-        severityFilter?.ToLowerInvariant() switch
-        {
-            "error" => DiagnosticSeverity.Error,
-            "warning" => DiagnosticSeverity.Warning,
-            "info" => DiagnosticSeverity.Info,
-            "hidden" => DiagnosticSeverity.Hidden,
-            _ => null
-        };
-
-    /// <summary>
-    /// Returns the input list narrowed to diagnostics whose severity is at or above
-    /// <paramref name="minSeverity"/>. Used by the post-ingress filter on the workspace
-    /// diagnostic feed; the file filter is applied earlier so this method only handles
-    /// severity narrowing.
-    /// </summary>
-    private static IReadOnlyList<DiagnosticDto> FilterDiagnostics(
-        IReadOnlyList<DiagnosticDto> diagnostics,
-        string? fileFilter,
-        DiagnosticSeverity? minSeverity)
-    {
-        return diagnostics
-            .Where(diagnostic =>
-            {
-                if (minSeverity.HasValue &&
-                    Enum.TryParse<DiagnosticSeverity>(diagnostic.Severity, ignoreCase: true, out var severity) &&
-                    severity < minSeverity.Value)
-                {
-                    return false;
-                }
-
-                if (fileFilter is not null && diagnostic.FilePath is not null)
-                {
-                    return string.Equals(
-                        Path.GetFullPath(diagnostic.FilePath),
-                        Path.GetFullPath(fileFilter),
-                        StringComparison.OrdinalIgnoreCase);
-                }
-
-                return true;
-            })
-            .ToList();
+        return string.IsNullOrWhiteSpace(fromFormat)
+            ? diagnostic.GetMessage()
+            : fromFormat;
     }
 
     private static string BuildHelpLink(string diagnosticId) =>
         $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
-
-    private static bool DiagnosticMatchesLocation(Diagnostic diagnostic, string diagnosticId, string filePath, int line, int column)
-    {
-        if (!string.Equals(diagnostic.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) ||
-            !diagnostic.Location.IsInSource)
-            return false;
-
-        var lineSpan = diagnostic.Location.GetLineSpan();
-        return string.Equals(Path.GetFullPath(lineSpan.Path), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase) &&
-               lineSpan.StartLinePosition.Line + 1 == line &&
-               lineSpan.StartLinePosition.Character + 1 == column;
-    }
-
-    private async Task<Diagnostic?> FindDiagnosticAsync(
-        string workspaceId,
-        Solution solution,
-        int version,
-        string diagnosticId,
-        string filePath,
-        int line,
-        int column,
-        CancellationToken ct)
-    {
-        // Walk all projects in parallel — each one is an independent compilation+analyzer
-        // pass, and there's no reason to serialize them. Roslyn's compilation and analyzer
-        // APIs are thread-safe over immutable Project/Compilation objects.
-        var projectTasks = solution.Projects.Select(project => CollectProjectDiagnosticsAsync(workspaceId, project, ct));
-        var perProjectResults = await Task.WhenAll(projectTasks).ConfigureAwait(false);
-
-        // Warm the cache so a follow-up details lookup (or a project_diagnostics call that
-        // hits an unrelated diagnostic on the same workspace) hits the fast path.
-        var allDiagnostics = perProjectResults.SelectMany(d => d).ToList();
-        _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allDiagnostics);
-
-        foreach (var diagnostic in allDiagnostics)
-        {
-            if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
-                return diagnostic;
-        }
-
-        return null;
-    }
-
-    private async Task<IReadOnlyList<Diagnostic>> CollectProjectDiagnosticsAsync(string workspaceId, Project project, CancellationToken ct)
-    {
-        var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-        if (compilation is null) return [];
-
-        var collected = new List<Diagnostic>();
-        collected.AddRange(compilation.GetDiagnostics(ct));
-
-        var compilationWithAnalyzers = await _compilationCache
-            .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
-            .ConfigureAwait(false);
-        if (compilationWithAnalyzers is null) return collected;
-
-        var analyzerDiagnostics = await compilationWithAnalyzers.GetAllDiagnosticsAsync(ct).ConfigureAwait(false);
-        collected.AddRange(analyzerDiagnostics);
-        return collected;
-    }
 }

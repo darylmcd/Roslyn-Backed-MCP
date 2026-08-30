@@ -1,8 +1,9 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.CodeAnalysis;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -63,7 +64,7 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
                 result.CompilerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
                 + result.AnalyzerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
                 + result.WorkspaceDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase));
-            Assert.IsTrue(infoReturned > 0,
+            Assert.IsGreaterThan(0, infoReturned,
                 "When totals report Info diagnostics, default (null) severity filter must include Info rows in returned lists.");
         }
     }
@@ -96,6 +97,54 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 
         Assert.AreNotSame(warningResult, errorResult,
             "Different severity filters must produce distinct cache entries (and distinct DTOs).");
+    }
+
+    [TestMethod]
+    [DataRow("unfiltered")]
+    [DataRow("project")]
+    [DataRow("file")]
+    [DataRow("severity")]
+    [DataRow("diagnostic-id")]
+    [DataRow("combined")]
+    public async Task DiagnosticQueryService_CachedAndUncachedFilters_PreserveResultContract(
+        string scenario)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var project = solution.Projects.Single(candidate => candidate.Name == "SampleLib");
+        var diagnosticFile = project.Documents.Single(document =>
+            document.Name == "DiagnosticsProbe.cs").FilePath!;
+        var projectFilter = scenario is "project" or "combined" ? project.Name : null;
+        var fileFilter = scenario is "file" or "combined" ? diagnosticFile : null;
+        var severityFilter = scenario is "severity" or "combined" ? "Error" : null;
+        var diagnosticIdFilter = scenario is "diagnostic-id" or "combined" ? "CS0414" : null;
+
+        using var compilationCache = new CompilationCache(WorkspaceManager);
+        var queryService = new DiagnosticQueryService(WorkspaceManager, compilationCache);
+        var filters = new DiagnosticQueryFilters(
+            projectFilter,
+            fileFilter,
+            severityFilter,
+            diagnosticIdFilter);
+        var uncached = await queryService.GetDiagnosticsAsync(
+            WorkspaceId,
+            filters,
+            CancellationToken.None);
+        var cached = await queryService.GetDiagnosticsAsync(
+            WorkspaceId,
+            filters,
+            CancellationToken.None);
+
+        Assert.AreSame(
+            uncached,
+            cached,
+            $"The second {scenario} query must use the version-and-filter cache entry.");
+        AssertEquivalentResultContract(uncached, cached, scenario);
+        AssertFiltersApplied(
+            uncached,
+            fileFilter,
+            severityFilter,
+            diagnosticIdFilter,
+            scenario);
     }
 
     [TestMethod]
@@ -212,6 +261,71 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 
         Assert.AreEqual(totalErrors + totalWarnings + totalInfo, totalDiagnostics,
             $"totalDiagnostics must equal totalErrors+totalWarnings+totalInfo ({label}).");
+    }
+
+    private static void AssertEquivalentResultContract(
+        DiagnosticsResultDto expected,
+        DiagnosticsResultDto actual,
+        string scenario)
+    {
+        Assert.AreEqual(expected.TotalErrors, actual.TotalErrors, scenario);
+        Assert.AreEqual(expected.TotalWarnings, actual.TotalWarnings, scenario);
+        Assert.AreEqual(expected.TotalInfo, actual.TotalInfo, scenario);
+        Assert.AreEqual(expected.CompilerErrors, actual.CompilerErrors, scenario);
+        Assert.AreEqual(expected.AnalyzerErrors, actual.AnalyzerErrors, scenario);
+        Assert.AreEqual(expected.WorkspaceErrors, actual.WorkspaceErrors, scenario);
+        Assert.AreSequenceEqual(
+            expected.WorkspaceDiagnostics,
+            actual.WorkspaceDiagnostics,
+            scenario);
+        Assert.AreSequenceEqual(
+            expected.CompilerDiagnostics,
+            actual.CompilerDiagnostics,
+            scenario);
+        Assert.AreSequenceEqual(
+            expected.AnalyzerDiagnostics,
+            actual.AnalyzerDiagnostics,
+            scenario);
+    }
+
+    private static void AssertFiltersApplied(
+        DiagnosticsResultDto result,
+        string? fileFilter,
+        string? severityFilter,
+        string? diagnosticIdFilter,
+        string scenario)
+    {
+        var returned = result.WorkspaceDiagnostics
+            .Concat(result.CompilerDiagnostics)
+            .Concat(result.AnalyzerDiagnostics)
+            .ToList();
+        if (fileFilter is not null)
+        {
+            Assert.IsTrue(
+                returned.All(diagnostic =>
+                    diagnostic.FilePath is not null
+                    && string.Equals(
+                        Path.GetFullPath(diagnostic.FilePath),
+                        Path.GetFullPath(fileFilter),
+                        StringComparison.OrdinalIgnoreCase)),
+                $"The {scenario} query returned a diagnostic outside its file filter.");
+        }
+
+        if (severityFilter is not null)
+        {
+            Assert.IsTrue(
+                returned.All(diagnostic => diagnostic.Severity == severityFilter),
+                $"The {scenario} query returned a diagnostic below its severity floor.");
+        }
+
+        if (diagnosticIdFilter is not null)
+        {
+            Assert.IsTrue(
+                result.CompilerDiagnostics
+                    .Concat(result.AnalyzerDiagnostics)
+                    .All(diagnostic => diagnostic.Id == diagnosticIdFilter),
+                $"The {scenario} query returned a compiler/analyzer diagnostic outside its id filter.");
+        }
     }
 }
 
