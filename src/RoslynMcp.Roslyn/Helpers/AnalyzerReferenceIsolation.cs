@@ -62,10 +62,20 @@ internal static class AnalyzerReferenceIsolation
 
         StartAbandonedRootSweepOnce(logger);
 
+        var workspaceRoots = GetWorkspaceRoots(solution, workspaceId, logger);
+        if (workspaceRoots.Count == 0)
+        {
+            logger.LogDebug(
+                "Workspace {WorkspaceId}: analyzer shadow isolation skipped because no workspace-owned path boundary was available.",
+                workspaceId);
+            return AnalyzerShadowLoaderLease.CreateEmpty();
+        }
+
         var leaseId = Guid.NewGuid().ToString("N");
         var shadowRoot = Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName, workspaceId, leaseId);
         var loaders = new Dictionary<string, ShadowCopyAnalyzerAssemblyLoader>(StringComparer.OrdinalIgnoreCase);
         var retargeted = 0;
+        var externalReferences = 0;
 
         foreach (var project in solution.Projects)
         {
@@ -76,11 +86,23 @@ internal static class AnalyzerReferenceIsolation
                     continue;
                 }
 
+                // Shadow copying exists to keep workspace-owned analyzer outputs unlocked for
+                // child builds. SDK/NuGet analyzers are immutable external dependencies and must
+                // stay on Roslyn's default loader. Moving every external analyzer into a
+                // collectible ALC lets Roslyn's process-wide completion-provider caches retain
+                // reflection state after a workspace lease unloads; later provider discovery can
+                // then terminate CoreCLR in RuntimeType.IsAssignableFrom with an access violation.
+                if (!IsUnderAnyRoot(analyzerPath, workspaceRoots))
+                {
+                    externalReferences++;
+                    continue;
+                }
+
                 if (LazyAssemblyField?.GetValue(reference) is not null)
                 {
                     logger.LogWarning(
-                        "Analyzer reference {AnalyzerPath} was already loaded before shadow-loader isolation could run.",
-                        analyzerPath);
+                        "Workspace {WorkspaceId}: an analyzer reference was already loaded before shadow-loader isolation could run.",
+                        workspaceId);
                     continue;
                 }
 
@@ -95,6 +117,19 @@ internal static class AnalyzerReferenceIsolation
             }
         }
 
+        if (externalReferences > 0)
+        {
+            logger.LogDebug(
+                "Workspace {WorkspaceId}: left {Count} external analyzer reference(s) on Roslyn's default loader.",
+                workspaceId,
+                externalReferences);
+        }
+
+        if (retargeted == 0)
+        {
+            return AnalyzerShadowLoaderLease.CreateEmpty();
+        }
+
         return new AnalyzerShadowLoaderLease(shadowRoot, [.. loaders.Values], retargeted, logger);
     }
 
@@ -106,25 +141,31 @@ internal static class AnalyzerReferenceIsolation
     /// locked, so its deletion fails harmlessly. The shared parent and per-workspace parents of
     /// live leases are never deleted.
     /// </summary>
-    internal static void SweepAbandonedRoots(ILogger logger)
+    internal static void SweepAbandonedRoots(ILogger logger) =>
+        SweepAbandonedRoots(Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName), logger);
+
+    /// <summary>
+    /// Sweeps an explicit shared parent. Kept internal so lifecycle tests can exercise failure
+    /// handling against an isolated root without inspecting or mutating other hosts' temp data.
+    /// </summary>
+    internal static void SweepAbandonedRoots(string sharedParent, ILogger logger)
     {
-        var sharedParent = Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName);
         if (!Directory.Exists(sharedParent))
         {
             return;
         }
 
         var utcNow = DateTime.UtcNow;
-        foreach (var workspaceDirectory in EnumerateDirectoriesSafe(sharedParent))
+        foreach (var workspaceDirectory in EnumerateDirectoriesSafe(sharedParent, logger))
         {
-            foreach (var leaseDirectory in EnumerateDirectoriesSafe(workspaceDirectory))
+            foreach (var leaseDirectory in EnumerateDirectoriesSafe(workspaceDirectory, logger))
             {
                 if (AnalyzerShadowLoaderLease.IsLiveRoot(leaseDirectory))
                 {
                     continue;
                 }
 
-                if (!IsStale(leaseDirectory, utcNow))
+                if (!IsStale(leaseDirectory, utcNow, logger))
                 {
                     continue;
                 }
@@ -134,10 +175,13 @@ internal static class AnalyzerReferenceIsolation
                 try
                 {
                     Directory.Delete(leaseDirectory, recursive: true);
-                    logger.LogDebug("Swept abandoned analyzer shadow root {ShadowRoot}", leaseDirectory);
+                    logger.LogDebug("Swept one abandoned analyzer shadow lease.");
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
+                    logger.LogDebug(
+                        "Could not sweep an abandoned analyzer shadow lease; failure type {FailureType}.",
+                        ex.GetType().Name);
                 }
             }
 
@@ -151,6 +195,9 @@ internal static class AnalyzerReferenceIsolation
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
             {
+                logger.LogDebug(
+                    "Could not remove an empty analyzer shadow workspace directory; failure type {FailureType}.",
+                    ex.GetType().Name);
             }
         }
     }
@@ -172,12 +219,14 @@ internal static class AnalyzerReferenceIsolation
             }
             catch (Exception ex)
             {
-                logger.LogDebug(ex, "Abandoned analyzer shadow root sweep failed.");
+                logger.LogDebug(
+                    "Abandoned analyzer shadow root sweep failed; failure type {FailureType}.",
+                    ex.GetType().Name);
             }
         });
     }
 
-    private static IEnumerable<string> EnumerateDirectoriesSafe(string parent)
+    private static IEnumerable<string> EnumerateDirectoriesSafe(string parent, ILogger logger)
     {
         try
         {
@@ -185,11 +234,14 @@ internal static class AnalyzerReferenceIsolation
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
+            logger.LogDebug(
+                "Could not enumerate an analyzer shadow directory; failure type {FailureType}.",
+                ex.GetType().Name);
             return [];
         }
     }
 
-    private static bool IsStale(string directory, DateTime utcNow)
+    private static bool IsStale(string directory, DateTime utcNow, ILogger logger)
     {
         try
         {
@@ -207,6 +259,9 @@ internal static class AnalyzerReferenceIsolation
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Cannot establish age — treat as live rather than risk deleting a running host's lease.
+            logger.LogDebug(
+                "Could not establish analyzer shadow lease age; treating the lease as live. Failure type {FailureType}.",
+                ex.GetType().Name);
             return false;
         }
     }
@@ -228,6 +283,66 @@ internal static class AnalyzerReferenceIsolation
         {
             return false;
         }
+    }
+
+    private static IReadOnlyList<string> GetWorkspaceRoots(
+        Solution solution,
+        string workspaceId,
+        ILogger logger)
+    {
+        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddContainingDirectory(solution.FilePath, workspaceId, roots, logger);
+        foreach (var project in solution.Projects)
+        {
+            AddContainingDirectory(project.FilePath, workspaceId, roots, logger);
+        }
+
+        return [.. roots];
+    }
+
+    private static void AddContainingDirectory(
+        string? filePath,
+        string workspaceId,
+        HashSet<string> roots,
+        ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                roots.Add(directory);
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            logger.LogWarning(
+                "Workspace {WorkspaceId}: ignored an invalid solution/project path while determining analyzer isolation boundaries; failure type {FailureType}.",
+                workspaceId,
+                ex.GetType().Name);
+        }
+    }
+
+    private static bool IsUnderAnyRoot(string candidatePath, IReadOnlyList<string> roots)
+    {
+        foreach (var root in roots)
+        {
+            var relative = Path.GetRelativePath(root, candidatePath);
+            var firstSegment = relative.Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                2)[0];
+            if (relative != "." && firstSegment != ".." && !Path.IsPathRooted(relative))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -334,9 +449,8 @@ internal static class AnalyzerReferenceIsolation
                     if (attempt == MaxDeleteAttempts)
                     {
                         _logger?.LogDebug(
-                            ex,
-                            "Analyzer shadow root {ShadowRoot} is still locked after unload; leaving it for the abandoned-root sweeper.",
-                            ShadowRoot);
+                            "Analyzer shadow root is still locked after unload; leaving it for the abandoned-root sweeper. Failure type {FailureType}.",
+                            ex.GetType().Name);
                     }
                 }
             }
@@ -388,7 +502,9 @@ internal static class AnalyzerReferenceIsolation
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "Failed to unload analyzer shadow load context under {ShadowRoot}", _shadowRoot);
+                    _logger.LogDebug(
+                        "Failed to unload an analyzer shadow load context; failure type {FailureType}.",
+                        ex.GetType().Name);
                 }
             }
 
@@ -524,7 +640,9 @@ internal static class AnalyzerReferenceIsolation
             }
             catch (Exception ex) when (ex is IOException or BadImageFormatException or FileLoadException)
             {
-                _logger.LogDebug(ex, "Failed to shadow-load analyzer dependency {DependencyPath}", dependencyPath);
+                _logger.LogDebug(
+                    "Failed to shadow-load an analyzer dependency; failure type {FailureType}.",
+                    ex.GetType().Name);
                 return null;
             }
         }

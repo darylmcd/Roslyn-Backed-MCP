@@ -215,13 +215,23 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
     [DataRow("throwing", 0, false, 1)]
     [DataRow("mixed", 1, false, 1)]
     [DataRow("cancelled", 0, false, 0)]
-    public async Task DiagnosticDetails_ReportsProviderEnumerationOutcome(
+    public async Task SupportedFixEnumeration_ReportsProviderOutcome(
         string scenario,
         int expectedFixCount,
         bool expectedComplete,
         int expectedFailureCount)
     {
-        var (filePath, line, column) = await FindDiagnosticLocationAsync("CS0414");
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var document = solution.Projects
+            .SelectMany(project => project.Documents)
+            .First(candidate => candidate.Name == "DiagnosticsProbe.cs");
+        var compilation = await document.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var diagnostic = compilation.GetDiagnostics(CancellationToken.None)
+            .First(candidate =>
+                candidate.Id == "CS0414" &&
+                candidate.Location.SourceTree?.FilePath == document.FilePath);
+        var filePath = document.FilePath!;
         var cancellation = new OperationCanceledException("provider cancellation");
         var providers = scenario switch
         {
@@ -237,9 +247,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         };
         var logger = new CaptureLogger<DiagnosticService>();
         var reporter = new RecordingUnexpectedExceptionReporter("diagnostic-correlation");
-        var service = new DiagnosticService(
-            WorkspaceManager,
-            new CompilationCache(WorkspaceManager),
+        var service = new SupportedFixEnumerationService(
             new StaticCodeFixProviderRegistry(providers),
             logger,
             reporter);
@@ -248,12 +256,10 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         {
             try
             {
-                await service.GetDiagnosticDetailsAsync(
-                    WorkspaceId,
-                    "CS0414",
+                await service.EnumerateAsync(
+                    diagnostic,
+                    solution,
                     filePath,
-                    line,
-                    column,
                     CancellationToken.None);
                 Assert.Fail("Provider cancellation must propagate.");
             }
@@ -266,29 +272,27 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             return;
         }
 
-        var details = await service.GetDiagnosticDetailsAsync(
-            WorkspaceId,
-            "CS0414",
+        var result = await service.EnumerateAsync(
+            diagnostic,
+            solution,
             filePath,
-            line,
-            column,
             CancellationToken.None);
+        var guidance = SupportedFixEnumerationService.GetGuidance("CS0414", result);
 
-        Assert.IsNotNull(details);
-        Assert.AreEqual(expectedFixCount, details.SupportedFixes.Count);
-        Assert.AreEqual(expectedComplete, details.FixEnumerationComplete);
-        Assert.AreEqual(expectedFailureCount, details.FailedProviderCount);
+        Assert.AreEqual(expectedFixCount, result.Fixes.Count);
+        Assert.AreEqual(expectedComplete, result.IsComplete);
+        Assert.AreEqual(expectedFailureCount, result.FailedProviderCount);
         if (expectedComplete)
         {
-            Assert.IsNull(details.GuidanceMessage);
+            Assert.IsNull(guidance);
             Assert.AreEqual(0, reporter.Reports.Count);
         }
         else
         {
-            Assert.IsNotNull(details.GuidanceMessage);
-            StringAssert.Contains(details.GuidanceMessage, "incomplete");
+            Assert.IsNotNull(guidance);
+            StringAssert.Contains(guidance, "incomplete");
             Assert.IsFalse(
-                details.GuidanceMessage.Contains("No code fix provider is currently loaded", StringComparison.Ordinal),
+                guidance.Contains("No code fix provider is currently loaded", StringComparison.Ordinal),
                 "A provider crash must not be projected as authoritative provider absence.");
             Assert.AreEqual(expectedFailureCount, reporter.Reports.Count);
             Assert.IsTrue(reporter.Reports.All(report =>
@@ -304,25 +308,6 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
                 Assert.IsFalse(entry.Message.Contains(filePath, StringComparison.OrdinalIgnoreCase));
             }
         }
-    }
-
-    private static async Task<(string FilePath, int Line, int Column)> FindDiagnosticLocationAsync(
-        string diagnosticId)
-    {
-        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
-        var document = solution.Projects
-            .SelectMany(project => project.Documents)
-            .First(candidate => candidate.Name == "DiagnosticsProbe.cs");
-        var syntaxTree = await document.GetSyntaxTreeAsync(CancellationToken.None);
-        Assert.IsNotNull(syntaxTree);
-        var compilation = await document.Project.GetCompilationAsync(CancellationToken.None);
-        Assert.IsNotNull(compilation);
-        var diagnostic = compilation.GetDiagnostics(CancellationToken.None)
-            .First(candidate =>
-                candidate.Id == diagnosticId &&
-                candidate.Location.SourceTree == syntaxTree);
-        var start = diagnostic.Location.GetLineSpan().StartLinePosition;
-        return (document.FilePath!, start.Line + 1, start.Character + 1);
     }
 
     private sealed class StaticCodeFixProviderRegistry(IReadOnlyList<CodeFixProvider> providers)

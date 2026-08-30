@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -41,6 +42,22 @@ namespace RoslynMcp.Roslyn.Contracts;
 /// </remarks>
 public interface ICompilationCache
 {
+    /// <summary>
+    /// Returns the cached generated compilation plus diagnostics reported by source generators.
+    /// Implementations that do not execute generators explicitly retain source compatibility
+    /// through this default projection.
+    /// </summary>
+    async Task<CompilationSnapshot?> GetCompilationSnapshotAsync(
+        string workspaceId,
+        Project project,
+        CancellationToken ct)
+    {
+        var compilation = await GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+        return compilation is null
+            ? null
+            : new CompilationSnapshot(compilation, ImmutableArray<Diagnostic>.Empty);
+    }
+
     /// <summary>
     /// Returns the cached <see cref="Compilation"/> for the given project, or computes and caches it.
     /// </summary>
@@ -99,3 +116,11 @@ public interface ICompilationCache
     /// </summary>
     void Invalidate(string workspaceId);
 }
+
+/// <summary>
+/// A source-generator-complete compiler snapshot and the generator-driver diagnostics that
+/// are not included in <see cref="Compilation.GetDiagnostics(CancellationToken)"/>.
+/// </summary>
+public sealed record CompilationSnapshot(
+    Compilation Compilation,
+    ImmutableArray<Diagnostic> GeneratorDiagnostics);

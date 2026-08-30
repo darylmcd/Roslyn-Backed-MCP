@@ -36,13 +36,13 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class CompilationCache : ICompilationCache, IDisposable
 {
     private readonly IWorkspaceManager _workspaceManager;
-    private readonly Func<Project, Task<Compilation?>> _compilationFactory;
+    private readonly Func<Project, Task<CompilationSnapshot?>> _compilationFactory;
     private readonly Func<string, Project, Task<CompilationWithAnalyzers?>> _analyzerFactory;
 
-    private sealed record CompilationEntry(int Version, Lazy<Task<Compilation?>> Compilation);
+    private sealed record CompilationEntry(int Version, Lazy<Task<CompilationSnapshot?>> Compilation);
     private sealed record AnalyzerEntry(int Version, Lazy<Task<CompilationWithAnalyzers?>> Bound);
 
-    // Two parallel maps. Splitting them lets a service that only needs the raw Compilation
+    // Two parallel maps. Splitting them lets a service that only needs the compiler snapshot
     // (e.g., dead-code analysis) skip warming the analyzer pipeline.
     private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CompilationEntry> _compilations = new();
     private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), AnalyzerEntry> _analyzerBound = new();
@@ -58,16 +58,22 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         Func<string, Project, Task<CompilationWithAnalyzers?>>? analyzerFactory)
     {
         _workspaceManager = workspaceManager;
-        _compilationFactory = compilationFactory
-            ?? (static project => project.GetCompilationAsync(CancellationToken.None));
+        _compilationFactory = compilationFactory is null
+            ? static project => SourceGeneratorCompilation.CreateAsync(project, CancellationToken.None)
+            : async project =>
+            {
+                var compilation = await compilationFactory(project).ConfigureAwait(false);
+                return compilation is null
+                    ? null
+                    : new CompilationSnapshot(compilation, ImmutableArray<Diagnostic>.Empty);
+            };
         _analyzerFactory = analyzerFactory ?? BuildCompilationWithAnalyzersAsync;
         // Free per-workspace cache slots when the workspace closes. Without this hook, closed
         // workspace IDs (GUIDs) accumulate forever — stale entries are functionally inert
         // because every read re-checks GetCurrentVersion, but they hold Compilation references
         // until process exit.
         _workspaceManager.WorkspaceClosed += Invalidate;
-        // Item #7: `compile-check-stale-assembly-refs-post-reload` — also invalidate on reload.
-        // The per-read version check at lines ~54/~80 is correct in isolation but creates a
+        // Also invalidate on reload. The per-read version check is correct in isolation but creates a
         // window where a cached `Compilation` (holding its own `MetadataReference` handles
         // through `Compilation.References`) survives until the next cache read. The fire-and-
         // forget invalidation here closes that window synchronously with the reload.
@@ -80,7 +86,16 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         _workspaceManager.WorkspaceReloaded -= Invalidate;
     }
 
-    public Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct)
+    public async Task<Compilation?> GetCompilationAsync(
+        string workspaceId,
+        Project project,
+        CancellationToken ct) =>
+        (await GetCompilationSnapshotAsync(workspaceId, project, ct).ConfigureAwait(false))?.Compilation;
+
+    public Task<CompilationSnapshot?> GetCompilationSnapshotAsync(
+        string workspaceId,
+        Project project,
+        CancellationToken ct)
     {
         var version = _workspaceManager.GetCurrentVersion(workspaceId);
         var key = (workspaceId, project.Id);
@@ -102,7 +117,7 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         // Only the entry returned by AddOrUpdate has Value evaluated.
         var candidate = new CompilationEntry(
             version,
-            new Lazy<Task<Compilation?>>(
+            new Lazy<Task<CompilationSnapshot?>>(
                 () => _compilationFactory(project),
                 LazyThreadSafetyMode.ExecutionAndPublication));
         var entry = _compilations.AddOrUpdate(
@@ -219,8 +234,12 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
     private async Task<CompilationWithAnalyzers?> BuildCompilationWithAnalyzersAsync(
         string workspaceId, Project project)
     {
-        var compilation = await GetCompilationAsync(workspaceId, project, CancellationToken.None).ConfigureAwait(false);
-        if (compilation is null) return null;
+        var snapshot = await GetCompilationSnapshotAsync(
+            workspaceId,
+            project,
+            CancellationToken.None).ConfigureAwait(false);
+        if (snapshot is null) return null;
+        var compilation = snapshot.Compilation;
 
         // unresolved-analyzer-reference-crash: WorkspaceManager.StripUnresolvedAnalyzerReferences
         // removes UnresolvedAnalyzerReference entries at load time, so this site no longer needs

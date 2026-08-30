@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
@@ -46,34 +47,153 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
             return;
         }
 
-        // Two retargets for the SAME workspace id must produce distinct shadow roots — the
-        // per-lease key is what makes disposing an old lease after a reload safe against the
-        // new lease's files.
-        using var adhoc = new AdhocWorkspace();
-        var project = adhoc.AddProject("LeaseProbe", LanguageNames.CSharp);
-        var analyzerPath = typeof(WorkspaceSessionLoader).Assembly.Location;
-        var reference = new AnalyzerFileReference(analyzerPath, StubAnalyzerAssemblyLoader.Instance);
-        var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
+        var projectRoot = Path.Combine(TestTempRoot.Current, "analyzer-owned-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(projectRoot);
+        try
+        {
+            // Two retargets for the SAME workspace id must produce distinct shadow roots — the
+            // per-lease key is what makes disposing an old lease after a reload safe against the
+            // new lease's files.
+            var analyzerPath = Path.Combine(projectRoot, "OwnedAnalyzer.dll");
+            File.Copy(typeof(WorkspaceSessionLoader).Assembly.Location, analyzerPath);
+            using var adhoc = new AdhocWorkspace();
+            var project = adhoc.AddProject(ProjectInfo.Create(
+                ProjectId.CreateNewId(),
+                VersionStamp.Create(),
+                "LeaseProbe",
+                "LeaseProbe",
+                LanguageNames.CSharp,
+                filePath: Path.Combine(projectRoot, "LeaseProbe.csproj")));
+            var reference = new AnalyzerFileReference(analyzerPath, StubAnalyzerAssemblyLoader.Instance);
+            var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
 
-        var lease1 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
-            solution, "lease-unit-probe", NullLogger.Instance);
-        var lease2 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
-            solution, "lease-unit-probe", NullLogger.Instance);
+            var lease1 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                solution, "lease-unit-probe", NullLogger.Instance);
+            var lease2 = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                solution, "lease-unit-probe", NullLogger.Instance);
 
-        Assert.AreEqual(1, lease1.RetargetedReferenceCount);
-        Assert.IsNotNull(lease1.ShadowRoot);
-        Assert.IsNotNull(lease2.ShadowRoot);
-        StringAssert.Contains(lease1.ShadowRoot, "lease-unit-probe");
-        Assert.AreNotEqual(lease1.ShadowRoot, lease2.ShadowRoot,
-            "Each lease must own a uniquely-keyed shadow root; a per-workspace key would let old-lease deletion race a reload's new files.");
+            Assert.AreEqual(1, lease1.RetargetedReferenceCount);
+            Assert.IsNotNull(lease1.ShadowRoot);
+            Assert.IsNotNull(lease2.ShadowRoot);
+            StringAssert.Contains(lease1.ShadowRoot, "lease-unit-probe");
+            Assert.AreNotEqual(lease1.ShadowRoot, lease2.ShadowRoot,
+                "Each lease must own a uniquely-keyed shadow root; a per-workspace key would let old-lease deletion race a reload's new files.");
 
-        // Idempotent release: eviction, explicit close, and host shutdown can all reach the
-        // same session, so double-dispose must be a safe no-op (including on a lease whose
-        // root never materialized because no analyzer was actually loaded).
-        lease1.Dispose();
-        lease1.Dispose();
-        lease2.Dispose();
-        lease2.Dispose();
+            // Idempotent release: eviction, explicit close, and host shutdown can all reach the
+            // same session, so double-dispose must be a safe no-op (including on a lease whose
+            // root never materialized because no analyzer was actually loaded).
+            lease1.Dispose();
+            lease1.Dispose();
+            lease2.Dispose();
+            lease2.Dispose();
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
+        }
+    }
+
+    [TestMethod]
+    public void Retarget_ExternalAnalyzer_PreservesRoslynDefaultLoader()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Analyzer shadow-file isolation is Windows-specific.");
+            return;
+        }
+
+        var projectRoot = Path.Combine(TestTempRoot.Current, "analyzer-external-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(projectRoot);
+        try
+        {
+            using var adhoc = new AdhocWorkspace();
+            var project = adhoc.AddProject(ProjectInfo.Create(
+                ProjectId.CreateNewId(),
+                VersionStamp.Create(),
+                "ExternalProbe",
+                "ExternalProbe",
+                LanguageNames.CSharp,
+                filePath: Path.Combine(projectRoot, "ExternalProbe.csproj")));
+            var originalLoader = StubAnalyzerAssemblyLoader.Instance;
+            var reference = new AnalyzerFileReference(
+                typeof(WorkspaceSessionLoader).Assembly.Location,
+                originalLoader);
+            var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
+
+            using var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                solution, "external-unit-probe", NullLogger.Instance);
+
+            Assert.AreEqual(0, lease.RetargetedReferenceCount,
+                "SDK/NuGet analyzers outside the workspace must not enter collectible shadow contexts.");
+            Assert.IsNull(lease.ShadowRoot,
+                "A workspace with only external analyzers must not allocate a shadow lease root.");
+            Assert.AreSame(originalLoader, GetAnalyzerAssemblyLoader(reference),
+                "External analyzer references must retain Roslyn's existing loader.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
+        }
+    }
+
+    [TestMethod]
+    public void SweepAbandonedRoots_LockedStaleLease_LogsRedactedFailureAndContinues()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Analyzer shadow-file lifecycle relies on Windows file-lock semantics.");
+            return;
+        }
+
+        var sharedParent = Path.Combine(
+            TestTempRoot.Current,
+            "analyzer-shadow-sweep-" + Guid.NewGuid().ToString("N"));
+        var workspaceDirectory = Path.Combine(sharedParent, "workspace-probe");
+        var leaseDirectory = Path.Combine(workspaceDirectory, "stale-lease");
+        var lockedFilePath = Path.Combine(leaseDirectory, "locked.dll");
+        Directory.CreateDirectory(leaseDirectory);
+
+        FileStream? lockedFile = null;
+        try
+        {
+            lockedFile = new FileStream(
+                lockedFilePath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None);
+            lockedFile.Flush(flushToDisk: true);
+
+            var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
+            Directory.SetCreationTimeUtc(leaseDirectory, staleTimestamp);
+            Directory.SetLastWriteTimeUtc(leaseDirectory, staleTimestamp);
+
+            var logger = new ListLogger<AnalyzerShadowLoaderLifecycleTests>();
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, logger);
+
+            var failures = logger.Entries
+                .Where(entry => entry.Message.Contains(
+                    "Could not sweep an abandoned analyzer shadow lease",
+                    StringComparison.Ordinal))
+                .ToList();
+            Assert.AreEqual(1, failures.Count,
+                "The locked stale lease must emit one actionable cleanup failure.");
+            Assert.AreEqual(LogLevel.Debug, failures[0].Level);
+            Assert.IsNull(failures[0].Exception,
+                "Best-effort cleanup logs must not attach raw exception payloads.");
+            Assert.IsTrue(
+                failures[0].Message.Contains("IOException", StringComparison.Ordinal) ||
+                failures[0].Message.Contains("UnauthorizedAccessException", StringComparison.Ordinal),
+                $"The cleanup log must retain the safe failure type. Actual: {failures[0].Message}");
+            Assert.IsFalse(failures[0].Message.Contains(sharedParent, StringComparison.OrdinalIgnoreCase),
+                "Cleanup failure logs must not disclose analyzer shadow paths.");
+            Assert.IsTrue(Directory.Exists(leaseDirectory),
+                "A failed best-effort sweep must leave the locked lease for a later retry.");
+        }
+        finally
+        {
+            lockedFile?.Dispose();
+            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+        }
     }
 
     [TestMethod]
@@ -289,6 +409,11 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         Directory.Exists(workspaceDirectory)
             ? Directory.EnumerateDirectories(workspaceDirectory).ToList()
             : [];
+
+    private static object? GetAnalyzerAssemblyLoader(AnalyzerFileReference reference) =>
+        typeof(AnalyzerFileReference)
+            .GetField("_assemblyLoader", BindingFlags.Instance | BindingFlags.NonPublic)?
+            .GetValue(reference);
 
     /// <summary>
     /// Bounded GC-assisted wait for shadow-root reclamation. A lease directory that survives

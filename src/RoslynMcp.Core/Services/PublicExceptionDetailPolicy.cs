@@ -44,6 +44,14 @@ public static class PublicExceptionDetailPolicy
                 stackFrameCount));
     }
 
+    /// <summary>
+    /// Formats the stable, secret-safe correlation suffix used by client diagnostics.
+    /// Invalid identifiers are normalized to the same unavailable sentinel as exception
+    /// projections so callers cannot accidentally bypass the public-detail boundary.
+    /// </summary>
+    public static string FormatCorrelationIdSuffix(string? correlationId) =>
+        $"correlationId={NormalizeCorrelationId(correlationId)}";
+
     private static string NormalizeCorrelationId(string? correlationId)
     {
         if (string.IsNullOrWhiteSpace(correlationId) || correlationId.Length > 64)
