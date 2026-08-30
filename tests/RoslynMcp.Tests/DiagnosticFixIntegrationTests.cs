@@ -60,8 +60,8 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         {
             Assert.IsNotNull(details.GuidanceMessage,
                 "When CS8019 has no registered CodeFixProvider, GuidanceMessage must point at get_code_actions.");
-            StringAssert.Contains(details.GuidanceMessage, "get_code_actions");
-            StringAssert.Contains(details.GuidanceMessage, "CS8019");
+            Assert.Contains("get_code_actions", details.GuidanceMessage);
+            Assert.Contains("CS8019", details.GuidanceMessage);
         }
         else
         {
@@ -69,10 +69,11 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             // the populated branch must at least name a using/import-related fix.
             Assert.IsNull(details.GuidanceMessage,
                 "When SupportedFixes is populated, GuidanceMessage must be null.");
-            Assert.IsTrue(
-                details.SupportedFixes.Any(fix =>
+            Assert.Contains(
+                fix =>
                     fix.Title.Contains("using", StringComparison.OrdinalIgnoreCase) ||
-                    fix.Title.Contains("import", StringComparison.OrdinalIgnoreCase)),
+                    fix.Title.Contains("import", StringComparison.OrdinalIgnoreCase),
+                details.SupportedFixes,
                 $"CS8019 fixes should mention using/import. Got: {string.Join(", ", details.SupportedFixes.Select(f => f.Title))}");
         }
     }
@@ -129,7 +130,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         {
             Assert.IsNotNull(details.GuidanceMessage,
                 "When SupportedFixes is empty, GuidanceMessage must direct callers to get_code_actions.");
-            StringAssert.Contains(details.GuidanceMessage, "get_code_actions");
+            Assert.Contains("get_code_actions", details.GuidanceMessage);
         }
     }
 
@@ -169,12 +170,12 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         Assert.AreEqual(string.Empty, preview.PreviewToken,
             "When no provider is registered, PreviewToken must be empty so callers do not try to apply.");
-        Assert.AreEqual(0, preview.Changes.Count,
+        Assert.IsEmpty(preview.Changes,
             "When no provider is registered, Changes must be empty.");
         Assert.IsNotNull(preview.GuidanceMessage,
             "When no provider is registered, GuidanceMessage must be set — mirrors fix_all_preview.");
-        StringAssert.Contains(preview.GuidanceMessage!, "No code fix provider is loaded");
-        StringAssert.Contains(preview.GuidanceMessage!, "CS8019");
+        Assert.Contains("No code fix provider is loaded", preview.GuidanceMessage!);
+        Assert.Contains("CS8019", preview.GuidanceMessage!);
     }
 
     [TestMethod]
@@ -196,13 +197,13 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
                 fixId: "remove_unused_using",
                 CancellationToken.None);
 
-            Assert.IsTrue(preview.Changes.Count > 0, "Code fix preview should produce changes.");
+            Assert.IsNotEmpty(preview.Changes, "Code fix preview should produce changes.");
 
             var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var contents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
-            Assert.IsFalse(contents.Contains("using System.Threading;"));
+            Assert.DoesNotContain("using System.Threading;", contents);
         }
         finally
         {
@@ -254,21 +255,15 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         if (scenario == "cancelled")
         {
-            try
-            {
-                await service.EnumerateAsync(
+            var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+                service.EnumerateAsync(
                     diagnostic,
                     solution,
                     filePath,
-                    CancellationToken.None);
-                Assert.Fail("Provider cancellation must propagate.");
-            }
-            catch (OperationCanceledException actual)
-            {
-                Assert.AreSame(cancellation, actual);
-            }
+                    CancellationToken.None));
+            Assert.AreSame(cancellation, actual);
 
-            Assert.AreEqual(0, reporter.Reports.Count);
+            Assert.IsEmpty(reporter.Reports);
             return;
         }
 
@@ -279,35 +274,99 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
         var guidance = SupportedFixEnumerationService.GetGuidance("CS0414", result);
 
-        Assert.AreEqual(expectedFixCount, result.Fixes.Count);
+        Assert.HasCount(expectedFixCount, result.Fixes);
         Assert.AreEqual(expectedComplete, result.IsComplete);
         Assert.AreEqual(expectedFailureCount, result.FailedProviderCount);
         if (expectedComplete)
         {
             Assert.IsNull(guidance);
-            Assert.AreEqual(0, reporter.Reports.Count);
+            Assert.IsEmpty(reporter.Reports);
         }
         else
         {
             Assert.IsNotNull(guidance);
-            StringAssert.Contains(guidance, "incomplete");
+            Assert.Contains("incomplete", guidance);
             Assert.IsFalse(
                 guidance.Contains("No code fix provider is currently loaded", StringComparison.Ordinal),
                 "A provider crash must not be projected as authoritative provider absence.");
-            Assert.AreEqual(expectedFailureCount, reporter.Reports.Count);
+            Assert.HasCount(expectedFailureCount, reporter.Reports);
             Assert.IsTrue(reporter.Reports.All(report =>
                 report.Category == UnexpectedExceptionCategory.AnalysisScan));
-            Assert.AreEqual(expectedFailureCount, logger.Entries.Count);
+            Assert.HasCount(expectedFailureCount, logger.Entries);
             foreach (var entry in logger.Entries)
             {
                 Assert.IsNull(entry.Exception);
-                StringAssert.Contains(entry.Message, "InvalidOperationException");
-                StringAssert.Contains(entry.Message, "category=AnalysisScan");
-                StringAssert.Contains(entry.Message, "correlationId=diagnostic-correlation");
-                Assert.IsFalse(entry.Message.Contains(SensitiveProviderFailure, StringComparison.Ordinal));
-                Assert.IsFalse(entry.Message.Contains(filePath, StringComparison.OrdinalIgnoreCase));
+                Assert.Contains("InvalidOperationException", entry.Message);
+                Assert.Contains("category=AnalysisScan", entry.Message);
+                Assert.Contains("correlationId=diagnostic-correlation", entry.Message);
+                Assert.DoesNotContain(SensitiveProviderFailure, entry.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain(filePath, entry.Message, StringComparison.OrdinalIgnoreCase);
             }
         }
+    }
+
+    [TestMethod]
+    [DataRow("compiler", "CS0414", "DiagnosticsProbe.cs", 9, 24)]
+    [DataRow("analyzer", "CA1822", "AnimalService.cs", 7, 26)]
+    [DataRow("absent", "RMCP9999", "AnimalService.cs", 7, 26)]
+    [DataRow("cancelled", "CS0414", "DiagnosticsProbe.cs", 9, 24)]
+    public async Task DiagnosticDocumentLookup_ReportsCompilerAnalyzerAbsentAndCancellation(
+        string scenario,
+        string diagnosticId,
+        string documentName,
+        int line,
+        int column)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var document = solution.Projects
+            .SelectMany(project => project.Documents)
+            .Single(candidate => candidate.Name == documentName);
+        using var compilationCache = new CompilationCache(WorkspaceManager);
+        var lookup = new DiagnosticDocumentLookup(compilationCache);
+
+        if (scenario == "cancelled")
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+                lookup.FindAsync(
+                    WorkspaceId,
+                    solution,
+                    new DiagnosticLookupTarget(
+                        diagnosticId,
+                        document.FilePath!,
+                        line,
+                        column),
+                    cachedDiagnostics: null,
+                    cancellation.Token));
+            return;
+        }
+
+        var result = await lookup.FindAsync(
+            WorkspaceId,
+            solution,
+            new DiagnosticLookupTarget(
+                diagnosticId,
+                document.FilePath!,
+                line,
+                column),
+            cachedDiagnostics: null,
+            CancellationToken.None);
+
+        if (scenario == "absent")
+        {
+            Assert.IsNull(result.Diagnostic);
+            Assert.IsNotNull(
+                result.FullScanDiagnostics,
+                "An unresolved single-document lookup must preserve the full-scan fallback contract.");
+            return;
+        }
+
+        Assert.IsNotNull(result.Diagnostic, $"The {scenario} diagnostic must resolve.");
+        Assert.AreEqual(diagnosticId, result.Diagnostic.Id);
+        Assert.IsNull(
+            result.FullScanDiagnostics,
+            $"The {scenario} diagnostic must resolve before the full-solution fallback.");
     }
 
     private sealed class StaticCodeFixProviderRegistry(IReadOnlyList<CodeFixProvider> providers)
@@ -321,7 +380,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         public CodeFixProvider? FirstProviderFor(
             string diagnosticId,
             Solution? solution = null) =>
-            providers.FirstOrDefault();
+            providers.Count > 0 ? providers[0] : null;
     }
 
     private sealed class HealthyCodeFixProvider : CodeFixProvider
