@@ -15,7 +15,7 @@ internal static class ScaffoldingReadFailurePolicy
             exception,
             UnexpectedExceptionCategory.Scaffolding).Public;
         return $"Could not read the {affectedInput}; scaffolded without pattern inference. " +
-            $"correlationId={detail.CorrelationId}";
+            PublicExceptionDetailPolicy.FormatCorrelationIdSuffix(detail.CorrelationId);
     }
 
     /// <summary>
@@ -37,6 +37,6 @@ internal static class ScaffoldingReadFailurePolicy
             ? "unknown"
             : Path.GetFileName(projectFilePath);
         return $"Failed to parse project file '{projectFileName}'; {outcome}. " +
-            $"correlationId={detail.CorrelationId}";
+            PublicExceptionDetailPolicy.FormatCorrelationIdSuffix(detail.CorrelationId);
     }
 }

@@ -51,6 +51,17 @@ public sealed class PublicExceptionDetailPolicyTests
         Assert.IsFalse(combined.Contains("payload.cs", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    [DataRow("request_17-A", "correlationId=request_17-A")]
+    [DataRow("bad/path/secret-sentinel-47", "correlationId=unavailable")]
+    [DataRow(null, "correlationId=unavailable")]
+    public void FormatCorrelationIdSuffix_UsesThePublicNormalizationBoundary(
+        string? correlationId,
+        string expected)
+    {
+        Assert.AreEqual(expected, PublicExceptionDetailPolicy.FormatCorrelationIdSuffix(correlationId));
+    }
+
     private static Exception CaptureExceptionWithStack(Exception exception)
     {
         try

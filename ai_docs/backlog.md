@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-29T23:10:27Z
+**updated_at:** 2026-08-30T17:57:31Z
 
 ## Agent contract
 
@@ -67,7 +67,6 @@
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
 | `release-cut-step3-environment-precheck` | Medium | — | **Step 3 runs the heavy gate with no environment guard** — pre-check free memory and stray dotnet/testhost process count before `verify-release.ps1`, and triage a red against machine state before calling it a product failure. [type: tooling] [source: 2026-08-28 release-cut] | S | items/release-cut-step3-environment-precheck.md |
-| `project-diagnostics-generated-regex-false-errors` | Medium | — | Preserve source-generator parity in diagnostic surfaces — execute source generators in the compilation snapshots used by compile_check and project_diagnostics while retaining genuine CS8795 errors. [type: bug] [source: 2026-08-29 live diagnostics verification] | M | items/project-diagnostics-generated-regex-false-errors.md |
 
 ## Low
 
@@ -139,7 +138,6 @@
 | `parameter-object-dto-folder-validation-consolidation` | Low | — | **Consolidate dtoFolders entry validation** — one owner for the split/validate pre-checks, refuse on null compilation instead of failing open, and unify the case policy across the document and on-disk collision guards. [type: bug] [source: PR #1273 cq review] | M | items/parameter-object-dto-folder-validation-consolidation.md |
 | `addenda-reconcile-pr-no-skip-ci` | Low | — | **Record the no-`[skip ci]` rule in the addenda** — branch protection requires the `validate` check, so a skip token leaves a reconcile PR permanently BLOCKED. [type: docs] [source: 2026-08-19 sweep reconcile PR #1285] | S | items/addenda-reconcile-pr-no-skip-ci.md |
 | `flow-analysis-remediation-per-operation` | Low | — | **Give each flow-analysis operation accurate remediation text** — the shared const now tells `extract_method_preview` callers to widen to an expression-bodied member, which is not a valid extract selection. [type: bug] [source: 2026-08-19 PR #1297 review] | M | items/flow-analysis-remediation-per-operation.md |
-| `correlation-id-suffix-single-source` | Low | — | **Single-source the `correlationId=<id>` message suffix** — hand-interpolated in 12 files; this sweep added two more copies. [type: refactor] [source: 2026-08-19 PR #1297 review] | M | items/correlation-id-suffix-single-source.md |
 | `semantic-grep-sentinel-compile-tracked-coupling` | Low | — | **Bind the regex-guidance arm to `SemanticGrepService.InvalidRegexSentinel`** — the const was introduced as the cross-assembly contract but has zero consumers; the handler re-spells its text. [type: refactor] [source: 2026-08-20 PR #1300 review] | M | items/semantic-grep-sentinel-compile-tracked-coupling.md |
 | `test-run-failure-envelope-test-concern-split` | Low | — | **Split the test-run failure-envelope suite by concern** — separate classification and paging contracts from the 980-line mixed suite. [type: refactor] [source: 2026-08-20 adjacent review] | S | items/test-run-failure-envelope-test-concern-split.md |
 | `expanded-surface-integration-test-concern-split` | Low | — | **Split expanded-surface integration tests by tool concern** — separate analysis and edit/path-boundary coverage from the 1,100-line mixed suite. [type: refactor] [source: 2026-08-20 adjacent review] | S | items/expanded-surface-integration-test-concern-split.md |
@@ -158,7 +156,8 @@
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
 | `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
-| `diagnostic-supported-fix-enumeration-collaborator-extraction` | Low | — | **Extract supported-fix enumeration** — move provider lookup, action capture, completeness aggregation, redacted failure reporting, and guidance projection behind one collaborator. [type: refactor] [source: 2026-08-28 adjacent complexity review] | M | items/diagnostic-supported-fix-enumeration-collaborator-extraction.md |
+| `diagnostic-query-orchestration-collaborator-extraction` | Low | — | Extract diagnostic query orchestration behind a bounded collaborator while preserving cache, filter, total, pagination, and cancellation contracts. [type: refactor] [source: 2026-08-30 adjacent complexity review] | M | items/diagnostic-query-orchestration-collaborator-extraction.md |
+| `diagnostic-document-lookup-collaborator-extraction` | Low | diagnostic-query-orchestration-collaborator-extraction | Extract compiler and analyzer diagnostic document lookup behind a bounded collaborator while preserving span matching, isolation, and cancellation. [type: refactor] [source: 2026-08-30 adjacent complexity review] | M | items/diagnostic-document-lookup-collaborator-extraction.md |
 
 ## Defer
 

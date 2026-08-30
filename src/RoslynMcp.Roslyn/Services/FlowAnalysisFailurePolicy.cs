@@ -26,6 +26,6 @@ internal static class FlowAnalysisFailurePolicy
             exception,
             UnexpectedExceptionCategory.FlowAnalysis).Public;
         return $"{operation} failed for lines {startLine}-{endLine}. " +
-            $"{Remediation} correlationId={detail.CorrelationId}";
+            $"{Remediation} {PublicExceptionDetailPolicy.FormatCorrelationIdSuffix(detail.CorrelationId)}";
     }
 }

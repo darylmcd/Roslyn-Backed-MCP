@@ -140,14 +140,19 @@ public sealed class CompileCheckService : ICompileCheckService
         {
             ct.ThrowIfCancellationRequested();
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is null) { acc.CompletedProjects++; continue; }
+            var snapshot = await SourceGeneratorCompilation.CreateAsync(project, ct).ConfigureAwait(false);
+            if (snapshot is null) { acc.CompletedProjects++; continue; }
+            var compilation = snapshot.Compilation;
 
             var diagnostics = emitValidation
                 ? EmitAndGetDiagnostics(compilation, ct)
                 : compilation.GetDiagnostics(ct);
 
-            AppendFilteredDiagnostics(diagnostics, minSeverity, normalizedFileFilters, acc);
+            AppendFilteredDiagnostics(
+                diagnostics.Concat(snapshot.GeneratorDiagnostics),
+                minSeverity,
+                normalizedFileFilters,
+                acc);
 
             acc.CompletedProjects++;
         }
