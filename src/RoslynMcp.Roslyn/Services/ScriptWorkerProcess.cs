@@ -10,7 +10,7 @@ internal sealed record ScriptWorkerRequest(string Code, string[]? Imports, int T
 
 internal interface IScriptWorkerProcess
 {
-    IScriptWorkerSession Start(ScriptWorkerRequest request);
+    Task<IScriptWorkerSession> StartAsync(ScriptWorkerRequest request, CancellationToken cancellationToken);
 }
 
 internal interface IScriptWorkerSession : IDisposable
@@ -24,10 +24,12 @@ internal interface IScriptWorkerSession : IDisposable
 internal sealed class ScriptWorkerProcess(ILogger logger) : IScriptWorkerProcess
 {
     internal const int MaxIpcCharacters = 1024 * 1024;
-    private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(30);
     private const int TerminationTimeoutMilliseconds = 5_000;
 
-    public IScriptWorkerSession Start(ScriptWorkerRequest request)
+    public async Task<IScriptWorkerSession> StartAsync(
+        ScriptWorkerRequest request,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -46,10 +48,18 @@ internal sealed class ScriptWorkerProcess(ILogger logger) : IScriptWorkerProcess
                 throw new InvalidOperationException("The script worker process did not start.");
             }
 
-            WriteRequestAsync(process.StandardInput, serializedRequest)
-                .WaitAsync(StartupTimeout)
-                .GetAwaiter()
-                .GetResult();
+            try
+            {
+                await WriteRequestAsync(process.StandardInput, serializedRequest)
+                    .WaitAsync(StartupTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                throw new TimeoutException(
+                    $"The script worker IPC handoff did not complete within {StartupTimeout.TotalSeconds:F0} seconds.",
+                    ex);
+            }
             var stdout = ReadBoundedAsync(process.StandardOutput);
             var stderr = ReadBoundedAsync(process.StandardError);
 

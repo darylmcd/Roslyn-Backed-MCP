@@ -63,6 +63,40 @@ public sealed class ScriptingServiceTests
         Assert.AreEqual(0, service.AbandonedEvaluationCount);
     }
 
+    [TestMethod]
+    public async Task EvaluateAsync_OuterCancellationDuringWorkerStartup_ReleasesCapacity()
+    {
+        var worker = new CancellableStartWorkerProcess();
+        var service = new ScriptingService(
+            NullLogger<ScriptingService>.Instance,
+            new ScriptingServiceOptions { MaxConcurrentEvaluations = 1 },
+            worker);
+        using var cancellation = new CancellationTokenSource();
+
+        var firstEvaluation = service.EvaluateAsync(
+            "0",
+            imports: null,
+            cancellation.Token,
+            onProgress: null,
+            timeoutSecondsOverride: 30);
+        await worker.FirstStartEntered.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+            await firstEvaluation.ConfigureAwait(false)).ConfigureAwait(false);
+        Assert.AreEqual(0, service.ActiveEvaluationCount);
+
+        var recovered = await service.EvaluateAsync(
+            "0",
+            imports: null,
+            CancellationToken.None,
+            onProgress: null,
+            timeoutSecondsOverride: 30).ConfigureAwait(false);
+        Assert.IsTrue(recovered.Success, recovered.Error);
+        Assert.AreEqual("42", recovered.ResultValue);
+        Assert.AreEqual(0, service.ActiveEvaluationCount);
+    }
+
     /// <summary>
     /// Script budget for tests whose script completes immediately and which are therefore asserting
     /// an OUTCOME, not a latency. The cost these must absorb is worker-process spawn plus first-use
@@ -707,7 +741,9 @@ public sealed class ScriptingServiceTests
 
     private sealed class FailingCleanupWorkerProcess : IScriptWorkerProcess
     {
-        public IScriptWorkerSession Start(ScriptWorkerRequest request) => new Session();
+        public Task<IScriptWorkerSession> StartAsync(
+            ScriptWorkerRequest request,
+            CancellationToken cancellationToken) => Task.FromResult<IScriptWorkerSession>(new Session());
 
         private sealed class Session : IScriptWorkerSession
         {
@@ -720,6 +756,38 @@ public sealed class ScriptingServiceTests
             public ScriptExecutionOutcome GetOutcome() => throw new InvalidOperationException("not exited");
             public void Terminate() => throw new InvalidOperationException("terminate sentinel");
             public void Dispose() => throw new IOException("dispose sentinel");
+        }
+    }
+
+    private sealed class CancellableStartWorkerProcess : IScriptWorkerProcess
+    {
+        private int _startCount;
+        private readonly TaskCompletionSource<bool> _firstStartEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task FirstStartEntered => _firstStartEntered.Task;
+
+        public async Task<IScriptWorkerSession> StartAsync(
+            ScriptWorkerRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _startCount) == 1)
+            {
+                _firstStartEntered.TrySetResult(true);
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                throw new InvalidOperationException("The cancelled startup unexpectedly continued.");
+            }
+
+            return new CompletedSession();
+        }
+
+        private sealed class CompletedSession : IScriptWorkerSession
+        {
+            public string Name => "completed-startup-worker";
+            public bool WaitForExit(int milliseconds) => true;
+            public ScriptExecutionOutcome GetOutcome() => ScriptExecutionOutcome.Success(42);
+            public void Terminate() { }
+            public void Dispose() { }
         }
     }
 }

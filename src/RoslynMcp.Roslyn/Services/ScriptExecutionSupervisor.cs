@@ -65,9 +65,14 @@ internal sealed class ScriptExecutionSupervisor
         IScriptWorkerSession session;
         try
         {
-            ct.ThrowIfCancellationRequested();
-            session = workerProcess.Start(request);
+            session = await workerProcess.StartAsync(request, ct).ConfigureAwait(false);
             Interlocked.Increment(ref _activeEvaluations);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _concurrencyGate.Release();
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch
         {
@@ -349,7 +354,13 @@ internal sealed class DelegateScriptWorkerProcess(
     Func<CancellationToken, ScriptExecutionOutcome> executeWorker,
     TimeSpan budget) : IScriptWorkerProcess
 {
-    public IScriptWorkerSession Start(ScriptWorkerRequest request) => new Session(executeWorker, budget);
+    public Task<IScriptWorkerSession> StartAsync(
+        ScriptWorkerRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IScriptWorkerSession>(new Session(executeWorker, budget));
+    }
 
     private sealed class Session : IScriptWorkerSession
     {
@@ -461,13 +472,13 @@ internal readonly record struct ScriptExecutionOutcome(
 
     public static ScriptExecutionOutcome Success(object? result) => new(
         ScriptExecutionOutcomeKind.Success, result?.GetType().FullName, ScriptingService.FormatResult(result), null, null)
-        { Result = result };
+    { Result = result };
     public static ScriptExecutionOutcome CompilationFailure(Microsoft.CodeAnalysis.Scripting.CompilationErrorException ex) => new(
         ScriptExecutionOutcomeKind.CompilationFailure, null, null, ex.Message, ScriptingService.MapCompilationErrors(ex))
-        { CompilationException = ex };
+    { CompilationException = ex };
     public static ScriptExecutionOutcome Runtime(Exception ex) => new(
         ScriptExecutionOutcomeKind.Runtime, null, null, $"Runtime error: {ex.GetType().Name}: {ex.Message}", null)
-        { RuntimeException = ex };
+    { RuntimeException = ex };
     public static ScriptExecutionOutcome TimedOut() => new(ScriptExecutionOutcomeKind.TimedOut, null, null, null, null);
     public static ScriptExecutionOutcome HardDeadline() => new(ScriptExecutionOutcomeKind.HardDeadline, null, null, null, null);
     public static ScriptExecutionOutcome OuterCancelled() => new(ScriptExecutionOutcomeKind.OuterCancelled, null, null, null, null);
