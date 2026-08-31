@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
@@ -22,7 +23,7 @@ internal sealed class DiagnosticQueryService
 
     private sealed record ResultCacheEntry(
         int Version,
-        ConcurrentDictionary<DiagnosticQueryFilters, DiagnosticsResultDto> Results);
+        ImmutableDictionary<DiagnosticQueryFilters, DiagnosticsResultDto> Results);
 
     public DiagnosticQueryService(
         IWorkspaceManager workspace,
@@ -231,33 +232,45 @@ internal sealed class DiagnosticQueryService
         DiagnosticQueryFilters filters,
         DiagnosticsResultDto result)
     {
-        var workspaceEntry = _resultCache.AddOrUpdate(
+        _resultCache.AddOrUpdate(
             workspaceId,
-            _ => new ResultCacheEntry(
-                version,
-                new ConcurrentDictionary<DiagnosticQueryFilters, DiagnosticsResultDto>()),
-            (_, existing) => existing.Version >= version
-                ? existing
-                : new ResultCacheEntry(
-                    version,
-                    new ConcurrentDictionary<DiagnosticQueryFilters, DiagnosticsResultDto>()));
-        if (workspaceEntry.Version != version)
+            _ => CreateResultCacheEntry(version, filters, result),
+            (_, existing) => MergeResultCacheEntry(existing, version, filters, result));
+    }
+
+    private static ResultCacheEntry CreateResultCacheEntry(
+        int version,
+        DiagnosticQueryFilters filters,
+        DiagnosticsResultDto result) =>
+        new(version, ImmutableDictionary<DiagnosticQueryFilters, DiagnosticsResultDto>.Empty
+            .Add(filters, result));
+
+    private static ResultCacheEntry MergeResultCacheEntry(
+        ResultCacheEntry existing,
+        int version,
+        DiagnosticQueryFilters filters,
+        DiagnosticsResultDto result)
+    {
+        if (existing.Version > version)
         {
-            return;
+            return existing;
         }
 
-        if (workspaceEntry.Results.Count >= MaxResultCacheEntriesPerWorkspace)
+        if (existing.Version < version)
         {
-            // The cache is intentionally small. Removing an arbitrary entry avoids the extra
-            // synchronization and bookkeeping cost of a true LRU for typical 1-3-key sessions.
-            var someKey = workspaceEntry.Results.Keys.FirstOrDefault();
-            if (someKey is not null)
-            {
-                workspaceEntry.Results.TryRemove(someKey, out _);
-            }
+            return CreateResultCacheEntry(version, filters, result);
         }
 
-        workspaceEntry.Results[filters] = result;
+        var results = existing.Results.SetItem(filters, result);
+        if (results.Count > MaxResultCacheEntriesPerWorkspace)
+        {
+            // The cache is intentionally small. Removing an arbitrary prior entry avoids the
+            // bookkeeping cost of a true LRU for typical 1-3-key sessions. Immutable replacement
+            // keeps capacity enforcement and insertion inside this workspace-key update.
+            results = results.Remove(existing.Results.Keys.First());
+        }
+
+        return existing with { Results = results };
     }
 
     private async Task<ProjectDiagnosticResult> CollectProjectDiagnosticsAsync(
