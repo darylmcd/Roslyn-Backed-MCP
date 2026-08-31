@@ -85,8 +85,14 @@ internal sealed class DiagnosticQueryService
     public void CacheDiagnostics(
         string workspaceId,
         int version,
-        IReadOnlyList<Diagnostic> diagnostics) =>
-        _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, diagnostics);
+        IReadOnlyList<Diagnostic> diagnostics)
+    {
+        var candidate = new DiagnosticCacheEntry(version, diagnostics);
+        _diagnosticCache.AddOrUpdate(
+            workspaceId,
+            candidate,
+            (_, existing) => existing.Version > version ? existing : candidate);
+    }
 
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
         string workspaceId,
@@ -230,11 +236,16 @@ internal sealed class DiagnosticQueryService
             _ => new ResultCacheEntry(
                 version,
                 new ConcurrentDictionary<DiagnosticQueryFilters, DiagnosticsResultDto>()),
-            (_, existing) => existing.Version == version
+            (_, existing) => existing.Version >= version
                 ? existing
                 : new ResultCacheEntry(
                     version,
                     new ConcurrentDictionary<DiagnosticQueryFilters, DiagnosticsResultDto>()));
+        if (workspaceEntry.Version != version)
+        {
+            return;
+        }
+
         if (workspaceEntry.Results.Count >= MaxResultCacheEntriesPerWorkspace)
         {
             // The cache is intentionally small. Removing an arbitrary entry avoids the extra
@@ -298,9 +309,11 @@ internal sealed class DiagnosticQueryService
             compilerAll,
             compilerFiltered);
 
-        // Avoid an analyzer pass for an Error-only query when no loaded descriptor defaults to
-        // Error. The effective-severity override limitation remains tracked separately.
-        if (minSeverity == DiagnosticSeverity.Error && !ProjectHasErrorDefaultAnalyzer(project))
+        // Avoid an analyzer pass for an Error-only query only when descriptor defaults,
+        // command-line options, and analyzer-config overrides all prove that no loaded analyzer
+        // can contribute an Error.
+        if (minSeverity == DiagnosticSeverity.Error
+            && !ProjectHasEffectiveErrorAnalyzer(project, snapshot.Compilation, ct))
         {
             return new ProjectDiagnosticResult(
                 compilerAll,
@@ -336,7 +349,10 @@ internal sealed class DiagnosticQueryService
             raw);
     }
 
-    private static bool ProjectHasErrorDefaultAnalyzer(Project project)
+    private static bool ProjectHasEffectiveErrorAnalyzer(
+        Project project,
+        Compilation compilation,
+        CancellationToken ct)
     {
         foreach (var reference in project.AnalyzerReferences)
         {
@@ -344,7 +360,8 @@ internal sealed class DiagnosticQueryService
             {
                 foreach (var descriptor in analyzer.SupportedDiagnostics)
                 {
-                    if (descriptor.DefaultSeverity == DiagnosticSeverity.Error)
+                    ct.ThrowIfCancellationRequested();
+                    if (CanReportAsError(descriptor, compilation, ct))
                     {
                         return true;
                     }
@@ -353,6 +370,76 @@ internal sealed class DiagnosticQueryService
         }
 
         return false;
+    }
+
+    private static bool CanReportAsError(
+        DiagnosticDescriptor descriptor,
+        Compilation compilation,
+        CancellationToken ct)
+    {
+        var options = compilation.Options;
+        if (GetEffectiveReportDiagnostic(descriptor, options, syntaxTree: null, ct)
+            == ReportDiagnostic.Error)
+        {
+            return true;
+        }
+
+        foreach (var syntaxTree in compilation.SyntaxTrees)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (GetEffectiveReportDiagnostic(descriptor, options, syntaxTree, ct)
+                == ReportDiagnostic.Error)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ReportDiagnostic GetEffectiveReportDiagnostic(
+        DiagnosticDescriptor descriptor,
+        CompilationOptions options,
+        SyntaxTree? syntaxTree,
+        CancellationToken ct)
+    {
+        var treeOptions = options.SyntaxTreeOptionsProvider;
+        if (syntaxTree is not null
+            && treeOptions is not null
+            && treeOptions.TryGetDiagnosticValue(syntaxTree, descriptor.Id, ct, out var treeSeverity)
+            && treeSeverity != ReportDiagnostic.Default)
+        {
+            return treeSeverity;
+        }
+
+        if (treeOptions is not null
+            && treeOptions.TryGetGlobalDiagnosticValue(descriptor.Id, ct, out var globalSeverity)
+            && globalSeverity != ReportDiagnostic.Default)
+        {
+            return globalSeverity;
+        }
+
+        if (options.SpecificDiagnosticOptions.TryGetValue(descriptor.Id, out var specificSeverity)
+            && specificSeverity != ReportDiagnostic.Default)
+        {
+            return specificSeverity;
+        }
+
+        if (!descriptor.IsEnabledByDefault)
+        {
+            return ReportDiagnostic.Suppress;
+        }
+
+        return descriptor.DefaultSeverity switch
+        {
+            DiagnosticSeverity.Error => ReportDiagnostic.Error,
+            DiagnosticSeverity.Warning when options.GeneralDiagnosticOption == ReportDiagnostic.Error =>
+                ReportDiagnostic.Error,
+            DiagnosticSeverity.Warning => ReportDiagnostic.Warn,
+            DiagnosticSeverity.Info => ReportDiagnostic.Info,
+            DiagnosticSeverity.Hidden => ReportDiagnostic.Hidden,
+            _ => ReportDiagnostic.Default,
+        };
     }
 
     private static void CollectDiagnostics(
