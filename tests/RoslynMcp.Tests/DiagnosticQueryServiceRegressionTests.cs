@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Immutable;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -75,7 +77,7 @@ public sealed class DiagnosticQueryServiceRegressionTests
         var project = CreateDiagnosticProject(workspace, analyzer: null, escalateWarningToError: false);
         var workspaceManager = new VersionedWorkspaceManager("version-race", project.Solution, 1)
         {
-            BlockFirstStatusRequest = true,
+            BlockedStatusRequestCount = 1,
         };
         var service = new DiagnosticQueryService(workspaceManager, new AdhocCompilationCache());
         var filters = new DiagnosticQueryFilters(null, null, "Error", null);
@@ -84,7 +86,7 @@ public sealed class DiagnosticQueryServiceRegressionTests
             workspaceManager.WorkspaceId,
             filters,
             CancellationToken.None);
-        await workspaceManager.FirstStatusRequestStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        await workspaceManager.BlockedStatusRequestsStarted.WaitAsync(TimeSpan.FromSeconds(5));
 
         DiagnosticsResultDto newerResult;
         try
@@ -97,7 +99,7 @@ public sealed class DiagnosticQueryServiceRegressionTests
         }
         finally
         {
-            workspaceManager.ReleaseFirstStatusRequest();
+            workspaceManager.ReleaseBlockedStatusRequests();
         }
 
         await olderQuery;
@@ -113,6 +115,85 @@ public sealed class DiagnosticQueryServiceRegressionTests
             version: 2,
             out _),
             "A late version-1 completion must not replace the version-2 raw diagnostic cache.");
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_ConcurrentDistinctFiltersKeepsResultCacheBounded()
+    {
+        using var workspace = new AdhocWorkspace();
+        const int queryCount = 64;
+        var workspaceManager = new VersionedWorkspaceManager(
+            "concurrent-filter-cache",
+            workspace.CurrentSolution,
+            initialVersion: 1)
+        {
+            BlockedStatusRequestCount = queryCount,
+        };
+        var service = new DiagnosticQueryService(workspaceManager, new AdhocCompilationCache());
+        var filters = Enumerable.Range(0, queryCount)
+            .Select(index => new DiagnosticQueryFilters(
+                Project: null,
+                File: null,
+                Severity: $"unsupported-{index}",
+                DiagnosticId: null))
+            .ToArray();
+
+        var queries = filters
+            .Select(filter => service.GetDiagnosticsAsync(
+                workspaceManager.WorkspaceId,
+                filter,
+                CancellationToken.None))
+            .ToArray();
+        await workspaceManager.BlockedStatusRequestsStarted.WaitAsync(TimeSpan.FromSeconds(5));
+
+        workspaceManager.ReleaseBlockedStatusRequests();
+        await Task.WhenAll(queries);
+
+        var cachedResults = ReadCachedResults(service, workspaceManager.WorkspaceId);
+        Assert.HasCount(8, cachedResults,
+            "A synchronized burst of distinct filters must not exceed the per-workspace cache cap.");
+        foreach (var cached in cachedResults)
+        {
+            var reused = await service.GetDiagnosticsAsync(
+                workspaceManager.WorkspaceId,
+                cached.Key,
+                CancellationToken.None);
+            Assert.AreSame(cached.Value, reused,
+                "Every retained completed result must remain reusable by its exact filter.");
+        }
+    }
+
+    private static IReadOnlyList<KeyValuePair<DiagnosticQueryFilters, DiagnosticsResultDto>>
+        ReadCachedResults(DiagnosticQueryService service, string workspaceId)
+    {
+        var cacheField = typeof(DiagnosticQueryService).GetField(
+            "_resultCache",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(cacheField);
+        var cache = cacheField.GetValue(service);
+        Assert.IsNotNull(cache);
+
+        var tryGetValue = cache.GetType().GetMethod("TryGetValue");
+        Assert.IsNotNull(tryGetValue);
+        object?[] arguments = [workspaceId, null];
+        Assert.AreEqual(true, tryGetValue.Invoke(cache, arguments));
+        var workspaceEntry = arguments[1];
+        Assert.IsNotNull(workspaceEntry);
+
+        var resultsProperty = workspaceEntry.GetType().GetProperty("Results");
+        Assert.IsNotNull(resultsProperty);
+        var results = resultsProperty.GetValue(workspaceEntry) as IEnumerable;
+        Assert.IsNotNull(results);
+
+        return results.Cast<object>()
+            .Select(item =>
+            {
+                var itemType = item.GetType();
+                return new KeyValuePair<DiagnosticQueryFilters, DiagnosticsResultDto>(
+                    (DiagnosticQueryFilters)itemType.GetProperty("Key")!.GetValue(item)!,
+                    (DiagnosticsResultDto)itemType.GetProperty("Value")!.GetValue(item)!);
+            })
+            .ToList();
     }
 
     private static Project CreateDiagnosticProject(
@@ -257,17 +338,17 @@ public sealed class DiagnosticQueryServiceRegressionTests
         Solution solution,
         int initialVersion) : IWorkspaceManager
     {
-        private readonly TaskCompletionSource _firstStatusRequestStarted =
+        private readonly TaskCompletionSource _blockedStatusRequestsStarted =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _releaseFirstStatusRequest =
+        private readonly TaskCompletionSource _releaseBlockedStatusRequests =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _statusRequestCount;
 
         public string WorkspaceId { get; } = workspaceId;
         public Solution Solution { get; private set; } = solution;
         public int Version { get; set; } = initialVersion;
-        public bool BlockFirstStatusRequest { get; init; }
-        public Task FirstStatusRequestStarted => _firstStatusRequestStarted.Task;
+        public int BlockedStatusRequestCount { get; init; }
+        public Task BlockedStatusRequestsStarted => _blockedStatusRequestsStarted.Task;
 
         public event Action<string>? WorkspaceClosed
         {
@@ -281,7 +362,8 @@ public sealed class DiagnosticQueryServiceRegressionTests
             remove { }
         }
 
-        public void ReleaseFirstStatusRequest() => _releaseFirstStatusRequest.TrySetResult();
+        public void ReleaseBlockedStatusRequests() =>
+            _releaseBlockedStatusRequests.TrySetResult();
 
         public int GetCurrentVersion(string workspaceId) => Version;
 
@@ -293,10 +375,20 @@ public sealed class DiagnosticQueryServiceRegressionTests
             string workspaceId,
             CancellationToken cancellationToken = default)
         {
-            if (BlockFirstStatusRequest && Interlocked.Increment(ref _statusRequestCount) == 1)
+            if (BlockedStatusRequestCount > 0)
             {
-                _firstStatusRequestStarted.TrySetResult();
-                await _releaseFirstStatusRequest.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                var requestNumber = Interlocked.Increment(ref _statusRequestCount);
+                if (requestNumber == BlockedStatusRequestCount)
+                {
+                    _blockedStatusRequestsStarted.TrySetResult();
+                }
+
+                if (requestNumber <= BlockedStatusRequestCount)
+                {
+                    await _releaseBlockedStatusRequests.Task
+                        .WaitAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
 
             return CreateStatus();
