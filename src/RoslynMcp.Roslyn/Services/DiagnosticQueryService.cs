@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
-using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -15,7 +13,7 @@ internal sealed class DiagnosticQueryService
     private const int MaxResultCacheEntriesPerWorkspace = 8;
 
     private readonly IWorkspaceManager _workspace;
-    private readonly ICompilationCache _compilationCache;
+    private readonly DiagnosticProjectAnalyzer _projectAnalyzer;
     private readonly ConcurrentDictionary<string, DiagnosticCacheEntry> _diagnosticCache = new();
     private readonly ConcurrentDictionary<string, ResultCacheEntry> _resultCache = new();
 
@@ -30,7 +28,7 @@ internal sealed class DiagnosticQueryService
         ICompilationCache compilationCache)
     {
         _workspace = workspace;
-        _compilationCache = compilationCache;
+        _projectAnalyzer = new DiagnosticProjectAnalyzer(compilationCache);
     }
 
     public void InvalidateWorkspaceCaches(string workspaceId)
@@ -163,7 +161,7 @@ internal sealed class DiagnosticQueryService
             FilterDiagnostics(matchingFile, minSeverity));
     }
 
-    private async Task<IReadOnlyList<ProjectDiagnosticResult>> CollectProjectResultsAsync(
+    private async Task<IReadOnlyList<DiagnosticProjectAnalysisResult>> CollectProjectResultsAsync(
         string workspaceId,
         Solution solution,
         DiagnosticQueryFilters filters,
@@ -174,7 +172,7 @@ internal sealed class DiagnosticQueryService
             .Where(project =>
                 filters.Project is null
                 || string.Equals(project.Name, filters.Project, StringComparison.OrdinalIgnoreCase))
-            .Select(project => CollectProjectDiagnosticsAsync(
+            .Select(project => _projectAnalyzer.AnalyzeAsync(
                 workspaceId,
                 project,
                 filters.File,
@@ -186,7 +184,7 @@ internal sealed class DiagnosticQueryService
 
     private static DiagnosticsResultDto BuildResult(
         WorkspaceDiagnosticScope workspaceScope,
-        IReadOnlyList<ProjectDiagnosticResult> projectResults)
+        IReadOnlyList<DiagnosticProjectAnalysisResult> projectResults)
     {
         var compilerDiagnostics = projectResults
             .SelectMany(result => result.CompilerFiltered)
@@ -273,239 +271,6 @@ internal sealed class DiagnosticQueryService
         return existing with { Results = results };
     }
 
-    private async Task<ProjectDiagnosticResult> CollectProjectDiagnosticsAsync(
-        string workspaceId,
-        Project project,
-        string? fileFilter,
-        string? diagnosticIdFilter,
-        DiagnosticSeverity? minSeverity,
-        CancellationToken ct)
-    {
-        var compilerAll = new List<DiagnosticDto>();
-        var compilerFiltered = new List<DiagnosticDto>();
-        var analyzerAll = new List<DiagnosticDto>();
-        var analyzerFiltered = new List<DiagnosticDto>();
-        var raw = new List<Diagnostic>();
-
-        var snapshot = await _compilationCache
-            .GetCompilationSnapshotAsync(workspaceId, project, ct)
-            .ConfigureAwait(false);
-        if (snapshot is null)
-        {
-            var miss = new DiagnosticDto(
-                "WORKSPACE001",
-                $"Could not get compilation for project '{project.Name}'",
-                "Error",
-                "Workspace",
-                project.FilePath,
-                null,
-                null,
-                null,
-                null,
-                Location: null);
-            compilerAll.Add(miss);
-            compilerFiltered.Add(miss);
-            return new ProjectDiagnosticResult(
-                compilerAll,
-                compilerFiltered,
-                analyzerAll,
-                analyzerFiltered,
-                raw);
-        }
-
-        CollectDiagnostics(
-            snapshot.Compilation.GetDiagnostics(ct).Concat(snapshot.GeneratorDiagnostics),
-            fileFilter,
-            diagnosticIdFilter,
-            minSeverity,
-            raw,
-            compilerAll,
-            compilerFiltered);
-
-        // Avoid an analyzer pass for an Error-only query only when descriptor defaults,
-        // command-line options, and analyzer-config overrides all prove that no loaded analyzer
-        // can contribute an Error.
-        if (minSeverity == DiagnosticSeverity.Error
-            && !ProjectHasEffectiveErrorAnalyzer(project, snapshot.Compilation, ct))
-        {
-            return new ProjectDiagnosticResult(
-                compilerAll,
-                compilerFiltered,
-                analyzerAll,
-                analyzerFiltered,
-                raw);
-        }
-
-        var compilationWithAnalyzers = await _compilationCache
-            .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
-            .ConfigureAwait(false);
-        if (compilationWithAnalyzers is not null)
-        {
-            var analyzerDiagnostics = await compilationWithAnalyzers
-                .GetAnalyzerDiagnosticsAsync(ct)
-                .ConfigureAwait(false);
-            CollectDiagnostics(
-                analyzerDiagnostics,
-                fileFilter,
-                diagnosticIdFilter,
-                minSeverity,
-                raw,
-                analyzerAll,
-                analyzerFiltered);
-        }
-
-        return new ProjectDiagnosticResult(
-            compilerAll,
-            compilerFiltered,
-            analyzerAll,
-            analyzerFiltered,
-            raw);
-    }
-
-    private static bool ProjectHasEffectiveErrorAnalyzer(
-        Project project,
-        Compilation compilation,
-        CancellationToken ct)
-    {
-        foreach (var reference in project.AnalyzerReferences)
-        {
-            foreach (var analyzer in reference.GetAnalyzers(project.Language))
-            {
-                foreach (var descriptor in analyzer.SupportedDiagnostics)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    if (CanReportAsError(descriptor, compilation, ct))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static bool CanReportAsError(
-        DiagnosticDescriptor descriptor,
-        Compilation compilation,
-        CancellationToken ct)
-    {
-        var options = compilation.Options;
-        if (GetEffectiveReportDiagnostic(descriptor, options, syntaxTree: null, ct)
-            == ReportDiagnostic.Error)
-        {
-            return true;
-        }
-
-        foreach (var syntaxTree in compilation.SyntaxTrees)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (GetEffectiveReportDiagnostic(descriptor, options, syntaxTree, ct)
-                == ReportDiagnostic.Error)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static ReportDiagnostic GetEffectiveReportDiagnostic(
-        DiagnosticDescriptor descriptor,
-        CompilationOptions options,
-        SyntaxTree? syntaxTree,
-        CancellationToken ct)
-    {
-        var treeOptions = options.SyntaxTreeOptionsProvider;
-        if (syntaxTree is not null
-            && treeOptions is not null
-            && treeOptions.TryGetDiagnosticValue(syntaxTree, descriptor.Id, ct, out var treeSeverity)
-            && treeSeverity != ReportDiagnostic.Default)
-        {
-            return treeSeverity;
-        }
-
-        if (treeOptions is not null
-            && treeOptions.TryGetGlobalDiagnosticValue(descriptor.Id, ct, out var globalSeverity)
-            && globalSeverity != ReportDiagnostic.Default)
-        {
-            return globalSeverity;
-        }
-
-        if (options.SpecificDiagnosticOptions.TryGetValue(descriptor.Id, out var specificSeverity)
-            && specificSeverity != ReportDiagnostic.Default)
-        {
-            return specificSeverity;
-        }
-
-        if (!descriptor.IsEnabledByDefault)
-        {
-            return ReportDiagnostic.Suppress;
-        }
-
-        return descriptor.DefaultSeverity switch
-        {
-            DiagnosticSeverity.Error => ReportDiagnostic.Error,
-            DiagnosticSeverity.Warning when options.GeneralDiagnosticOption == ReportDiagnostic.Error =>
-                ReportDiagnostic.Error,
-            DiagnosticSeverity.Warning => ReportDiagnostic.Warn,
-            DiagnosticSeverity.Info => ReportDiagnostic.Info,
-            DiagnosticSeverity.Hidden => ReportDiagnostic.Hidden,
-            _ => ReportDiagnostic.Default,
-        };
-    }
-
-    private static void CollectDiagnostics(
-        IEnumerable<Diagnostic> diagnostics,
-        string? fileFilter,
-        string? diagnosticIdFilter,
-        DiagnosticSeverity? minSeverity,
-        List<Diagnostic> raw,
-        List<DiagnosticDto> all,
-        List<DiagnosticDto> filtered)
-    {
-        foreach (var diagnostic in diagnostics)
-        {
-            raw.Add(diagnostic);
-            if (!MatchesFileFilter(diagnostic, fileFilter)
-                || diagnostic.Severity == DiagnosticSeverity.Hidden
-                || (diagnosticIdFilter is not null
-                    && !string.Equals(
-                        diagnostic.Id,
-                        diagnosticIdFilter,
-                        StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
-            all.Add(dto);
-            if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
-            {
-                filtered.Add(dto);
-            }
-        }
-    }
-
-    private static bool MatchesFileFilter(Diagnostic diagnostic, string? fileFilter)
-    {
-        if (fileFilter is null)
-        {
-            return true;
-        }
-
-        if (!diagnostic.Location.IsInSource)
-        {
-            return false;
-        }
-
-        var diagnosticPath = diagnostic.Location.GetLineSpan().Path;
-        return string.Equals(
-            Path.GetFullPath(diagnosticPath),
-            Path.GetFullPath(fileFilter),
-            StringComparison.OrdinalIgnoreCase);
-    }
-
     private static DiagnosticSeverity? ParseSeverity(string? severityFilter) =>
         severityFilter?.ToLowerInvariant() switch
         {
@@ -528,13 +293,6 @@ internal sealed class DiagnosticQueryService
                     out var severity)
                 || severity >= minSeverity.Value)
             .ToList();
-
-    private sealed record ProjectDiagnosticResult(
-        List<DiagnosticDto> CompilerAll,
-        List<DiagnosticDto> CompilerFiltered,
-        List<DiagnosticDto> AnalyzerAll,
-        List<DiagnosticDto> AnalyzerFiltered,
-        List<Diagnostic> Raw);
 
     private sealed record WorkspaceDiagnosticScope(
         IReadOnlyList<DiagnosticDto> All,
