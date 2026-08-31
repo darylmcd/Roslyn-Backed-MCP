@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-30T20:12:01Z
+**updated_at:** 2026-08-31T02:56:02Z
 
 ## Agent contract
 
@@ -67,7 +67,6 @@
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
 | `release-cut-step3-environment-precheck` | Medium | — | **Step 3 runs the heavy gate with no environment guard** — pre-check free memory and stray dotnet/testhost process count before `verify-release.ps1`, and triage a red against machine state before calling it a product failure. [type: tooling] [source: 2026-08-28 release-cut] | S | items/release-cut-step3-environment-precheck.md |
-| `diagnostic-query-effective-analyzer-severity` | Medium | — | **Honor effective analyzer severity in Error-only queries** — replace the DefaultSeverity-only skip so .editorconfig escalations cannot silently disappear. [type: bug] [source: 2026-08-30 diagnostic extraction review] | S | items/diagnostic-query-effective-analyzer-severity.md |
 
 ## Low
 
@@ -157,7 +156,7 @@
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
 | `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
-| `diagnostic-query-cache-version-monotonicity` | Low | — | **Keep diagnostic caches version-monotonic** — prevent late old-version query/detail completion from replacing newer result or raw cache entries; prove reversed completion order. [type: concurrency] [source: 2026-08-30 extraction review] | S | items/diagnostic-query-cache-version-monotonicity.md |
+| `diagnostic-query-result-cache-concurrent-cap` | Low | — | **Bound result-cache concurrency** — serialize per-version eviction and insertion so distinct concurrent filters cannot exceed the eight-entry workspace cap; prove a synchronized burst stays bounded. [type: concurrency] [source: 2026-08-30 direct remediation review] | S | items/diagnostic-query-result-cache-concurrent-cap.md |
 
 ## Defer
 
