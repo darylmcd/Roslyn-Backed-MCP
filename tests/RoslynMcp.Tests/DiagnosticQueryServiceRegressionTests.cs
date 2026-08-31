@@ -71,6 +71,98 @@ public sealed class DiagnosticQueryServiceRegressionTests
     }
 
     [TestMethod]
+    public void GetEffectiveReportDiagnostic_HonorsConfigurationPrecedence()
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText("internal sealed class Probe { }");
+        EffectiveSeverityCase[] cases =
+        [
+            new(
+                "syntax-tree option",
+                Tree: ReportDiagnostic.Error,
+                Global: ReportDiagnostic.Suppress,
+                Specific: ReportDiagnostic.Warn,
+                General: ReportDiagnostic.Error,
+                Default: DiagnosticSeverity.Warning,
+                EnabledByDefault: true,
+                Expected: ReportDiagnostic.Error),
+            new(
+                "global analyzer-config option",
+                Tree: null,
+                Global: ReportDiagnostic.Error,
+                Specific: ReportDiagnostic.Suppress,
+                General: ReportDiagnostic.Default,
+                Default: DiagnosticSeverity.Warning,
+                EnabledByDefault: true,
+                Expected: ReportDiagnostic.Error),
+            new(
+                "command-line specific option",
+                Tree: null,
+                Global: null,
+                Specific: ReportDiagnostic.Error,
+                General: ReportDiagnostic.Default,
+                Default: DiagnosticSeverity.Warning,
+                EnabledByDefault: true,
+                Expected: ReportDiagnostic.Error),
+            new(
+                "disabled-by-default descriptor",
+                Tree: null,
+                Global: null,
+                Specific: null,
+                General: ReportDiagnostic.Error,
+                Default: DiagnosticSeverity.Warning,
+                EnabledByDefault: false,
+                Expected: ReportDiagnostic.Suppress),
+            new(
+                "general warning escalation",
+                Tree: null,
+                Global: null,
+                Specific: null,
+                General: ReportDiagnostic.Error,
+                Default: DiagnosticSeverity.Warning,
+                EnabledByDefault: true,
+                Expected: ReportDiagnostic.Error),
+            new(
+                "descriptor default",
+                Tree: null,
+                Global: null,
+                Specific: null,
+                General: ReportDiagnostic.Default,
+                Default: DiagnosticSeverity.Info,
+                EnabledByDefault: true,
+                Expected: ReportDiagnostic.Info),
+        ];
+
+        foreach (var testCase in cases)
+        {
+            var specificOptions = testCase.Specific is { } specific
+                ? ImmutableDictionary<string, ReportDiagnostic>.Empty.Add(
+                    ConfigurableDiagnosticId,
+                    specific)
+                : ImmutableDictionary<string, ReportDiagnostic>.Empty;
+            var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                .WithGeneralDiagnosticOption(testCase.General)
+                .WithSpecificDiagnosticOptions(specificOptions)
+                .WithSyntaxTreeOptionsProvider(
+                    new FixedSyntaxTreeOptionsProvider(testCase.Tree, testCase.Global));
+            var descriptor = new DiagnosticDescriptor(
+                ConfigurableDiagnosticId,
+                "Configurable diagnostic",
+                "Configurable diagnostic",
+                "Testing",
+                testCase.Default,
+                testCase.EnabledByDefault);
+
+            var actual = DiagnosticProjectAnalyzer.GetEffectiveReportDiagnostic(
+                descriptor,
+                options,
+                syntaxTree,
+                CancellationToken.None);
+
+            Assert.AreEqual(testCase.Expected, actual, testCase.Name);
+        }
+    }
+
+    [TestMethod]
     public async Task GetDiagnosticsAsync_OlderCompletionCannotReplaceNewerVersionCaches()
     {
         using var workspace = new AdhocWorkspace();
@@ -290,6 +382,34 @@ public sealed class DiagnosticQueryServiceRegressionTests
         public override ImmutableArray<ISourceGenerator> GetGenerators(string language) => [];
     }
 
+    private sealed class FixedSyntaxTreeOptionsProvider(
+        ReportDiagnostic? treeSeverity,
+        ReportDiagnostic? globalSeverity) : SyntaxTreeOptionsProvider
+    {
+        public override GeneratedKind IsGenerated(
+            SyntaxTree tree,
+            CancellationToken cancellationToken) => GeneratedKind.Unknown;
+
+        public override bool TryGetDiagnosticValue(
+            SyntaxTree tree,
+            string diagnosticId,
+            CancellationToken cancellationToken,
+            out ReportDiagnostic severity)
+        {
+            severity = treeSeverity ?? ReportDiagnostic.Default;
+            return treeSeverity.HasValue;
+        }
+
+        public override bool TryGetGlobalDiagnosticValue(
+            string diagnosticId,
+            CancellationToken cancellationToken,
+            out ReportDiagnostic severity)
+        {
+            severity = globalSeverity ?? ReportDiagnostic.Default;
+            return globalSeverity.HasValue;
+        }
+    }
+
     private sealed class AdhocCompilationCache : ICompilationCache
     {
         public int AnalyzerCompilationRequestCount { get; private set; }
@@ -453,4 +573,14 @@ public sealed class DiagnosticQueryServiceRegressionTests
             RestoreRequired: false,
             BuildRequired: false);
     }
+
+    private sealed record EffectiveSeverityCase(
+        string Name,
+        ReportDiagnostic? Tree,
+        ReportDiagnostic? Global,
+        ReportDiagnostic? Specific,
+        ReportDiagnostic General,
+        DiagnosticSeverity Default,
+        bool EnabledByDefault,
+        ReportDiagnostic Expected);
 }
