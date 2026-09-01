@@ -300,6 +300,86 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.IsFalse(serialized.Contains("private/secrets.csproj", StringComparison.Ordinal), serialized);
     }
 
+    [TestMethod]
+    public async Task RunTests_BuildFailureIgnoresHistoricalTrxInWorkingDirectory()
+    {
+        var workingDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "roslynmcp-stale-trx",
+            Guid.NewGuid().ToString("N"));
+        var historicalResultsDirectory = Path.Combine(workingDirectory, "TestResults", "historical-run");
+        Directory.CreateDirectory(historicalResultsDirectory);
+        var historicalTrx = WritePassedTrxFixture();
+        File.Move(historicalTrx, Path.Combine(historicalResultsDirectory, "historical.trx"));
+
+        try
+        {
+            var execution = new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: ["test", "Sample.Tests.csproj"],
+                WorkingDirectory: workingDirectory,
+                TargetPath: Path.Combine(workingDirectory, "Sample.Tests.csproj"),
+                ExitCode: 1,
+                Succeeded: false,
+                DurationMs: 1234,
+                StdOut: "CS0103: The name 'Oops' does not exist in the current context.\nBuild FAILED.",
+                StdErr: string.Empty);
+            var service = CreateService(new CannedExecutionExecutor(execution));
+
+            var result = await service.RunTestsAsync(
+                "ws-stale-trx",
+                projectName: null,
+                filter: null,
+                CancellationToken.None);
+
+            Assert.AreEqual(0, result.Total,
+                "Historical TRX files must not be attributed to a build that failed before tests ran.");
+            Assert.AreEqual(0, result.Passed);
+            Assert.IsNotNull(result.FailureEnvelope);
+            Assert.AreEqual("BuildFailure", result.FailureEnvelope!.ErrorKind);
+        }
+        finally
+        {
+            Directory.Delete(workingDirectory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunTests_ExplicitStdOutResultsFile_RemainsCurrentRunFallback()
+    {
+        var trxPath = WritePassedTrxFixture();
+        try
+        {
+            var execution = FakeExecution(
+                exitCode: 0,
+                stdOut: $"Results File: {trxPath}{Environment.NewLine}Test Run Successful.",
+                stdErr: string.Empty);
+            var service = CreateService(new CannedExecutionExecutor(execution));
+
+            var result = await service.RunTestsAsync(
+                "ws-stdout-trx",
+                projectName: null,
+                filter: null,
+                CancellationToken.None);
+
+            Assert.AreEqual(1, result.Total);
+            Assert.AreEqual(1, result.Passed);
+            Assert.IsNull(result.FailureEnvelope);
+        }
+        finally
+        {
+            File.Delete(trxPath);
+        }
+    }
+
+    private static TestRunnerService CreateService(IGatedCommandExecutor executor) =>
+        new(
+            new SingleTestProjectWorkspaceManager(),
+            executor,
+            NullLogger<TestRunnerService>.Instance,
+            new ThrowingTestDiscoveryService(
+                new InvalidOperationException("Test discovery is not expected for this VSTest path.")));
+
     // ---------------------------------------------------------------------------------------
     // test-run-failures-pagination-truncation
     //
@@ -754,6 +834,23 @@ public sealed class TestRunFailureEnvelopeTests
             IReadOnlyList<string> arguments,
             TimeSpan timeout,
             CancellationToken ct) => throw exception;
+
+        public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CannedExecutionExecutor(CommandExecutionDto execution) : IGatedCommandExecutor
+    {
+        public Task<CommandExecutionDto> ExecuteAsync(
+            string workspaceId,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken ct) => Task.FromResult(execution);
 
         public ProjectStatusDto ResolveProject(string workspaceId, string projectName) =>
             throw new NotSupportedException();

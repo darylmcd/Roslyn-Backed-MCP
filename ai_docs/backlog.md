@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-01T13:40:49Z
+**updated_at:** 2026-09-01T16:07:20Z
 
 ## Agent contract
 
@@ -65,7 +65,8 @@
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
-| `test-run-current-invocation-trx-isolation` | Medium | — | **Ignore stale TRX outside the current test invocation** — bind fallback collection to current-run evidence so a pre-test build failure cannot aggregate historical results. [type: bug] [source: 2026-09-01 live test_run] | S | items/test-run-current-invocation-trx-isolation.md |
+| `analyzer-test-reference-assemblies-offline-contract` | Medium | — | Make analyzer tests restore-complete so the required gate does not download reference assemblies during test execution. [type: test infrastructure] [source: 2026-09-01 just-ci] | S | items/analyzer-test-reference-assemblies-offline-contract.md |
+| `formatter-baseline-generator-concurrent-load-timeout` | Medium | — | Diagnose formatter baseline generator contention without masking five-minute timeouts. [type: test infrastructure] [source: 2026-09-01 just-ci] | M | items/formatter-baseline-generator-concurrent-load-timeout.md |
 
 ## Low
 
