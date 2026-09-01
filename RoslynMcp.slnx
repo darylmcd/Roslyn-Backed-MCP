@@ -8,6 +8,7 @@
     <Project Path="analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RoslynMcp.ShardDiscoveryFixtures/RoslynMcp.ShardDiscoveryFixtures.csproj" />
     <Project Path="tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj" />
   </Folder>
 </Solution>
