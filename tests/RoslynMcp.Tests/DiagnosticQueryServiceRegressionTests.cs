@@ -1,6 +1,4 @@
-using System.Collections;
 using System.Collections.Immutable;
-using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -354,53 +352,32 @@ public sealed class DiagnosticQueryServiceRegressionTests
         await workspaceManager.BlockedStatusRequestsStarted.WaitAsync(TimeSpan.FromSeconds(5));
 
         workspaceManager.ReleaseBlockedStatusRequests();
-        await Task.WhenAll(queries);
+        var queryResults = await Task.WhenAll(queries);
 
-        var cachedResults = ReadCachedResults(service, workspaceManager.WorkspaceId);
+        var cachedResults = filters
+            .Select((filter, index) => new
+            {
+                Filter = filter,
+                Original = queryResults[index],
+            })
+            .Where(candidate => ReferenceEquals(
+                candidate.Original,
+                service.GetCachedResult(
+                    workspaceManager.WorkspaceId,
+                    version: 1,
+                    candidate.Filter)))
+            .ToArray();
         Assert.HasCount(8, cachedResults,
             "A synchronized burst of distinct filters must not exceed the per-workspace cache cap.");
         foreach (var cached in cachedResults)
         {
             var reused = await service.GetDiagnosticsAsync(
                 workspaceManager.WorkspaceId,
-                cached.Key,
+                cached.Filter,
                 CancellationToken.None);
-            Assert.AreSame(cached.Value, reused,
+            Assert.AreSame(cached.Original, reused,
                 "Every retained completed result must remain reusable by its exact filter.");
         }
-    }
-
-    private static IReadOnlyList<KeyValuePair<DiagnosticQueryFilters, DiagnosticsResultDto>>
-        ReadCachedResults(DiagnosticQueryService service, string workspaceId)
-    {
-        var cacheField = typeof(DiagnosticQueryService).GetField(
-            "_resultCache",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.IsNotNull(cacheField);
-        var cache = cacheField.GetValue(service);
-        Assert.IsNotNull(cache);
-
-        var tryGetValue = cache.GetType().GetMethod("TryGetValue");
-        Assert.IsNotNull(tryGetValue);
-        object?[] arguments = [workspaceId, null];
-        Assert.AreEqual(true, tryGetValue.Invoke(cache, arguments));
-        var workspaceEntry = arguments[1];
-        Assert.IsNotNull(workspaceEntry);
-
-        var resultsProperty = workspaceEntry.GetType().GetProperty("Results");
-        Assert.IsNotNull(resultsProperty);
-        var results = resultsProperty.GetValue(workspaceEntry) as IEnumerable;
-        Assert.IsNotNull(results);
-
-        return results.Cast<object>()
-            .Select(item =>
-            {
-                var itemType = item.GetType();
-                return new KeyValuePair<DiagnosticQueryFilters, DiagnosticsResultDto>(
-                    (DiagnosticQueryFilters)itemType.GetProperty("Key")!.GetValue(item)!,
-                    (DiagnosticsResultDto)itemType.GetProperty("Value")!.GetValue(item)!);
-            })
-            .ToList();
     }
 
     private static async Task AssertProbeFailureRunsAnalyzerPassAsync(

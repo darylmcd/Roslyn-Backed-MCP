@@ -83,6 +83,21 @@ internal sealed class DiagnosticQueryService
         return true;
     }
 
+    internal DiagnosticsResultDto? GetCachedResult(
+        string workspaceId,
+        int version,
+        DiagnosticQueryFilters filters)
+    {
+        if (!_resultCache.TryGetValue(workspaceId, out var entry)
+            || entry.Version != version
+            || !entry.Results.TryGetValue(filters, out var cachedResult))
+        {
+            return null;
+        }
+
+        return cachedResult;
+    }
+
     public void CacheDiagnostics(
         string workspaceId,
         int version,
@@ -102,9 +117,8 @@ internal sealed class DiagnosticQueryService
     {
         // Cache repeated queries by workspace version and the complete filter tuple.
         var version = _workspace.GetCurrentVersion(workspaceId);
-        if (_resultCache.TryGetValue(workspaceId, out var entry)
-            && entry.Version == version
-            && entry.Results.TryGetValue(filters, out var cachedResult))
+        var cachedResult = GetCachedResult(workspaceId, version, filters);
+        if (cachedResult is not null)
         {
             return cachedResult;
         }
