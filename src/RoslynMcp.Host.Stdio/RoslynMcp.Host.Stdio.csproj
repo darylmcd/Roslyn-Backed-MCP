@@ -83,17 +83,14 @@
   -->
   <PropertyGroup>
     <ReinstallTool>false</ReinstallTool>
+    <ReinstallToolProcessId Condition="'$(ReinstallToolProcessId)' == ''">0</ReinstallToolProcessId>
+    <ReinstallToolProcessStartedAtUtc Condition="'$(ReinstallToolProcessStartedAtUtc)' == ''"></ReinstallToolProcessStartedAtUtc>
     <LocalNupkgDir>$(MSBuildThisFileDirectory)..\..\nupkg</LocalNupkgDir>
   </PropertyGroup>
 
   <Target Name="PackAndReinstallGlobalTool" AfterTargets="Publish" Condition="'$(ReinstallTool)' == 'true'">
-    <Exec Command="taskkill /F /IM roslynmcp.exe" IgnoreExitCode="true" />
     <Exec Command="dotnet pack &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -o &quot;$(LocalNupkgDir)&quot; --no-build" />
-    <!-- Uninstall both the new package id and the legacy `RoslynMcp` id so any leftover
-         pre-rename install is removed before re-installing under the new id. -->
-    <Exec Command="dotnet tool uninstall -g Darylmcd.RoslynMcp" IgnoreExitCode="true" />
-    <Exec Command="dotnet tool uninstall -g RoslynMcp" IgnoreExitCode="true" />
-    <Exec Command="dotnet tool install -g Darylmcd.RoslynMcp --add-source &quot;$(LocalNupkgDir)&quot; --version $(Version)" />
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\eng\reinstall-local-tool.ps1&quot; -PackageSource &quot;$(LocalNupkgDir)&quot; -Version &quot;$(Version)&quot; -OwnedProcessId &quot;$(ReinstallToolProcessId)&quot; -OwnedProcessStartedAtUtc &quot;$(ReinstallToolProcessStartedAtUtc)&quot;" />
   </Target>
 
 </Project>

@@ -23,7 +23,7 @@ This single command:
 
 1. Restores and builds `RoslynMcp.Host.Stdio` in `Release` configuration.
 2. Packs the NuGet package into `nupkg/Darylmcd.RoslynMcp.<version>.nupkg`.
-3. Kills any running `roslynmcp.exe` processes.
+3. Stops one explicitly identified, owned `roslynmcp` process when an ownership identity is supplied; otherwise stops no processes.
 4. Uninstalls the existing `roslynmcp` global tool (if any).
 5. Reinstalls the freshly built tool from the local `nupkg` source.
 
@@ -33,6 +33,26 @@ After it finishes, `roslynmcp` on your `PATH` points at the new build.
 > Git Bash, the leading `/` is mangled into a path and MSBuild errors out with
 > `MSB1008: Only one project can be specified.` Use `-p:ReinstallTool=true`
 > instead. PowerShell and cmd accept either form.
+
+On Windows, an active global-tool process can lock the install directory. Supply
+the PID and round-trip UTC start time only for the server instance owned by this
+reinstall operation:
+
+```powershell
+$ownedPid = <owned-roslynmcp-pid>
+$owned = Get-Process -Id $ownedPid
+$ownedStart = $owned.StartTime.ToUniversalTime().ToString('O')
+dotnet publish src/RoslynMcp.Host.Stdio -c Release `
+  -p:ReinstallTool=true `
+  -p:ReinstallToolProcessId=$ownedPid `
+  "-p:ReinstallToolProcessStartedAtUtc=$ownedStart"
+```
+
+The helper verifies both values and the `roslynmcp` process name before it uses
+PID-scoped termination. It never terminates every process with that name. For
+`just tool-install-local`, provide the same identity through
+`ROSLYNMCP_REINSTALL_PROCESS_ID` and
+`ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC`.
 
 ## Claude Code plugin (pinned server launch, skills, hooks, metadata)
 
@@ -159,6 +179,9 @@ NuGet; retry the first plugin launch after indexing completes.
   `dotnet tool install -g Darylmcd.RoslynMcp` if the publish step skipped install.
   (The unprefixed `RoslynMcp` package id is owned by another publisher on
   nuget.org; the CLI command name remains `roslynmcp`.)
+- **The global-tool uninstall reports that files are in use.** Close the owning
+  session, or rerun with the exact owned PID and start-time identity shown above.
+  Do not use name-wide `taskkill` or `killall`; unrelated MCP sessions may be active.
 - **Hooks block `*_apply` calls unexpectedly.** That's the pre-apply guard
   doing its job; you must call the matching `*_preview` first. This is
   documented in `README.md` § *Plugin Hooks*.
