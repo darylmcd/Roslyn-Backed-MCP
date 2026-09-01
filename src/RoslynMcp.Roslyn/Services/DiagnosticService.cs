@@ -27,7 +27,7 @@ public sealed class DiagnosticService : IDiagnosticService
     {
         _workspace = workspace;
         var effectiveLogger = logger ?? NullLogger<DiagnosticService>.Instance;
-        _queryService = new DiagnosticQueryService(workspace, compilationCache);
+        _queryService = new DiagnosticQueryService(workspace, compilationCache, exceptionReporter);
         _documentLookup = new DiagnosticDocumentLookup(compilationCache);
         _supportedFixEnumeration = new SupportedFixEnumerationService(
             codeFixRegistry,

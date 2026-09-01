@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -25,10 +26,11 @@ internal sealed class DiagnosticQueryService
 
     public DiagnosticQueryService(
         IWorkspaceManager workspace,
-        ICompilationCache compilationCache)
+        ICompilationCache compilationCache,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
-        _projectAnalyzer = new DiagnosticProjectAnalyzer(compilationCache);
+        _projectAnalyzer = new DiagnosticProjectAnalyzer(compilationCache, exceptionReporter);
     }
 
     public void InvalidateWorkspaceCaches(string workspaceId)

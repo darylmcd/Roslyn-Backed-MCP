@@ -1,5 +1,8 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -8,7 +11,9 @@ namespace RoslynMcp.Roslyn.Services;
 /// Collects compiler, generator, and analyzer diagnostics for one project while preserving the
 /// effective analyzer-severity policy used by Error-only query optimization.
 /// </summary>
-internal sealed class DiagnosticProjectAnalyzer(ICompilationCache compilationCache)
+internal sealed class DiagnosticProjectAnalyzer(
+    ICompilationCache compilationCache,
+    IUnexpectedExceptionReporter? exceptionReporter)
 {
     public async Task<DiagnosticProjectAnalysisResult> AnalyzeAsync(
         string workspaceId,
@@ -99,16 +104,31 @@ internal sealed class DiagnosticProjectAnalyzer(ICompilationCache compilationCac
             raw);
     }
 
-    private static bool ProjectHasEffectiveErrorAnalyzer(
+    private bool ProjectHasEffectiveErrorAnalyzer(
         Project project,
         Compilation compilation,
         CancellationToken ct)
     {
         foreach (var reference in project.AnalyzerReferences)
         {
-            foreach (var analyzer in reference.GetAnalyzers(project.Language))
+            ct.ThrowIfCancellationRequested();
+            if (!TryReadProbeValues(
+                    () => reference.GetAnalyzers(project.Language),
+                    out ImmutableArray<DiagnosticAnalyzer> analyzers))
             {
-                foreach (var descriptor in analyzer.SupportedDiagnostics)
+                return true;
+            }
+
+            foreach (var analyzer in analyzers)
+            {
+                if (!TryReadProbeValues(
+                        () => analyzer.SupportedDiagnostics,
+                        out ImmutableArray<DiagnosticDescriptor> descriptors))
+                {
+                    return true;
+                }
+
+                foreach (var descriptor in descriptors)
                 {
                     ct.ThrowIfCancellationRequested();
                     if (CanReportAsError(descriptor, compilation, ct))
@@ -120,6 +140,30 @@ internal sealed class DiagnosticProjectAnalyzer(ICompilationCache compilationCac
         }
 
         return false;
+    }
+
+    private bool TryReadProbeValues<T>(
+        Func<ImmutableArray<T>> read,
+        out ImmutableArray<T> values)
+    {
+        try
+        {
+            values = read();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            UnexpectedExceptionReporting.Report(
+                exceptionReporter,
+                ex,
+                UnexpectedExceptionCategory.AnalyzerLoad);
+            values = [];
+            return false;
+        }
     }
 
     private static bool CanReportAsError(

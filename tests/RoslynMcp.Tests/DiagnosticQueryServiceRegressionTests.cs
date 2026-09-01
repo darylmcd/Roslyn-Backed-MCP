@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
@@ -20,6 +21,8 @@ namespace RoslynMcp.Tests;
 public sealed class DiagnosticQueryServiceRegressionTests
 {
     private const string ConfigurableDiagnosticId = "RMCPTEST001";
+    private const string DescriptorFailureDiagnosticId = "RMCPTEST002";
+    private const string ProbeFailureSecret = "C:\\secret\\analyzer-probe.dll?token=do-not-expose";
 
     [TestMethod]
     public async Task GetDiagnosticsAsync_ErrorOnlyHonorsAnalyzerConfigEscalation()
@@ -68,6 +71,60 @@ public sealed class DiagnosticQueryServiceRegressionTests
         Assert.AreEqual(0, result.AnalyzerErrors);
         Assert.AreEqual(0, compilationCache.AnalyzerCompilationRequestCount,
             "An Error-only query must retain the analyzer-pass fast path when effective configuration proves no analyzer can report Error.");
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_ErrorOnlyRecoversFromAnalyzerReferenceProbeFailure()
+    {
+        var analyzerReference = new ThrowOnceAnalyzerReference(
+            new ConfigurableWarningAnalyzer(),
+            new InvalidOperationException(ProbeFailureSecret));
+
+        await AssertProbeFailureRunsAnalyzerPassAsync(
+            analyzerReference,
+            ConfigurableDiagnosticId);
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_ErrorOnlyRecoversFromDescriptorProbeFailure()
+    {
+        var analyzerReference = new InMemoryAnalyzerReference(
+            new ThrowOnceSupportedDiagnosticsAnalyzer());
+
+        await AssertProbeFailureRunsAnalyzerPassAsync(
+            analyzerReference,
+            DescriptorFailureDiagnosticId);
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_AnalyzerProbeCancellationPropagatesUnchanged()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var expected = new OperationCanceledException(cancellation.Token);
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProjectWithReference(
+            workspace,
+            new AlwaysThrowingAnalyzerReference(expected),
+            escalateWarningToError: false,
+            ConfigurableDiagnosticId);
+        var workspaceManager = new VersionedWorkspaceManager(
+            "cancelled-analyzer-probe",
+            project.Solution,
+            1);
+        var reporter = new RecordingUnexpectedExceptionReporter();
+        var service = new DiagnosticQueryService(
+            workspaceManager,
+            new AdhocCompilationCache(),
+            reporter);
+
+        var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.GetDiagnosticsAsync(
+                workspaceManager.WorkspaceId,
+                new DiagnosticQueryFilters(null, null, "Error", null),
+                cancellation.Token));
+
+        Assert.AreSame(expected, actual);
+        Assert.HasCount(0, reporter.Reports);
     }
 
     [TestMethod]
@@ -288,10 +345,48 @@ public sealed class DiagnosticQueryServiceRegressionTests
             .ToList();
     }
 
+    private static async Task AssertProbeFailureRunsAnalyzerPassAsync(
+        AnalyzerReference analyzerReference,
+        string expectedDiagnosticId)
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProjectWithReference(
+            workspace,
+            analyzerReference,
+            escalateWarningToError: true,
+            expectedDiagnosticId);
+        var workspaceManager = new VersionedWorkspaceManager(
+            "hostile-analyzer-probe",
+            project.Solution,
+            1);
+        var compilationCache = new AdhocCompilationCache();
+        var reporter = new RecordingUnexpectedExceptionReporter();
+        var service = new DiagnosticQueryService(
+            workspaceManager,
+            compilationCache,
+            reporter);
+
+        var result = await service.GetDiagnosticsAsync(
+            workspaceManager.WorkspaceId,
+            new DiagnosticQueryFilters(null, null, "Error", null),
+            CancellationToken.None);
+
+        Assert.AreEqual(1, compilationCache.AnalyzerCompilationRequestCount,
+            "An unknown descriptor probe must conservatively run the analyzer pass.");
+        Assert.HasCount(1, result.AnalyzerDiagnostics);
+        Assert.AreEqual(expectedDiagnosticId, result.AnalyzerDiagnostics.Single().Id);
+        Assert.IsFalse(result.AnalyzerDiagnostics.Any(diagnostic =>
+            diagnostic.Message.Contains(ProbeFailureSecret, StringComparison.Ordinal)));
+        Assert.HasCount(1, reporter.Reports);
+        Assert.AreEqual(UnexpectedExceptionCategory.AnalyzerLoad, reporter.Reports[0].Category);
+        Assert.AreEqual("diagnostic-probe-1", reporter.LastDetails?.Public.CorrelationId);
+    }
+
     private static Project CreateDiagnosticProject(
         AdhocWorkspace workspace,
         DiagnosticAnalyzer? analyzer,
-        bool escalateWarningToError)
+        bool escalateWarningToError,
+        string diagnosticId = ConfigurableDiagnosticId)
     {
         var projectDirectory = Path.Combine(
             Path.GetTempPath(),
@@ -332,13 +427,29 @@ public sealed class DiagnosticQueryServiceRegressionTests
                     root = true
 
                     [*.cs]
-                    dotnet_diagnostic.{{ConfigurableDiagnosticId}}.severity = error
+                    dotnet_diagnostic.{{diagnosticId}}.severity = error
                     """),
                 filePath: Path.Combine(projectDirectory, ".editorconfig"));
         }
 
         Assert.IsTrue(workspace.TryApplyChanges(solution));
         return workspace.CurrentSolution.GetProject(projectId)!;
+    }
+
+    private static Project CreateDiagnosticProjectWithReference(
+        AdhocWorkspace workspace,
+        AnalyzerReference analyzerReference,
+        bool escalateWarningToError,
+        string diagnosticId)
+    {
+        var project = CreateDiagnosticProject(
+            workspace,
+            analyzer: null,
+            escalateWarningToError,
+            diagnosticId);
+        var solution = project.Solution.AddAnalyzerReference(project.Id, analyzerReference);
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+        return workspace.CurrentSolution.GetProject(project.Id)!;
     }
 
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -380,6 +491,97 @@ public sealed class DiagnosticQueryServiceRegressionTests
         public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() => [analyzer];
 
         public override ImmutableArray<ISourceGenerator> GetGenerators(string language) => [];
+    }
+
+    private sealed class ThrowOnceAnalyzerReference(
+        DiagnosticAnalyzer analyzer,
+        Exception failure) : AnalyzerReference
+    {
+        private int _requestCount;
+
+        public override string Display => "Throw-once diagnostic query analyzer";
+
+        public override string FullPath => string.Empty;
+
+        public override object Id => GetType();
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzers(string language)
+        {
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                throw failure;
+            }
+
+            return language == LanguageNames.CSharp ? [analyzer] : [];
+        }
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() => [analyzer];
+
+        public override ImmutableArray<ISourceGenerator> GetGenerators(string language) => [];
+    }
+
+    private sealed class AlwaysThrowingAnalyzerReference(Exception failure) : AnalyzerReference
+    {
+        public override string Display => "Always-throwing diagnostic query analyzer";
+
+        public override string FullPath => string.Empty;
+
+        public override object Id => GetType();
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzers(string language) =>
+            throw failure;
+
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() => [];
+
+        public override ImmutableArray<ISourceGenerator> GetGenerators(string language) => [];
+    }
+
+    [DiagnosticAnalyzer(LanguageNames.CSharp)]
+    private sealed class ThrowOnceSupportedDiagnosticsAnalyzer : DiagnosticAnalyzer
+    {
+        private static readonly DiagnosticDescriptor Rule = new(
+            DescriptorFailureDiagnosticId,
+            "Configurable warning",
+            "Configurable warning",
+            "Testing",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        private int _requestCount;
+
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+            Interlocked.Increment(ref _requestCount) == 1
+                ? throw new InvalidOperationException(ProbeFailureSecret)
+                : [Rule];
+
+        public override void Initialize(AnalysisContext context)
+        {
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.EnableConcurrentExecution();
+            context.RegisterSyntaxTreeAction(static syntaxContext =>
+            {
+                var root = syntaxContext.Tree.GetRoot(syntaxContext.CancellationToken);
+                syntaxContext.ReportDiagnostic(Diagnostic.Create(Rule, root.GetLocation()));
+            });
+        }
+    }
+
+    private sealed class RecordingUnexpectedExceptionReporter : IUnexpectedExceptionReporter
+    {
+        public List<(Exception Exception, UnexpectedExceptionCategory Category)> Reports { get; } = [];
+
+        public UnexpectedExceptionDetails? LastDetails { get; private set; }
+
+        public UnexpectedExceptionDetails ReportUnexpected(
+            Exception exception,
+            UnexpectedExceptionCategory category)
+        {
+            Reports.Add((exception, category));
+            LastDetails = PublicExceptionDetailPolicy.ProjectUnexpected(
+                exception,
+                $"diagnostic-probe-{Reports.Count}");
+            return LastDetails;
+        }
     }
 
     private sealed class FixedSyntaxTreeOptionsProvider(

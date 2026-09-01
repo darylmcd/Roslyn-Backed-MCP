@@ -47,7 +47,7 @@ The probes are best-effort; when uncertain, re-run the step. Re-running `/bump` 
 
 ### Step 1: Preflight
 
-Run these in parallel via Bash:
+Run the status and branch reads in parallel, then fetch before measuring divergence:
 
 ```
 git status --porcelain
@@ -55,6 +55,9 @@ git rev-parse --abbrev-ref HEAD
 git fetch origin
 git rev-list --left-right --count origin/main...HEAD
 ```
+
+The final command is ordered after `git fetch`; never use a pre-fetch remote-tracking ref as the
+up-to-date proof.
 
 If any refusal condition fires, emit the refusal and STOP.
 
@@ -76,9 +79,28 @@ After `/bump` returns, verify:
 - `eng/verify-version-drift.ps1` exit 0.
 - `git diff --name-only` shows the 7 version-file paths plus the consumed `changelog.d/*.md` fragment deletions.
 
-If the CHANGELOG.md `## [Unreleased]` section had content, `/bump` moved it under the new version header. If the section was empty, remind the user: "CHANGELOG.md section is empty — fill in before Ship, or abort with git reset --hard origin/main." Pause for the user to review/edit before Step 3.
+If the CHANGELOG.md `## [Unreleased]` section had content, `/bump` moved it under the new version header. If the section was empty, remind the user: "CHANGELOG.md section is empty — fill in before Ship, or stop and explicitly revert the reviewed version-file edits." Pause for the user to review/edit before Step 3. Never discard a working tree with `git reset --hard`.
 
 ### Step 3: Verify
+
+Run the cheap environment precheck before the publish gate:
+
+```
+pwsh -NoProfile -File eng/verify-release-environment.ps1
+```
+
+The check fails closed unless all of these are true:
+
+| Signal | Required state |
+|---|---|
+| Available physical memory | At least 4 GiB and at least 20% of installed memory |
+| Pre-existing `testhost` / `MSBuild` / `VBCSCompiler` processes | Zero |
+| Pre-existing `dotnet` processes | At most 8 |
+
+Exit `2` is an environment refusal, not a product failure. Close the owning build/test sessions,
+run `dotnet build-server shutdown`, terminate only processes whose ownership you verified, and
+re-run the precheck. Never use image-wide `taskkill` or `killall` commands. Exit `1` means the
+machine state could not be inspected; stop rather than treating the publish gate as trustworthy.
 
 Run the publish-gate invocation locally — the same entry point and flags
 `publish-nuget.yml` runs at tag time:
@@ -102,9 +124,13 @@ Reference invocations (keep this table in sync with the workflows):
 | Publish gate (`publish-nuget.yml`) | `-Configuration Release -NoCoverage -RequireConsumedFragments` |
 | dispatch / schedule (informational only) | `-Configuration Release` |
 
-Save stdout+stderr to `artifacts/verify-release.log` (tee pattern) so Step 4 Ship has evidence and re-runs can probe the log mtime. If exit code is non-zero: STOP and report the failure. Do NOT proceed to Ship with a red verify.
+Save stdout+stderr to `artifacts/verify-release.log` (tee pattern) so Step 4 Ship has evidence and re-runs can probe the log mtime. If exit code is non-zero: STOP and report the failure. Run `dotnet build-server shutdown` even after a killed or timed-out invocation, then re-run `eng/verify-release-environment.ps1` before retrying. Do NOT proceed to Ship with a red verify.
 
 If the run reports `Failed: 0` yet still exits non-zero, check the tail for a collector crash before treating it as a product failure — see the `-NoCoverage` row above.
+
+For every red verify, record the precheck snapshot and re-check current machine state before
+classifying the result. Measured pressure is a separate signal, not proof that a product crash is
+environmental; reproduce on a clean runner before closing a product investigation.
 
 Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-skill generality + link check).
 
@@ -135,7 +161,8 @@ git push -u origin release/vX.Y.Z
 gh pr create --title "release: vX.Y.Z" --body "Version bump to X.Y.Z. See CHANGELOG.md for details."
 gh pr merge <n> --squash --delete-branch
 git checkout main
-git fetch origin && git reset --hard origin/main
+git fetch origin
+git pull --ff-only
 ```
 
 After Ship completes: `git log -1 --format=%s` on main should show `release: vX.Y.Z (#<n>)`.
@@ -147,7 +174,7 @@ From the primary repo root (not a worktree), on `main` synced to `origin/main`:
 ```
 git fetch origin
 git checkout main
-git reset --hard origin/main
+git pull --ff-only
 git tag -a vX.Y.Z -m "Release X.Y.Z"
 git push origin vX.Y.Z
 ```
