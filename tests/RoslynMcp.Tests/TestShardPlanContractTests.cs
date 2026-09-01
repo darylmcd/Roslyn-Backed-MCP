@@ -157,6 +157,134 @@ public sealed class TestShardPlanContractTests
     }
 
     [TestMethod]
+    [TestCategory("Process")]
+    public async Task Planner_AdapterCatalogParity_CoversInheritedCustomAndParameterizedTestsAsync()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureProjectPath = Path.Combine(
+            repositoryRoot,
+            "tests",
+            "RoslynMcp.ShardDiscoveryFixtures",
+            "RoslynMcp.ShardDiscoveryFixtures.csproj");
+        var testAssemblyDirectory = new DirectoryInfo(
+            Path.GetDirectoryName(typeof(TestShardPlanContractTests).Assembly.Location)!);
+        var targetFramework = testAssemblyDirectory.Name;
+        var configuration = testAssemblyDirectory.Parent!.Name;
+        var fixtureAssemblyPath = Path.Combine(
+            Path.GetDirectoryName(fixtureProjectPath)!,
+            "bin",
+            configuration,
+            targetFramework,
+            "RoslynMcp.ShardDiscoveryFixtures.dll");
+
+        var resultsRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(TestShardPlanContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(resultsRoot);
+        var resultsPath = Path.Combine(resultsRoot, "adapter.trx");
+
+        try
+        {
+            var buildResult = await BuildFixtureAsync(fixtureProjectPath, configuration);
+            Assert.AreEqual(
+                0,
+                buildResult.ExitCode,
+                $"Fixture build failed. stdout={buildResult.StdOut} stderr={buildResult.StdErr}");
+            Assert.IsTrue(File.Exists(fixtureAssemblyPath), $"Fixture assembly not found: {fixtureAssemblyPath}");
+
+            var adapterResult = await RunAdapterAsync(
+                fixtureAssemblyPath,
+                resultsRoot);
+            Assert.AreEqual(
+                0,
+                adapterResult.ExitCode,
+                $"Adapter execution failed. stdout={adapterResult.StdOut} stderr={adapterResult.StdErr}");
+            Assert.IsTrue(File.Exists(resultsPath), $"Adapter TRX not found: {resultsPath}");
+
+            var parityResult = await RunPlannerAsync(
+                fixtureAssemblyPath,
+                shardCount: 1,
+                shardIndex: 0,
+                adapterResultsPath: resultsPath);
+            AssertSucceeded(parityResult);
+
+            var parityPlan = ParsePlan(parityResult.StdOut);
+            Assert.IsTrue(parityPlan.AdapterParityVerified);
+            Assert.AreEqual(3, parityPlan.AdapterClassCount);
+            Assert.AreEqual(
+                2,
+                parityPlan.TestClasses.Single(testClass =>
+                    testClass.ClassName ==
+                    "RoslynMcp.ShardDiscoveryFixtures.ParameterizedTestClass").StaticCaseWeight);
+            CollectionAssert.AreEquivalent(
+                new[]
+                {
+                    "RoslynMcp.ShardDiscoveryFixtures.CustomAttributedTestClass",
+                    "RoslynMcp.ShardDiscoveryFixtures.InheritedTestClass",
+                    "RoslynMcp.ShardDiscoveryFixtures.ParameterizedTestClass",
+                },
+                parityPlan.TestClasses.Select(testClass => testClass.ClassName).ToArray());
+
+            var adapterDocument = XDocument.Load(resultsPath);
+            var unitTests = adapterDocument
+                .Descendants()
+                .Where(element => element.Name.LocalName == "UnitTest")
+                .ToArray();
+            var customClassDefinition = unitTests.Single(element =>
+                element.Descendants().Any(child =>
+                    child.Name.LocalName == "TestMethod" &&
+                    (string?)child.Attribute("className") ==
+                    "RoslynMcp.ShardDiscoveryFixtures.CustomAttributedTestClass"));
+            customClassDefinition.Remove();
+            var incompleteResultsPath = Path.Combine(resultsRoot, "adapter-incomplete.trx");
+            adapterDocument.Save(incompleteResultsPath);
+
+            var incompleteResult = await RunPlannerAsync(
+                fixtureAssemblyPath,
+                shardCount: 1,
+                shardIndex: 0,
+                adapterResultsPath: incompleteResultsPath);
+            Assert.AreNotEqual(0, incompleteResult.ExitCode);
+            StringAssert.Contains(
+                incompleteResult.AllOutput,
+                "Planner classes absent from adapter results");
+
+            var expandedAdapterDocument = XDocument.Load(resultsPath);
+            var fakeAdapterDefinition = new XElement(
+                expandedAdapterDocument
+                    .Descendants()
+                    .First(element => element.Name.LocalName == "UnitTest"));
+            var fakeTestMethod = fakeAdapterDefinition
+                .Descendants()
+                .Single(element => element.Name.LocalName == "TestMethod");
+            fakeTestMethod.SetAttributeValue(
+                "className",
+                "RoslynMcp.ShardDiscoveryFixtures.AdapterOnlyTestClass");
+            expandedAdapterDocument
+                .Descendants()
+                .Single(element => element.Name.LocalName == "TestDefinitions")
+                .Add(fakeAdapterDefinition);
+            var expandedResultsPath = Path.Combine(resultsRoot, "adapter-expanded.trx");
+            expandedAdapterDocument.Save(expandedResultsPath);
+
+            var expandedResult = await RunPlannerAsync(
+                fixtureAssemblyPath,
+                shardCount: 1,
+                shardIndex: 0,
+                adapterResultsPath: expandedResultsPath);
+            Assert.AreNotEqual(0, expandedResult.ExitCode);
+            StringAssert.Contains(
+                expandedResult.AllOutput,
+                "Adapter classes omitted by planner");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(resultsRoot);
+        }
+    }
+
+    [TestMethod]
     public void CiRunSettings_TreatsAnEmptyShardAsAnError()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -209,25 +337,70 @@ public sealed class TestShardPlanContractTests
     private static Task<PwshScriptResult> RunPlannerAsync(
         string testAssemblyPath,
         int shardCount,
-        int shardIndex)
+        int shardIndex,
+        string? adapterResultsPath = null)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var plannerPath = Path.Combine(repositoryRoot, "eng", "get-test-shard-plan.ps1");
+        var arguments = new List<string>
+        {
+            "-NoProfile",
+            "-File",
+            plannerPath,
+            "-TestAssemblyPath",
+            testAssemblyPath,
+            "-TestShardCount",
+            shardCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-TestShardIndex",
+            shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
+        if (adapterResultsPath is not null)
+        {
+            arguments.Add("-AdapterResultsPath");
+            arguments.Add(adapterResultsPath);
+        }
+
         return PwshScriptRunner.RunAsync(
-            [
-                "-NoProfile",
-                "-File",
-                plannerPath,
-                "-TestAssemblyPath",
-                testAssemblyPath,
-                "-TestShardCount",
-                shardCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                "-TestShardIndex",
-                shardIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ],
+            arguments,
             workingDirectory: repositoryRoot,
             timeout: _processTimeout,
             description: "test-shard planner");
+    }
+
+    private static Task<PwshScriptResult> RunAdapterAsync(
+        string fixtureAssemblyPath,
+        string resultsRoot)
+    {
+        return PwshScriptRunner.RunExecutableAsync(
+            "dotnet",
+            [
+                "vstest",
+                fixtureAssemblyPath,
+                "--Logger:trx;LogFileName=adapter.trx",
+                $"--ResultsDirectory:{resultsRoot}",
+            ],
+            workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
+            timeout: _processTimeout,
+            description: "installed VSTest adapter");
+    }
+
+    private static Task<PwshScriptResult> BuildFixtureAsync(
+        string fixtureProjectPath,
+        string configuration)
+    {
+        return PwshScriptRunner.RunExecutableAsync(
+            "dotnet",
+            [
+                "build",
+                fixtureProjectPath,
+                "--configuration",
+                configuration,
+                "--no-restore",
+                "--nologo",
+            ],
+            workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
+            timeout: _processTimeout,
+            description: "shard-discovery fixture build");
     }
 
     private sealed record InvalidCase(
@@ -243,6 +416,8 @@ public sealed class TestShardPlanContractTests
         int SelectedShardIndex,
         int TotalClassCount,
         int TotalStaticCaseWeight,
+        bool AdapterParityVerified,
+        int AdapterClassCount,
         TestClassPlan[] TestClasses,
         ShardPlan[] Shards,
         string SelectedFilter);

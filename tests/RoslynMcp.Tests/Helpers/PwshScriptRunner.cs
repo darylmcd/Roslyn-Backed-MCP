@@ -43,6 +43,56 @@ internal static class PwshScriptRunner
             }
         }
 
+        return await RunConfiguredProcessAsync(
+            startInfo,
+            timeout,
+            cancellationToken,
+            description).ConfigureAwait(false);
+    }
+
+    internal static Task<PwshScriptResult> RunExecutableAsync(
+        string fileName,
+        IEnumerable<string> arguments,
+        string? workingDirectory = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default,
+        string description = "external process")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (timeout is { } timeoutValue && timeoutValue <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "The process timeout must be positive.");
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            WorkingDirectory = workingDirectory ?? string.Empty,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return RunConfiguredProcessAsync(
+            startInfo,
+            timeout,
+            cancellationToken,
+            description);
+    }
+
+    private static async Task<PwshScriptResult> RunConfiguredProcessAsync(
+        ProcessStartInfo startInfo,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken,
+        string description)
+    {
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Could not start {description}.");
         // These verifier processes are non-interactive. Some execute native grandchildren

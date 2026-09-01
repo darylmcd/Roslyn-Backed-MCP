@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-01T12:25:26Z
+**updated_at:** 2026-09-01T13:40:49Z
 
 ## Agent contract
 
@@ -60,12 +60,12 @@
 | `structured-call-tool-filter-pipeline-decomposition` | Medium | workspace-auto-load-on-demand-design,structured-tool-dispatch-adapter,tool-error-envelope-sensitive-detail-disclosure | **Decompose the structured call filter pipeline** — split workspace resolution, dispatch/retry, and result/error projection out of `StructuredCallToolFilter.Create` without changing the public wire contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/structured-call-tool-filter-pipeline-decomposition.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
 | `scaffold-sampling-mrtr-replay-cost` | Medium | — | Split scaffold sampling preparation from completion so MRTR replay does not repeat compilation and sibling discovery; keep request state bounded and secret-safe and prove one expensive preparation. | M | items/scaffold-sampling-mrtr-replay-cost.md |
-| `test-shard-adapter-discovery-parity` | Medium | — | **Prove shard discovery matches the MSTest adapter** — compare planner class coverage with executable adapter discovery so a future custom or inherited test shape cannot be silently omitted from every shard. [type: test infrastructure] [source: 2026-08-24 adversarial review] | S | items/test-shard-adapter-discovery-parity.md |
 | `ci-router-pure-decision-and-actionlint` | Medium | — | Extract the CI topology into a pure decision contract and gate workflow syntax with repository-pinned actionlint. [type: CI refactor] [source: 2026-08-24 final CI review] | M | items/ci-router-pure-decision-and-actionlint.md |
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
 | `standalone-test-fixture-restore-contract` | Medium | — | **Direct-test fixture preparation** — restore every owned sample through one idempotent contract shared with release validation. [type: test infrastructure] [source: 2026-08-24 dependency review] | M | items/standalone-test-fixture-restore-contract.md |
 | `local-tool-reinstall-process-ownership` | Medium | — | **Scope local-tool reinstall shutdown to its owned process** — replace image-wide taskkill with an ownership-scoped helper and prove unrelated roslynmcp processes survive. [type: process safety] [source: 2026-08-24 adjacent dependency review] | M | items/local-tool-reinstall-process-ownership.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
+| `test-run-current-invocation-trx-isolation` | Medium | — | **Ignore stale TRX outside the current test invocation** — bind fallback collection to current-run evidence so a pre-test build failure cannot aggregate historical results. [type: bug] [source: 2026-09-01 live test_run] | S | items/test-run-current-invocation-trx-isolation.md |
 
 ## Low
 

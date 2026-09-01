@@ -11,6 +11,8 @@ deterministic longest-processing-time-first greedy balancing.
 
 The JSON result contains every shard plus the selected shard's exact
 ClassName filter. Discovery or integrity failures terminate with a nonzero exit.
+When AdapterResultsPath names a structured TRX file from the installed adapter,
+the metadata catalog must exactly match the adapter-discovered class catalog.
 #>
 param(
     [Parameter(Mandatory)]
@@ -18,7 +20,9 @@ param(
 
     [int]$TestShardCount = 1,
 
-    [int]$TestShardIndex = 0
+    [int]$TestShardIndex = 0,
+
+    [string]$AdapterResultsPath
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +45,38 @@ function Invoke-DotnetQuery {
     }
 
     return $output
+}
+
+function Test-AttributeType {
+    param(
+        [Parameter(Mandatory)]
+        [System.Type]$AttributeType,
+
+        [Parameter(Mandatory)]
+        [System.Collections.Generic.HashSet[string]]$ExpectedTypeNames
+    )
+
+    $candidateType = $AttributeType
+    while ($null -ne $candidateType) {
+        if ($null -ne $candidateType.FullName -and $ExpectedTypeNames.Contains($candidateType.FullName)) {
+            return $true
+        }
+        $candidateType = $candidateType.BaseType
+    }
+
+    return $false
+}
+
+function Format-ClassNameSample {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$ClassNames
+    )
+
+    $sample = @($ClassNames | Sort-Object | Select-Object -First 10)
+    $suffix = if ($ClassNames.Count -gt $sample.Count) { ', ...' } else { '' }
+    return ($sample -join ', ') + $suffix
 }
 
 if ($TestShardCount -lt 1 -or $TestShardCount -gt 16) {
@@ -101,12 +137,16 @@ foreach ($directory in @($assemblyDirectory, $runtimeDirectory)) {
 $resolver = [System.Reflection.PathAssemblyResolver]::new([string[]]$resolverPaths)
 $metadataContext = [System.Reflection.MetadataLoadContext]::new($resolver)
 
-$testClassAttribute = 'Microsoft.VisualStudio.TestTools.UnitTesting.TestClassAttribute'
+$testClassAttributes = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+[void]$testClassAttributes.Add('Microsoft.VisualStudio.TestTools.UnitTesting.TestClassAttribute')
 $testMethodAttributes = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::Ordinal)
 [void]$testMethodAttributes.Add('Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute')
 [void]$testMethodAttributes.Add('Microsoft.VisualStudio.TestTools.UnitTesting.DataTestMethodAttribute')
-$dataRowAttribute = 'Microsoft.VisualStudio.TestTools.UnitTesting.DataRowAttribute'
+$dataRowAttributes = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+[void]$dataRowAttributes.Add('Microsoft.VisualStudio.TestTools.UnitTesting.DataRowAttribute')
 $bindingFlags = [System.Reflection.BindingFlags]::Public -bor
     [System.Reflection.BindingFlags]::NonPublic -bor
     [System.Reflection.BindingFlags]::Instance -bor
@@ -122,7 +162,7 @@ try {
 
         $isTestClass = $false
         foreach ($attribute in $type.GetCustomAttributesData()) {
-            if ($attribute.AttributeType.FullName -eq $testClassAttribute) {
+            if (Test-AttributeType -AttributeType $attribute.AttributeType -ExpectedTypeNames $testClassAttributes) {
                 $isTestClass = $true
                 break
             }
@@ -145,11 +185,10 @@ try {
             $isTestMethod = $false
             $dataRowCount = 0
             foreach ($attribute in $methodAttributes) {
-                $attributeName = $attribute.AttributeType.FullName
-                if ($null -ne $attributeName -and $testMethodAttributes.Contains($attributeName)) {
+                if (Test-AttributeType -AttributeType $attribute.AttributeType -ExpectedTypeNames $testMethodAttributes) {
                     $isTestMethod = $true
                 }
-                if ($attributeName -eq $dataRowAttribute) {
+                if (Test-AttributeType -AttributeType $attribute.AttributeType -ExpectedTypeNames $dataRowAttributes) {
                     $dataRowCount++
                 }
             }
@@ -176,6 +215,57 @@ if ($testClasses.Count -eq 0) {
 }
 if ($TestShardCount -gt $testClasses.Count) {
     throw "TestShardCount ($TestShardCount) exceeds the discovered test-class count ($($testClasses.Count))."
+}
+
+$adapterClassCount = 0
+$adapterParityVerified = $false
+if (-not [string]::IsNullOrWhiteSpace($AdapterResultsPath)) {
+    $canonicalAdapterResultsPath = [System.IO.Path]::GetFullPath($AdapterResultsPath)
+    if (-not (Test-Path -LiteralPath $canonicalAdapterResultsPath -PathType Leaf)) {
+        throw "Adapter TRX results not found: $canonicalAdapterResultsPath"
+    }
+
+    [xml]$adapterResults = Get-Content -Raw -LiteralPath $canonicalAdapterResultsPath
+    $adapterClassNames = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    $testMethodNodes = @($adapterResults.SelectNodes(
+        "//*[local-name()='UnitTest']/*[local-name()='TestMethod']"))
+    foreach ($testMethodNode in $testMethodNodes) {
+        $className = $testMethodNode.GetAttribute('className')
+        if ([string]::IsNullOrWhiteSpace($className)) {
+            throw "Adapter TRX '$canonicalAdapterResultsPath' contains a test definition without a className."
+        }
+        if ($className -notmatch '\A[A-Za-z_][A-Za-z0-9_.]*\z') {
+            throw "Adapter-discovered class '$className' cannot be represented safely in an exact ClassName filter."
+        }
+        [void]$adapterClassNames.Add($className)
+    }
+    if ($adapterClassNames.Count -eq 0) {
+        throw "Adapter TRX '$canonicalAdapterResultsPath' contains no runnable test-class definitions."
+    }
+
+    $plannerClassNames = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($testClass in $testClasses) {
+        [void]$plannerClassNames.Add($testClass.ClassName)
+    }
+
+    $omittedByPlanner = @(
+        $adapterClassNames |
+            Where-Object { -not $plannerClassNames.Contains($_) }
+    )
+    $unselectablePlannerClasses = @(
+        $plannerClassNames |
+            Where-Object { -not $adapterClassNames.Contains($_) }
+    )
+    if ($omittedByPlanner.Count -gt 0 -or $unselectablePlannerClasses.Count -gt 0) {
+        $omittedSample = Format-ClassNameSample -ClassNames $omittedByPlanner
+        $unselectableSample = Format-ClassNameSample -ClassNames $unselectablePlannerClasses
+        throw "Adapter parity failed. Adapter classes omitted by planner: [$omittedSample]. Planner classes absent from adapter results: [$unselectableSample]."
+    }
+
+    $adapterClassCount = $adapterClassNames.Count
+    $adapterParityVerified = $true
 }
 
 $assignmentOrder = [System.Collections.Generic.List[object]]::new()
@@ -266,6 +356,8 @@ $plan = [pscustomobject]@{
     SelectedShardIndex = $TestShardIndex
     TotalClassCount = $testClasses.Count
     TotalStaticCaseWeight = $expectedWeight
+    AdapterParityVerified = $adapterParityVerified
+    AdapterClassCount = $adapterClassCount
     TestClasses = @($classCatalog)
     Shards = @($shards)
     SelectedFilter = $shards[$TestShardIndex].Filter
