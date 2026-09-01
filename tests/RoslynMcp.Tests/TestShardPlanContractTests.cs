@@ -247,7 +247,7 @@ public sealed class TestShardPlanContractTests
                 adapterResultsPath: incompleteResultsPath);
             Assert.AreNotEqual(0, incompleteResult.ExitCode);
             StringAssert.Contains(
-                incompleteResult.StdOut + incompleteResult.StdErr,
+                incompleteResult.AllOutput,
                 "Planner classes absent from adapter results");
 
             var expandedAdapterDocument = XDocument.Load(resultsPath);
@@ -275,7 +275,7 @@ public sealed class TestShardPlanContractTests
                 adapterResultsPath: expandedResultsPath);
             Assert.AreNotEqual(0, expandedResult.ExitCode);
             StringAssert.Contains(
-                expandedResult.StdOut + expandedResult.StdErr,
+                expandedResult.AllOutput,
                 "Adapter classes omitted by planner");
         }
         finally
