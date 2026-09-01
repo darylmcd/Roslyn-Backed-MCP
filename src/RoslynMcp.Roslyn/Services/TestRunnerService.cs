@@ -175,8 +175,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
                 return DotnetOutputParser.BuildTimeoutResult(shell, timeoutSummary);
             }
 
-            var dotnetWorkingDirectory = GatedCommandExecutor.GetWorkingDirectory(targetPath);
-            var trxFiles = CollectTrxFiles(resultsDirectory, dotnetWorkingDirectory, execution);
+            var trxFiles = CollectTrxFiles(resultsDirectory, execution);
             // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
             // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
             // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
@@ -370,11 +369,12 @@ public sealed partial class TestRunnerService : ITestRunnerService
     }
 
     /// <summary>
-    /// Some vstest versions ignore <c>--results-directory</c> for the TRX logger and emit under
-    /// <c>TestResults</c> next to the project instead. Collect TRX from the explicit directory first,
-    /// then fall back to the dotnet working directory (and its <c>TestResults</c> subtree).
+    /// Collect TRX from this invocation's unique explicit directory first. Some vstest versions
+    /// ignore <c>--results-directory</c>; for those hosts, accept only the concrete
+    /// <c>Results File: &lt;path&gt;</c> reported by this process. Never scan the target working tree,
+    /// because it can contain historical TRX files from unrelated invocations.
     /// </summary>
-    private static string[] CollectTrxFiles(string resultsDirectory, string workingDirectory, CommandExecutionDto execution)
+    private static string[] CollectTrxFiles(string resultsDirectory, CommandExecutionDto execution)
     {
         var fromExplicit = Directory.Exists(resultsDirectory)
             ? Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.AllDirectories)
@@ -382,30 +382,6 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
         if (fromExplicit.Length > 0)
             return fromExplicit;
-
-        var runDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddDir(string? p)
-        {
-            if (!string.IsNullOrWhiteSpace(p))
-                runDirs.Add(p);
-        }
-        AddDir(workingDirectory);
-        AddDir(execution.WorkingDirectory);
-        AddDir(Path.Combine(workingDirectory, "TestResults"));
-        if (!string.IsNullOrWhiteSpace(execution.WorkingDirectory))
-            AddDir(Path.Combine(execution.WorkingDirectory, "TestResults"));
-
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var dir in runDirs)
-        {
-            if (!Directory.Exists(dir))
-                continue;
-            foreach (var p in Directory.GetFiles(dir, "*.trx", SearchOption.AllDirectories))
-                set.Add(p);
-        }
-
-        if (set.Count > 0)
-            return [.. set];
 
         return TryTrxFromStdOut(execution.StdOut);
     }

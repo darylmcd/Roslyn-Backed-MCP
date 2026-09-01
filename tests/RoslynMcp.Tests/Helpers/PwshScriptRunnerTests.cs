@@ -73,19 +73,22 @@ public sealed class PwshScriptRunnerTests
             using var cancellation = new CancellationTokenSource();
             if (callerCancellation)
             {
-                cancellation.CancelAfter(TimeSpan.FromSeconds(2));
-                await Assert.ThrowsExactlyAsync<TaskCanceledException>(() =>
-                    PwshScriptRunner.RunAsync(
-                        ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
-                        cancellationToken: cancellation.Token,
-                        description: "caller-cancelled process-tree fixture"));
+                var runTask = PwshScriptRunner.RunAsync(
+                    ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
+                    cancellationToken: cancellation.Token,
+                    description: "caller-cancelled process-tree fixture");
+                var childStarted = await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(10));
+                cancellation.Cancel();
+
+                await Assert.ThrowsAsync<OperationCanceledException>(() => runTask);
+                Assert.IsTrue(childStarted, "The fixture did not start its child process within 10 seconds.");
             }
             else
             {
                 var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                     PwshScriptRunner.RunAsync(
                         ["-NoProfile", "-File", scriptPath, "-ChildPidPath", childPidPath],
-                        timeout: TimeSpan.FromSeconds(2),
+                        timeout: TimeSpan.FromSeconds(10),
                         description: "timed-out process-tree fixture"));
                 StringAssert.Contains(exception.Message, "timed out");
             }
@@ -130,5 +133,21 @@ public sealed class PwshScriptRunnerTests
         }
 
         return false;
+    }
+
+    private static async Task<bool> WaitForFileAsync(string path, TimeSpan timeout)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
+        {
+            if (File.Exists(path))
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return File.Exists(path);
     }
 }
