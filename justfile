@@ -30,13 +30,17 @@ restore:
 
 # --- Test ---
 
+# Restore every owned sample fixture used by integration tests
+prepare-test-fixtures:
+    pwsh -NoProfile -File ./eng/prepare-test-fixtures.ps1
+
 # Run all tests (Debug)
-test:
-    dotnet test {{ solution }} --nologo
+test: prepare-test-fixtures
+    dotnet test {{ solution }} --nologo -p:TestFixturesPrepared=true
 
 # Run all tests (Release)
-test-release:
-    dotnet test {{ solution }} -c Release --nologo
+test-release: prepare-test-fixtures
+    dotnet test {{ solution }} -c Release --nologo -p:TestFixturesPrepared=true
 
 # --- Lint / Validation ---
 

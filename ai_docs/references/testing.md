@@ -5,6 +5,8 @@
 ## Primary Command
 
 - `dotnet test RoslynMcp.slnx --nologo`
+- The test project invokes `eng/prepare-test-fixtures.ps1` before `VSTest`, so the
+  primary command restores every owned `samples/**/*.slnx` fixture before discovery.
 
 ## Coverage
 
