@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-08-31T21:02:58Z
+**updated_at:** 2026-09-01T11:17:15Z
 
 ## Agent contract
 
@@ -155,8 +155,8 @@
 | `workspace-readiness-fixture-ready-state-isolation` | Low | — | **Automate readiness order proof** — keep isolated scenarios and add a bounded repeated runner that executes the class in deliberately different orders. [type: test correctness] [source: 2026-08-24 dependency review] | S | items/workspace-readiness-fixture-ready-state-isolation.md |
 | `code-pattern-analyzer-responsibility-split` | Low | — | **Split CodePatternAnalyzer responsibilities** — extract reflection-usage scanning from semantic-query parsing and search behind compatibility-preserving contracts. [type: refactor] [source: 2026-08-27 diagnostic scan review] | M | items/code-pattern-analyzer-responsibility-split.md |
 | `ci-merge-gate-publish-gate-shape-divergence` | Low | — | **Unsharded coverage exists only on a developer box** — add a scheduled unsharded Windows `verify-release.ps1` leg so pre-tag unsharded coverage does not depend on a workstation being healthy. [type: ci] [source: 2026-08-28 release-cut] | M | items/ci-merge-gate-publish-gate-shape-divergence.md |
-| `diagnostic-project-analyzer-policy-decomposition` | Low | — | **Decompose diagnostic analysis policy** — extract effective-severity and collection policy from DiagnosticProjectAnalyzer while preserving Error-only fallback and totals. [type: refactor] [source: 2026-08-31 adjacent review] | M | items/diagnostic-project-analyzer-policy-decomposition.md |
 | `release-environment-precheck-contract-tests` | Low | — | **Test the release-environment precheck decision** — extract an injectable snapshot evaluator and table-test ready, refusal, inspection-failure, and OS probe contracts. [type: test] [source: PR #1408 adjacent review] | S | items/release-environment-precheck-contract-tests.md |
+| `diagnostic-query-cache-test-contract` | Low | — | **Replace DiagnosticQueryService cache reflection in tests** — expose a narrow internal cache-inspection contract or assert eviction behavior without private-field reflection. [type: test quality] [source: 2026-09-01 diagnostic policy review] | S | items/diagnostic-query-cache-test-contract.md |
 
 ## Defer
 

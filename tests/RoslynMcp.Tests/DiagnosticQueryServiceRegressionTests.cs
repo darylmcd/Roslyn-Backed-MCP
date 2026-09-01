@@ -22,6 +22,7 @@ public sealed class DiagnosticQueryServiceRegressionTests
 {
     private const string ConfigurableDiagnosticId = "RMCPTEST001";
     private const string DescriptorFailureDiagnosticId = "RMCPTEST002";
+    private const string GeneratorDiagnosticId = "RMCPGEN001";
     private const string ProbeFailureSecret = "C:\\secret\\analyzer-probe.dll?token=do-not-expose";
 
     [TestMethod]
@@ -209,13 +210,70 @@ public sealed class DiagnosticQueryServiceRegressionTests
                 testCase.Default,
                 testCase.EnabledByDefault);
 
-            var actual = DiagnosticProjectAnalyzer.GetEffectiveReportDiagnostic(
+            var actual = DiagnosticSeverityPolicy.GetEffectiveReportDiagnostic(
                 descriptor,
                 options,
                 syntaxTree,
                 CancellationToken.None);
 
             Assert.AreEqual(testCase.Expected, actual, testCase.Name);
+        }
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_ProjectsCompilerGeneratorAndAnalyzerDiagnosticsConsistently()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProject(
+            workspace,
+            new ConfigurableWarningAnalyzer(),
+            escalateWarningToError: true);
+        var documentId = project.DocumentIds.Single();
+        var solution = project.Solution.WithDocumentText(
+            documentId,
+            SourceText.From("internal sealed class Probe : MissingType { }"));
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+        project = workspace.CurrentSolution.GetProject(project.Id)!;
+
+        var generatorDescriptor = new DiagnosticDescriptor(
+            GeneratorDiagnosticId,
+            "Generator warning",
+            "Generator warning",
+            "Testing",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+        var workspaceManager = new VersionedWorkspaceManager(
+            "diagnostic-projection",
+            project.Solution,
+            1);
+        var service = new DiagnosticQueryService(
+            workspaceManager,
+            new AdhocCompilationCache([Diagnostic.Create(generatorDescriptor, Location.None)]));
+        DiagnosticProjectionCase[] cases =
+        [
+            new("Info", ["CS0246", GeneratorDiagnosticId], [ConfigurableDiagnosticId]),
+            new("Error", ["CS0246"], [ConfigurableDiagnosticId]),
+        ];
+
+        foreach (var testCase in cases)
+        {
+            var result = await service.GetDiagnosticsAsync(
+                workspaceManager.WorkspaceId,
+                new DiagnosticQueryFilters(null, null, testCase.Severity, null),
+                CancellationToken.None);
+
+            CollectionAssert.AreEquivalent(
+                testCase.CompilerIds,
+                result.CompilerDiagnostics.Select(diagnostic => diagnostic.Id).ToArray(),
+                testCase.Severity);
+            CollectionAssert.AreEquivalent(
+                testCase.AnalyzerIds,
+                result.AnalyzerDiagnostics.Select(diagnostic => diagnostic.Id).ToArray(),
+                testCase.Severity);
+            Assert.AreEqual(2, result.TotalErrors, testCase.Severity);
+            Assert.AreEqual(1, result.TotalWarnings, testCase.Severity);
+            Assert.AreEqual(1, result.CompilerErrors, testCase.Severity);
+            Assert.AreEqual(1, result.AnalyzerErrors, testCase.Severity);
         }
     }
 
@@ -612,7 +670,8 @@ public sealed class DiagnosticQueryServiceRegressionTests
         }
     }
 
-    private sealed class AdhocCompilationCache : ICompilationCache
+    private sealed class AdhocCompilationCache(
+        ImmutableArray<Diagnostic> generatorDiagnostics = default) : ICompilationCache
     {
         public int AnalyzerCompilationRequestCount { get; private set; }
 
@@ -620,6 +679,19 @@ public sealed class DiagnosticQueryServiceRegressionTests
             string workspaceId,
             Project project,
             CancellationToken ct) => project.GetCompilationAsync(ct);
+
+        public async Task<CompilationSnapshot?> GetCompilationSnapshotAsync(
+            string workspaceId,
+            Project project,
+            CancellationToken ct)
+        {
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            return compilation is null
+                ? null
+                : new CompilationSnapshot(
+                    compilation,
+                    generatorDiagnostics.IsDefault ? [] : generatorDiagnostics);
+        }
 
         public async Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(
             string workspaceId,
@@ -785,4 +857,9 @@ public sealed class DiagnosticQueryServiceRegressionTests
         DiagnosticSeverity Default,
         bool EnabledByDefault,
         ReportDiagnostic Expected);
+
+    private sealed record DiagnosticProjectionCase(
+        string Severity,
+        string[] CompilerIds,
+        string[] AnalyzerIds);
 }
