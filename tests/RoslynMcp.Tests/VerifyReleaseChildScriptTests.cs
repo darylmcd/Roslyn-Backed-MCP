@@ -17,6 +17,7 @@ public sealed class VerifyReleaseChildScriptTests
         new("verify-breaking-version-bump.ps1", "Breaking version validation"),
         new("verify-registry-readiness.ps1", "Registry readiness validation"),
         new("update-third-party-notices.ps1", "Restored third-party license validation", RunsAfterRestore: true),
+        new("prepare-test-fixtures.ps1", "Test fixture preparation", RunsAfterRestore: true),
     ];
 
     [TestMethod]

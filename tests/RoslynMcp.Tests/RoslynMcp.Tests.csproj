@@ -40,4 +40,10 @@
     <ProjectReference Include="..\..\analyzers\ServerSurfaceCatalogAnalyzer\ServerSurfaceCatalogAnalyzer.csproj" />
   </ItemGroup>
 
+  <Target Name="PrepareTestFixtures"
+          BeforeTargets="VSTest"
+          Condition="'$(TestFixturesPrepared)' != 'true'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)../../eng/prepare-test-fixtures.ps1&quot;" />
+  </Target>
+
 </Project>

@@ -230,7 +230,6 @@ function Assert-TestResultFile {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
-$sampleSolutionPath = Join-Path $repoRoot "samples\SampleSolution\SampleSolution.slnx"
 $testProject = Join-Path $repoRoot "tests\RoslynMcp.Tests\RoslynMcp.Tests.csproj"
 $hostProject = Join-Path $repoRoot "src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj"
 $requestedOutputRoot = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
@@ -331,25 +330,10 @@ if (-not $TestShardOnly) {
         -Parameters @{ RepoRoot = $repoRoot; Verify = $true; VerifyRestoredLicenses = $true }
 }
 
-# Sample solution restore: integration tests load samples/SampleSolution/SampleSolution.slnx
-# via MSBuildWorkspace and then run CompileCheckService. That project tree references
-# MSTest (for SampleLib.Tests) and the packages must be resolved in the NuGet global-packages
-# cache before the workspace compiles — otherwise the sample tests project emits CS0234/CS0246
-# for Microsoft.VisualStudio.TestTools and the ExtractMethod integration tests fail.
-dotnet restore $sampleSolutionPath --nologo
-Invoke-DotnetStep "dotnet restore (sample solution)"
-
-# The other two sample fixtures were never pre-restored, so the integration tests that
-# spawn `dotnet build` against them (SemanticExpansionTests, ValidationIntegrationTests)
-# paid a cold implicit restore INSIDE the timed child command — on a CI service account
-# with a cold NuGet cache that restore dominated the command timeout. Restore them up
-# front like SampleSolution so the in-test builds only compile.
-$generatedDocSolutionPath = Join-Path $repoRoot "samples\GeneratedDocumentSolution\GeneratedDocumentSolution.slnx"
-$buildFailureSolutionPath = Join-Path $repoRoot "samples\BuildFailureSolution\BuildFailureSolution.slnx"
-dotnet restore $generatedDocSolutionPath --nologo
-Invoke-DotnetStep "dotnet restore (generated-document solution)"
-dotnet restore $buildFailureSolutionPath --nologo
-Invoke-DotnetStep "dotnet restore (build-failure solution)"
+Invoke-ChildScriptStep `
+    -Description 'Test fixture preparation' `
+    -ScriptPath (Join-Path $PSScriptRoot 'prepare-test-fixtures.ps1') `
+    -Parameters @{ RepoRoot = $repoRoot }
 
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
 Invoke-DotnetStep "dotnet build"
@@ -440,6 +424,7 @@ $testArguments = @(
     '-c', $Configuration,
     '--no-build',
     '--nologo',
+    '-p:TestFixturesPrepared=true',
     '--filter', $testFilter,
     '--settings', $runSettingsPath,
     '--results-directory', $testResultsOutputDirectory,
