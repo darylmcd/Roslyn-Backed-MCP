@@ -20,6 +20,7 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>Raw-wire and redaction coverage for request-scoped sampling.</summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class SamplingMrtrWireTests
 {

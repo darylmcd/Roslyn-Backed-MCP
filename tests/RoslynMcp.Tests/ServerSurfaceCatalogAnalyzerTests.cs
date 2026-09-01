@@ -12,6 +12,7 @@
 // isolate the analyzer itself against minimal, hand-written fixtures so regressions
 // in its matching logic surface at the compile stage rather than at test-run.
 
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
@@ -20,12 +21,32 @@ using RoslynMcp.Analyzers.ServerSurfaceCatalog;
 
 namespace RoslynMcp.Tests;
 
-// ReferenceAssemblies.Net.Net80 extracts into Microsoft.CodeAnalysis.Testing's process-global
-// test-packages cache; concurrent first-use can observe or leave a partial package directory.
-[DoNotParallelize]
 [TestClass]
 public sealed class ServerSurfaceCatalogAnalyzerTests
 {
+    [TestMethod]
+    public void TestProject_RestoresExactNet80ReferencePackBeforeTestExecution()
+    {
+        var expectedPackage = ReferenceAssemblies.Net.Net80.ReferenceAssemblyPackage
+            ?? throw new AssertFailedException("ReferenceAssemblies.Net.Net80 must declare a reference-pack package.");
+        var projectPath = Path.Combine(
+            TestFixtureFileSystem.FindRepositoryRoot(),
+            "tests",
+            "RoslynMcp.Tests",
+            "RoslynMcp.Tests.csproj");
+        var packageDownload = XDocument.Load(projectPath)
+            .Descendants("PackageDownload")
+            .SingleOrDefault(element => string.Equals(
+                (string?)element.Attribute("Include"),
+                expectedPackage.Id,
+                StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(packageDownload,
+            "ReferenceAssemblies.Net.Net80 must be restored before tests run; runtime download is not offline-safe.");
+        Assert.AreEqual($"[{expectedPackage.Version}]", (string?)packageDownload.Attribute("Version"),
+            "The restore-time package must match ReferenceAssemblies.Net.Net80's exact baseline.");
+    }
+
     // Minimal stand-ins for the ModelContextProtocol.Server attribute shapes — only
     // the surface the analyzer actually matches on (the Name named-argument). Using
     // real MCP types would pull in package metadata the analyzer-testing harness has
