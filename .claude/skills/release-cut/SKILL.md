@@ -10,7 +10,14 @@ argument-hint: "patch | minor | major"
 
 You are a release engineer running the full release pipeline as a single atomic flow. Sequence the release phases (bump -> verify -> ship -> tag -> refresh-plugin) with shared error handling and checkpointed step output, so a mid-flow failure re-runs from the last successful checkpoint rather than restarting from the top.
 
-The plugin carries an exact-version `dnx` package pin together with its skills and hooks. Step 6 refreshes that single plugin contract through the maintainer-local `/update` skill; a global-tool install is an optional standalone-client canary, not a plugin dependency.
+The server ships on two install surfaces and Step 6 refreshes **both**:
+
+| Layer | Surface | Refreshed by |
+|---|---|---|
+| **Layer 1** | standalone global .NET tool `darylmcd.roslynmcp` (command `roslynmcp`) | `just tool-update` |
+| **Layer 2** | Claude Code plugin — marketplace cache, skills, hooks, exact-version `dnx` pin | maintainer-local `/update` skill |
+
+Neither layer is optional. They drift apart silently and in both directions: v1.29.0 and v1.34.2 updated Layer 1 and left Layer 2 stale in the plugin cache; v4.1.2 refreshed Layer 2 and left Layer 1 a release behind because the global-tool update was documented as optional. `eng/verify-install-layers.ps1` is the check that closes Step 6 — a release is not refreshed until it exits 0.
 
 ## Input
 
@@ -40,7 +47,7 @@ Each step records its result (stdout + exit code + any derived values like the n
 - **Step 3 Verify** — if `artifacts/verify-release.log` exists and its mtime is newer than the newest commit, skip. Otherwise re-run.
 - **Step 4 Ship** — `gh pr list --state merged --head release/vX.Y.Z --limit 1`; if a merged PR exists for the bump branch, skip.
 - **Step 5 Tag** — `git tag -l vX.Y.Z`; if the tag exists locally AND on origin (`git ls-remote --tags origin refs/tags/vX.Y.Z`), skip.
-- **Step 6 Reinstall** — call `server_info`; if `version` matches the new version AND `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/` contains only the new-version directory, skip.
+- **Step 6 Reinstall** — run `pwsh -NoProfile -File eng/verify-install-layers.ps1`; exit 0 means both layers already track the new version, so skip. A non-zero exit names the stale layer — re-run only that layer's refresh (6a for Layer 2, 6b for Layer 1), then re-verify.
 
 The probes are best-effort; when uncertain, re-run the step. Re-running `/bump` on an already-bumped repo is a no-op when all 7 files agree (verify-version-drift.ps1 short-circuits).
 
@@ -195,9 +202,38 @@ If the tag already exists on origin (prior release-cut attempt got this far), sk
 
 `release-cut` runs from inside the checkout, where `.claude/skills/update/SKILL.md` refreshes the plugin cache agent-executably via `eng/update-claude-plugin.ps1`. The plugin-namespaced shipped form can only instruct the user to run client-side `/plugin` commands. **Do not invoke the namespaced form here.**
 
-Invoke the bare-name form: `Skill: update` (or `/update` interactively). It refreshes the marketplace clone and plugin cache, including the exact `Darylmcd.RoslynMcp@X.Y.Z` launch pin. Inspect the cache and confirm only the new-version directory remains. After NuGet publication/indexing completes, run the pinned `dnx` command from `.claude-plugin/mcp.json` as the server canary. A separate global-tool update is optional for maintainers who use Option A.
+**Both layers are refreshed here. Neither is optional** — see the two-layer table at the top of this skill for why.
 
-If either the cache check or pinned-package canary fails, STOP and report it; NuGet indexing may require a retry after a short delay.
+**6a — Layer 2 (plugin).** Invoke the bare-name form: `Skill: update` (or `/update` interactively). It refreshes the marketplace clone and plugin cache, including the exact `Darylmcd.RoslynMcp@X.Y.Z` launch pin. Inspect the cache and confirm only the new-version directory remains.
+
+**6b — Layer 1 (global tool).** After NuGet publication and indexing complete:
+
+```
+just tool-update
+```
+
+That resolves `Darylmcd.RoslynMcp` from NuGet.org, so it can only run once the `v X.Y.Z` tag's publish workflow has finished and the package is resolvable. A `dotnet tool update` that reports the old version means indexing has not caught up — wait and retry rather than moving on.
+
+Two failure modes to expect here, both covered in `/update` Step 3: NuGet indexing lag, and a Windows file lock when a Layer 1 process is running (`Access to the path '...\.store\darylmcd.roslynmcp\<old>' is denied`). For the lock, identify the holder by image path under `~/.dotnet/tools/` — never by the `roslynmcp.exe` image name alone, since the plugin's `dnx`-launched Layer 2 server shares that name.
+
+**Expect the lock holder to be your own MCP server.** When Claude Code launched this session's server from the Layer 1 shim (`~/.dotnet/tools/roslynmcp.exe`) rather than the `dnx` pin, the process holding the store *is* the server you are talking to — confirmed by matching its PID against `server_info`'s `stdioPid`. Verified on the v4.1.2 cut. So the order is **stop-or-restart, then update**, not update-then-restart:
+
+- Interactive: restart Claude Code first (Step 7 asks for that anyway); the lock releases on exit and `just tool-update` then succeeds with nothing running.
+- Mid-flow: confirm no other session is using the server, stop that PID, and accept losing Roslyn MCP tools for the remainder of the run. Nothing after Step 6b needs them — the rest is `git`, `gh`, and `dotnet`.
+
+Check `server_info`'s `stdioPid` before stopping anything, and never stop a PID you have not matched to the tool-store image path.
+
+**6c — Prove both layers.** This is the step that closes Step 6:
+
+```
+pwsh -NoProfile -File eng/verify-install-layers.ps1
+```
+
+It reads Layer 1 from `dotnet tool list --global` and Layer 2 from the plugin cache (plus the cached `plugin.json`), and fails naming whichever layer is stale. Do not report the release as refreshed until it exits 0.
+
+**6d — Server canary.** Run the pinned `dnx` command from `.claude-plugin/mcp.json` and confirm the startup surface reports the new version.
+
+If the cache check, the layer verifier, or the pinned-package canary fails, STOP and report it; NuGet indexing may require a retry after a short delay.
 
 ### Step 7: Report
 
@@ -211,7 +247,7 @@ Step 2 Bump        ok (7 files -> X.Y.Z)
 Step 3 Verify      ok (N tests, artifacts/verify-release.log)
 Step 4 Ship        ok (PR #<n>, merged at <time>)
 Step 5 Tag         ok (vX.Y.Z on origin)
-Step 6 Refresh     ok (plugin cache and pinned dnx server report X.Y.Z)
+Step 6 Refresh     ok (Layer 1 global tool + Layer 2 plugin cache both X.Y.Z; verify-install-layers exit 0; pinned dnx server reports X.Y.Z)
 
 Reminder: restart Claude Code to load the updated server pin, skills, and hooks.
 Next: monitor the publish-nuget workflow triggered by the vX.Y.Z tag (if configured).
@@ -236,7 +272,7 @@ Step 2 Bump      ... ok (Directory.Build.props, plugin.json, marketplace.json, m
 Step 3 Verify    ... ok (N tests pass, artifacts/verify-release.log written)
 Step 4 Ship      ... ok (PR #<n> opened, checks green, squash-merged)
 Step 5 Tag       ... ok (v1.27.1 pushed to origin)
-Step 6 Refresh   ... ok (pinned dnx server version 1.27.1; plugin cache shows only 1.27.1)
+Step 6 Refresh   ... ok (Layer 2 cache shows only 1.27.1; Layer 1 global tool 1.27.1; verify-install-layers exit 0; pinned dnx server 1.27.1)
 
 Release v1.27.1 cut complete.
 Reminder: restart Claude Code to load the refreshed pinned server, skills, and hooks.
@@ -254,5 +290,5 @@ Reminder: restart Claude Code to load the refreshed pinned server, skills, and h
 - **`/bump`**: version-file edits only. Does not verify, ship, tag, or reinstall. Invoked as Step 2 of this skill.
 - **`/publish-preflight`**: checklist of validations (version drift, AI docs, build/test, CHANGELOG, security versions). Overlaps Step 3 but does NOT advance past verify. Run `/publish-preflight` ad-hoc to gate readiness; `/release-cut` assumes it has already passed (or runs the superset via `verify-release.ps1`).
 - **`/ship`**: commit + push + PR + squash-merge. No version bump, no tag, no reinstall. Invoked as Step 4 of this skill.
-- **`/update` (maintainer-local override at `.claude/skills/update/`)**: agent-executable plugin cache refresh via `pwsh eng/update-claude-plugin.ps1`, plus an optional standalone global-tool update. **This is what Step 6 invokes.**
+- **`/update` (maintainer-local override at `.claude/skills/update/`)**: agent-executable Layer 2 plugin-cache refresh via `pwsh eng/update-claude-plugin.ps1`, plus the required Layer 1 global-tool update. **This is what Step 6 invokes.**
 - **`/roslyn-mcp:update` (shipped, plugin-namespaced)**: documents the consumer-side `/plugin marketplace update` + `/plugin install` flow and optional global-tool path.
