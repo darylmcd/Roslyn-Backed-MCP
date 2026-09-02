@@ -208,9 +208,11 @@ public static class ScaffoldingTools
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
             {
-                // The answer was present but unusable for an unforeseen reason. Report true with the
-                // sanitized fallback rather than false: falling through would re-issue the sampling
-                // request the client has already answered.
+                // The consume probe faulted for an unforeseen reason. This covers both an answer
+                // that was present but unusable and a fault raised before any answer was inspected
+                // (the capability gate or logger resolution). Report true with the sanitized
+                // fallback rather than false: falling through would re-issue the sampling request
+                // the client has already answered.
                 result = ReportSanitizedFailure(ex);
                 return true;
             }
