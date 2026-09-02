@@ -1,0 +1,534 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-02T19:30:56.945Z",
+  "backlogSnapshot": "2026-09-02T19:01:48Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "output-schema-generation-authority",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "output-schema-generation-authority"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Catalog/ToolOutputSchemaIndex.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/SurfaceRegistrationPolicy.cs"
+      ],
+      "testFilesAdded": 2,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "c29a7b2789c7a1d97954c77af2344cf1c14d85ba387dea6541ee3559ede43614",
+      "stanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9",
+      "reviewedStanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9"
+    },
+    {
+      "id": "scaffold-sampling-mrtr-replay-cost",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "scaffold-sampling-mrtr-replay-cost"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/IScaffoldingService.cs",
+        "src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs",
+        "src/RoslynMcp.Host.Stdio/Elicitation/RequestScopedInputAdapter.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs"
+      ],
+      "testFilesAdded": 2,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "d0640d2b66b033f8b7a6658002c21064df7144f55dd68560c530cebc16a76195",
+      "stanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2",
+      "reviewedStanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2"
+    },
+    {
+      "id": "ci-hosted-shard-duration-balancing",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "ci-hosted-shard-duration-balancing"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "eng/collect-hosted-shard-timings.ps1",
+        "CI_POLICY.md",
+        "ai_docs/references/testing.md"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "f51579ffd313b16791a7d1056cd070df6f9dfb192281cac7e1ff5d82c7af2c1f",
+      "stanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3",
+      "reviewedStanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3"
+    },
+    {
+      "id": "formatter-baseline-generator-concurrent-load-timeout",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "formatter-baseline-generator-concurrent-load-timeout"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "eng/generate-format-baseline.ps1",
+        "eng/format-diagnostic-contract.ps1"
+      ],
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "c14b27d16a012fbbcca87f8b0f6af00ebe424f2ac8ddff1ffbd1abddd84d3631",
+      "stanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055",
+      "reviewedStanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055"
+    },
+    {
+      "id": "test-base-static-service-locator-decomposition",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-base-static-service-locator-decomposition"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "heroic-last",
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [
+        "output-schema-generation-authority",
+        "scaffold-sampling-mrtr-replay-cost",
+        "ci-hosted-shard-duration-balancing",
+        "formatter-baseline-generator-concurrent-load-timeout"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228",
+      "reviewedStanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": 5,
+    "selectedCount": 5,
+    "skipped": [
+      {
+        "id": "structured-call-tool-filter-pipeline-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-undo-workspace-lifecycle",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-fixall-bulk-operations",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-refactoring-editorconfig",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-symbol-advanced-analysis",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-restructure-interface",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-signature-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-ratchet-only-clean-slices",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "desc-budget-harness-method-adopt-wave-2",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "desc-budget-harness-method-adopt-wave-3",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "refactoring-code-fix-preview-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "test-document-path-helper-consolidation-wave-1",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-symbol-tools",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-advanced-analysis",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-workspace-validation-scaffolding",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-editing-compile-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-cohesion-orchestration-consumer",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-testmap-coupling-record-typeextract",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-flow-exception-security-interface",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-deadcode-fixall-workflow-editorconfig",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-interface-analyzer-coverage-undo",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "param-dedupe-verify-suggestion-snippet-drift",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "tasks-extension-workspace-load",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "tasks-extension-build-test-run",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "tasks-extension-contract-docs",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "workspace-id-flip-batch-01",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-02",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-03",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-04",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-05",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-06",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-07",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-08",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-09",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-10",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-flip-batch-11",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer"
+      },
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      }
+    ]
+  },
+  "conflictGraphInputHash": "ea18fa40838acba7ce38bc1cc81db95f716825b971ccab278821cdefe9a122d4",
+  "planHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
+  "backlogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42",
+  "reviewedPlanHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
+  "reviewedBacklogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42"
+}
