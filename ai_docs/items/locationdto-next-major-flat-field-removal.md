@@ -1,6 +1,6 @@
 # locationdto-next-major-flat-field-removal — remove deprecated flat location fields at the next major
 
-**row:** `locationdto-next-major-flat-field-removal` · **pri:** `Defer` · **size:** `L` · **deps:** `locationdto-stage3-flat-field-deprecation`
+**row:** `locationdto-next-major-flat-field-removal` · **pri:** `Defer` · **size:** `M` · **deps:** `locationdto-stage3-flat-field-deprecation`
 
 ## Anchors
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-02T17:24:47.267Z",
-  "backlogSnapshot": "2026-09-02T16:13:40Z",
+  "backlogSnapshot": "2026-09-02T17:46:17Z",
   "addendaLoaded": true,
   "phase": "skeleton",
   "cycleCount": 0,
@@ -12,7 +12,7 @@
     {
       "id": "method-description-diet",
       "order": 1,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "method-description-diet"
       ],
@@ -36,12 +36,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "test-base-static-service-locator-decomposition",
       "order": 2,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "test-base-static-service-locator-decomposition"
       ],
@@ -65,12 +65,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "output-schema-generation-authority",
       "order": 3,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "output-schema-generation-authority"
       ],
@@ -94,12 +94,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "scaffold-sampling-mrtr-replay-cost",
       "order": 4,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "scaffold-sampling-mrtr-replay-cost"
       ],
@@ -123,12 +123,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "ci-router-pure-decision-and-actionlint",
       "order": 5,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "ci-router-pure-decision-and-actionlint"
       ],
@@ -152,12 +152,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "ci-hosted-shard-duration-balancing",
       "order": 6,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "ci-hosted-shard-duration-balancing"
       ],
@@ -181,12 +181,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "tool-description-slice-test-harness-consolidation",
       "order": 7,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "tool-description-slice-test-harness-consolidation"
       ],
@@ -210,12 +210,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "formatter-baseline-generator-concurrent-load-timeout",
       "order": 8,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "formatter-baseline-generator-concurrent-load-timeout"
       ],
@@ -239,12 +239,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "tool-update-owned-process-shutdown",
       "order": 9,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "tool-update-owned-process-shutdown"
       ],
@@ -268,12 +268,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     },
     {
       "id": "apply-composite-preview-destructive-misnomer",
       "order": 10,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "apply-composite-preview-destructive-misnomer"
       ],
@@ -297,7 +297,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "operator halted the run after selection (2026-09-02); superseded by the backlog-split PR. Verified deepener diagnoses were folded into the rows' items/ files (or into split children) — re-select fresh."
     }
   ],
   "anchorVerification": "pending",
@@ -379,5 +379,7 @@
         "reason": "defer"
       }
     ]
-  }
+  },
+  "completed": true,
+  "completedAt": "2026-09-02T17:47:03.235Z"
 }
