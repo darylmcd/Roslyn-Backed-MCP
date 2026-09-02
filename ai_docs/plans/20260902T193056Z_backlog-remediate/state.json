@@ -16,16 +16,19 @@
       "backlogRowsClosed": [
         "output-schema-generation-authority"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Catalog/ToolOutputSchemaIndex.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/SurfaceRegistrationPolicy.cs"
+      ],
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
@@ -36,7 +39,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "c29a7b2789c7a1d97954c77af2344cf1c14d85ba387dea6541ee3559ede43614",
+      "stanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9",
+      "reviewedStanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9"
     },
     {
       "id": "scaffold-sampling-mrtr-replay-cost",
@@ -45,16 +51,21 @@
       "backlogRowsClosed": [
         "scaffold-sampling-mrtr-replay-cost"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/IScaffoldingService.cs",
+        "src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs",
+        "src/RoslynMcp.Host.Stdio/Elicitation/RequestScopedInputAdapter.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs"
+      ],
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
@@ -65,7 +76,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "d0640d2b66b033f8b7a6658002c21064df7144f55dd68560c530cebc16a76195",
+      "stanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2",
+      "reviewedStanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2"
     },
     {
       "id": "ci-hosted-shard-duration-balancing",
@@ -74,18 +88,22 @@
       "backlogRowsClosed": [
         "ci-hosted-shard-duration-balancing"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "eng/collect-hosted-shard-timings.ps1",
+        "CI_POLICY.md",
+        "ai_docs/references/testing.md"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 0,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
         "ruleOneBundleResolved": null
       },
@@ -94,7 +112,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "f51579ffd313b16791a7d1056cd070df6f9dfb192281cac7e1ff5d82c7af2c1f",
+      "stanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3",
+      "reviewedStanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3"
     },
     {
       "id": "formatter-baseline-generator-concurrent-load-timeout",
@@ -103,16 +124,19 @@
       "backlogRowsClosed": [
         "formatter-baseline-generator-concurrent-load-timeout"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "eng/generate-format-baseline.ps1",
+        "eng/format-diagnostic-contract.ps1"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
@@ -123,7 +147,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "c14b27d16a012fbbcca87f8b0f6af00ebe424f2ac8ddff1ffbd1abddd84d3631",
+      "stanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055",
+      "reviewedStanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055"
     },
     {
       "id": "test-base-static-service-locator-decomposition",
@@ -132,30 +159,38 @@
       "backlogRowsClosed": [
         "test-base-static-service-locator-decomposition"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "heroic-last",
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
+        "judgmentHeavy": true,
+        "anchorStale": true,
         "ruleOneBundleResolved": null
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "output-schema-generation-authority",
+        "scaffold-sampling-mrtr-replay-cost",
+        "ci-hosted-shard-duration-balancing",
+        "formatter-baseline-generator-concurrent-load-timeout"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228",
+      "reviewedStanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228"
     }
   ],
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
     "degrees": {},
@@ -490,5 +525,10 @@
         "reason": "execution-blocked"
       }
     ]
-  }
+  },
+  "conflictGraphInputHash": "ea18fa40838acba7ce38bc1cc81db95f716825b971ccab278821cdefe9a122d4",
+  "planHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
+  "backlogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42",
+  "reviewedPlanHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
+  "reviewedBacklogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42"
 }
