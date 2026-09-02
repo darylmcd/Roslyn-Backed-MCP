@@ -329,7 +329,10 @@ public sealed class TestResultsSummaryContractTests
                     Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx"),
                     "<TestRun><Results>"));
 
-            AssertFailedWith(result, "Malformed MSTest TRX input.");
+            // The collector reads every leg of every sampled run, so the diagnostic must name the
+            // offending file rather than just declaring "malformed".
+            AssertFailedWith(result, "Malformed MSTest TRX input '");
+            StringAssert.Contains(result.StdOut + result.StdErr, "results.trx");
         }
         finally
         {
@@ -337,6 +340,61 @@ public sealed class TestResultsSummaryContractTests
         }
     }
 
+    [TestMethod]
+    public async Task Collector_LegAndImageNamesWithMarkdownDelimiters_AreEscapedInReportAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            // Leg and image names are manifest-supplied. The leg is what lands in a table CELL, so
+            // an unescaped pipe there silently adds a column and corrupts the row; the image is what
+            // lands in the heading and verdict. Both must be escaped, as
+            // eng/summarize-test-results.ps1 already does for its own cells. The manifest's "leg" is
+            // independent of its "path", so the pipe can be injected without touching the on-disk
+            // directory name.
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                {
+                    foreach (var entry in manifest)
+                    {
+                        entry["leg"] = ((string)entry["leg"]).Replace("w-", "w|");
+                        entry["image"] = "windows|latest";
+                    }
+                });
+
+            AssertSucceeded(result);
+            StringAssert.Contains(result.StdOut, @"### windows\|latest");
+            StringAssert.Contains(result.StdOut, @"**Verdict for windows\|latest:");
+            StringAssert.Contains(result.StdOut, @"| w\|1 |");
+
+            // Every data row must still carry the columns the header declares. The count is derived
+            // from the header rather than hard-coded so the assertion cannot rot when a column is
+            // added, and it is precisely the property an unescaped pipe would break.
+            var reportLines = result.StdOut
+                .Split('\n')
+                .Select(static line => line.Trim())
+                .ToArray();
+            var headerColumns = CountMarkdownCells(
+                reportLines.Single(static line => line.StartsWith("| Leg | Runs |", StringComparison.Ordinal)));
+            var dataRows = reportLines
+                .Where(static line => line.StartsWith(@"| w\|", StringComparison.Ordinal))
+                .ToArray();
+            Assert.HasCount(2, dataRows);
+            foreach (var row in dataRows)
+            {
+                Assert.AreEqual(
+                    headerColumns,
+                    CountMarkdownCells(row),
+                    $"Row lost or gained a column: {row}");
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
     [TestMethod]
     public async Task Collector_ValidProfile_ReportsBothMetricsSeparatelyAndNeverMergesImagesAsync()
     {
@@ -437,6 +495,24 @@ public sealed class TestResultsSummaryContractTests
         int WallTimeSeconds,
         int CaseDurationSeconds);
 
+    /// <summary>
+    /// Counts the cell delimiters in a Markdown table row. Only UNESCAPED pipes split a row: a
+    /// "\|" renders as a literal pipe inside one cell, so a naive Split('|') would report an
+    /// escaped value as an extra column and invert the property under test.
+    /// </summary>
+    private static int CountMarkdownCells(string row)
+    {
+        var delimiters = 0;
+        for (var i = 0; i < row.Length; i++)
+        {
+            if (row[i] == '|' && (i == 0 || row[i - 1] != '\\'))
+            {
+                delimiters++;
+            }
+        }
+
+        return delimiters;
+    }
     private static string ExtractImageSection(string report, string imageName)
     {
         var marker = "### " + imageName;

@@ -143,6 +143,24 @@ function Get-RequiredSeconds {
     return $seconds
 }
 
+function ConvertTo-ReportCell {
+    <#
+    .SYNOPSIS
+    Escape a manifest-supplied value for safe placement in Markdown.
+
+    .DESCRIPTION
+    Leg and image names come from the caller's manifest, so an unescaped pipe would silently add a
+    column and corrupt the report table. Mirrors ConvertTo-MarkdownCell in
+    eng/summarize-test-results.ps1 so both reports sanitize identically.
+    #>
+    param([AllowEmptyString()][string]$Value)
+
+    $sanitized = $Value.Replace('\', '\\').Replace('|', '\|')
+    $sanitized = [System.Text.RegularExpressions.Regex]::Replace($sanitized, '[\x00-\x1F\x7F]+', ' ')
+    $sanitized = [System.Text.RegularExpressions.Regex]::Replace($sanitized, '\s{2,}', ' ')
+    return $sanitized.Trim()
+}
+
 function Read-TrxCaseDuration {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -159,7 +177,10 @@ function Read-TrxCaseDuration {
         $document.Load($reader)
     }
     catch {
-        throw 'Malformed MSTest TRX input.'
+        # Name the file and the underlying cause: one invocation reads every leg of every sampled
+        # run, so a bare "malformed" verdict cannot be acted on, and a locked or permission-denied
+        # file would otherwise be reported as malformed content.
+        throw "Malformed MSTest TRX input '$Path': $($_.Exception.Message)"
     }
     finally {
         if ($null -ne $reader) {
@@ -440,7 +461,7 @@ foreach ($imageName in $imageNames) {
     $adoptDurationWeights = $caseDurationIsUsable -and $gainExceedsNoise
 
     $lines.Add('')
-    $lines.Add("### $imageName")
+    $lines.Add("### $(ConvertTo-ReportCell $imageName)")
     $lines.Add('')
     $lines.Add("Sampled runs: $($runIds.Count). Legs: $($legNames.Count).")
     $lines.Add('')
@@ -456,7 +477,7 @@ foreach ($imageName in $imageNames) {
             "$($statistic.CaseCountMinimum)-$($statistic.CaseCountMaximum)"
         }
         $lines.Add(
-            "| $($statistic.Leg) | $($statistic.Runs) | " +
+            "| $(ConvertTo-ReportCell $statistic.Leg) | $($statistic.Runs) | " +
             "$(Format-Seconds $statistic.WallMean) | " +
             "$(Format-Seconds $statistic.WallMinimum) | " +
             "$(Format-Seconds $statistic.WallMaximum) | " +
@@ -498,11 +519,11 @@ foreach ($imageName in $imageNames) {
 
     $lines.Add('')
     if ($adoptDurationWeights) {
-        $lines.Add("**Verdict for ${imageName}: material skew. An OS-specific duration profile is " +
+        $lines.Add("**Verdict for $(ConvertTo-ReportCell $imageName): material skew. An OS-specific duration profile is " +
                    'warranted.**')
     }
     else {
-        $lines.Add("**Verdict for ${imageName}: no material skew. Keep the deterministic " +
+        $lines.Add("**Verdict for $(ConvertTo-ReportCell $imageName): no material skew. Keep the deterministic " +
                    'discovered-case weights in `eng/get-test-shard-plan.ps1`.**')
     }
 }
