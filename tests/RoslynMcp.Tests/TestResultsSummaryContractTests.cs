@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -119,6 +121,254 @@ public sealed class TestResultsSummaryContractTests
 
         AssertSucceeded(result);
     }
+
+    [TestMethod]
+    public async Task Collector_UnderMinimumSamples_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 4; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(
+                result,
+                "has 4 sampled runs, below the required minimum of 5");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_LegClaimedByTwoImages_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                var image = run == 3 ? "ubuntu-latest" : "windows-latest";
+                observations.Add(new LegObservation($"r{run}", "w-1", image, 100, 10));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(result, "is claimed by two hosted images");
+            StringAssert.Contains(
+                result.StdOut + result.StdErr,
+                "Hosted images are never merged.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_RunMissingOneLegOfItsImage_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                if (run != 3)
+                {
+                    observations.Add(
+                        new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+                }
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(
+                result,
+                "Run 'r3' is missing leg 'w-2' of hosted image 'windows-latest'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_ValidProfile_ReportsBothMetricsSeparatelyAndNeverMergesImagesAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+                observations.Add(new LegObservation($"r{run}", "u-1", "ubuntu-latest", 300, 70));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertSucceeded(result);
+            Assert.AreEqual(string.Empty, result.StdErr);
+
+            // Wall time and summed case duration must land in distinct columns, never one blended
+            // number: 100s wall against 10.0s of cases, and 200s wall against 40.0s of cases.
+            StringAssert.Contains(
+                result.StdOut,
+                "| w-1 | 5 | 100.0 | 100.0 | 100.0 | 1.00x | 10.0 | 10.0 | 10.0 | 1.00x | 2 |");
+            StringAssert.Contains(
+                result.StdOut,
+                "| w-2 | 5 | 200.0 | 200.0 | 200.0 | 1.00x | 40.0 | 40.0 | 40.0 | 1.00x | 2 |");
+            StringAssert.Contains(
+                result.StdOut,
+                "| Achievable gain from a perfect partition | 50.0 s (25.0%) |");
+
+            var windowsSection = ExtractImageSection(result.StdOut, "windows-latest");
+            var ubuntuSection = ExtractImageSection(result.StdOut, "ubuntu-latest");
+            Assert.IsFalse(
+                windowsSection.Contains("| u-1 |", StringComparison.Ordinal),
+                "Hosted images must never be merged into one profile.");
+            Assert.IsFalse(
+                ubuntuSection.Contains("| w-1 |", StringComparison.Ordinal),
+                "Hosted images must never be merged into one profile.");
+            StringAssert.Contains(windowsSection, "Sampled runs: 5. Legs: 2.");
+            StringAssert.Contains(ubuntuSection, "Sampled runs: 5. Legs: 1.");
+
+            // Reproducible per-leg case duration plus a gain above the noise band adopts;
+            // a single-leg image has no skew to exploit and keeps the static weights.
+            StringAssert.Contains(
+                windowsSection,
+                "**Verdict for windows-latest: material skew.");
+            StringAssert.Contains(
+                ubuntuSection,
+                "**Verdict for ubuntu-latest: no material skew.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task CollectorScript_HasNoPowerShellAstParseErrorsAsync()
+    {
+        const string parseCommand =
+            "$tokens = $null; $errors = $null; " +
+            "[System.Management.Automation.Language.Parser]::ParseFile(" +
+            "$env:ROSLYN_MCP_SCRIPT_UNDER_TEST, [ref]$tokens, [ref]$errors) | Out-Null; " +
+            "if ($errors.Count -gt 0) { $errors | ForEach-Object { [Console]::Error.WriteLine($_) }; exit 1 }";
+
+        var result = await RunPowerShellAsync(
+            ["-NoProfile", "-NonInteractive", "-Command", parseCommand],
+            new Dictionary<string, string?>
+            {
+                ["ROSLYN_MCP_SCRIPT_UNDER_TEST"] = GetCollectorScriptPath(),
+            });
+
+        AssertSucceeded(result);
+    }
+
+    private sealed record LegObservation(
+        string RunId,
+        string Leg,
+        string Image,
+        int WallTimeSeconds,
+        int CaseDurationSeconds);
+
+    private static string ExtractImageSection(string report, string imageName)
+    {
+        var marker = "### " + imageName;
+        var start = report.IndexOf(marker, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, start, $"Report is missing the '{imageName}' section.");
+        var next = report.IndexOf("\n### ", start + marker.Length, StringComparison.Ordinal);
+        return next < 0 ? report[start..] : report[start..next];
+    }
+
+    private static async Task<PwshScriptResult> RunCollectorAsync(
+        string fixtureRoot,
+        IReadOnlyList<LegObservation> observations)
+    {
+        var resultsRoot = Path.Combine(fixtureRoot, "downloads");
+        var manifest = new List<Dictionary<string, object>>();
+        foreach (var observation in observations)
+        {
+            var relativePath = $"{observation.RunId}/test-results-{observation.Leg}";
+            var legDirectory = Path.Combine(
+                resultsRoot,
+                observation.RunId,
+                $"test-results-{observation.Leg}");
+            Directory.CreateDirectory(legDirectory);
+            await File.WriteAllTextAsync(
+                Path.Combine(legDirectory, "results.trx"),
+                BuildTwoCaseTrx(observation.CaseDurationSeconds));
+
+            manifest.Add(new Dictionary<string, object>
+            {
+                ["runId"] = observation.RunId,
+                ["leg"] = observation.Leg,
+                ["image"] = observation.Image,
+                ["wallTimeSeconds"] = observation.WallTimeSeconds,
+                ["path"] = relativePath,
+            });
+        }
+
+        var manifestPath = Path.Combine(fixtureRoot, "legs.json");
+        await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest));
+
+        return await RunPowerShellAsync(
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                GetCollectorScriptPath(),
+                "-ResultsRoot",
+                resultsRoot,
+                "-LegManifest",
+                manifestPath,
+            ],
+            environment: null);
+    }
+
+    private static string BuildTwoCaseTrx(int totalSeconds)
+    {
+        // Split across two cases so the reported sum is an aggregate, not a single duration.
+        var first = TimeSpan.FromSeconds(totalSeconds - 1).ToString(
+            "c",
+            CultureInfo.InvariantCulture);
+        var second = TimeSpan.FromSeconds(1).ToString("c", CultureInfo.InvariantCulture);
+        return $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results>
+                <UnitTestResult testId="a" testName="one" outcome="Passed" duration="{first}" />
+                <UnitTestResult testId="b" testName="two" outcome="Passed" duration="{second}" />
+              </Results>
+              <TestDefinitions>
+                <UnitTest id="a">
+                  <TestMethod className="Example.Alpha" name="One" />
+                </UnitTest>
+                <UnitTest id="b">
+                  <TestMethod className="Example.Beta" name="Two" />
+                </UnitTest>
+              </TestDefinitions>
+            </TestRun>
+            """;
+    }
+
+    private static string GetCollectorScriptPath() => Path.Combine(
+        TestFixtureFileSystem.FindRepositoryRoot(),
+        "eng",
+        "collect-hosted-shard-timings.ps1");
 
     private static string CreateFixtureRoot()
     {

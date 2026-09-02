@@ -24,8 +24,12 @@
 | CI non-owner shard lane | Add `-TestShardOnly` to skip platform-neutral policy checks and publish/hash; do not use it as the standalone release gate |
 | Per-leg duration/failure evidence | `artifacts/test-results/*.trx`; hosted artifact `test-results-<leg>` |
 | Bounded job-summary renderer | `eng/summarize-test-results.ps1 -ResultsPath artifacts/test-results` |
+| Offline per-image shard-skew collector | `eng/collect-hosted-shard-timings.ps1 -ResultsRoot <dir> -LegManifest <json>` |
+| Standing shard-weighting decision | `CI_POLICY.md` section "Hosted Shard Weighting Decision" |
 
 - Keep local `just ci` unsharded; it proves the complete suite in one invocation.
+- Summed TRX case duration alone is not a partition signal on hosted runners. Its same-leg run-to-run swing can exceed the between-leg spread, so a shard ranked by it reproduces runner noise. Quote wall-time skew and summed case duration as separate metrics; `eng/collect-hosted-shard-timings.ps1` emits them in separate columns and refuses fewer than five samples per hosted image.
+- Model each hosted image on its own evidence. Never merge images into one profile and never feed a local-machine timing into a hosted profile.
 - For CI, require nonempty shards whose class sets are disjoint and whose union equals discovery.
 - Use exact `ClassName` filters. Do not revive per-source-regex or `FullyQualifiedName~` slicing.
 - Diagnose slow tests from repeated TRX durations. A timeout attribute or method count is not runtime evidence.
