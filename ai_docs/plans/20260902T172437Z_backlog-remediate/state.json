@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-02T17:24:47.267Z",
+  "backlogSnapshot": "2026-09-02T16:13:40Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "method-description-diet",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "method-description-diet"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "test-base-static-service-locator-decomposition",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-base-static-service-locator-decomposition"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "output-schema-generation-authority",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "output-schema-generation-authority"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "scaffold-sampling-mrtr-replay-cost",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "scaffold-sampling-mrtr-replay-cost"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "ci-router-pure-decision-and-actionlint",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "ci-router-pure-decision-and-actionlint"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "ci-hosted-shard-duration-balancing",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "ci-hosted-shard-duration-balancing"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "tool-description-slice-test-harness-consolidation",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-description-slice-test-harness-consolidation"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "formatter-baseline-generator-concurrent-load-timeout",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "formatter-baseline-generator-concurrent-load-timeout"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "tool-update-owned-process-shutdown",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-update-owned-process-shutdown"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "apply-composite-preview-destructive-misnomer",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "apply-composite-preview-destructive-misnomer"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": 10,
+    "selectedCount": 10,
+    "skipped": [
+      {
+        "id": "promotion-tier-execution-batch",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "risk-aligned-tool-consolidation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "structured-call-tool-filter-pipeline-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "workspace-id-optional-readonly-surface-full-sweep",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-surface-pagination-or-tool-sets",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "refactoring-code-fix-preview-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "test-document-path-helper-consolidation-wave-1",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer"
+      }
+    ]
+  }
+}
