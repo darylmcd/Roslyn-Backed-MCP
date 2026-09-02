@@ -5,6 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Tests;
@@ -148,6 +149,119 @@ public sealed class Batch1OutputSchemaTests
                 Assert.IsTrue(JsonNode.DeepEquals(expected, variants[index]),
                     $"Tool '{toolName}' union branch {index} must describe " +
                     $"{expectedTypes[index].Name}, the DTO serialized by that mode.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void EverySdkAdopterPairsWithExactlyOneCatalogDeclaration()
+    {
+        // Authority symmetry, asserted statically. ToolOutputSchemaIndex fails closed on either
+        // asymmetry at index construction; this test names the offending side when it does, and
+        // fails on the CI machine rather than on a client's first tools/list.
+        var sdkDeclared = ToolOutputSchemaIndex.SdkDeclaredOutputSchemaTypes;
+
+        CollectionAssert.AreEquivalent(
+            ToolOutputSchemaIndex.Declarations.Keys.ToArray(),
+            sdkDeclared.Keys.ToArray(),
+            "Every [McpServerTool(OutputSchemaType = ...)] adopter must carry exactly one explicit " +
+            "OutputSchemaDeclaration, and every declaration must name a live adopter. One generation " +
+            "authority means neither side may drift alone.");
+
+        foreach (var (toolName, expectedDtoType) in _adopters)
+        {
+            Assert.AreEqual(expectedDtoType, sdkDeclared[toolName],
+                $"Tool '{toolName}' must keep OutputSchemaType = typeof({expectedDtoType.Name}); " +
+                "the catalog derives its advertised schema from that declared type.");
+        }
+    }
+
+    [TestMethod]
+    public void FixedVersusUnionMatrixMatchesEachToolsDeclaredGenerationRoute()
+    {
+        // The matrix: for every adopter, compare the SDK-discovered DTO type, its declared
+        // generation route, and the schema the catalog actually advertises.
+        var sdkDeclared = ToolOutputSchemaIndex.SdkDeclaredOutputSchemaTypes;
+
+        foreach (var (toolName, declaration) in ToolOutputSchemaIndex.Declarations)
+        {
+            var declaredDtoType = sdkDeclared[toolName];
+            var advertised = ToolOutputSchemaIndex.GetSchema(toolName);
+            Assert.IsNotNull(advertised, $"Tool '{toolName}' must publish an advertised schema.");
+            var advertisedObject = advertised!.AsObject();
+            var variants = declaration.Variants(declaredDtoType);
+
+            if (declaration.Kind == OutputSchemaKind.Fixed)
+            {
+                Assert.IsNull(declaration.UnionKeyword,
+                    $"Tool '{toolName}' is declared Fixed and must not name a union keyword.");
+                Assert.HasCount(1, variants);
+                Assert.IsFalse(
+                    advertisedObject.ContainsKey("anyOf") || advertisedObject.ContainsKey("oneOf"),
+                    $"Tool '{toolName}' is declared Fixed, so its advertised schema must be the DTO " +
+                    "shape verbatim — a union here means the declaration and the generator disagree.");
+                Assert.IsTrue(
+                    JsonNode.DeepEquals(ToolOutputSchemaIndex.GenerateSchema(declaredDtoType), advertised),
+                    $"Tool '{toolName}' advertises a schema that is not the generated shape of " +
+                    $"{declaredDtoType.Name}. A Fixed declaration must not reshape the DTO.");
+                continue;
+            }
+
+            Assert.IsNotNull(declaration.UnionKeyword,
+                $"Tool '{toolName}' is declared Union and must name anyOf or oneOf.");
+            Assert.AreEqual("object", advertisedObject["type"]!.GetValue<string>(),
+                $"Tool '{toolName}' union schema must still declare the outer structuredContent object type.");
+
+            var branches = advertisedObject[declaration.UnionKeyword!]!.AsArray();
+            Assert.HasCount(variants.Count, branches);
+            Assert.AreEqual(declaredDtoType, variants[0],
+                $"Tool '{toolName}' union branch 0 must be the SDK-declared DTO so the declaration " +
+                "cannot silently diverge from the attribute.");
+
+            for (var index = 0; index < variants.Count; index++)
+            {
+                Assert.IsTrue(
+                    JsonNode.DeepEquals(ToolOutputSchemaIndex.GenerateSchema(variants[index]), branches[index]),
+                    $"Tool '{toolName}' union branch {index} must describe {variants[index].Name}, " +
+                    "the DTO serialized by that mode.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void AdvertisedSchemasUseTheRuntimeStructuredContentSerializerMetadata()
+    {
+        // Acceptance for "prove custom catalog schemas use the same serializer metadata as SDK
+        // runtime output": the catalog overwrites the SDK-generated schema precisely because the
+        // SDK generator runs on its own defaults. That overwrite is only defensible while the
+        // advertised property names are the names JsonDefaults.Indented — the options object the
+        // structuredContent channel serializes with — actually emits.
+        _ = JsonSerializer.Serialize(new { probe = 0 }, JsonDefaults.Indented);
+
+        foreach (var (toolName, declaration) in ToolOutputSchemaIndex.Declarations)
+        {
+            var declaredDtoType = ToolOutputSchemaIndex.SdkDeclaredOutputSchemaTypes[toolName];
+            var variants = declaration.Variants(declaredDtoType);
+            var advertised = ToolOutputSchemaIndex.GetSchema(toolName)!.AsObject();
+
+            JsonObject[] branches = declaration.Kind == OutputSchemaKind.Fixed
+                ? [advertised]
+                : advertised[declaration.UnionKeyword!]!.AsArray().Select(node => node!.AsObject()).ToArray();
+
+            for (var index = 0; index < variants.Count; index++)
+            {
+                var runtimeNames = JsonDefaults.Indented.GetTypeInfo(variants[index])
+                    .Properties
+                    .Select(static property => property.Name)
+                    .ToArray();
+                var advertisedNames = branches[index]["properties"]!.AsObject()
+                    .Select(static property => property.Key)
+                    .ToArray();
+
+                CollectionAssert.AreEquivalent(runtimeNames, advertisedNames,
+                    $"Tool '{toolName}' branch {index} ({variants[index].Name}) advertises property names " +
+                    "that JsonDefaults.Indented would not emit at runtime. The advertised schema and the " +
+                    "structuredContent bytes must come from one serializer-metadata source.");
             }
         }
     }

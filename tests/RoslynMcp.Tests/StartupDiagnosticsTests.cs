@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -210,12 +211,76 @@ public sealed class StartupDiagnosticsTests
             .Value.ToolCollection!.ToArray();
         var advertised = tools
             .Where(static tool => tool.ProtocolTool.OutputSchema is not null)
-            .Select(static tool => tool.ProtocolTool.Name)
-            .ToArray();
+            .ToDictionary(
+                static tool => tool.ProtocolTool.Name,
+                static tool => tool.ProtocolTool.OutputSchema!.Value,
+                StringComparer.Ordinal);
 
         CollectionAssert.AreEquivalent(
             ToolOutputSchemaIndex.RegisteredToolNames.ToArray(),
-            advertised);
+            advertised.Keys.ToArray());
+
+        // Name parity alone would still pass if the SDK-generated schema survived registration,
+        // which would silently swap the generation authority (and with it camelCase + the string
+        // enum converter). Compare content: what reaches the wire must be the catalog's schema.
+        foreach (var toolName in ToolOutputSchemaIndex.RegisteredToolNames)
+        {
+            var declared = ToolOutputSchemaIndex.GetSchema(toolName);
+            var projected = JsonNode.Parse(advertised[toolName].GetRawText());
+
+            Assert.IsTrue(JsonNode.DeepEquals(declared, projected),
+                $"Tool '{toolName}' advertises an output schema that is not the one " +
+                "ToolOutputSchemaIndex declares. That index is the single generation authority; an " +
+                "SDK-generated schema surviving registration means the advertised contract no longer " +
+                "matches the bytes the structuredContent channel serializes.");
+        }
+    }
+
+    [TestMethod]
+    public void SurfaceRegistrationPolicy_RejectsAnUndeclaredSdkGeneratedOutputSchema()
+    {
+        // compile_check is a real catalog tool that deliberately has no advertised output schema.
+        // An SDK-generated schema appearing on it means a second generation authority came online.
+        var options = BuildToolOnlyOptions(
+            "compile_check",
+            JsonSerializer.SerializeToElement(new { type = "object" }));
+
+        var error = Assert.ThrowsExactly<InvalidOperationException>(
+            () => SurfaceRegistrationPolicy.Apply(options, ToolTierSelection.Parse("stable")));
+        StringAssert.Contains(error.Message, "compile_check");
+        StringAssert.Contains(error.Message, nameof(ToolOutputSchemaIndex));
+    }
+
+    [TestMethod]
+    public void SurfaceRegistrationPolicy_RejectsADeclaredSchemaTheToolNoLongerAdvertises()
+    {
+        // The mirror asymmetry: the index declares a schema for server_info, so a registered
+        // server_info that dropped UseStructuredContent/OutputSchemaType must not be projected
+        // over in silence.
+        var options = BuildToolOnlyOptions("server_info", outputSchema: null);
+
+        var error = Assert.ThrowsExactly<InvalidOperationException>(
+            () => SurfaceRegistrationPolicy.Apply(options, ToolTierSelection.Parse("stable")));
+        StringAssert.Contains(error.Message, "server_info");
+        StringAssert.Contains(error.Message, "OutputSchemaType");
+    }
+
+    private static McpServerOptions BuildToolOnlyOptions(string toolName, JsonElement? outputSchema)
+    {
+        var tool = McpServerTool.Create(
+            (Func<string>)(() => string.Empty),
+            new McpServerToolCreateOptions { Name = toolName });
+        tool.ProtocolTool.OutputSchema = outputSchema;
+
+        var toolCollection = new McpServerPrimitiveCollection<McpServerTool>();
+        toolCollection.Add(tool);
+
+        return new McpServerOptions
+        {
+            ToolCollection = toolCollection,
+            PromptCollection = new McpServerPrimitiveCollection<McpServerPrompt>(),
+            ResourceCollection = new McpServerResourceCollection(),
+        };
     }
 
     [TestMethod]
