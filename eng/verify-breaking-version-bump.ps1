@@ -148,10 +148,21 @@ if (-not (Test-Path -LiteralPath $changelogPath -PathType Leaf)) {
 }
 
 $changelog = Get-Content -LiteralPath $changelogPath -Raw
-$releaseHeaderPattern = '(?m)^## \[(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\](?:[ \t]+-[^\r\n]+)?[ \t]*$'
+$releaseHeaderPattern = '(?m)^## \[(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\](?:[ \t]+-[^\r\n]+)?[ \t]*\r?$'
 $releaseHeaders = [regex]::Matches($changelog, $releaseHeaderPattern)
 if ($releaseHeaders.Count -eq 0) {
-    Write-Error 'CHANGELOG.md has no released ## [X.Y.Z] section.'
+    # A header that is present but off-contract is a different operator problem than a
+    # missing release section; reporting both as 'no released section' sends the reader
+    # hunting for a heading that is plainly there.
+    if ([regex]::IsMatch($changelog, '(?m)^## \[\d+\.\d+\.\d+\]')) {
+        Write-Error (
+            'CHANGELOG.md contains ## [X.Y.Z] headers but none match the release-header ' +
+            "contract. Expected '## [X.Y.Z]' or '## [X.Y.Z] - <date>' with nothing else on " +
+            'the line.')
+    }
+    else {
+        Write-Error 'CHANGELOG.md has no released ## [X.Y.Z] section.'
+    }
     exit 1
 }
 
@@ -163,7 +174,7 @@ else {
     $changelog.Length
 }
 $topSection = $changelog.Substring($topHeader.Index, $topSectionEnd - $topHeader.Index)
-$breakingSectionPattern = '(?m)^### Changed — BREAKING[ \t]*$'
+$breakingSectionPattern = '(?m)^### Changed — BREAKING[ \t]*\r?$'
 
 if ([regex]::IsMatch($topSection, $breakingSectionPattern)) {
     if ($releaseHeaders.Count -lt 2) {

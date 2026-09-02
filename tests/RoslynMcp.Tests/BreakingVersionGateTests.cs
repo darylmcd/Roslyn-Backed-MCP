@@ -336,6 +336,150 @@ public sealed class BreakingVersionGateTests
         }
     }
 
+    [TestMethod]
+    [DataRow("\n", DisplayName = "LF changelog")]
+    [DataRow("\r\n", DisplayName = "CRLF changelog")]
+    public async Task BreakingVersionGate_ParsesReleaseHeadersRegardlessOfLineEndings(string newline)
+    {
+        // release-header-regex-crlf-intolerant: the header pattern anchored on [ \t]*$, which
+        // cannot match a line ending \r\n, so every header vanished on a CRLF checkout and the
+        // gate aborted claiming there was no release section at all.
+        var fixtureRoot = CreateLineEndingFixtureRoot();
+        try
+        {
+            WriteLineEndingChangelog(fixtureRoot, newline, topSectionHeading: "Changed");
+
+            var result = await RunGateAsync(
+                ResolveBreakingGateScriptPath(),
+                fixtureRoot,
+                bumpType: "patch",
+                requireConsumedFragments: false);
+
+            Assert.AreEqual(0, result.ExitCode, result.AllOutput);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("\n", DisplayName = "LF changelog")]
+    [DataRow("\r\n", DisplayName = "CRLF changelog")]
+    public async Task BreakingVersionGate_DetectsBreakingSectionRegardlessOfLineEndings(string newline)
+    {
+        // The sibling pattern for the BREAKING subsection shared the same anchor. Where the
+        // header pattern failed loudly, this one fails OPEN: a breaking release would sail
+        // through a patch bump. That makes the CRLF case worth asserting on its own.
+        var fixtureRoot = CreateLineEndingFixtureRoot();
+        try
+        {
+            // Top release carries BREAKING but does NOT advance the major, so a gate that sees
+            // the subsection must reject it. If the pattern stops matching, this sails through.
+            WriteLineEndingChangelog(
+                fixtureRoot,
+                newline,
+                topSectionHeading: "Changed — BREAKING",
+                topVersion: "1.9.1",
+                precedingVersion: "1.9.0");
+
+            var result = await RunGateAsync(
+                ResolveBreakingGateScriptPath(),
+                fixtureRoot,
+                bumpType: "patch",
+                requireConsumedFragments: false);
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.AllOutput, "does not advance the major");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task BreakingVersionGate_DistinguishesUnparseableHeadersFromMissingSection()
+    {
+        var missingRoot = CreateLineEndingFixtureRoot();
+        var unparseableRoot = CreateLineEndingFixtureRoot();
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(missingRoot, "CHANGELOG.md"),
+                "# Changelog\n\n## [Unreleased]\n");
+            File.WriteAllText(
+                Path.Combine(unparseableRoot, "CHANGELOG.md"),
+                "# Changelog\n\n## [Unreleased]\n\n## [1.2.3] (yanked release)\n\n### Changed\n\n- Body.\n");
+
+            var missing = await RunGateAsync(
+                ResolveBreakingGateScriptPath(),
+                missingRoot,
+                bumpType: "patch",
+                requireConsumedFragments: false);
+            var unparseable = await RunGateAsync(
+                ResolveBreakingGateScriptPath(),
+                unparseableRoot,
+                bumpType: "patch",
+                requireConsumedFragments: false);
+
+            Assert.AreEqual(1, missing.ExitCode, missing.AllOutput);
+            StringAssert.Contains(missing.AllOutput, "has no released");
+
+            Assert.AreEqual(1, unparseable.ExitCode, unparseable.AllOutput);
+            StringAssert.Contains(unparseable.AllOutput, "none match the release-header");
+            Assert.IsFalse(
+                unparseable.AllOutput.Contains("has no released", StringComparison.Ordinal),
+                "A header present but off-contract must not be reported as a missing section.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(missingRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(unparseableRoot);
+        }
+    }
+
+    private static string ResolveBreakingGateScriptPath() => Path.Combine(
+        TestFixtureFileSystem.FindRepositoryRoot(),
+        "eng",
+        "verify-breaking-version-bump.ps1");
+
+    private static string CreateLineEndingFixtureRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslynmcp-breaking-eol-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(root, "changelog.d"));
+        File.WriteAllText(Path.Combine(root, "changelog.d", "README.md"), "# Changelog fragments");
+        return root;
+    }
+
+    private static void WriteLineEndingChangelog(
+        string fixtureRoot,
+        string newline,
+        string topSectionHeading,
+        string topVersion = "2.0.0",
+        string precedingVersion = "1.9.0")
+    {
+        var body = string.Join(
+            newline,
+            "# Changelog",
+            string.Empty,
+            "## [Unreleased]",
+            string.Empty,
+            $"## [{topVersion}] - 2026-08-14",
+            string.Empty,
+            $"### {topSectionHeading}",
+            string.Empty,
+            "- Fixture release.",
+            string.Empty,
+            $"## [{precedingVersion}] - 2026-08-13",
+            string.Empty,
+            "### Changed",
+            string.Empty,
+            "- Preceding fixture release.",
+            string.Empty);
+        File.WriteAllText(Path.Combine(fixtureRoot, "CHANGELOG.md"), body);
+    }
+
     private static void WriteFixture(string fixtureRoot, GateCase testCase)
     {
         var fragmentDirectory = Path.Combine(fixtureRoot, "changelog.d");
