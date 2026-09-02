@@ -16,6 +16,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [4.1.2] - 2026-09-02
+
+### Fixed
+
+- **Fixed:** Analyzer tests now restore their exact .NET 8 reference pack up front, so test execution no longer performs a late NuGet download after sources become unavailable; timing-sensitive sampling MRTR wire tests also run outside the suite's 24-worker parallel pool. Closes `analyzer-test-reference-assemblies-offline-contract` and `sampling-mrtr-wire-suite-contention-isolation`.
+
+- **Fixed:** Error-only diagnostic queries now recover conservatively from hostile analyzer descriptor probes with correlated secret-safe operator reporting, while release verification now refuses low-memory or leaked-process environments before the expensive gate. Closes `diagnostic-analyzer-descriptor-enumeration-failure-isolation` and `release-cut-step3-environment-precheck`.
+
+- **Fixed:** Error-only diagnostic queries now honor analyzer-config severity escalation and keep raw/result caches monotonic across reversed workspace-version completions. Closes `diagnostic-query-effective-analyzer-severity` and `diagnostic-query-cache-version-monotonicity`.
+
+- **Fixed:** Concurrent diagnostic queries now enforce the eight-entry per-workspace result-cache cap atomically while preserving exact-filter reuse and newer workspace versions. Closes `diagnostic-query-result-cache-concurrent-cap`.
+
+- **Fixed:** Local global-tool reinstall now stops only an explicitly identified `roslynmcp` process, verifies its PID and start time before bounded termination, preserves unrelated sessions, and fails closed on real uninstall errors. Closes `local-tool-reinstall-process-ownership`.
+
+- **Fixed:** Direct solution test runs now restore every owned sample fixture through the same fail-closed preparation script used by `just` and release validation, including fresh checkouts with no sample `obj` state. Closes `standalone-test-fixture-restore-contract`.
+
+- **Fixed:** `test_run` no longer attributes historical TRX files to the current invocation when `dotnet test` fails before executing tests. Closes `test-run-current-invocation-trx-isolation`.
+
+- **Fixed:** CI shard planning now checks compiled metadata against structured MSTest adapter results, including inherited, custom-attributed, and parameterized test shapes. Closes `test-shard-adapter-discovery-parity`.
+
+### Changed
+
+- **Changed:** Diagnostic project analysis now delegates effective-severity evaluation, fail-closed analyzer probes, and compiler/generator/analyzer projection to one focused policy collaborator with cross-kind regression coverage. Closes `diagnostic-project-analyzer-policy-decomposition`.
+
+- **Changed:** Diagnostic queries now delegate per-project compiler, generator, analyzer, and effective-severity work to a focused collaborator with direct precedence coverage, while script-worker startup now uses an asynchronous, cancellation-aware IPC handoff with a contention-tolerant bound. Closes `diagnostic-query-project-analysis-extraction`.
+
+### Maintenance
+
+- **Maintenance:** Diagnostic cache-cap regressions now use the production exact-filter lookup contract instead of reflecting over private cache fields and record members. Closes `diagnostic-query-cache-test-contract`.
+
+- **Maintenance:** Process-runner cancellation tests now synchronize on child readiness and accept the public cancellation exception contract under loaded CI. Closes `pwsh-script-runner-cancellation-test-determinism`.
+
+- **Maintenance:** the `.ai-doc-audit.md` Live Surface snapshot is now gated instead of hand-maintained. `eng/verify-surface-snapshot-freshness.ps1` compares that table against the README live-surface paragraph (CI-guarded by `ReadmeSurfaceCountTests` against `ServerSurfaceCatalog`) and the shipped `skills/` directory, and `/release-cut` Step 1 refuses the cut when it drifts. Refreshed the snapshot to the live 4.1.1 surface (174 tools / 14 resources / 20 prompts / 32 skills; it had been stale at 168/13 since 2026-05-06, across twelve tagged releases) and corrected `docs/setup.md`, which listed 31 shipped skills and omitted `mcp-server-surface-test`. Closes `surface-snapshot-stale-surface-audit`.
+
 ## [4.1.1] - 2026-08-30
 
 ### Fixed
