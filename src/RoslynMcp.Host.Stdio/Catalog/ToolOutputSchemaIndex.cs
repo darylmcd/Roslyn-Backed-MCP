@@ -27,38 +27,102 @@ internal enum OutputSchemaKind
 }
 
 /// <summary>
+/// The JSON-Schema combinators a <see cref="OutputSchemaKind.Union"/> declaration may advertise.
+/// A closed set rather than a free-form keyword string: an unrecognised combinator would emit an
+/// invalid schema that no round-trip assertion could see, because every reader would look the
+/// misspelled key straight back up.
+/// </summary>
+internal enum OutputSchemaUnionCombinator
+{
+    /// <summary>
+    /// JSON-Schema <c>anyOf</c>: a response may satisfy one or more branches. Correct when the
+    /// branches overlap, so demanding exactly one match would reject a valid response.
+    /// </summary>
+    AnyOf,
+
+    /// <summary>
+    /// JSON-Schema <c>oneOf</c>: a response satisfies exactly one branch. Correct when the modes
+    /// are mutually exclusive by shape.
+    /// </summary>
+    OneOf,
+}
+
+/// <summary>
 /// Explicit, per-tool statement of how <see cref="ToolOutputSchemaIndex"/> builds one advertised
 /// output schema. Declaring the route (rather than inferring it from a fall-through
 /// <see langword="switch"/>) is what makes the index the single generation authority: a tool with
 /// no declaration, or a declaration with no tool, aborts index construction instead of silently
 /// falling back to a generated shape nobody reviewed.
+/// <para>
+/// Construction is factory-only (<see cref="FixedShape"/> / <see cref="UnionOf"/>) so a
+/// declaration cannot be assembled in an invalid state — in particular, a union can only ever
+/// name a combinator from <see cref="OutputSchemaUnionCombinator"/>.
+/// </para>
 /// </summary>
-/// <param name="Kind">Fixed DTO shape or mode-dependent union.</param>
-/// <param name="UnionKeyword">
-/// JSON-Schema combinator for <see cref="OutputSchemaKind.Union"/> declarations
-/// (<c>anyOf</c> or <c>oneOf</c>); <see langword="null"/> for a fixed shape.
-/// </param>
-/// <param name="AdditionalVariants">
-/// Response DTOs beyond the SDK-declared one. Empty for a fixed shape.
-/// </param>
-internal sealed record OutputSchemaDeclaration(
-    OutputSchemaKind Kind,
-    string? UnionKeyword,
-    IReadOnlyList<Type> AdditionalVariants)
+internal sealed record OutputSchemaDeclaration
 {
+    private OutputSchemaDeclaration(
+        OutputSchemaKind kind,
+        OutputSchemaUnionCombinator? combinator,
+        IReadOnlyList<Type> additionalVariants)
+    {
+        Kind = kind;
+        Combinator = combinator;
+        AdditionalVariants = additionalVariants;
+    }
+
+    /// <summary>Fixed DTO shape or mode-dependent union.</summary>
+    internal OutputSchemaKind Kind { get; }
+
+    /// <summary>
+    /// JSON-Schema combinator for <see cref="OutputSchemaKind.Union"/> declarations;
+    /// <see langword="null"/> for a fixed shape.
+    /// </summary>
+    internal OutputSchemaUnionCombinator? Combinator { get; }
+
+    /// <summary>
+    /// Response DTOs beyond the SDK-declared one. Empty for a fixed shape.
+    /// </summary>
+    internal IReadOnlyList<Type> AdditionalVariants { get; }
+
+    /// <summary>
+    /// The literal JSON-Schema key this declaration writes (<c>anyOf</c> or <c>oneOf</c>), or
+    /// <see langword="null"/> for a fixed shape. Derived from <see cref="Combinator"/> so the
+    /// advertised keyword has exactly one spelling authority.
+    /// </summary>
+    internal string? UnionKeyword => Combinator switch
+    {
+        null => null,
+        OutputSchemaUnionCombinator.AnyOf => "anyOf",
+        OutputSchemaUnionCombinator.OneOf => "oneOf",
+        _ => throw new InvalidOperationException(
+            $"No JSON-Schema keyword is defined for combinator '{Combinator}'."),
+    };
+
     /// <summary>
     /// Declares that the tool advertises its SDK-declared DTO shape unchanged.
     /// </summary>
     internal static OutputSchemaDeclaration FixedShape() =>
-        new(OutputSchemaKind.Fixed, UnionKeyword: null, AdditionalVariants: []);
+        new(OutputSchemaKind.Fixed, combinator: null, additionalVariants: []);
 
     /// <summary>
     /// Declares that the tool serializes more than one DTO depending on its request mode, and
-    /// advertises all of them under <paramref name="unionKeyword"/>.
+    /// advertises all of them under <paramref name="combinator"/>.
     /// </summary>
-    internal static OutputSchemaDeclaration UnionOf(string unionKeyword, params Type[] additionalVariants)
+    internal static OutputSchemaDeclaration UnionOf(
+        OutputSchemaUnionCombinator combinator,
+        params Type[] additionalVariants)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(unionKeyword);
+        // An enum is not a closed set at runtime — any int can be cast into one — so reject an
+        // undefined value here rather than let it reach the advertised schema as a bad keyword.
+        if (!Enum.IsDefined(combinator))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(combinator),
+                combinator,
+                "A union declaration must name a defined JSON-Schema combinator (anyOf or oneOf).");
+        }
+
         ArgumentNullException.ThrowIfNull(additionalVariants);
         if (additionalVariants.Length == 0)
         {
@@ -67,7 +131,7 @@ internal sealed record OutputSchemaDeclaration(
                 nameof(additionalVariants));
         }
 
-        return new(OutputSchemaKind.Union, unionKeyword, additionalVariants);
+        return new(OutputSchemaKind.Union, combinator, additionalVariants);
     }
 
     /// <summary>
@@ -146,11 +210,13 @@ internal static class ToolOutputSchemaIndex
             // { count: 0, workspaces: [] } satisfies both item schemas because an empty array
             // has no element with which to distinguish summary from verbose. oneOf would
             // therefore reject a valid fresh-host response; anyOf expresses the real contract.
-            ["workspace_list"] = OutputSchemaDeclaration.UnionOf("anyOf", typeof(WorkspaceListVerboseDto)),
+            ["workspace_list"] = OutputSchemaDeclaration.UnionOf(
+                OutputSchemaUnionCombinator.AnyOf, typeof(WorkspaceListVerboseDto)),
 
             // workspace_status serializes exactly one of its two shapes per request mode and the
             // verbose shape carries fields the summary lacks, so oneOf is the precise contract.
-            ["workspace_status"] = OutputSchemaDeclaration.UnionOf("oneOf", typeof(WorkspaceStatusDto)),
+            ["workspace_status"] = OutputSchemaDeclaration.UnionOf(
+                OutputSchemaUnionCombinator.OneOf, typeof(WorkspaceStatusDto)),
         };
 
     private static readonly Lazy<IReadOnlyDictionary<string, Type>> _adopters =

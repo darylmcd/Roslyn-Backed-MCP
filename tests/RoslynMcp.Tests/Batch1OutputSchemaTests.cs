@@ -236,7 +236,11 @@ public sealed class Batch1OutputSchemaTests
         // SDK generator runs on its own defaults. That overwrite is only defensible while the
         // advertised property names are the names JsonDefaults.Indented — the options object the
         // structuredContent channel serializes with — actually emits.
-        _ = JsonSerializer.Serialize(new { probe = 0 }, JsonDefaults.Indented);
+        //
+        // JsonDefaults.Indented names no TypeInfoResolver, so GetTypeInfo below throws
+        // NotSupportedException until the options are made read-only with the default reflection
+        // resolver populated — which is exactly what the first runtime serialization does.
+        JsonDefaults.Indented.MakeReadOnly(populateMissingResolver: true);
 
         foreach (var (toolName, declaration) in ToolOutputSchemaIndex.Declarations)
         {
@@ -263,6 +267,47 @@ public sealed class Batch1OutputSchemaTests
                     "that JsonDefaults.Indented would not emit at runtime. The advertised schema and the " +
                     "structuredContent bytes must come from one serializer-metadata source.");
             }
+        }
+    }
+
+    [TestMethod]
+    public void UnionDeclarationsCannotNameACombinatorOutsideAnyOfAndOneOf()
+    {
+        // Regression for the fail-open the declaration API shipped with: the combinator used to be
+        // a free-form string validated only for non-blankness, so a typo'd keyword would have
+        // advertised an invalid schema. The matrix test cannot catch that on its own — it reads the
+        // declared key back out of the schema, so a misspelling matches itself.
+        //
+        // Half 1: an undefined combinator is rejected at construction, not projected into a schema.
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => OutputSchemaDeclaration.UnionOf(
+                (OutputSchemaUnionCombinator)0xBAD, typeof(WorkspaceListVerboseDto)));
+
+        // Half 2: every live union declaration advertises a literal JSON-Schema combinator. The
+        // expected keywords are hard-coded here rather than read back from the declaration, so a
+        // future mapping change cannot agree with itself into an invalid schema.
+        string[] validCombinators = ["anyOf", "oneOf"];
+        foreach (var (toolName, declaration) in ToolOutputSchemaIndex.Declarations)
+        {
+            if (declaration.Kind == OutputSchemaKind.Fixed)
+            {
+                continue;
+            }
+
+            CollectionAssert.Contains(validCombinators, declaration.UnionKeyword,
+                $"Tool '{toolName}' declares union keyword '{declaration.UnionKeyword}', which is not a " +
+                "JSON-Schema combinator. Only anyOf and oneOf produce a valid advertised schema.");
+
+            var advertised = ToolOutputSchemaIndex.GetSchema(toolName)!.AsObject();
+            var advertisedCombinators = advertised
+                .Select(static property => property.Key)
+                .Where(validCombinators.Contains)
+                .ToArray();
+            Assert.HasCount(1, advertisedCombinators,
+                $"Tool '{toolName}' must advertise its variants under exactly one JSON-Schema combinator.");
+            Assert.AreEqual(declaration.UnionKeyword, advertisedCombinators[0],
+                $"Tool '{toolName}' advertises '{advertisedCombinators[0]}' but declares " +
+                $"'{declaration.UnionKeyword}'.");
         }
     }
 
