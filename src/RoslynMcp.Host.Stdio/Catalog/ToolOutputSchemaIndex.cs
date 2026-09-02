@@ -131,7 +131,23 @@ internal sealed record OutputSchemaDeclaration
                 nameof(additionalVariants));
         }
 
-        return new(OutputSchemaKind.Union, combinator, additionalVariants);
+        if (Array.IndexOf(additionalVariants, null) >= 0)
+        {
+            throw new ArgumentException(
+                "A union declaration cannot name a null response variant.",
+                nameof(additionalVariants));
+        }
+
+        if (additionalVariants.Distinct().Count() != additionalVariants.Length)
+        {
+            throw new ArgumentException(
+                "A union declaration cannot name the same response variant twice.",
+                nameof(additionalVariants));
+        }
+
+        // Copy defensively: params binds the caller's array when it is passed explicitly, so
+        // storing it by reference would let a caller mutate a validated declaration afterwards.
+        return new(OutputSchemaKind.Union, combinator, [.. additionalVariants]);
     }
 
     /// <summary>
@@ -186,9 +202,15 @@ internal static class ToolOutputSchemaIndex
         TreatNullObliviousAsNonNullable = true,
     };
 
+    // The options are already a COPY of JsonDefaults.Indented, so the exporter inherits the
+    // runtime naming policy and converters. The resolver is constructed unconditionally rather
+    // than read back from the shared static: JsonDefaults.Indented.TypeInfoResolver is null until
+    // something freezes that process-wide object, which would make the exporter's resolver depend
+    // on static-initialization order. Both branches produced an unmodified reflection resolver, so
+    // this is order-independence at no cost in behavior.
     private static readonly JsonSerializerOptions _schemaSerializerOptions = new(JsonDefaults.Indented)
     {
-        TypeInfoResolver = JsonDefaults.Indented.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver(),
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
     /// <summary>
