@@ -27,8 +27,9 @@ Refuse and report cleanly — do NOT produce a partial release — if any of the
 - Current branch is not `main`. Message: "Refusing: release cuts run from main. Current branch: <branch>."
 - `main` is not up-to-date with `origin/main` (after `git fetch`). Message: "Refusing: local main is behind origin/main. Run git pull --ff-only first."
 - `$ARGUMENTS` is not one of `patch` / `minor` / `major`. Message: "Refusing: bump type must be 'patch', 'minor', or 'major'. Got: <value>."
+- `pwsh -NoProfile -File eng/verify-surface-snapshot-freshness.ps1` exits non-zero. Message: "Refusing: the .ai-doc-audit.md Live Surface snapshot has drifted from the live surface. Run /surface-audit, refresh the table, and re-date the heading first." The script prints the per-row delta; re-measure rather than hand-editing the numbers to green.
 
-All four checks run BEFORE Step 1. Emit the refusal and stop — do not proceed to any delegated skill.
+All five checks run BEFORE Step 2. Emit the refusal and stop — do not proceed to any delegated skill.
 
 ## Checkpoints
 
@@ -54,10 +55,13 @@ git status --porcelain
 git rev-parse --abbrev-ref HEAD
 git fetch origin
 git rev-list --left-right --count origin/main...HEAD
+pwsh -NoProfile -File eng/verify-surface-snapshot-freshness.ps1
 ```
 
 The final command is ordered after `git fetch`; never use a pre-fetch remote-tracking ref as the
 up-to-date proof.
+
+The snapshot gate is the only non-git preflight check. It compares the `.ai-doc-audit.md` Live Surface table against the README live-surface paragraph (CI-guarded by `ReadmeSurfaceCountTests` against `ServerSurfaceCatalog`) and the shipped `skills/` directory, so it needs no Roslyn workspace load. It exists because that snapshot drifted across twelve tagged releases while its backlog row sat unpicked at Low — a prose reminder did not hold.
 
 If any refusal condition fires, emit the refusal and STOP.
 
