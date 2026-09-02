@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -332,7 +333,7 @@ public sealed class TestResultsSummaryContractTests
             // The collector reads every leg of every sampled run, so the diagnostic must name the
             // offending file rather than just declaring "malformed".
             AssertFailedWith(result, "Malformed MSTest TRX input '");
-            StringAssert.Contains(result.StdOut + result.StdErr, "results.trx");
+            StringAssert.Contains(NormalizeConsoleDiagnostic(result.StdOut + result.StdErr), "results.trx");
         }
         finally
         {
@@ -340,6 +341,25 @@ public sealed class TestResultsSummaryContractTests
         }
     }
 
+    [TestMethod]
+    public void NormalizeConsoleDiagnostic_ReassemblesAPowerShellWrappedError()
+    {
+        // Captured verbatim from the hosted ubuntu-latest leg of run 33690371287, where PowerShell's
+        // error formatter wrapped the collector's minimum-samples diagnostic across two
+        // gutter-prefixed lines. The Windows console rendered the same message on one line, so every
+        // local gate passed while CI went red. Asserting on the raw text makes a fail-closed
+        // regression depend on the terminal that happened to run it.
+        const string wrapped =
+            "\u001B[31;1mException: \u001B[0m/home/runner/work/eng/collect-hosted-shard-timings.ps1:369\u001B[0m\n"
+            + "\u001B[31;1m\u001B[0m\u001B[36;1m     | \u001B[31;1mHosted image 'windows-latest' has 4 sampled runs, below the required\u001B[0m\n"
+            + "\u001B[31;1m\u001B[0m\u001B[36;1m     | \u001B[31;1mminimum of 5.\u001B[0m\n";
+
+        var normalized = NormalizeConsoleDiagnostic(wrapped);
+
+        StringAssert.Contains(normalized, "has 4 sampled runs, below the required minimum of 5");
+        Assert.IsFalse(normalized.Contains('\u001B'), "ANSI escapes must not survive normalization.");
+        Assert.IsFalse(normalized.Contains(" | "), "The error-formatter gutter must not survive normalization.");
+    }
     [TestMethod]
     public async Task Collector_LegAndImageNamesWithMarkdownDelimiters_AreEscapedInReportAsync()
     {
@@ -660,7 +680,27 @@ public sealed class TestResultsSummaryContractTests
             0,
             result.ExitCode,
             $"Script unexpectedly succeeded. stdout={result.StdOut} stderr={result.StdErr}");
-        StringAssert.Contains(result.StdOut + result.StdErr, expectedDiagnostic);
+        StringAssert.Contains(
+            NormalizeConsoleDiagnostic(result.StdOut + result.StdErr),
+            NormalizeConsoleDiagnostic(expectedDiagnostic));
+    }
+
+    /// <summary>
+    /// Reduces PowerShell's rendered error output to the diagnostic's semantic content.
+    /// </summary>
+    /// <remarks>
+    /// An uncaught <c>throw</c> is printed through PowerShell's error formatter, which adds ANSI
+    /// colour codes and hard-wraps the message at the host's console width behind a <c>"     | "</c>
+    /// gutter. That width differs between a developer's Windows console and the hosted Linux leg, so
+    /// a diagnostic that matches as one contiguous substring locally can be split mid-sentence in CI
+    /// — which is exactly how this suite went green on Windows and red on ubuntu-latest. Assertions
+    /// must compare what the script said, not how a terminal happened to lay it out.
+    /// </remarks>
+    private static string NormalizeConsoleDiagnostic(string text)
+    {
+        var withoutAnsi = Regex.Replace(text, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
+        var withoutGutter = Regex.Replace(withoutAnsi, @"(?m)^\s*\|\s?", string.Empty);
+        return Regex.Replace(withoutGutter, @"\s+", " ").Trim();
     }
 
     private const string FirstTrx = """
