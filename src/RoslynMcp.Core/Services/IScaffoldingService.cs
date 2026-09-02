@@ -55,17 +55,50 @@ public interface IScaffoldingService
 /// <summary>
 /// Transport-neutral bridge for opt-in test-method-name suggestions during scaffold preview.
 /// Implementations may use MCP sampling, fixtures, or a deterministic fake in tests.
+///
+/// <para>Two-phase contract (scaffold-sampling-mrtr-replay-cost): a transport whose exchange
+/// spans more than one round trip of the same logical call — MCP sampling over MRTR, where the
+/// first leg terminates with an input-required signal and the client retries the whole
+/// <c>tools/call</c> — answers <see cref="TryConsumePendingSuggestion"/> on the retry leg. Callers
+/// MUST probe that first and only build the (expensive) suggestion context when it returns false,
+/// so the semantic work behind <see cref="ScaffoldTestNameSuggestionContext"/> is paid on exactly
+/// one leg of the exchange instead of every replay.</para>
 /// </summary>
 public interface ITestNameSuggestionProvider
 {
     Task<TestNameSuggestionResult> SuggestTestNameAsync(ScaffoldTestNameSuggestionContext context, CancellationToken ct);
+
+    /// <summary>
+    /// Attempts to consume a suggestion the client already answered on an earlier round trip of
+    /// THIS logical request, without issuing a new suggestion request and without a context.
+    /// </summary>
+    /// <param name="result">
+    /// The already-answered suggestion (or its sanitized deterministic fallback) when this returns
+    /// true; an empty result otherwise.
+    /// </param>
+    /// <returns>
+    /// True when this request carried an answer that was consumed here. The default implementation
+    /// returns false: a single-round-trip provider (fixture, deterministic fake, in-process model)
+    /// has no prior leg to consume from, which is the correct answer rather than a compatibility
+    /// stub — it keeps <see cref="SuggestTestNameAsync"/> the only path such a provider needs.
+    /// </returns>
+    bool TryConsumePendingSuggestion(out TestNameSuggestionResult result)
+    {
+        result = new TestNameSuggestionResult(null);
+        return false;
+    }
 }
 
+/// <summary>
+/// Everything the suggestion prompt is built from. Every member is obtainable WITHOUT a
+/// <c>Compilation</c>: the request is issued ahead of symbol resolution (see the two-phase
+/// contract on <see cref="ITestNameSuggestionProvider"/>), so symbol-derived detail such as a
+/// method signature or declaring namespace is deliberately not part of this contract — carrying
+/// it would either be permanently null or reintroduce the semantic work the hoist defers.
+/// </summary>
 public sealed record ScaffoldTestNameSuggestionContext(
     string TargetTypeName,
     string TargetMethodName,
-    string? TargetMethodSignature,
-    string? TargetNamespace,
     IReadOnlyList<string> SiblingTestMethodNames);
 
 public sealed record TestNameSuggestionResult(string? MethodName, string? Warning = null);

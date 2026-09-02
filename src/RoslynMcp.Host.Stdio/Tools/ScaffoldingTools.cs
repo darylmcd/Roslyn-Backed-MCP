@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -141,6 +142,16 @@ public static class ScaffoldingTools
             ct);
     }
 
+    /// <summary>
+    /// Seam for the retry-leg half of the exchange, mirroring the <c>requestSampling</c> delegate:
+    /// it lets a test fault the consume path the way the sampling path can already be faulted.
+    /// </summary>
+    internal delegate bool TryConsumeSamplingDelegate(
+        RequestContext<CallToolRequestParams> context,
+        ILogger? logger,
+        out RequestScopedInputOutcome outcome,
+        out string? text);
+
     internal sealed class McpSamplingTestNameSuggestionProvider : ITestNameSuggestionProvider
     {
         private readonly RequestContext<CallToolRequestParams> _requestContext;
@@ -149,6 +160,7 @@ public static class ScaffoldingTools
             string,
             ILogger?,
             (RequestScopedInputOutcome Outcome, string? Text)> _requestSampling;
+        private readonly TryConsumeSamplingDelegate _tryConsumeSampling;
 
         internal McpSamplingTestNameSuggestionProvider(
             RequestContext<CallToolRequestParams> requestContext)
@@ -162,10 +174,48 @@ public static class ScaffoldingTools
                 RequestContext<CallToolRequestParams>,
                 string,
                 ILogger?,
-                (RequestScopedInputOutcome Outcome, string? Text)> requestSampling)
+                (RequestScopedInputOutcome Outcome, string? Text)> requestSampling,
+            TryConsumeSamplingDelegate? tryConsumeSampling = null)
         {
             _requestContext = requestContext ?? throw new ArgumentNullException(nameof(requestContext));
             _requestSampling = requestSampling ?? throw new ArgumentNullException(nameof(requestSampling));
+            _tryConsumeSampling = tryConsumeSampling ?? RequestScopedInputAdapter.TryConsumeSampling;
+        }
+
+        private ILogger? Logger =>
+            _requestContext.Services?
+                .GetService<ILoggerFactory>()?
+                .CreateLogger(typeof(McpSamplingTestNameSuggestionProvider).FullName ??
+                              nameof(McpSamplingTestNameSuggestionProvider));
+
+        /// <summary>
+        /// MRTR retry leg: the answer already rode in on this request, so it is consumed without a
+        /// prompt. Returning true here is what lets the caller skip rebuilding the (expensive)
+        /// suggestion context on every replay of the same logical <c>tools/call</c>.
+        /// </summary>
+        public bool TryConsumePendingSuggestion(out TestNameSuggestionResult result)
+        {
+            try
+            {
+                if (!_tryConsumeSampling(_requestContext, Logger, out var outcome, out var text))
+                {
+                    result = new TestNameSuggestionResult(null);
+                    return false;
+                }
+
+                result = ProjectOutcome(outcome, text);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
+            {
+                // The consume probe faulted for an unforeseen reason. This covers both an answer
+                // that was present but unusable and a fault raised before any answer was inspected
+                // (the capability gate or logger resolution). Report true with the sanitized
+                // fallback rather than false: falling through would re-issue the sampling request
+                // the client has already answered.
+                result = ReportSanitizedFailure(ex);
+                return true;
+            }
         }
 
         public Task<TestNameSuggestionResult> SuggestTestNameAsync(
@@ -179,52 +229,62 @@ public static class ScaffoldingTools
                 var (outcome, text) = _requestSampling(
                     _requestContext,
                     BuildSamplingPrompt(context),
-                    _requestContext.Services?
-                        .GetService<ILoggerFactory>()?
-                        .CreateLogger(typeof(McpSamplingTestNameSuggestionProvider).FullName ??
-                                      nameof(McpSamplingTestNameSuggestionProvider)));
+                    Logger);
                 ct.ThrowIfCancellationRequested();
-                if (outcome == RequestScopedInputOutcome.Unsupported)
-                {
-                    return Task.FromResult(new TestNameSuggestionResult(
-                        null,
-                        "useSampling was true but request-scoped sampling was unavailable; emitted the deterministic placeholder test name."));
-                }
-
-                if (outcome != RequestScopedInputOutcome.Accepted)
-                {
-                    return Task.FromResult(new TestNameSuggestionResult(
-                        null,
-                        "The request-scoped sampling response was malformed; emitted the deterministic placeholder test name."));
-                }
-
-                return Task.FromResult(new TestNameSuggestionResult(text));
+                return Task.FromResult(ProjectOutcome(outcome, text));
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
             {
-                var diagnostic = UnexpectedExceptionReporting.Report(
-                    _requestContext.Services?.GetService<IUnexpectedExceptionReporter>(),
-                    ex,
-                    UnexpectedExceptionCategory.Scaffolding);
-                return Task.FromResult(new TestNameSuggestionResult(
-                    null,
-                    $"Sampling test-name suggestion failed (correlationId={diagnostic.Public.CorrelationId}); emitted the deterministic placeholder test name."));
+                return Task.FromResult(ReportSanitizedFailure(ex));
             }
         }
 
-        private static string FormatSiblingExamples(IReadOnlyList<string> siblingTestMethodNames)
-            => siblingTestMethodNames.Count == 0
-                ? "(none)"
-                : string.Join(", ", siblingTestMethodNames.Take(6));
+        private static TestNameSuggestionResult ProjectOutcome(
+            RequestScopedInputOutcome outcome,
+            string? text) => outcome switch
+            {
+                RequestScopedInputOutcome.Accepted => new TestNameSuggestionResult(text),
+                RequestScopedInputOutcome.Unsupported => new TestNameSuggestionResult(
+                    null,
+                    "useSampling was true but request-scoped sampling was unavailable; emitted the deterministic placeholder test name."),
+                _ => new TestNameSuggestionResult(
+                    null,
+                    "The request-scoped sampling response was malformed; emitted the deterministic placeholder test name."),
+            };
 
-        private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context) =>
-            "Suggest a Given/When/Then test method name.\n" +
-            $"Target type: {context.TargetTypeName}\n" +
-            $"Target namespace: {context.TargetNamespace ?? "(global)"}\n" +
-            $"Target method: {context.TargetMethodName}\n" +
-            $"Signature: {context.TargetMethodSignature ?? context.TargetMethodName}\n" +
-            $"Sibling examples: {FormatSiblingExamples(context.SiblingTestMethodNames)}\n" +
-            "Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad";
+        private TestNameSuggestionResult ReportSanitizedFailure(Exception ex)
+        {
+            var diagnostic = UnexpectedExceptionReporting.Report(
+                _requestContext.Services?.GetService<IUnexpectedExceptionReporter>(),
+                ex,
+                UnexpectedExceptionCategory.Scaffolding);
+            return new TestNameSuggestionResult(
+                null,
+                $"Sampling test-name suggestion failed (correlationId={diagnostic.Public.CorrelationId}); emitted the deterministic placeholder test name.");
+        }
+
+        /// <summary>
+        /// Prompts from the syntactic context alone. The request is issued ahead of symbol
+        /// resolution, so symbol-derived detail (declaring namespace, method signature) is not
+        /// available to describe here — and inventing a placeholder such as "(global)" would
+        /// assert something false to the sampling model.
+        /// </summary>
+        private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context)
+        {
+            var prompt = new StringBuilder("Suggest a Given/When/Then test method name.\n")
+                .Append("Target type: ").Append(context.TargetTypeName).Append('\n')
+                .Append("Target method: ").Append(context.TargetMethodName).Append('\n');
+            if (context.SiblingTestMethodNames.Count > 0)
+            {
+                prompt.Append("Sibling examples: ")
+                    .Append(string.Join(", ", context.SiblingTestMethodNames.Take(6)))
+                    .Append('\n');
+            }
+
+            return prompt
+                .Append("Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad")
+                .ToString();
+        }
     }
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),

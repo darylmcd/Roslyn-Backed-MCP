@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -125,6 +126,11 @@ public sealed class SamplingMrtrWireTests
             "Each replay enters the production provider boundary once: request, then response consumption.");
         Assert.AreEqual(1, scaffoldingService.CompletedCount,
             "Only the retry carrying inputResponses may complete and return a preview.");
+        Assert.AreEqual(1, scaffoldingService.PromptedSuggestionCount,
+            "scaffold-sampling-mrtr-replay-cost: only the leg with no answer yet may build the " +
+            "suggestion prompt; the replay must not repeat that preparation.");
+        Assert.IsTrue(scaffoldingService.LastLegConsumedPendingSuggestion,
+            "The retry leg must consume the already-answered suggestion instead of rebuilding the prompt context.");
         Assert.AreEqual(originalWorkspaceId, scaffoldingService.LastWorkspaceId,
             "The production sampling retry must retain the workspace selected before input_required.");
         Assert.AreEqual(concurrentWorkspaceId, workspaceManager.ListWorkspaces().Single().WorkspaceId,
@@ -401,6 +407,52 @@ public sealed class SamplingMrtrWireTests
 
     [TestMethod]
     [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ConsumeFailure_ReportsSanitizedDiagnostic_AndDoesNotReissueSampling()
+    {
+        const string sentinel = "consume-secret-sentinel";
+        const string secretPath = "C:/private/tenant/answered-leg.json";
+        var reporter = new RecordingReporter();
+        await using var harness = await CreateHarnessAsync(
+            protocolVersion: "2025-11-25",
+            samplingHandler: null,
+            reporter);
+        var samplingRequests = 0;
+        var provider = new ScaffoldingTools.McpSamplingTestNameSuggestionProvider(
+            CreateRequestContext(harness.Server),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref samplingRequests);
+                return (RequestScopedInputOutcome.Accepted, _suggestedName);
+            },
+            ThrowingConsume);
+
+        var consumed = provider.TryConsumePendingSuggestion(out var result);
+
+        // The retry leg carries an answer the client already paid for. A fault while reading it
+        // must still be claimed, or the caller falls through and re-asks a question already asked.
+        Assert.IsTrue(consumed);
+        Assert.AreEqual(0, samplingRequests,
+            "A faulted consume must not issue a second sampling request for the same exchange.");
+        Assert.IsNull(result.MethodName);
+        Assert.IsNotNull(result.Warning);
+        Assert.IsFalse(result.Warning.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(result.Warning.Contains(secretPath, StringComparison.Ordinal));
+        Assert.IsFalse(result.Warning.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+        StringAssert.Contains(result.Warning, "correlationId=sampling-test");
+        var diagnostic = JsonSerializer.Serialize(reporter.LastReport);
+        Assert.IsFalse(diagnostic.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(diagnostic.Contains(secretPath, StringComparison.Ordinal));
+
+        static bool ThrowingConsume(
+            RequestContext<CallToolRequestParams> context,
+            ILogger? logger,
+            out RequestScopedInputOutcome outcome,
+            out string? text)
+            => throw new InvalidOperationException($"{sentinel} at {secretPath}");
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
     public async Task ProviderCancellation_PropagatesUnchanged()
     {
         await using var harness = await CreateHarnessAsync("2025-11-25", samplingHandler: null);
@@ -452,8 +504,6 @@ public sealed class SamplingMrtrWireTests
     private static ScaffoldTestNameSuggestionContext SuggestionContext() => new(
         "CacheService",
         "Load",
-        "Task<string> Load(string key)",
-        "Sample",
         ["Load_WhenFound_ReturnsValue"]);
 
     private static RequestContext<CallToolRequestParams> CreateRequestContext(McpServer server) =>
@@ -616,17 +666,27 @@ public sealed class SamplingMrtrWireTests
         }
     }
 
+    /// <summary>
+    /// Stands in for <c>ScaffoldingService</c> at the wire boundary, reproducing the ordering the
+    /// real <c>SingleTestScaffolder</c> uses: probe the provider's already-answered leg first, and
+    /// only build a prompt context on the leg that has no answer yet.
+    /// <see cref="PromptedSuggestionCount"/> counts the legs that had to build one, and must stay
+    /// at 1 across the whole MRTR round trip (scaffold-sampling-mrtr-replay-cost).
+    /// </summary>
     private sealed class RecordingScaffoldingService : IScaffoldingService
     {
         private int _attemptCount;
         private int _providerAttemptCount;
         private int _completedCount;
+        private int _promptedSuggestionCount;
 
         public int AttemptCount => Volatile.Read(ref _attemptCount);
         public int ProviderAttemptCount => Volatile.Read(ref _providerAttemptCount);
         public int CompletedCount => Volatile.Read(ref _completedCount);
+        public int PromptedSuggestionCount => Volatile.Read(ref _promptedSuggestionCount);
         public string? LastWorkspaceId { get; private set; }
         public ScaffoldTestDto? LastRequest { get; private set; }
+        public bool LastLegConsumedPendingSuggestion { get; private set; }
 
         public Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(
             string workspaceId,
@@ -648,9 +708,20 @@ public sealed class SamplingMrtrWireTests
                     "The production tool did not supply its request-scoped sampling provider.");
 
             Interlocked.Increment(ref _providerAttemptCount);
-            var suggestion = await provider
-                .SuggestTestNameAsync(SuggestionContext(), ct)
-                .ConfigureAwait(false);
+
+            // Retry leg: the answer already rode in on this request, so no prompt context is built.
+            LastLegConsumedPendingSuggestion = provider.TryConsumePendingSuggestion(out var suggestion);
+            if (!LastLegConsumedPendingSuggestion)
+            {
+                // Initial leg: build the prompt context and request sampling. In the real
+                // scaffolder this is the only leg that pays for sibling discovery, and it
+                // terminates here with the input-required signal.
+                Interlocked.Increment(ref _promptedSuggestionCount);
+                suggestion = await provider
+                    .SuggestTestNameAsync(SuggestionContext(), ct)
+                    .ConfigureAwait(false);
+            }
+
             Interlocked.Increment(ref _completedCount);
 
             return new RefactoringPreviewDto(

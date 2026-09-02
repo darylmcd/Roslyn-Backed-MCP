@@ -171,11 +171,57 @@ internal static class RequestScopedInputAdapter
     }
 
     /// <summary>
+    /// Capability and protocol gate for the whole sampling exchange, retries included. A client
+    /// must not be able to bypass the sampling boundary by hand-crafting inputResponses on a
+    /// legacy request or on a modern request that did not advertise sampling. Both sampling entry
+    /// points below route through this single predicate.
+    /// </summary>
+#pragma warning disable MCP9005 // The SDK marks sampling itself obsolete; this adapter is the bounded MRTR compatibility boundary.
+    private static bool SupportsRequestScopedSampling(RequestContext<CallToolRequestParams> context)
+        => RequestProtocolFeatureGate.SupportsJuly2026Features(context) &&
+           RequestProtocolFeatureGate.ResolveClientCapabilities(context)?.Sampling is not null;
+
+    /// <summary>
+    /// MRTR retry leg only: consumes the sampling answer the client attached to THIS request, with
+    /// no prompt text and no client round trip. Returns false when the request carries no such
+    /// answer (the initial leg) or when <see cref="SupportsRequestScopedSampling"/> refuses it.
+    ///
+    /// <para>Split out of <see cref="RequestSampling"/> so a caller can find out whether the
+    /// exchange is already answered BEFORE paying to build the prompt — the initial leg terminates
+    /// with <see cref="InputRequiredException"/> and the client replays the entire
+    /// <c>tools/call</c>, so any preparation done ahead of the request is paid on every replay.</para>
+    /// </summary>
+    internal static bool TryConsumeSampling(
+        RequestContext<CallToolRequestParams> context,
+        ILogger? logger,
+        out RequestScopedInputOutcome outcome,
+        out string? text)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        outcome = RequestScopedInputOutcome.Unsupported;
+        text = null;
+
+        if (!SupportsRequestScopedSampling(context) ||
+            context.Params?.InputResponses is not { } inputResponses ||
+            !inputResponses.TryGetValue(SamplingInputRequestKey, out var inputResponse))
+        {
+            return false;
+        }
+
+        var (classified, result) = ClassifySamplingResponse(inputResponse, logger);
+        outcome = classified;
+        text = result?.Content?
+            .OfType<TextContentBlock>()
+            .Select(static block => block.Text)
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+        return true;
+    }
+
+    /// <summary>
     /// Requests a sampling completion through MRTR. Sampling has no legacy nested-request leg:
     /// pre-MRTR or sampling-incapable clients receive <see cref="RequestScopedInputOutcome.Unsupported"/>
     /// so callers retain deterministic behavior without relying on the deprecated SDK API.
     /// </summary>
-#pragma warning disable MCP9005 // The SDK marks sampling itself obsolete; this adapter is the bounded MRTR compatibility boundary.
     internal static (RequestScopedInputOutcome Outcome, string? Text) RequestSampling(
         RequestContext<CallToolRequestParams> context,
         string promptText,
@@ -184,24 +230,14 @@ internal static class RequestScopedInputAdapter
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptText);
 
-        // Capability and protocol support gate the entire exchange, including retries. A client
-        // must not be able to bypass the sampling boundary by hand-crafting inputResponses on a
-        // legacy request or on a modern request that did not advertise sampling.
-        if (!RequestProtocolFeatureGate.SupportsJuly2026Features(context) ||
-            RequestProtocolFeatureGate.ResolveClientCapabilities(context)?.Sampling is null)
+        if (TryConsumeSampling(context, logger, out var outcome, out var text))
         {
-            return (RequestScopedInputOutcome.Unsupported, null);
+            return (outcome, text);
         }
 
-        if (context.Params?.InputResponses is { } inputResponses &&
-            inputResponses.TryGetValue(SamplingInputRequestKey, out var inputResponse))
+        if (!SupportsRequestScopedSampling(context))
         {
-            var (outcome, result) = ClassifySamplingResponse(inputResponse, logger);
-            var text = result?.Content?
-                .OfType<TextContentBlock>()
-                .Select(static block => block.Text)
-                .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
-            return (outcome, text);
+            return (RequestScopedInputOutcome.Unsupported, null);
         }
 
         throw new InputRequiredException(
