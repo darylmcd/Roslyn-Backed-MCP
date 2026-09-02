@@ -1,6 +1,6 @@
 # repository-dotnet-format-baseline-partition — Partition the repository formatter baseline
 
-**row:** `repository-dotnet-format-baseline-partition` · **pri:** `Low` · **size:** `L` · **deps:** `ci-router-runner-label-duplication`
+**row:** `repository-dotnet-format-baseline-partition` · **pri:** `Low` · **size:** `M` · **deps:** `ci-router-runner-label-duplication`
 
 ## Anchors
 
