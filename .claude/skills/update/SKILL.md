@@ -1,7 +1,7 @@
 ---
 name: update
 installed_as: update
-description: "Maintainer-local override of the shipped /roslyn-mcp:update skill. Refreshes the complete plugin cache, including its release-pinned dnx server launch, from this checkout."
+description: "Maintainer-local override of the shipped /roslyn-mcp:update skill. Refreshes both install layers from this checkout — the Layer 2 plugin cache with its release-pinned dnx server launch, and the Layer 1 global tool — then verifies both track the same version."
 user-invocable: true
 argument-hint: ""
 ---
@@ -42,14 +42,49 @@ Requires the plugin to have been installed through Claude Code at least once (so
 
 If the client responds with `/plugin isn't available in this environment`, use the PowerShell path above.
 
-### Step 3: Optional standalone global tool
+### Step 3: Update the Layer 1 global tool (required)
 
-Only when the maintainer also uses the separate global-tool install, run `just tool-update` (NuGet.org) or `just tool-install-local` after `just pack`. The plugin launches its own release-pinned package through `dnx` and does not depend on this shim.
+```bash
+just tool-update
+```
 
-### Step 4: Report
+Resolves `Darylmcd.RoslynMcp` from NuGet.org (`dotnet tool update -g`, falling back to `install`). Use `just tool-install-local` after `just pack` instead when refreshing from an unpublished local build.
 
-Same as the shipped skill — previous version, new version, optional global-tool result when requested, **reminder to restart Claude Code**.
+**This step is not optional.** At runtime the plugin launches its own release-pinned package through `dnx` and does not depend on this shim, which is why the step was once documented as optional — but "does not depend on" is not "does not drift." A stale Layer 1 means `roslynmcp` on the PATH, any standalone-client config pointing at it, and `dotnet tool list -g` all report an older server than the plugin runs. Both layers track the release.
+
+If `dotnet tool update` reports the previous version right after a release, NuGet indexing has not caught up — wait and retry rather than accepting the old version.
+
+**Windows file lock.** A running Layer 1 process holds its store directory, and the update fails:
+
+```
+Failed to uninstall tool package 'darylmcd.roslynmcp':
+Access to the path 'C:\Users\<user>\.dotnet\tools\.store\darylmcd.roslynmcp\<old>' is denied.
+```
+
+This is the common case, not an edge case — anyone who actually uses Layer 1 has one running, and it is very often **this session's own MCP server**: when Claude Code launched the server from the Layer 1 shim rather than the `dnx` pin, the holder's PID equals `server_info`'s `stdioPid` (verified on the v4.1.2 cut). Restarting Claude Code first therefore clears the lock on its own, which is why the practical order is stop-or-restart *then* update.
+
+Identify the holder by image path before retrying — the `ExecutablePath` is what distinguishes the layers, not the process name:
+
+```bash
+pwsh -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='roslynmcp.exe'\" | Select-Object ProcessId, ExecutablePath, CreationDate"
+```
+
+Stop only a process you have confirmed is an owned Layer 1 instance — one whose image path is under `~/.dotnet/tools/` — then re-run `just tool-update`. Never stop a `roslynmcp` process by image name alone: the plugin's `dnx`-launched Layer 2 server is also called `roslynmcp.exe`, runs from the NuGet package cache rather than the tool store, does not hold the lock, and killing it drops the MCP connection of whoever is attached. `just tool-update` has no owned-process shutdown of its own; only the local-pack path (`eng/reinstall-local-tool.ps1`, via `ROSLYNMCP_REINSTALL_PROCESS_ID` + `ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC`) does. Backlog row `tool-update-owned-process-shutdown` tracks closing that gap.
+
+### Step 4: Verify both layers
+
+```bash
+pwsh -NoProfile -File eng/verify-install-layers.ps1
+```
+
+Reads Layer 1 from `dotnet tool list --global` and Layer 2 from the plugin cache (plus the cached `plugin.json`), and fails naming whichever layer is stale. Do not report the update complete until it exits 0.
+
+### Step 5: Report
+
+Same as the shipped skill — previous version, new version, **both layer versions with the verifier's result**, and a **reminder to restart Claude Code**.
 
 ## Why this override exists
 
-During the v1.29.0 release-cut (PR #377), the Claude Code client refused `/plugin` slash-commands and the plugin cache remained stale. The repo already shipped `eng/update-claude-plugin.ps1` (maintainer-only, agent-executable, idempotent); this override makes that cache refresh the primary in-repo path. The separate global-tool install is optional and no longer part of the plugin contract.
+During the v1.29.0 release-cut (PR #377), the Claude Code client refused `/plugin` slash-commands and the plugin cache remained stale. The repo already shipped `eng/update-claude-plugin.ps1` (maintainer-only, agent-executable, idempotent); this override makes that cache refresh the primary in-repo path.
+
+The global-tool install is **not** part of the plugin's runtime contract — the plugin launches its own release-pinned package through `dnx`. It is still a required maintainer step (Step 3), because independence is not currency: after v4.1.2 the plugin cache was correct while `dotnet tool list -g` still reported 4.1.1. Runtime independence is exactly what let it rot unnoticed.

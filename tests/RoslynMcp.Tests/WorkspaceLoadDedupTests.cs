@@ -151,18 +151,57 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
         try
         {
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            var documentPath = Directory.EnumerateFiles(copiedRoot, "*.cs", SearchOption.AllDirectories)
-                .First();
+            var documentPath = SelectDeterministicProjectSourceFile(copiedRoot);
 
             var owners = WorkspaceManager.FindWorkspaceIdsContainingFile(documentPath);
 
-            CollectionAssert.AreEqual(new[] { status.WorkspaceId }, owners.ToArray());
+            CollectionAssert.AreEqual(
+                new[] { status.WorkspaceId },
+                owners.ToArray(),
+                $"Expected exactly the loaded workspace to own '{documentPath}'.");
             WorkspaceManager.Close(status.WorkspaceId);
         }
         finally
         {
             DeleteDirectoryIfExists(copiedRoot);
         }
+    }
+
+    /// <summary>
+    /// Picks a project source file that is genuinely a document of the loaded workspace, in an
+    /// order that does not depend on the filesystem.
+    /// </summary>
+    /// <remarks>
+    /// This test previously took <c>EnumerateFiles(root, "*.cs", AllDirectories).First()</c>.
+    /// Two problems compounded. <c>First()</c> over an unordered enumeration has no defined
+    /// result, and enumeration order differs between NTFS and ext4 — so the pick varied by
+    /// platform. And the fixture copy only excludes <c>bin</c>, never <c>obj</c> (it cannot:
+    /// MSBuildWorkspace needs <c>obj/project.assets.json</c> to load), so the tree carries
+    /// generated sources under both <c>obj/Debug</c> and <c>obj/Release</c>. Only the active
+    /// configuration's copies are compilation documents, so landing on the other one returned
+    /// zero owners and failed as "Different number of elements" — reliably on the Linux shard,
+    /// never on Windows.
+    /// </remarks>
+    private static string SelectDeterministicProjectSourceFile(string copiedRoot)
+    {
+        var buildOutputSegments = new[]
+        {
+            $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+        };
+
+        var documentPath = Directory
+            .EnumerateFiles(copiedRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !buildOutputSegments.Any(
+                segment => path.Contains(segment, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        Assert.IsNotNull(
+            documentPath,
+            $"The copied sample solution under '{copiedRoot}' contains no project source file.");
+
+        return documentPath;
     }
 
     [TestMethod]

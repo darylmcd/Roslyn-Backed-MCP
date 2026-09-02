@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-02T16:04:08Z
+**updated_at:** 2026-09-02T16:13:40Z
 
 ## Agent contract
 
@@ -64,6 +64,7 @@
 | `ci-hosted-shard-duration-balancing` | Medium | — | Balance hosted Windows and Linux shards only after repeated per-image TRX evidence proves material skew. [type: performance] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
 | `tool-description-slice-test-harness-consolidation` | Medium | — | **Share the per-slice description-budget test harness** — each diet/dedupe slice copies a ~98-line reflection harness (33 differing lines of 98 measured); five cold reviews flagged it independently. Split per slice-family before planning. [type: refactor] [source: 2026-08-26 backlog-sweep code review] | L | items/tool-description-slice-test-harness-consolidation.md |
 | `formatter-baseline-generator-concurrent-load-timeout` | Medium | — | Diagnose formatter baseline generator contention without masking five-minute timeouts. [type: test infrastructure] [source: 2026-09-01 just-ci] | M | items/formatter-baseline-generator-concurrent-load-timeout.md |
+| `tool-update-owned-process-shutdown` | Medium | — | **Owned-process shutdown for `just tool-update`** — the now-mandatory Layer 1 refresh fails with a locked tool-store directory whenever a `roslynmcp` process is running; reuse the local-pack ownership guard instead of matching on image name. [type: bug] [source: 2026-09-02 two-layer release-cut contract] | M | items/tool-update-owned-process-shutdown.md |
 
 ## Low
 
