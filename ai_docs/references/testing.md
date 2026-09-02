@@ -28,7 +28,7 @@
 | Standing shard-weighting decision | `CI_POLICY.md` section "Hosted Shard Weighting Decision" |
 
 - Keep local `just ci` unsharded; it proves the complete suite in one invocation.
-- Summed TRX case duration alone is not a partition signal on hosted runners. Its same-leg run-to-run swing can exceed the between-leg spread, so a shard ranked by it reproduces runner noise. Quote wall-time skew and summed case duration as separate metrics; `eng/collect-hosted-shard-timings.ps1` emits them in separate columns and refuses fewer than five samples per hosted image.
+- Summed TRX case duration alone is not a partition signal on hosted runners. Its same-leg run-to-run swing can exceed the between-leg spread, so a shard ranked by it reproduces runner noise. Quote wall-time skew and summed case duration as separate metrics; `eng/collect-hosted-shard-timings.ps1` emits them in separate columns and refuses fewer than `-MinimumSamples` (default 5) runs per hosted image.
 - Model each hosted image on its own evidence. Never merge images into one profile and never feed a local-machine timing into a hosted profile.
 - For CI, require nonempty shards whose class sets are disjoint and whose union equals discovery.
 - Use exact `ClassName` filters. Do not revive per-source-regex or `FullyQualifiedName~` slicing.

@@ -8,6 +8,9 @@ namespace RoslynMcp.Tests;
 [TestCategory("Process")]
 public sealed class TestResultsSummaryContractTests
 {
+    private const string SummarizerDescription = "test-results summarizer";
+    private const string CollectorDescription = "hosted shard timing collector";
+
     private static readonly TimeSpan _processTimeout = TimeSpan.FromSeconds(30);
 
     [TestMethod]
@@ -117,7 +120,8 @@ public sealed class TestResultsSummaryContractTests
             new Dictionary<string, string?>
             {
                 ["ROSLYN_MCP_SCRIPT_UNDER_TEST"] = scriptPath,
-            });
+            },
+            SummarizerDescription);
 
         AssertSucceeded(result);
     }
@@ -203,6 +207,137 @@ public sealed class TestResultsSummaryContractTests
     }
 
     [TestMethod]
+    public async Task Collector_ManifestPathEscapesResultsRoot_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                    manifest[0]["path"] = "../escaped/test-results-w-1");
+
+            AssertFailedWith(result, "Leg manifest entry 0 'path' escapes ResultsRoot.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_DuplicateRunAndLegPair_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) => manifest.Add(
+                    new Dictionary<string, object>(manifest[0])));
+
+            AssertFailedWith(result, "Duplicate leg observation for run 'r1' leg 'w-1'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_LegDirectoryHoldsNoTrx_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.Delete(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx")));
+
+            AssertFailedWith(
+                result,
+                "Leg manifest entry 0 'path' holds no TRX files: 'r1/test-results-w-1'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_NonPositiveWallTime_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) => manifest[0]["wallTimeSeconds"] = 0);
+
+            AssertFailedWith(
+                result,
+                "Leg manifest entry 0 has a non-positive 'wallTimeSeconds'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_TrxWithZeroCases_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.WriteAllText(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx"),
+                    """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+                      <Results />
+                      <TestDefinitions />
+                    </TestRun>
+                    """));
+
+            AssertFailedWith(result, "TRX file reports zero cases:");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_MalformedTrx_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.WriteAllText(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx"),
+                    "<TestRun><Results>"));
+
+            AssertFailedWith(result, "Malformed MSTest TRX input.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task Collector_ValidProfile_ReportsBothMetricsSeparatelyAndNeverMergesImagesAsync()
     {
         var fixtureRoot = CreateFixtureRoot();
@@ -273,9 +408,26 @@ public sealed class TestResultsSummaryContractTests
             new Dictionary<string, string?>
             {
                 ["ROSLYN_MCP_SCRIPT_UNDER_TEST"] = GetCollectorScriptPath(),
-            });
+            },
+            CollectorDescription);
 
         AssertSucceeded(result);
+    }
+
+    /// <summary>
+    /// Five complete runs of a two-leg <c>windows-latest</c> profile: the smallest observation set
+    /// that clears every sampling gate, so a corruption hook isolates the rule under test.
+    /// </summary>
+    private static List<LegObservation> BuildCompleteWindowsProfile()
+    {
+        var observations = new List<LegObservation>();
+        for (var run = 1; run <= 5; run++)
+        {
+            observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+            observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+        }
+
+        return observations;
     }
 
     private sealed record LegObservation(
@@ -294,9 +446,15 @@ public sealed class TestResultsSummaryContractTests
         return next < 0 ? report[start..] : report[start..next];
     }
 
+    /// <param name="mutate">
+    /// Optional corruption hook run after a well-formed fixture is laid down but before the
+    /// manifest is written, so a fail-closed regression can break exactly one invariant.
+    /// Receives the manifest entries and the resolved ResultsRoot.
+    /// </param>
     private static async Task<PwshScriptResult> RunCollectorAsync(
         string fixtureRoot,
-        IReadOnlyList<LegObservation> observations)
+        IReadOnlyList<LegObservation> observations,
+        Action<List<Dictionary<string, object>>, string>? mutate = null)
     {
         var resultsRoot = Path.Combine(fixtureRoot, "downloads");
         var manifest = new List<Dictionary<string, object>>();
@@ -322,6 +480,8 @@ public sealed class TestResultsSummaryContractTests
             });
         }
 
+        mutate?.Invoke(manifest, resultsRoot);
+
         var manifestPath = Path.Combine(fixtureRoot, "legs.json");
         await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest));
 
@@ -336,7 +496,8 @@ public sealed class TestResultsSummaryContractTests
                 "-LegManifest",
                 manifestPath,
             ],
-            environment: null);
+            environment: null,
+            description: CollectorDescription);
     }
 
     private static string BuildTwoCaseTrx(int totalSeconds)
@@ -390,7 +551,10 @@ public sealed class TestResultsSummaryContractTests
             GetScriptPath(),
         };
         processArguments.AddRange(arguments);
-        return RunPowerShellAsync(processArguments, environment: null);
+        return RunPowerShellAsync(
+            processArguments,
+            environment: null,
+            description: SummarizerDescription);
     }
 
     private static string GetScriptPath() => Path.Combine(
@@ -400,13 +564,14 @@ public sealed class TestResultsSummaryContractTests
 
     private static Task<PwshScriptResult> RunPowerShellAsync(
         IEnumerable<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment)
+        IReadOnlyDictionary<string, string?>? environment,
+        string description)
         => PwshScriptRunner.RunAsync(
             arguments,
             workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
             environment: environment,
             timeout: _processTimeout,
-            description: "test-results summarizer");
+            description: description);
 
     private static void AssertSucceeded(PwshScriptResult result) => Assert.AreEqual(
         0,

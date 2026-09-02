@@ -23,6 +23,9 @@ Fail-closed rules (each throws rather than degrading):
   - a duplicate run id + leg pair
   - a manifest path that escapes ResultsRoot, is absent, or holds no TRX
 
+The Markdown report is written to stdout. Redirect it if you want it in a file; this script never
+writes to a path you give it, so it can never append into its own downloaded TRX input.
+
 .PARAMETER ResultsRoot
 Directory holding the downloaded `test-results-<leg>` folders. Every manifest path resolves
 beneath it.
@@ -46,10 +49,6 @@ into a hosted image profile.
 .PARAMETER MinimumSamples
 Minimum distinct runs required per hosted image. Defaults to 5.
 
-.PARAMETER OutputPath
-When omitted, Markdown goes to stdout. When provided, one complete report is appended in UTF-8
-so an existing summary is preserved.
-
 .EXAMPLE
 pwsh -NoProfile -File ./eng/collect-hosted-shard-timings.ps1 -ResultsRoot ./downloads -LegManifest ./downloads/legs.json
 #>
@@ -62,9 +61,7 @@ param(
     [string]$LegManifest,
 
     [ValidateRange(1, 1000)]
-    [int]$MinimumSamples = 5,
-
-    [string]$OutputPath
+    [int]$MinimumSamples = 5
 )
 
 Set-StrictMode -Version Latest
@@ -219,33 +216,6 @@ function Read-TrxCaseDuration {
         SumSeconds = $sumTicks / [double][TimeSpan]::TicksPerSecond
         CaseCount = $caseCount
     }
-}
-
-function Publish-Report {
-    param([Parameter(Mandatory)][string]$Markdown)
-
-    if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-        [Console]::Out.WriteLine($Markdown)
-        return
-    }
-
-    $canonicalOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
-    $outputDirectory = [System.IO.Path]::GetDirectoryName($canonicalOutputPath)
-    if (-not [string]::IsNullOrEmpty($outputDirectory)) {
-        [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
-    }
-
-    $prefix = if ([System.IO.File]::Exists($canonicalOutputPath) -and
-                  [System.IO.FileInfo]::new($canonicalOutputPath).Length -gt 0) {
-        [Environment]::NewLine
-    }
-    else {
-        ''
-    }
-    [System.IO.File]::AppendAllText(
-        $canonicalOutputPath,
-        $prefix + $Markdown.TrimEnd() + [Environment]::NewLine,
-        [System.Text.UTF8Encoding]::new($false))
 }
 
 if (-not (Test-Path -LiteralPath $ResultsRoot -PathType Container)) {
@@ -417,12 +387,9 @@ foreach ($imageName in $imageNames) {
             WallMean = ($wallValues | Measure-Object -Average).Average
             WallMinimum = $wallMinimum
             WallMaximum = $wallMaximum
-            WallSpread = if ($wallMinimum -gt 0) {
-                $wallMaximum / $wallMinimum
-            }
-            else {
-                [double]::PositiveInfinity
-            }
+            # Get-RequiredSeconds rejects a non-positive wall time, so the minimum is always
+            # positive and this division needs no zero guard.
+            WallSpread = $wallMaximum / $wallMinimum
             CaseDurationMean = ($caseDurationValues | Measure-Object -Average).Average
             CaseDurationMinimum = $caseDurationMinimum
             CaseDurationMaximum = $caseDurationMaximum
@@ -450,12 +417,8 @@ foreach ($imageName in $imageNames) {
     $criticalPathMean = ($perRunCriticalPath | Measure-Object -Average).Average
     $balancedFloorMean = ($perRunBalancedFloor | Measure-Object -Average).Average
     $achievableGain = $criticalPathMean - $balancedFloorMean
-    $achievableGainShare = if ($criticalPathMean -gt 0) {
-        100.0 * $achievableGain / $criticalPathMean
-    }
-    else {
-        0.0
-    }
+    # Every wall time is positive (Get-RequiredSeconds), so the mean slowest leg is too.
+    $achievableGainShare = 100.0 * $achievableGain / $criticalPathMean
 
     $noiseBand = (@($legStatistics | ForEach-Object {
         ($_.WallMaximum - $_.WallMinimum) / 2.0
@@ -544,4 +507,4 @@ foreach ($imageName in $imageNames) {
     }
 }
 
-Publish-Report -Markdown ($lines -join [Environment]::NewLine)
+[Console]::Out.WriteLine($lines -join [Environment]::NewLine)
