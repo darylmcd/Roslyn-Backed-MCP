@@ -31,6 +31,14 @@ Fail-closed contract:
 Exit codes of `dotnet format --verify-no-changes`: 0 = clean, 2 = findings reported.
 Both are success here; any other exit code is fatal.
 
+Phase-marker contract:
+  The restore and format phases are bracketed by `$formatPhaseMarkerPrefix` lines written
+  to STDERR with the elapsed milliseconds since script start. They exist so a caller that
+  has to kill this script on a timeout can tell a genuine generator hang from host-wide
+  MSBuild/dotnet-format contention, and so successful runs accumulate the phase timings
+  that would justify any future change to that timeout. STDOUT is the byte-compared
+  determinism payload and never carries a marker.
+
 .PARAMETER Check
 Regenerate the inventory in memory and compare it against the tracked artifact
 without writing. Exits 1 when they differ. CI and the contract test share this path.
@@ -52,6 +60,30 @@ $ErrorActionPreference = 'Stop'
 $schemaVersion = 1
 $solutionFileName = 'RoslynMcp.slnx'
 $formatArguments = @('format', $solutionFileName, '--verify-no-changes', '--no-restore')
+$phaseStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+function Write-FormatPhaseMarker {
+    <#
+    .SYNOPSIS
+    Emit one phase marker on STDERR.
+
+    .DESCRIPTION
+    Uses the raw console error writer on purpose. `Write-Error` would abort the script under
+    `$ErrorActionPreference = 'Stop'`, and `Write-Output` would corrupt the determinism payload.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('restore', 'format')]
+        [string]$Phase,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('start', 'end')]
+        [string]$Transition
+    )
+
+    $elapsedMs = [int]$phaseStopwatch.Elapsed.TotalMilliseconds
+    [System.Console]::Error.WriteLine("$formatPhaseMarkerPrefix $Phase $Transition elapsedMs=$elapsedMs")
+}
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath '..'))
 $solutionPath = Join-Path -Path $repositoryRoot -ChildPath $solutionFileName
@@ -81,16 +113,22 @@ function ConvertTo-RepositoryRelativePath {
 Push-Location -LiteralPath $repositoryRoot
 try {
     if (-not $NoRestore) {
+        Write-FormatPhaseMarker -Phase 'restore' -Transition 'start'
         $global:LASTEXITCODE = 0
         $restoreOutput = @(& dotnet restore $solutionFileName)
-        if ($global:LASTEXITCODE -ne 0) {
-            throw "dotnet restore failed with exit code $($global:LASTEXITCODE):`n$($restoreOutput -join [System.Environment]::NewLine)"
+        $restoreExitCode = $global:LASTEXITCODE
+        # Emitted before the exit-code check so a failing restore still reports its duration.
+        Write-FormatPhaseMarker -Phase 'restore' -Transition 'end'
+        if ($restoreExitCode -ne 0) {
+            throw "dotnet restore failed with exit code ${restoreExitCode}:`n$($restoreOutput -join [System.Environment]::NewLine)"
         }
     }
 
+    Write-FormatPhaseMarker -Phase 'format' -Transition 'start'
     $global:LASTEXITCODE = 0
     $formatOutput = @(& dotnet @formatArguments 2>&1 | ForEach-Object { $_.ToString() })
     $formatExitCode = $global:LASTEXITCODE
+    Write-FormatPhaseMarker -Phase 'format' -Transition 'end'
 }
 finally {
     Pop-Location

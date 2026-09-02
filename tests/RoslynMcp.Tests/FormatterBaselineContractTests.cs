@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -16,7 +17,42 @@ public sealed class FormatterBaselineContractTests
 {
     private const int _expectedSchemaVersion = 1;
 
+    /// <summary>
+    /// Mirrors <c>$formatPhaseMarkerPrefix</c> in <c>eng/format-diagnostic-contract.ps1</c>.
+    /// <see cref="GeneratorAndGate_ImportOneSharedDiagnosticGrammar"/> asserts the two stay identical.
+    /// </summary>
+    private const string _formatPhaseMarkerPrefix = "##format-phase##";
+
+    /// <summary>
+    /// Deliberately unchanged. A longer bound would hide host contention instead of naming it;
+    /// the diagnostics around it exist so a future measured replacement can be justified by
+    /// the phase timings every successful run now records.
+    /// </summary>
     private static readonly TimeSpan _processTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Bound on draining the already-started stdout/stderr readers after the generator tree is
+    /// killed. <see cref="Process.Kill(bool)"/> returns before the tree has actually torn down, and
+    /// the reads only complete once every inherited pipe-write handle is closed - which is slowest
+    /// under exactly the contention this diagnostic exists to name. Negligible next to
+    /// <see cref="_processTimeout"/>.
+    /// </summary>
+    private static readonly TimeSpan _drainTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Process names that contend for the same MSBuild/NuGet/compiler-server resources the
+    /// generator needs. Matched by name because that is all <see cref="Process"/> exposes without
+    /// elevated access.
+    /// </summary>
+    private static readonly string[] _competingProcessNames =
+    [
+        "dotnet",
+        "MSBuild",
+        "testhost",
+        "VBCSCompiler",
+    ];
+
+    private const int _maxCompetingProcessesReported = 10;
 
     private static readonly string[] _trackedDiagnosticIds =
     [
@@ -189,16 +225,73 @@ public sealed class FormatterBaselineContractTests
 
         StringAssert.Contains(contract, "$formatDiagnosticPattern =");
         StringAssert.Contains(contract, "$formatTruncationMarker =");
+        StringAssert.Contains(
+            contract,
+            $"$formatPhaseMarkerPrefix = '{_formatPhaseMarkerPrefix}'",
+            "The phase-marker prefix this test class parses must be the one the contract declares.");
         foreach (var consumer in consumers)
         {
             StringAssert.Contains(consumer, "format-diagnostic-contract.ps1");
             Assert.IsFalse(
                 Regex.IsMatch(
                     consumer,
-                    @"^\s*\$(?:formatDiagnosticPattern|diagnosticPattern|formatTruncationMarker|truncationMarker)\s*=",
+                    @"^\s*\$(?:formatDiagnosticPattern|diagnosticPattern|formatTruncationMarker|truncationMarker|formatPhaseMarkerPrefix|phaseMarkerPrefix)\s*=",
                     RegexOptions.Multiline),
-                "Formatter grammar consumers must not redeclare the shared regex or truncation marker.");
+                "Formatter grammar consumers must not redeclare the shared regex, truncation marker, or phase-marker prefix.");
         }
+    }
+
+    [TestMethod]
+    public void ClassifyGeneratorTimeout_NamesTheEvidenceInsteadOfBlamingTheBound()
+    {
+        var markers =
+            new[]
+            {
+                "##format-phase## restore start elapsedMs=8",
+                "##format-phase## restore end elapsedMs=41230",
+                "##format-phase## format start elapsedMs=41233",
+            };
+
+        Assert.AreEqual(
+            "generator-never-started",
+            ClassifyGeneratorTimeout(
+                [],
+                competingProcessesAtStart: 4,
+                competingProcessesStillRunning: 4,
+                stderrDrained: true),
+            "A drained but empty stderr means the generator never reached its first dotnet invocation.");
+        Assert.AreEqual(
+            "host-contention",
+            ClassifyGeneratorTimeout(
+                [],
+                competingProcessesAtStart: 4,
+                competingProcessesStillRunning: 4,
+                stderrDrained: false),
+            "An undrained stderr is missing evidence, so it must never be reported as 'never started'.");
+        Assert.AreEqual(
+            "host-contention",
+            ClassifyGeneratorTimeout(
+                markers,
+                competingProcessesAtStart: 4,
+                competingProcessesStillRunning: 3,
+                stderrDrained: true),
+            "A competitor that pre-dated the run and outlived the bound is the contention signature.");
+        Assert.AreEqual(
+            "generator-hang",
+            ClassifyGeneratorTimeout(
+                markers,
+                competingProcessesAtStart: 0,
+                competingProcessesStillRunning: 0,
+                stderrDrained: true),
+            "Phases started on an otherwise idle host and never finished: a real hang.");
+        Assert.AreEqual(
+            "generator-hang",
+            ClassifyGeneratorTimeout(
+                markers,
+                competingProcessesAtStart: 4,
+                competingProcessesStillRunning: 0,
+                stderrDrained: true),
+            "Competitors that all exited cannot explain a stall that outlasted them.");
     }
 
     [TestMethod]
@@ -212,6 +305,18 @@ public sealed class FormatterBaselineContractTests
             firstRun.StdOut,
             secondRun.StdOut,
             $"The generator must be byte-deterministic. stderr={firstRun.StdErr}{secondRun.StdErr}");
+
+        // Phase markers are diagnostics, not payload. stdout is the byte-compared inventory the
+        // assertion above locks, so a marker leaking there would break determinism outright.
+        Assert.IsFalse(
+            firstRun.StdOut.Contains(_formatPhaseMarkerPrefix, StringComparison.Ordinal),
+            "Phase markers must never reach stdout; stdout is the byte-compared determinism payload.");
+        CollectionAssert.AreEqual(
+            new[] { "restore start", "restore end", "format start", "format end" },
+            ExtractPhaseMarkers(firstRun.StdErr)
+                .Select(marker => string.Join(' ', marker.Split(' ').Skip(1).Take(2)))
+                .ToArray(),
+            $"The generator must bracket both phases on stderr. stderr={firstRun.StdErr}");
 
         var live = ParseInventory(
             firstRun.StdOut,
@@ -246,6 +351,152 @@ public sealed class FormatterBaselineContractTests
             $"Formatter debt grew: live={live.Totals.FindingCount} tracked={tracked.Totals.FindingCount}. Repair the new violations or regenerate the baseline deliberately.");
     }
 
+    /// <summary>
+    /// Classifies a generator timeout from evidence the caller already collected, so the verdict
+    /// itself is unit-testable without having to stall a real process.
+    /// </summary>
+    /// <param name="phaseMarkers">
+    /// Phase markers drained from the killed generator's stderr, in emission order.
+    /// </param>
+    /// <param name="competingProcessesAtStart">
+    /// How many contending processes were already running when the generator was launched.
+    /// </param>
+    /// <param name="competingProcessesStillRunning">
+    /// How many of those same processes were still alive when the timeout fired.
+    /// </param>
+    /// <param name="stderrDrained">
+    /// Whether the generator's stderr was fully read back. When it was not, an empty
+    /// <paramref name="phaseMarkers"/> means "evidence unavailable", not "no phase ran" - reporting
+    /// the latter would invent a verdict out of a failed read.
+    /// </param>
+    internal static string ClassifyGeneratorTimeout(
+        IReadOnlyList<string> phaseMarkers,
+        int competingProcessesAtStart,
+        int competingProcessesStillRunning,
+        bool stderrDrained)
+    {
+        // The first marker precedes the first `dotnet` invocation, so its absence means the
+        // generator produced no work at all - a launch problem, not a stall inside a phase.
+        if (stderrDrained && phaseMarkers.Count == 0)
+        {
+            return "generator-never-started";
+        }
+
+        // Contention is only credible when the competitor pre-dated the generator AND outlived the
+        // bound; one that exited early cannot explain a five-minute stall.
+        if (competingProcessesAtStart > 0 && competingProcessesStillRunning > 0)
+        {
+            return "host-contention";
+        }
+
+        return "generator-hang";
+    }
+
+    private static string[] ExtractPhaseMarkers(string stderr)
+        => stderr
+            .ReplaceLineEndings("\n")
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith(_formatPhaseMarkerPrefix, StringComparison.Ordinal))
+            .ToArray();
+
+    /// <summary>
+    /// Names the contending processes visible right now. Anything that cannot be inspected is
+    /// skipped rather than reported, because an un-openable process is evidence of neither
+    /// contention nor its absence.
+    /// </summary>
+    private static IReadOnlyList<CompetingProcess> SnapshotCompetingProcesses()
+    {
+        var selfProcessId = Environment.ProcessId;
+        var snapshot = new List<CompetingProcess>();
+        foreach (var processName in _competingProcessNames)
+        {
+            Process[] candidates;
+            try
+            {
+                candidates = Process.GetProcessesByName(processName);
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+            catch (Win32Exception)
+            {
+                continue;
+            }
+
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    if (candidate.Id != selfProcessId)
+                    {
+                        snapshot.Add(new CompetingProcess(candidate.Id, processName));
+                    }
+                }
+                catch (Win32Exception)
+                {
+                    // Access denied on a process this test does not own.
+                }
+                catch (InvalidOperationException)
+                {
+                    // Exited between enumeration and inspection.
+                }
+                finally
+                {
+                    candidate.Dispose();
+                }
+            }
+        }
+
+        return snapshot;
+    }
+
+    private static string DescribeCompetingProcesses(IReadOnlyList<CompetingProcess> processes)
+    {
+        if (processes.Count == 0)
+        {
+            return "none";
+        }
+
+        var reported = processes
+            .Take(_maxCompetingProcessesReported)
+            .Select(process => $"{process.Name}#{process.Id}");
+        var suffix = processes.Count > _maxCompetingProcessesReported
+            ? $", +{processes.Count - _maxCompetingProcessesReported} more"
+            : string.Empty;
+        return $"{processes.Count} [{string.Join(", ", reported)}{suffix}]";
+    }
+
+    /// <summary>
+    /// Awaits an already-running reader under <see cref="_drainTimeout"/>. The reader was started
+    /// before the timeout fired; abandoning it would discard the killed generator's own account of
+    /// where it stalled, which is the only evidence that matters at that moment.
+    /// </summary>
+    private static async Task<DrainResult> DrainAsync(Task<string> readTask, string streamName)
+    {
+        try
+        {
+            var completed = await Task.WhenAny(readTask, Task.Delay(_drainTimeout));
+            if (completed != readTask)
+            {
+                return new DrainResult(
+                    false,
+                    $"<{streamName} not drained within {_drainTimeout.TotalSeconds:0} seconds>");
+            }
+
+            return new DrainResult(true, await readTask);
+        }
+        catch (IOException exception)
+        {
+            return new DrainResult(false, $"<{streamName} drain failed: {exception.Message}>");
+        }
+        catch (ObjectDisposedException exception)
+        {
+            return new DrainResult(false, $"<{streamName} drain failed: {exception.Message}>");
+        }
+    }
+
     private static async Task<ProcessResult> RunGeneratorCheckAsync()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -270,6 +521,10 @@ public sealed class FormatterBaselineContractTests
         // evaluated by the subset assertions rather than by the exit code.
         startInfo.ArgumentList.Add("-Check");
 
+        // Taken before launch, so nothing the generator itself spawns can appear in it.
+        var competingAtStart = SnapshotCompetingProcesses();
+        var elapsed = Stopwatch.StartNew();
+
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start PowerShell.");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
@@ -281,12 +536,47 @@ public sealed class FormatterBaselineContractTests
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
+            // Intersecting on pid with the pre-launch snapshot excludes the generator's own tree
+            // without a parent-pid lookup: every descendant it spawned started later.
+            var startingIds = competingAtStart.Select(entry => entry.Id).ToHashSet();
+            var stillCompeting = SnapshotCompetingProcesses()
+                .Where(entry => entry.Id != process.Id && startingIds.Contains(entry.Id))
+                .ToArray();
+
             process.Kill(entireProcessTree: true);
+
+            var partialStdOut = await DrainAsync(stdoutTask, "stdout");
+            var partialStdErr = await DrainAsync(stderrTask, "stderr");
+            var phaseMarkers = ExtractPhaseMarkers(partialStdErr.Text);
+            var classification = ClassifyGeneratorTimeout(
+                phaseMarkers,
+                competingAtStart.Count,
+                stillCompeting.Length,
+                partialStdErr.Drained);
+
             throw new TimeoutException(
-                $"Formatter baseline generator did not exit within {_processTimeout.TotalMinutes} minutes.");
+                $"Formatter baseline generator did not exit within {_processTimeout.TotalMinutes} minutes. "
+                + $"classification={classification}; "
+                + $"stderrDrained={partialStdErr.Drained}; "
+                + $"phases=[{string.Join(" | ", phaseMarkers)}]; "
+                + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
+                + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
+                + $"partialStdOutChars={partialStdOut.Text.Length}; "
+                + $"partialStdErr={partialStdErr.Text}");
         }
 
-        return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+        elapsed.Stop();
+        var stdOut = await stdoutTask;
+        var stdErr = await stderrTask;
+
+        // Recorded on every successful run so TRX history accumulates the repeated phase evidence
+        // any future change to _processTimeout would have to be argued from.
+        Console.WriteLine(
+            $"[formatter-baseline] totalMs={elapsed.ElapsedMilliseconds}; "
+            + $"phases=[{string.Join(" | ", ExtractPhaseMarkers(stdErr))}]; "
+            + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}");
+
+        return new ProcessResult(process.ExitCode, stdOut, stdErr);
     }
 
     private static void AssertStrictlyAscendingOrdinal(string[] values, string description)
@@ -324,6 +614,10 @@ public sealed class FormatterBaselineContractTests
     }
 
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
+
+    private sealed record CompetingProcess(int Id, string Name);
+
+    private sealed record DrainResult(bool Drained, string Text);
 
     private sealed record FormatBaseline(
         int SchemaVersion,
