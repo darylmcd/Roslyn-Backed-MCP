@@ -295,6 +295,65 @@ public sealed class FormatterBaselineContractTests
     }
 
     [TestMethod]
+    public void DescribeCompetingProcesses_NamesTheCappedHeadAndAccountsForTheRemainder()
+    {
+        Assert.AreEqual(
+            "none",
+            DescribeCompetingProcesses([]),
+            "An empty snapshot must read as an absence of contention, not as an empty list.");
+
+        Assert.AreEqual(
+            "2 [dotnet#1000, MSBuild#1001]",
+            DescribeCompetingProcesses(
+                [new CompetingProcess(1000, "dotnet"), new CompetingProcess(1001, "MSBuild")]),
+            "Below the cap every competitor is named and no remainder suffix appears.");
+
+        var overCap = Enumerable
+            .Range(0, _maxCompetingProcessesReported + 2)
+            .Select(index => new CompetingProcess(1000 + index, "dotnet"))
+            .ToArray();
+
+        Assert.AreEqual(
+            "12 [dotnet#1000, dotnet#1001, dotnet#1002, dotnet#1003, dotnet#1004, dotnet#1005, "
+            + "dotnet#1006, dotnet#1007, dotnet#1008, dotnet#1009, +2 more]",
+            DescribeCompetingProcesses(overCap),
+            "Truncation must keep the true total up front and account for the unnamed tail; a "
+            + "silently clipped list would understate the contention this diagnostic measures.");
+    }
+
+    [TestMethod]
+    public async Task DrainAsync_SeparatesWhatWasReadFromWhetherTheReadSucceededAsync()
+    {
+        var drained = await DrainAsync(Task.FromResult("payload"), "stdout");
+
+        Assert.IsTrue(drained.Drained, "An already-completed reader must be reported as drained.");
+        Assert.AreEqual("payload", drained.Text, "A drained reader must surface its own text verbatim.");
+        Assert.AreEqual(
+            "7 chars",
+            DescribeDrainedLength(drained),
+            "A successful drain reports the captured size.");
+
+        var stalled = await DrainAsync(
+            new TaskCompletionSource<string>().Task,
+            "stdout",
+            TimeSpan.FromMilliseconds(50));
+
+        Assert.IsFalse(
+            stalled.Drained,
+            "A reader that outlives the bound must never be reported as drained.");
+        StringAssert.Contains(
+            stalled.Text,
+            "stdout not drained within",
+            "The placeholder must name the stream and the failure.");
+        Assert.AreEqual(
+            "unavailable (drain failed)",
+            DescribeDrainedLength(stalled),
+            "A failed drain must never be reported as a character count: the placeholder's own "
+            + "length reads as a plausible payload size, which is exactly the ambiguity between a "
+            + "truncated payload and a failed read that this diagnostic exists to remove.");
+    }
+
+    [TestMethod]
     [TestCategory("Process")]
     public async Task Generator_IsDeterministicAndTheTrackedInventoryCoversTheLiveRunAsync()
     {
@@ -401,9 +460,11 @@ public sealed class FormatterBaselineContractTests
             .ToArray();
 
     /// <summary>
-    /// Names the contending processes visible right now. Anything that cannot be inspected is
-    /// skipped rather than reported, because an un-openable process is evidence of neither
-    /// contention nor its absence.
+    /// Names the contending processes visible right now. A process class whose enumeration fails is
+    /// skipped rather than reported, because an un-enumerable class is evidence of neither
+    /// contention nor its absence. Enumeration is the only step that can fail: every entry
+    /// <see cref="Process.GetProcessesByName(string)"/> returns already carries its
+    /// <see cref="Process.Id"/>, so reading it back needs no guard of its own.
     /// </summary>
     private static IReadOnlyList<CompetingProcess> SnapshotCompetingProcesses()
     {
@@ -427,24 +488,12 @@ public sealed class FormatterBaselineContractTests
 
             foreach (var candidate in candidates)
             {
-                try
+                using (candidate)
                 {
                     if (candidate.Id != selfProcessId)
                     {
                         snapshot.Add(new CompetingProcess(candidate.Id, processName));
                     }
-                }
-                catch (Win32Exception)
-                {
-                    // Access denied on a process this test does not own.
-                }
-                catch (InvalidOperationException)
-                {
-                    // Exited between enumeration and inspection.
-                }
-                finally
-                {
-                    candidate.Dispose();
                 }
             }
         }
@@ -469,20 +518,38 @@ public sealed class FormatterBaselineContractTests
     }
 
     /// <summary>
+    /// Reports how much of a stream the timeout actually captured. A failed drain has no size to
+    /// report: <see cref="DrainAsync(Task{string}, string)"/> substitutes a placeholder whose own
+    /// length would read as a plausible byte count, so the failure is named instead of numbered.
+    /// </summary>
+    private static string DescribeDrainedLength(DrainResult drain)
+        => drain.Drained ? $"{drain.Text.Length} chars" : "unavailable (drain failed)";
+
+    /// <summary>
     /// Awaits an already-running reader under <see cref="_drainTimeout"/>. The reader was started
     /// before the timeout fired; abandoning it would discard the killed generator's own account of
     /// where it stalled, which is the only evidence that matters at that moment.
     /// </summary>
-    private static async Task<DrainResult> DrainAsync(Task<string> readTask, string streamName)
+    private static Task<DrainResult> DrainAsync(Task<string> readTask, string streamName)
+        => DrainAsync(readTask, streamName, _drainTimeout);
+
+    /// <summary>
+    /// Explicit-bound overload. Exists so the not-drained branch is exercisable in milliseconds
+    /// rather than only after a real thirty-second stall.
+    /// </summary>
+    private static async Task<DrainResult> DrainAsync(
+        Task<string> readTask,
+        string streamName,
+        TimeSpan drainTimeout)
     {
         try
         {
-            var completed = await Task.WhenAny(readTask, Task.Delay(_drainTimeout));
+            var completed = await Task.WhenAny(readTask, Task.Delay(drainTimeout));
             if (completed != readTask)
             {
                 return new DrainResult(
                     false,
-                    $"<{streamName} not drained within {_drainTimeout.TotalSeconds:0} seconds>");
+                    $"<{streamName} not drained within {drainTimeout.TotalSeconds:0} seconds>");
             }
 
             return new DrainResult(true, await readTask);
@@ -557,11 +624,12 @@ public sealed class FormatterBaselineContractTests
             throw new TimeoutException(
                 $"Formatter baseline generator did not exit within {_processTimeout.TotalMinutes} minutes. "
                 + $"classification={classification}; "
+                + $"stdoutDrained={partialStdOut.Drained}; "
                 + $"stderrDrained={partialStdErr.Drained}; "
                 + $"phases=[{string.Join(" | ", phaseMarkers)}]; "
                 + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
                 + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
-                + $"partialStdOutChars={partialStdOut.Text.Length}; "
+                + $"partialStdOut={DescribeDrainedLength(partialStdOut)}; "
                 + $"partialStdErr={partialStdErr.Text}");
         }
 
