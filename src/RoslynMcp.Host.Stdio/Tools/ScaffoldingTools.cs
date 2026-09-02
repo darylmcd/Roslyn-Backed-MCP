@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -168,6 +169,41 @@ public static class ScaffoldingTools
             _requestSampling = requestSampling ?? throw new ArgumentNullException(nameof(requestSampling));
         }
 
+        private ILogger? Logger =>
+            _requestContext.Services?
+                .GetService<ILoggerFactory>()?
+                .CreateLogger(typeof(McpSamplingTestNameSuggestionProvider).FullName ??
+                              nameof(McpSamplingTestNameSuggestionProvider));
+
+        /// <summary>
+        /// MRTR retry leg: the answer already rode in on this request, so it is consumed without a
+        /// prompt. Returning true here is what lets the caller skip rebuilding the (expensive)
+        /// suggestion context on every replay of the same logical <c>tools/call</c>.
+        /// </summary>
+        public bool TryConsumePendingSuggestion(out TestNameSuggestionResult result)
+        {
+            try
+            {
+                if (!RequestScopedInputAdapter.TryConsumeSampling(
+                        _requestContext, Logger, out var outcome, out var text))
+                {
+                    result = new TestNameSuggestionResult(null);
+                    return false;
+                }
+
+                result = ProjectOutcome(outcome, text);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The answer was present but unusable for an unforeseen reason. Report true with the
+                // sanitized fallback rather than false: falling through would re-issue the sampling
+                // request the client has already answered.
+                result = ReportSanitizedFailure(ex);
+                return true;
+            }
+        }
+
         public Task<TestNameSuggestionResult> SuggestTestNameAsync(
             ScaffoldTestNameSuggestionContext context,
             CancellationToken ct)
@@ -179,52 +215,72 @@ public static class ScaffoldingTools
                 var (outcome, text) = _requestSampling(
                     _requestContext,
                     BuildSamplingPrompt(context),
-                    _requestContext.Services?
-                        .GetService<ILoggerFactory>()?
-                        .CreateLogger(typeof(McpSamplingTestNameSuggestionProvider).FullName ??
-                                      nameof(McpSamplingTestNameSuggestionProvider)));
+                    Logger);
                 ct.ThrowIfCancellationRequested();
-                if (outcome == RequestScopedInputOutcome.Unsupported)
-                {
-                    return Task.FromResult(new TestNameSuggestionResult(
-                        null,
-                        "useSampling was true but request-scoped sampling was unavailable; emitted the deterministic placeholder test name."));
-                }
-
-                if (outcome != RequestScopedInputOutcome.Accepted)
-                {
-                    return Task.FromResult(new TestNameSuggestionResult(
-                        null,
-                        "The request-scoped sampling response was malformed; emitted the deterministic placeholder test name."));
-                }
-
-                return Task.FromResult(new TestNameSuggestionResult(text));
+                return Task.FromResult(ProjectOutcome(outcome, text));
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
             {
-                var diagnostic = UnexpectedExceptionReporting.Report(
-                    _requestContext.Services?.GetService<IUnexpectedExceptionReporter>(),
-                    ex,
-                    UnexpectedExceptionCategory.Scaffolding);
-                return Task.FromResult(new TestNameSuggestionResult(
-                    null,
-                    $"Sampling test-name suggestion failed (correlationId={diagnostic.Public.CorrelationId}); emitted the deterministic placeholder test name."));
+                return Task.FromResult(ReportSanitizedFailure(ex));
             }
         }
 
-        private static string FormatSiblingExamples(IReadOnlyList<string> siblingTestMethodNames)
-            => siblingTestMethodNames.Count == 0
-                ? "(none)"
-                : string.Join(", ", siblingTestMethodNames.Take(6));
+        private static TestNameSuggestionResult ProjectOutcome(
+            RequestScopedInputOutcome outcome,
+            string? text) => outcome switch
+            {
+                RequestScopedInputOutcome.Accepted => new TestNameSuggestionResult(text),
+                RequestScopedInputOutcome.Unsupported => new TestNameSuggestionResult(
+                    null,
+                    "useSampling was true but request-scoped sampling was unavailable; emitted the deterministic placeholder test name."),
+                _ => new TestNameSuggestionResult(
+                    null,
+                    "The request-scoped sampling response was malformed; emitted the deterministic placeholder test name."),
+            };
 
-        private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context) =>
-            "Suggest a Given/When/Then test method name.\n" +
-            $"Target type: {context.TargetTypeName}\n" +
-            $"Target namespace: {context.TargetNamespace ?? "(global)"}\n" +
-            $"Target method: {context.TargetMethodName}\n" +
-            $"Signature: {context.TargetMethodSignature ?? context.TargetMethodName}\n" +
-            $"Sibling examples: {FormatSiblingExamples(context.SiblingTestMethodNames)}\n" +
-            "Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad";
+        private TestNameSuggestionResult ReportSanitizedFailure(Exception ex)
+        {
+            var diagnostic = UnexpectedExceptionReporting.Report(
+                _requestContext.Services?.GetService<IUnexpectedExceptionReporter>(),
+                ex,
+                UnexpectedExceptionCategory.Scaffolding);
+            return new TestNameSuggestionResult(
+                null,
+                $"Sampling test-name suggestion failed (correlationId={diagnostic.Public.CorrelationId}); emitted the deterministic placeholder test name.");
+        }
+
+        /// <summary>
+        /// Omits the fields the caller could not supply rather than substituting a placeholder for
+        /// them. The initial MRTR leg deliberately runs ahead of symbol resolution, so signature
+        /// and namespace are frequently unknown there — printing "(global)" for an unknown
+        /// namespace would assert something false to the sampling model.
+        /// </summary>
+        private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context)
+        {
+            var prompt = new StringBuilder("Suggest a Given/When/Then test method name.\n")
+                .Append("Target type: ").Append(context.TargetTypeName).Append('\n');
+            if (!string.IsNullOrWhiteSpace(context.TargetNamespace))
+            {
+                prompt.Append("Target namespace: ").Append(context.TargetNamespace).Append('\n');
+            }
+
+            prompt.Append("Target method: ").Append(context.TargetMethodName).Append('\n');
+            if (!string.IsNullOrWhiteSpace(context.TargetMethodSignature))
+            {
+                prompt.Append("Signature: ").Append(context.TargetMethodSignature).Append('\n');
+            }
+
+            if (context.SiblingTestMethodNames.Count > 0)
+            {
+                prompt.Append("Sibling examples: ")
+                    .Append(string.Join(", ", context.SiblingTestMethodNames.Take(6)))
+                    .Append('\n');
+            }
+
+            return prompt
+                .Append("Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad")
+                .ToString();
+        }
     }
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),

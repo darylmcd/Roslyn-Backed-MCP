@@ -1,8 +1,10 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.TestInfrastructure;
 
@@ -559,13 +561,84 @@ public sealed class DogExistingTests
         Assert.IsNotNull(provider.LastContext);
         Assert.AreEqual("Dog", provider.LastContext.TargetTypeName);
         Assert.AreEqual("Speak", provider.LastContext.TargetMethodName);
-        StringAssert.Contains(provider.LastContext.TargetMethodSignature!, "Speak(");
-        CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenQuiet_ReturnsEmpty");
+        CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenQuiet_ReturnsEmpty",
+            "Sibling naming conventions are filesystem-derived and must still steer the suggestion.");
+        // scaffold-sampling-mrtr-replay-cost: the request is issued ahead of symbol resolution, so
+        // the symbol-derived fields are deliberately absent. Their presence would mean the
+        // compilation had already been paid for on a leg that a retry replays from scratch.
+        Assert.IsNull(provider.LastContext.TargetMethodSignature,
+            "The sampling request must precede the compilation that would supply the signature.");
+        Assert.IsNull(provider.LastContext.TargetNamespace,
+            "The sampling request must precede the compilation that would supply the namespace.");
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "Speak_WhenDogIsReady_ReturnsBark");
         Assert.IsFalse(contents.Contains("Speak_Needs_Test"),
             "Opted-in sampled scaffold should replace the deterministic placeholder with the suggested method name.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_SamplingReplay_PaysSemanticPreparationOnce()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "DogReplayTests.cs");
+        await File.WriteAllTextAsync(siblingPath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public sealed class DogReplayTests
+{
+    [TestMethod]
+    public void Speak_WhenReplayed_ReturnsEcho()
+    {
+    }
+}
+""", CancellationToken.None);
+        var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
+
+        // The decorator counts every entry into the semantic layer. Project resolution and framework
+        // detection go through GetStatus on the facade, so this counter isolates exactly the work the
+        // hoist is meant to keep off the replayed leg.
+        var countingWorkspace = new CountingWorkspaceManager(WorkspaceManager);
+        var scaffoldingService = new ScaffoldingService(countingWorkspace, FileOperationService, PreviewStore);
+        var provider = new ReplayTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
+        var request = new ScaffoldTestDto(
+            "SampleLib.Tests",
+            "Dog",
+            "Speak",
+            ReferenceTestFile: string.Empty,
+            UseSampling: true);
+
+        // Leg 1: the transport terminates the call with its input-required signal, exactly as the
+        // MRTR adapter does, and the client then replays the whole tools/call.
+        await Assert.ThrowsExactlyAsync<SimulatedInputRequiredException>(() =>
+            scaffoldingService.PreviewScaffoldTestAsync(
+                workspace.WorkspaceId, request, CancellationToken.None, provider));
+
+        Assert.AreEqual(1, provider.SuggestCallCount, "The initial leg issues exactly one sampling request.");
+        Assert.AreEqual(0, countingWorkspace.GetCurrentSolutionCount,
+            "The initial leg must terminate before any target resolution or compilation — every " +
+            "semantic step taken ahead of the sampling request is paid again on the replay.");
+        Assert.IsNotNull(provider.LastContext);
+        CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenReplayed_ReturnsEcho",
+            "Sibling naming conventions cost no compilation, so the prompt keeps them.");
+
+        // Leg 2: the replay carries the client's answer.
+        var preview = await scaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId, request, CancellationToken.None, provider);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.AreEqual(1, provider.SuggestCallCount,
+            "The replay must consume the answered suggestion, not request a second one.");
+        Assert.AreEqual(2, provider.ConsumeCallCount, "Both legs probe for an already-answered suggestion first.");
+        Assert.AreEqual(2, countingWorkspace.GetCurrentSolutionCount,
+            "One target resolution plus one test-project compilation, across both legs combined.");
+        var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
+        StringAssert.Contains(contents, "Speak_WhenDogIsReady_ReturnsBark");
     }
 
     [TestMethod]
@@ -1433,5 +1506,115 @@ public class SnapshotContentHasher
             ScaffoldTestNameSuggestionContext context,
             CancellationToken ct) =>
             Task.FromException<TestNameSuggestionResult>(exception);
+    }
+
+    /// <summary>Stands in for the transport's input-required protocol signal.</summary>
+    private sealed class SimulatedInputRequiredException : Exception;
+
+    /// <summary>
+    /// Drives both legs of a replayed sampling exchange: the first request terminates the call the
+    /// way the MRTR adapter does, and the client's answer then rides in on the replay for
+    /// <see cref="ITestNameSuggestionProvider.TryConsumePendingSuggestion"/> to consume.
+    /// </summary>
+    private sealed class ReplayTestNameSuggestionProvider(string methodName) : ITestNameSuggestionProvider
+    {
+        private bool _answered;
+
+        public int SuggestCallCount { get; private set; }
+
+        public int ConsumeCallCount { get; private set; }
+
+        public ScaffoldTestNameSuggestionContext? LastContext { get; private set; }
+
+        public Task<TestNameSuggestionResult> SuggestTestNameAsync(
+            ScaffoldTestNameSuggestionContext context,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            SuggestCallCount++;
+            LastContext = context;
+            _answered = true;
+            throw new SimulatedInputRequiredException();
+        }
+
+        public bool TryConsumePendingSuggestion(out TestNameSuggestionResult result)
+        {
+            ConsumeCallCount++;
+            result = new TestNameSuggestionResult(_answered ? methodName : null);
+            return _answered;
+        }
+    }
+
+    /// <summary>
+    /// Pass-through <see cref="IWorkspaceManager"/> that counts entries into the semantic layer.
+    /// <see cref="GetCurrentSolution"/> is the only door to a <see cref="Compilation"/>, so its call
+    /// count measures the preparation the sampling hoist must keep off a replayed leg.
+    /// </summary>
+    private sealed class CountingWorkspaceManager(IWorkspaceManager inner) : IWorkspaceManager
+    {
+        private int _getCurrentSolutionCount;
+
+        public int GetCurrentSolutionCount => Volatile.Read(ref _getCurrentSolutionCount);
+
+        public event Action<string>? WorkspaceClosed
+        {
+            add => inner.WorkspaceClosed += value;
+            remove => inner.WorkspaceClosed -= value;
+        }
+
+        public event Action<string>? WorkspaceReloaded
+        {
+            add => inner.WorkspaceReloaded += value;
+            remove => inner.WorkspaceReloaded -= value;
+        }
+
+        public Solution GetCurrentSolution(string workspaceId)
+        {
+            Interlocked.Increment(ref _getCurrentSolutionCount);
+            return inner.GetCurrentSolution(workspaceId);
+        }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
+            inner.LoadAsync(path, evictPolicy, ct);
+
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
+            inner.ReloadAsync(workspaceId, ct);
+
+        public bool ContainsWorkspace(string workspaceId) => inner.ContainsWorkspace(workspaceId);
+
+        public bool IsStale(string workspaceId) => inner.IsStale(workspaceId);
+
+        public bool Close(string workspaceId) => inner.Close(workspaceId);
+
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => inner.ListWorkspaces();
+
+        public IReadOnlyList<string> FindWorkspaceIdsContainingFile(string filePath) =>
+            inner.FindWorkspaceIdsContainingFile(filePath);
+
+        public WorkspaceStatusDto GetStatus(string workspaceId) => inner.GetStatus(workspaceId);
+
+        public Task<WorkspaceStatusDto> GetStatusAsync(
+            string workspaceId,
+            CancellationToken cancellationToken = default) => inner.GetStatusAsync(workspaceId, cancellationToken);
+
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => inner.GetProjectGraph(workspaceId);
+
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(
+            string workspaceId,
+            string? projectName,
+            CancellationToken ct) => inner.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, ct);
+
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            inner.GetSourceTextAsync(workspaceId, filePath, ct);
+
+        public int GetCurrentVersion(string workspaceId) => inner.GetCurrentVersion(workspaceId);
+
+        public Project? GetProject(string workspaceId, string projectNameOrPath) =>
+            inner.GetProject(workspaceId, projectNameOrPath);
+
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) =>
+            inner.TryApplyChanges(workspaceId, newSolution);
+
+        public void RestoreVersion(string workspaceId, int version) => inner.RestoreVersion(workspaceId, version);
     }
 }

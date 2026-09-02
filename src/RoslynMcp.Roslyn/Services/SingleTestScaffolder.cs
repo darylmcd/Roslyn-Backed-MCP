@@ -60,11 +60,21 @@ internal sealed class SingleTestScaffolder
         // matched symbol's Name as authoritative once we have it, so the downstream class
         // identifier is always a single identifier (dotted identifiers are a CS syntax error).
         var lookupName = TestScaffoldRenderer.StripToSimpleTypeName(request.TargetTypeName);
+
+        // scaffold-sampling-mrtr-replay-cost: the sampling exchange runs FIRST, ahead of every
+        // semantic step below. Its provider may terminate this leg with a protocol input-required
+        // signal, after which the client replays the whole tools/call — so anything resolved before
+        // the request is resolved again on every replay. Hoisted here, the initial leg builds only
+        // the syntactic prompt context and the retry leg consumes the answer without rebuilding it,
+        // leaving project resolution, compilation and sibling inference paid exactly once.
+        var sampledTestName = await SuggestSampledTestNameAsync(
+            request, lookupName, projectDirectory, testNameSuggestionProvider, ct).ConfigureAwait(false);
+
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
             workspaceId, request.TestProjectName, lookupName, request.TargetMethodName, ct).ConfigureAwait(false);
 
         var simpleTypeName = typeInfo.MatchedType?.Name ?? lookupName;
-        var testFilePath = Path.Combine(projectDirectory, $"{simpleTypeName}GeneratedTests.cs");
+        var testFilePath = Path.Combine(projectDirectory, GeneratedTestFileName(simpleTypeName));
 
         // Sibling-pattern inference (scaffold-test-sibling-pattern-inference). When an explicit
         // referenceTestFile is supplied we use that as the pattern source; otherwise we
@@ -83,15 +93,6 @@ internal sealed class SingleTestScaffolder
             : await testRoslynProject.GetCompilationAsync(ct).ConfigureAwait(false);
         var siblingInference = InferSiblingTestPattern(request.ReferenceTestFile, projectDirectory, testFilePath, testProjectCompilation);
         var siblingWarnings = siblingInference.Warnings;
-        var sampledTestName = await SuggestSampledTestNameAsync(
-            request,
-            simpleTypeName,
-            typeInfo.TargetNamespace,
-            typeInfo.TargetMethod,
-            projectDirectory,
-            testFilePath,
-            testNameSuggestionProvider,
-            ct).ConfigureAwait(false);
 
         var content = TestScaffoldRenderer.BuildTestContent(new BuildTestContentRequest(
             testNamespace, request, simpleTypeName, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
@@ -103,13 +104,16 @@ internal sealed class SingleTestScaffolder
         return combinedWarnings.Count == 0 ? preview : preview with { Warnings = combinedWarnings };
     }
 
+    /// <summary>
+    /// Runs the opt-in sampling exchange before any semantic resolution. On a transport whose
+    /// exchange spans several replays of one logical call, the provider answers
+    /// <see cref="ITestNameSuggestionProvider.TryConsumePendingSuggestion"/> on the retry leg, so
+    /// the sibling enumerate-and-parse below is paid only on the leg that actually sends a prompt.
+    /// </summary>
     private static async Task<TestNameSuggestionResult> SuggestSampledTestNameAsync(
         ScaffoldTestDto request,
-        string simpleTypeName,
-        string targetNamespace,
-        IMethodSymbol? targetMethod,
+        string lookupTypeName,
         string projectDirectory,
-        string testFilePath,
         ITestNameSuggestionProvider? provider,
         CancellationToken ct)
     {
@@ -125,13 +129,29 @@ internal sealed class SingleTestScaffolder
                 "useSampling was true but no sampling provider was available; emitted the deterministic placeholder test name.");
         }
 
+        if (provider.TryConsumePendingSuggestion(out var pending))
+        {
+            return NormalizeSuggestion(pending);
+        }
+
+        // The symbol-derived signature and namespace are deliberately absent: obtaining them costs
+        // the compilation this hoist exists to defer, and the prompt omits what it does not know.
         var context = new ScaffoldTestNameSuggestionContext(
-            simpleTypeName,
+            lookupTypeName,
             request.TargetMethodName,
-            FormatMethodSignature(targetMethod),
-            string.IsNullOrWhiteSpace(targetNamespace) ? null : targetNamespace,
-            CollectSiblingTestMethodNames(projectDirectory, testFilePath, maxNames: 6));
-        var result = await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false);
+            TargetMethodSignature: null,
+            TargetNamespace: null,
+            CollectSiblingTestMethodNames(
+                projectDirectory,
+                Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),
+                maxNames: 6));
+        return NormalizeSuggestion(await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false));
+    }
+
+    private static string GeneratedTestFileName(string simpleTypeName) => $"{simpleTypeName}GeneratedTests.cs";
+
+    private static TestNameSuggestionResult NormalizeSuggestion(TestNameSuggestionResult result)
+    {
         var normalized = NormalizeSuggestedTestMethodName(result.MethodName);
         if (normalized is not null)
         {
@@ -329,17 +349,6 @@ internal sealed class SingleTestScaffolder
             .OrderByDescending(fi => fi.LastWriteTimeUtc)
             .Select(fi => fi.FullName)
             .FirstOrDefault();
-    }
-
-    private static string? FormatMethodSignature(IMethodSymbol? method)
-    {
-        if (method is null)
-        {
-            return null;
-        }
-
-        var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Type.ToMinimalDisplay()} {p.Name}"));
-        return $"{method.ReturnType.ToMinimalDisplay()} {method.Name}({parameters})";
     }
 
     private static IReadOnlyList<string> CollectSiblingTestMethodNames(
