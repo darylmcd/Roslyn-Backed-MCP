@@ -134,13 +134,11 @@ internal sealed class SingleTestScaffolder
             return NormalizeSuggestion(pending);
         }
 
-        // The symbol-derived signature and namespace are deliberately absent: obtaining them costs
-        // the compilation this hoist exists to defer, and the prompt omits what it does not know.
+        // Syntactic inputs only: this runs ahead of symbol resolution, so anything the compilation
+        // would supply is out of reach here by design — see ScaffoldTestNameSuggestionContext.
         var context = new ScaffoldTestNameSuggestionContext(
             lookupTypeName,
             request.TargetMethodName,
-            TargetMethodSignature: null,
-            TargetNamespace: null,
             CollectSiblingTestMethodNames(
                 projectDirectory,
                 Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),

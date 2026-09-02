@@ -563,13 +563,6 @@ public sealed class DogExistingTests
         Assert.AreEqual("Speak", provider.LastContext.TargetMethodName);
         CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenQuiet_ReturnsEmpty",
             "Sibling naming conventions are filesystem-derived and must still steer the suggestion.");
-        // scaffold-sampling-mrtr-replay-cost: the request is issued ahead of symbol resolution, so
-        // the symbol-derived fields are deliberately absent. Their presence would mean the
-        // compilation had already been paid for on a leg that a retry replays from scratch.
-        Assert.IsNull(provider.LastContext.TargetMethodSignature,
-            "The sampling request must precede the compilation that would supply the signature.");
-        Assert.IsNull(provider.LastContext.TargetNamespace,
-            "The sampling request must precede the compilation that would supply the namespace.");
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "Speak_WhenDogIsReady_ReturnsBark");

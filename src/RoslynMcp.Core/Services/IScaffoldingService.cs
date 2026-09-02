@@ -89,11 +89,16 @@ public interface ITestNameSuggestionProvider
     }
 }
 
+/// <summary>
+/// Everything the suggestion prompt is built from. Every member is obtainable WITHOUT a
+/// <c>Compilation</c>: the request is issued ahead of symbol resolution (see the two-phase
+/// contract on <see cref="ITestNameSuggestionProvider"/>), so symbol-derived detail such as a
+/// method signature or declaring namespace is deliberately not part of this contract — carrying
+/// it would either be permanently null or reintroduce the semantic work the hoist defers.
+/// </summary>
 public sealed record ScaffoldTestNameSuggestionContext(
     string TargetTypeName,
     string TargetMethodName,
-    string? TargetMethodSignature,
-    string? TargetNamespace,
     IReadOnlyList<string> SiblingTestMethodNames);
 
 public sealed record TestNameSuggestionResult(string? MethodName, string? Warning = null);

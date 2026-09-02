@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -406,6 +407,52 @@ public sealed class SamplingMrtrWireTests
 
     [TestMethod]
     [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ConsumeFailure_ReportsSanitizedDiagnostic_AndDoesNotReissueSampling()
+    {
+        const string sentinel = "consume-secret-sentinel";
+        const string secretPath = "C:/private/tenant/answered-leg.json";
+        var reporter = new RecordingReporter();
+        await using var harness = await CreateHarnessAsync(
+            protocolVersion: "2025-11-25",
+            samplingHandler: null,
+            reporter);
+        var samplingRequests = 0;
+        var provider = new ScaffoldingTools.McpSamplingTestNameSuggestionProvider(
+            CreateRequestContext(harness.Server),
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref samplingRequests);
+                return (RequestScopedInputOutcome.Accepted, _suggestedName);
+            },
+            ThrowingConsume);
+
+        var consumed = provider.TryConsumePendingSuggestion(out var result);
+
+        // The retry leg carries an answer the client already paid for. A fault while reading it
+        // must still be claimed, or the caller falls through and re-asks a question already asked.
+        Assert.IsTrue(consumed);
+        Assert.AreEqual(0, samplingRequests,
+            "A faulted consume must not issue a second sampling request for the same exchange.");
+        Assert.IsNull(result.MethodName);
+        Assert.IsNotNull(result.Warning);
+        Assert.IsFalse(result.Warning.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(result.Warning.Contains(secretPath, StringComparison.Ordinal));
+        Assert.IsFalse(result.Warning.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+        StringAssert.Contains(result.Warning, "correlationId=sampling-test");
+        var diagnostic = JsonSerializer.Serialize(reporter.LastReport);
+        Assert.IsFalse(diagnostic.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(diagnostic.Contains(secretPath, StringComparison.Ordinal));
+
+        static bool ThrowingConsume(
+            RequestContext<CallToolRequestParams> context,
+            ILogger? logger,
+            out RequestScopedInputOutcome outcome,
+            out string? text)
+            => throw new InvalidOperationException($"{sentinel} at {secretPath}");
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
     public async Task ProviderCancellation_PropagatesUnchanged()
     {
         await using var harness = await CreateHarnessAsync("2025-11-25", samplingHandler: null);
@@ -457,8 +504,6 @@ public sealed class SamplingMrtrWireTests
     private static ScaffoldTestNameSuggestionContext SuggestionContext() => new(
         "CacheService",
         "Load",
-        "Task<string> Load(string key)",
-        "Sample",
         ["Load_WhenFound_ReturnsValue"]);
 
     private static RequestContext<CallToolRequestParams> CreateRequestContext(McpServer server) =>

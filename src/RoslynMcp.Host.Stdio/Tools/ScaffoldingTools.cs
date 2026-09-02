@@ -142,6 +142,16 @@ public static class ScaffoldingTools
             ct);
     }
 
+    /// <summary>
+    /// Seam for the retry-leg half of the exchange, mirroring the <c>requestSampling</c> delegate:
+    /// it lets a test fault the consume path the way the sampling path can already be faulted.
+    /// </summary>
+    internal delegate bool TryConsumeSamplingDelegate(
+        RequestContext<CallToolRequestParams> context,
+        ILogger? logger,
+        out RequestScopedInputOutcome outcome,
+        out string? text);
+
     internal sealed class McpSamplingTestNameSuggestionProvider : ITestNameSuggestionProvider
     {
         private readonly RequestContext<CallToolRequestParams> _requestContext;
@@ -150,6 +160,7 @@ public static class ScaffoldingTools
             string,
             ILogger?,
             (RequestScopedInputOutcome Outcome, string? Text)> _requestSampling;
+        private readonly TryConsumeSamplingDelegate _tryConsumeSampling;
 
         internal McpSamplingTestNameSuggestionProvider(
             RequestContext<CallToolRequestParams> requestContext)
@@ -163,10 +174,12 @@ public static class ScaffoldingTools
                 RequestContext<CallToolRequestParams>,
                 string,
                 ILogger?,
-                (RequestScopedInputOutcome Outcome, string? Text)> requestSampling)
+                (RequestScopedInputOutcome Outcome, string? Text)> requestSampling,
+            TryConsumeSamplingDelegate? tryConsumeSampling = null)
         {
             _requestContext = requestContext ?? throw new ArgumentNullException(nameof(requestContext));
             _requestSampling = requestSampling ?? throw new ArgumentNullException(nameof(requestSampling));
+            _tryConsumeSampling = tryConsumeSampling ?? RequestScopedInputAdapter.TryConsumeSampling;
         }
 
         private ILogger? Logger =>
@@ -184,8 +197,7 @@ public static class ScaffoldingTools
         {
             try
             {
-                if (!RequestScopedInputAdapter.TryConsumeSampling(
-                        _requestContext, Logger, out var outcome, out var text))
+                if (!_tryConsumeSampling(_requestContext, Logger, out var outcome, out var text))
                 {
                     result = new TestNameSuggestionResult(null);
                     return false;
@@ -194,7 +206,7 @@ public static class ScaffoldingTools
                 result = ProjectOutcome(outcome, text);
                 return true;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
             {
                 // The answer was present but unusable for an unforeseen reason. Report true with the
                 // sanitized fallback rather than false: falling through would re-issue the sampling
@@ -250,26 +262,16 @@ public static class ScaffoldingTools
         }
 
         /// <summary>
-        /// Omits the fields the caller could not supply rather than substituting a placeholder for
-        /// them. The initial MRTR leg deliberately runs ahead of symbol resolution, so signature
-        /// and namespace are frequently unknown there — printing "(global)" for an unknown
-        /// namespace would assert something false to the sampling model.
+        /// Prompts from the syntactic context alone. The request is issued ahead of symbol
+        /// resolution, so symbol-derived detail (declaring namespace, method signature) is not
+        /// available to describe here — and inventing a placeholder such as "(global)" would
+        /// assert something false to the sampling model.
         /// </summary>
         private static string BuildSamplingPrompt(ScaffoldTestNameSuggestionContext context)
         {
             var prompt = new StringBuilder("Suggest a Given/When/Then test method name.\n")
-                .Append("Target type: ").Append(context.TargetTypeName).Append('\n');
-            if (!string.IsNullOrWhiteSpace(context.TargetNamespace))
-            {
-                prompt.Append("Target namespace: ").Append(context.TargetNamespace).Append('\n');
-            }
-
-            prompt.Append("Target method: ").Append(context.TargetMethodName).Append('\n');
-            if (!string.IsNullOrWhiteSpace(context.TargetMethodSignature))
-            {
-                prompt.Append("Signature: ").Append(context.TargetMethodSignature).Append('\n');
-            }
-
+                .Append("Target type: ").Append(context.TargetTypeName).Append('\n')
+                .Append("Target method: ").Append(context.TargetMethodName).Append('\n');
             if (context.SiblingTestMethodNames.Count > 0)
             {
                 prompt.Append("Sibling examples: ")
