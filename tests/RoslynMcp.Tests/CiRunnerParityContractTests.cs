@@ -25,7 +25,6 @@ public sealed class CiRunnerParityContractTests
 
         StringAssert.Contains(route, "runner_matrix: ${{ steps.decide.outputs.runner_matrix }}");
         StringAssert.Contains(route, "docs_only: ${{ steps.decide.outputs.docs_only }}");
-        StringAssert.Contains(route, "[ValidateSet('ubuntu-latest', 'windows-latest')]");
         StringAssert.Contains(validate, "leg: ${{ fromJSON(needs.route.outputs.runner_matrix) }}");
         StringAssert.Contains(validate, "runs-on: ${{ matrix.leg.runs_on }}");
         StringAssert.Contains(validate, "timeout-minutes: ${{ matrix.leg.timeout_minutes }}");
@@ -35,47 +34,51 @@ public sealed class CiRunnerParityContractTests
             "Artifact ownership must not double as the timeout/routing policy.");
     }
 
+    /// <summary>
+    /// The route job's leg construction, docs-only classification, and rename/count-mismatch/cap
+    /// fail-closed behavior now live in <c>eng/resolve-ci-topology.ps1</c> -- a real process
+    /// invoked and table-tested directly by <see cref="CiTopologyDecisionContractTests"/>. This
+    /// method stays a workflow-integration sentinel: it proves the `decide` step still fetches
+    /// pull-request files, still fails closed on a `gh api` error, still calls the extracted
+    /// script with the documented inputs, and still writes its JSON decision to the step outputs
+    /// the `validate` job's matrix and `validate-gate`'s docs-only check consume.
+    /// </summary>
     [TestMethod]
-    public void PullRequestTopology_UsesFourCompleteHostedWindowsAndTwoLinuxShards()
+    public void DecideStep_FetchesPullRequestFilesAndDelegatesToTheTopologyScript()
     {
-        var decide = GetNamedStepBlock(GetJobBlock(LoadCiWorkflow(), "route"), "Decide validation topology");
+        var workflow = LoadCiWorkflow();
+        var route = GetJobBlock(workflow, "route");
+        var decide = GetNamedStepBlock(route, "Decide validation topology");
 
-        for (var shardIndex = 0; shardIndex < 4; shardIndex++)
-        {
-            Assert.AreEqual(
-                1,
-                CountOccurrences(
-                    decide,
-                    $"New-Leg -Name 'windows-hosted-{shardIndex + 1}-of-4'"));
-            Assert.AreEqual(
-                1,
-                CountOccurrences(
-                    decide,
-                    "-RunsOn 'windows-latest' -ArtifactOwner $false " +
-                    $"-TimeoutMinutes 45 -TestShardIndex {shardIndex} -TestShardCount 4"));
-        }
+        StringAssert.Contains(route, "- name: Check out repository");
+        StringAssert.Contains(decide, "gh api `");
+        StringAssert.Contains(decide, "--paginate `");
+        StringAssert.Contains(decide, "--slurp `");
+        StringAssert.Contains(decide, "/pulls/$pullRequestNumber/files?per_page=100");
+        StringAssert.Contains(decide, "if ($LASTEXITCODE -ne 0)");
+        StringAssert.Contains(decide, "throw \"Could not enumerate pull-request files and rename origins");
+        StringAssert.Contains(decide, "$reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'");
+        StringAssert.Contains(decide, "& ./eng/resolve-ci-topology.ps1");
+        StringAssert.Contains(decide, "-EventName $eventName");
+        StringAssert.Contains(decide, "-ChangedFilesJson $changedFilesJson");
+        StringAssert.Contains(decide, "-ReportedChangedFileCount $reportedChangedFileCount");
+        StringAssert.Contains(decide, "$decision = $decisionJson | ConvertFrom-Json");
+        StringAssert.Contains(decide, "docs_only=$($decision.docs_only.ToString().ToLowerInvariant())");
+        StringAssert.Contains(decide, "$decision.runner_matrix | ConvertTo-Json -Compress -Depth 6 -AsArray");
+        StringAssert.Contains(decide, "\"runner_matrix=$matrixJson\"");
+        StringAssert.Contains(decide, "::notice title=Validation route::$($decision.reason)");
+        Assert.IsFalse(
+            decide.Contains("Changed current/original paths:", StringComparison.Ordinal),
+            "Attacker-controlled file names must not be emitted as raw workflow log lines.");
 
-        Assert.AreEqual(1, CountOccurrences(decide, "New-Leg -Name 'linux-1-of-2'"));
-        Assert.AreEqual(1, CountOccurrences(decide, "New-Leg -Name 'linux-2-of-2'"));
-        Assert.AreEqual(2, CountOccurrences(decide, "-TestShardIndex 0 -TestShardCount 2"));
-        Assert.AreEqual(2, CountOccurrences(decide, "-TestShardIndex 1 -TestShardCount 2"));
-
-        // One Linux shard owns artifacts in each of the code and policy-doc routes.
-        Assert.AreEqual(2, CountOccurrences(
-            decide,
-            "-RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 2"));
-        Assert.AreEqual(1, CountOccurrences(decide, "New-Leg -Name 'linux-full'"));
+        StringAssert.Contains(workflow, "permissions:\n  contents: read\n  pull-requests: read\n");
     }
 
     [TestMethod]
     public void Workflow_UsesOnlyHostedRunners()
     {
         var workflow = LoadCiWorkflow();
-        var decide = GetNamedStepBlock(GetJobBlock(workflow, "route"), "Decide validation topology");
 
-        StringAssert.Contains(
-            decide,
-            "Write-Route -Matrix $codePullRequest -Reason 'Code PR: four hosted Windows and two hosted Linux shards.'");
         Assert.IsFalse(workflow.Contains("self-hosted", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(workflow.Contains("roslynmcp-dev", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(workflow.Contains("RUNNER_STATUS_PAT", StringComparison.Ordinal));
@@ -115,77 +118,24 @@ public sealed class CiRunnerParityContractTests
         }
     }
 
+    /// <summary>
+    /// The router's docs-only/rename/count-mismatch classification behavior itself is table-tested
+    /// in <see cref="CiTopologyDecisionContractTests"/>. This is the surviving integration sentinel:
+    /// it proves the `validate` job's steps actually gate on the `route` job's <c>docs_only</c>
+    /// output rather than silently ignoring it.
+    /// </summary>
     [TestMethod]
-    public void PolicyDocsDetection_IsFailClosedAndRoutesCompleteLinuxTestShards()
+    public void ValidateJob_GatesStepsOnTheRoutedDocsOnlyOutput()
     {
-        var workflow = LoadCiWorkflow();
-        var decide = GetNamedStepBlock(GetJobBlock(workflow, "route"), "Decide validation topology");
-        var validate = GetJobBlock(workflow, "validate");
+        var validate = GetJobBlock(LoadCiWorkflow(), "validate");
         var releaseStep = GetNamedStepBlock(validate, "Verify release build (pull request)");
 
-        StringAssert.Contains(decide, "gh api `");
-        StringAssert.Contains(decide, "--paginate `");
-        StringAssert.Contains(decide, "--slurp `");
-        StringAssert.Contains(decide, "/pulls/$pullRequestNumber/files?per_page=100");
-        StringAssert.Contains(decide, "$file.previous_filename");
-        StringAssert.Contains(
-            decide,
-            "Write-Host \"Enumerated $enumeratedFileCount pull-request file records and $($changed.Count) unique current/original paths.\"");
-        Assert.IsFalse(
-            decide.Contains("Changed current/original paths:", StringComparison.Ordinal),
-            "Attacker-controlled file names must not be emitted as raw workflow log lines.");
-        StringAssert.Contains(decide, "if ($LASTEXITCODE -ne 0)");
-        StringAssert.Contains(decide, "throw \"Could not enumerate pull-request files and rename origins");
-        StringAssert.Contains(decide, "$reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'");
-        StringAssert.Contains(decide, "$enumeratedFileCount++");
-        StringAssert.Contains(
-            decide,
-            "if ($enumeratedFileCount -ge 3000 -or $enumeratedFileCount -ne $reportedChangedFileCount)");
-        StringAssert.Contains(decide, "route full validation because the API result may be capped");
-        const string behaviorBearingMarkdownPattern =
-            @"(^CHANGELOG\.md$|^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/)";
-        StringAssert.Contains(
-            decide,
-            "$behaviorBearingMarkdownPattern = `\n              '" + behaviorBearingMarkdownPattern + "'");
-        foreach (var path in new[]
-        {
-            "CHANGELOG.md",
-            "skills/review/SKILL.md",
-            ".claude/skills/release-cut/SKILL.md",
-            "agents/audit-phase-runner.md",
-            ".claude/agents/pr-reconciler.md",
-            ".github/prompts/review.md",
-        })
-        {
-            Assert.IsTrue(
-                System.Text.RegularExpressions.Regex.IsMatch(path, behaviorBearingMarkdownPattern),
-                $"Behavior-bearing Markdown path '{path}' must force full validation.");
-        }
-        Assert.IsFalse(
-            System.Text.RegularExpressions.Regex.IsMatch("docs/setup.md", behaviorBearingMarkdownPattern));
-        var completeEnumerationIndex = decide.IndexOf(
-            "if ($enumeratedFileCount -ge 3000 -or $enumeratedFileCount -ne $reportedChangedFileCount)",
-            StringComparison.Ordinal);
-        var docsDecisionIndex = decide.IndexOf(
-            "$docsOnly = $changed.Count -gt 0 -and $nonDocs.Count -eq 0",
-            StringComparison.Ordinal);
-        Assert.IsTrue(
-            docsDecisionIndex > completeEnumerationIndex,
-            "Docs-only routing must require a complete file enumeration.");
-        StringAssert.Contains(decide, "Write-Route -Matrix $docsOnlyPullRequest");
-        Assert.AreEqual(1, CountOccurrences(decide, "New-Leg -Name 'docs-linux-1-of-2'"));
-        Assert.AreEqual(1, CountOccurrences(decide, "New-Leg -Name 'docs-linux-2-of-2'"));
-        StringAssert.Contains(
-            decide,
-            "Write-Route -Matrix $docsOnlyPullRequest -Reason 'Policy-only docs PR: two hosted Linux test shards.'");
         StringAssert.Contains(validate, "if: matrix.leg.artifact_owner == true");
         StringAssert.Contains(validate, "if: github.event_name == 'pull_request'");
         StringAssert.Contains(validate, "'${{ needs.route.outputs.docs_only }}' -eq 'true'");
         Assert.IsFalse(
             releaseStep.Contains("if: needs.route.outputs.docs_only != 'true'", StringComparison.Ordinal),
             "Policy-only documentation must still execute the complete test class set.");
-
-        StringAssert.Contains(workflow, "permissions:\n  contents: read\n  pull-requests: read\n");
     }
 
     [TestMethod]
