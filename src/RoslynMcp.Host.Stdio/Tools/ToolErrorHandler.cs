@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
@@ -24,10 +25,14 @@ internal sealed class PublicArgumentException : ArgumentException
 
 internal static class MetaSerializer
 {
+    // Omitting unset fields (vs. serializing an explicit `null`) is wire-compatible for any
+    // reasonable JSON consumer and trims response bytes on the common case where most of these
+    // observability fields are unset. See GH issue #1421.
     public static readonly JsonSerializerOptions CamelCase = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 }
 
