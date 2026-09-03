@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -6,6 +9,9 @@ namespace RoslynMcp.Tests;
 [TestCategory("Process")]
 public sealed class TestResultsSummaryContractTests
 {
+    private const string SummarizerDescription = "test-results summarizer";
+    private const string CollectorDescription = "hosted shard timing collector";
+
     private static readonly TimeSpan _processTimeout = TimeSpan.FromSeconds(30);
 
     [TestMethod]
@@ -115,10 +121,568 @@ public sealed class TestResultsSummaryContractTests
             new Dictionary<string, string?>
             {
                 ["ROSLYN_MCP_SCRIPT_UNDER_TEST"] = scriptPath,
-            });
+            },
+            SummarizerDescription);
 
         AssertSucceeded(result);
     }
+
+    [TestMethod]
+    public async Task Collector_UnderMinimumSamples_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 4; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(
+                result,
+                "has 4 sampled runs, below the required minimum of 5");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_LegClaimedByTwoImages_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                var image = run == 3 ? "ubuntu-latest" : "windows-latest";
+                observations.Add(new LegObservation($"r{run}", "w-1", image, 100, 10));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(result, "is claimed by two hosted images");
+            StringAssert.Contains(
+                result.StdOut + result.StdErr,
+                "Hosted images are never merged.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_RunMissingOneLegOfItsImage_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                if (run != 3)
+                {
+                    observations.Add(
+                        new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+                }
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertFailedWith(
+                result,
+                "Run 'r3' is missing leg 'w-2' of hosted image 'windows-latest'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_ManifestPathEscapesResultsRoot_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                    manifest[0]["path"] = "../escaped/test-results-w-1");
+
+            AssertFailedWith(result, "Leg manifest entry 0 'path' escapes ResultsRoot.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_DuplicateRunAndLegPair_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) => manifest.Add(
+                    new Dictionary<string, object>(manifest[0])));
+
+            AssertFailedWith(result, "Duplicate leg observation for run 'r1' leg 'w-1'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_LegDirectoryHoldsNoTrx_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.Delete(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx")));
+
+            AssertFailedWith(
+                result,
+                "Leg manifest entry 0 'path' holds no TRX files: 'r1/test-results-w-1'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_NonPositiveWallTime_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) => manifest[0]["wallTimeSeconds"] = 0);
+
+            AssertFailedWith(
+                result,
+                "Leg manifest entry 0 has a non-positive 'wallTimeSeconds'.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_TrxWithZeroCases_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.WriteAllText(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx"),
+                    """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+                      <Results />
+                      <TestDefinitions />
+                    </TestRun>
+                    """));
+
+            AssertFailedWith(result, "TRX file reports zero cases:");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task Collector_MalformedTrx_FailsClosedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (_, resultsRoot) => File.WriteAllText(
+                    Path.Combine(resultsRoot, "r1", "test-results-w-1", "results.trx"),
+                    "<TestRun><Results>"));
+
+            // The collector reads every leg of every sampled run, so the diagnostic must name the
+            // offending file rather than just declaring "malformed".
+            AssertFailedWith(result, "Malformed MSTest TRX input '");
+            StringAssert.Contains(NormalizeConsoleDiagnostic(result.StdOut + result.StdErr), "results.trx");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public void NormalizeConsoleDiagnostic_ReassemblesAPowerShellConciseViewError()
+    {
+        // The full frame PowerShell's ConciseView emits for an uncaught throw, reproduced by running
+        // `pwsh -NoProfile -NonInteractive -File` against a throwing script and capturing the redirected
+        // stream: an "Exception:" header, a "Line |" header, the echoed source line, a squiggle, then
+        // the message behind a gutter. The message is shown wrapped as the hosted ubuntu-latest leg
+        // rendered it at width 80; a wider Windows console emits the same message on one line, which is
+        // why run 33690371287 was red in CI and green on every local gate.
+        const string conciseView =
+            "\u001B[31;1mException: \u001B[0m/home/runner/work/eng/collect-hosted-shard-timings.ps1:369\u001B[0m\n"
+            + "\u001B[36;1mLine |\u001B[0m\n"
+            + "\u001B[36;1m 369 | \u001B[0m         \u001B[36;1mthrow (\"Hosted image '$imageName' has $($runIds.Count) sample\u001B[0m …\n"
+            + "\u001B[36;1m     | \u001B[31;1m         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\u001B[0m\n"
+            + "\u001B[36;1m     | \u001B[31;1mHosted image 'windows-latest' has 4 sampled runs, below the required\u001B[0m\n"
+            + "\u001B[36;1m     | \u001B[31;1mminimum of 5.\u001B[0m\n";
+
+        var normalized = NormalizeConsoleDiagnostic(conciseView);
+
+        // The wrapped message is reassembled...
+        StringAssert.Contains(normalized, "has 4 sampled runs, below the required minimum of 5");
+
+        // ...and the whole ConciseView frame is gone, including the echoed source line. That echo
+        // matters: it contains the throw statement's own text, so leaving it in would let an
+        // assertion pass on the source rather than on the rendered message.
+        Assert.IsFalse(normalized.Contains('\u001B'), "ANSI escapes must not survive normalization.");
+        Assert.IsFalse(normalized.Contains('|'), $"No ConciseView gutter may survive: {normalized}");
+        Assert.IsFalse(
+            normalized.Contains("$imageName", StringComparison.Ordinal),
+            $"The echoed source line must not survive: {normalized}");
+        Assert.IsFalse(normalized.Contains('~'), $"The squiggle row must not survive: {normalized}");
+    }
+    [TestMethod]
+    public async Task Collector_LegAndImageNamesWithMarkdownDelimiters_AreEscapedInReportAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            // Leg and image names are manifest-supplied. The leg is what lands in a table CELL, so
+            // an unescaped pipe there silently adds a column and corrupts the row; the image is what
+            // lands in the heading and verdict. Both must be escaped, as
+            // eng/summarize-test-results.ps1 already does for its own cells. The manifest's "leg" is
+            // independent of its "path", so the pipe can be injected without touching the on-disk
+            // directory name.
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                {
+                    foreach (var entry in manifest)
+                    {
+                        entry["leg"] = ((string)entry["leg"]).Replace("w-", "w|");
+                        entry["image"] = "windows|latest";
+                    }
+                });
+
+            AssertSucceeded(result);
+            StringAssert.Contains(result.StdOut, @"### windows\|latest");
+            StringAssert.Contains(result.StdOut, @"**Verdict for windows\|latest:");
+            StringAssert.Contains(result.StdOut, @"| w\|1 |");
+
+            // Every data row must still carry the columns the header declares. The count is derived
+            // from the header rather than hard-coded so the assertion cannot rot when a column is
+            // added, and it is precisely the property an unescaped pipe would break.
+            var reportLines = result.StdOut
+                .Split('\n')
+                .Select(static line => line.Trim())
+                .ToArray();
+            var headerColumns = CountMarkdownCells(
+                reportLines.Single(static line => line.StartsWith("| Leg | Runs |", StringComparison.Ordinal)));
+            var dataRows = reportLines
+                .Where(static line => line.StartsWith(@"| w\|", StringComparison.Ordinal))
+                .ToArray();
+            Assert.HasCount(2, dataRows);
+            foreach (var row in dataRows)
+            {
+                Assert.AreEqual(
+                    headerColumns,
+                    CountMarkdownCells(row),
+                    $"Row lost or gained a column: {row}");
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+    [TestMethod]
+    public async Task Collector_DegenerateManifestNames_FallBackAndAreLengthCappedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            // A control-character-only name survives Get-RequiredText's non-empty check but sanitizes
+            // to nothing, and an unbounded name would stretch a table cell without limit. Both are
+            // manifest-supplied, so the report must degrade visibly rather than emit an empty heading.
+            var longLeg = new string('w', 400);
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                {
+                    foreach (var entry in manifest)
+                    {
+                        entry["image"] = "\u0001\u0002";
+                        if ((string)entry["leg"] == "w-1")
+                        {
+                            entry["leg"] = longLeg;
+                        }
+                    }
+                });
+
+            AssertSucceeded(result);
+            StringAssert.Contains(result.StdOut, "### (unnamed)");
+            Assert.IsFalse(
+                result.StdOut.Contains("### \n", StringComparison.Ordinal),
+                "A sanitized-to-empty image name must not render an empty heading.");
+
+            var cappedRow = result.StdOut
+                .Split('\n')
+                .Select(static line => line.Trim())
+                .Single(static line => line.StartsWith("| www", StringComparison.Ordinal));
+            var legCell = cappedRow.Split('|')[1].Trim();
+            Assert.EndsWith("...", legCell);
+            Assert.AreEqual(240, legCell.Length, $"Leg cell was not capped: {legCell.Length} chars.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+    [TestMethod]
+    public async Task Collector_ValidProfile_ReportsBothMetricsSeparatelyAndNeverMergesImagesAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var observations = new List<LegObservation>();
+            for (var run = 1; run <= 5; run++)
+            {
+                observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+                observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+                observations.Add(new LegObservation($"r{run}", "u-1", "ubuntu-latest", 300, 70));
+            }
+
+            var result = await RunCollectorAsync(fixtureRoot, observations);
+
+            AssertSucceeded(result);
+            Assert.AreEqual(string.Empty, result.StdErr);
+
+            // Wall time and summed case duration must land in distinct columns, never one blended
+            // number: 100s wall against 10.0s of cases, and 200s wall against 40.0s of cases.
+            StringAssert.Contains(
+                result.StdOut,
+                "| w-1 | 5 | 100.0 | 100.0 | 100.0 | 1.00x | 10.0 | 10.0 | 10.0 | 1.00x | 2 |");
+            StringAssert.Contains(
+                result.StdOut,
+                "| w-2 | 5 | 200.0 | 200.0 | 200.0 | 1.00x | 40.0 | 40.0 | 40.0 | 1.00x | 2 |");
+            StringAssert.Contains(
+                result.StdOut,
+                "| Achievable gain from a perfect partition | 50.0 s (25.0%) |");
+
+            var windowsSection = ExtractImageSection(result.StdOut, "windows-latest");
+            var ubuntuSection = ExtractImageSection(result.StdOut, "ubuntu-latest");
+            Assert.IsFalse(
+                windowsSection.Contains("| u-1 |", StringComparison.Ordinal),
+                "Hosted images must never be merged into one profile.");
+            Assert.IsFalse(
+                ubuntuSection.Contains("| w-1 |", StringComparison.Ordinal),
+                "Hosted images must never be merged into one profile.");
+            StringAssert.Contains(windowsSection, "Sampled runs: 5. Legs: 2.");
+            StringAssert.Contains(ubuntuSection, "Sampled runs: 5. Legs: 1.");
+
+            // Reproducible per-leg case duration plus a gain above the noise band adopts;
+            // a single-leg image has no skew to exploit and keeps the static weights.
+            StringAssert.Contains(
+                windowsSection,
+                "**Verdict for windows-latest: material skew.");
+            StringAssert.Contains(
+                ubuntuSection,
+                "**Verdict for ubuntu-latest: no material skew.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task CollectorScript_HasNoPowerShellAstParseErrorsAsync()
+    {
+        const string parseCommand =
+            "$tokens = $null; $errors = $null; " +
+            "[System.Management.Automation.Language.Parser]::ParseFile(" +
+            "$env:ROSLYN_MCP_SCRIPT_UNDER_TEST, [ref]$tokens, [ref]$errors) | Out-Null; " +
+            "if ($errors.Count -gt 0) { $errors | ForEach-Object { [Console]::Error.WriteLine($_) }; exit 1 }";
+
+        var result = await RunPowerShellAsync(
+            ["-NoProfile", "-NonInteractive", "-Command", parseCommand],
+            new Dictionary<string, string?>
+            {
+                ["ROSLYN_MCP_SCRIPT_UNDER_TEST"] = GetCollectorScriptPath(),
+            },
+            CollectorDescription);
+
+        AssertSucceeded(result);
+    }
+
+    /// <summary>
+    /// Five complete runs of a two-leg <c>windows-latest</c> profile: the smallest observation set
+    /// that clears every sampling gate, so a corruption hook isolates the rule under test.
+    /// </summary>
+    private static List<LegObservation> BuildCompleteWindowsProfile()
+    {
+        var observations = new List<LegObservation>();
+        for (var run = 1; run <= 5; run++)
+        {
+            observations.Add(new LegObservation($"r{run}", "w-1", "windows-latest", 100, 10));
+            observations.Add(new LegObservation($"r{run}", "w-2", "windows-latest", 200, 40));
+        }
+
+        return observations;
+    }
+
+    private sealed record LegObservation(
+        string RunId,
+        string Leg,
+        string Image,
+        int WallTimeSeconds,
+        int CaseDurationSeconds);
+
+    /// <summary>
+    /// Counts the cell delimiters in a Markdown table row. Only UNESCAPED pipes split a row: a
+    /// "\|" renders as a literal pipe inside one cell, so a naive Split('|') would report an
+    /// escaped value as an extra column and invert the property under test.
+    /// </summary>
+    private static int CountMarkdownCells(string row)
+    {
+        var delimiters = 0;
+        for (var i = 0; i < row.Length; i++)
+        {
+            if (row[i] == '|' && (i == 0 || row[i - 1] != '\\'))
+            {
+                delimiters++;
+            }
+        }
+
+        return delimiters;
+    }
+    private static string ExtractImageSection(string report, string imageName)
+    {
+        var marker = "### " + imageName;
+        var start = report.IndexOf(marker, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, start, $"Report is missing the '{imageName}' section.");
+        var next = report.IndexOf("\n### ", start + marker.Length, StringComparison.Ordinal);
+        return next < 0 ? report[start..] : report[start..next];
+    }
+
+    /// <param name="mutate">
+    /// Optional corruption hook run after a well-formed fixture is laid down but before the
+    /// manifest is written, so a fail-closed regression can break exactly one invariant.
+    /// Receives the manifest entries and the resolved ResultsRoot.
+    /// </param>
+    private static async Task<PwshScriptResult> RunCollectorAsync(
+        string fixtureRoot,
+        IReadOnlyList<LegObservation> observations,
+        Action<List<Dictionary<string, object>>, string>? mutate = null)
+    {
+        var resultsRoot = Path.Combine(fixtureRoot, "downloads");
+        var manifest = new List<Dictionary<string, object>>();
+        foreach (var observation in observations)
+        {
+            var relativePath = $"{observation.RunId}/test-results-{observation.Leg}";
+            var legDirectory = Path.Combine(
+                resultsRoot,
+                observation.RunId,
+                $"test-results-{observation.Leg}");
+            Directory.CreateDirectory(legDirectory);
+            await File.WriteAllTextAsync(
+                Path.Combine(legDirectory, "results.trx"),
+                BuildTwoCaseTrx(observation.CaseDurationSeconds));
+
+            manifest.Add(new Dictionary<string, object>
+            {
+                ["runId"] = observation.RunId,
+                ["leg"] = observation.Leg,
+                ["image"] = observation.Image,
+                ["wallTimeSeconds"] = observation.WallTimeSeconds,
+                ["path"] = relativePath,
+            });
+        }
+
+        mutate?.Invoke(manifest, resultsRoot);
+
+        var manifestPath = Path.Combine(fixtureRoot, "legs.json");
+        await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest));
+
+        return await RunPowerShellAsync(
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                GetCollectorScriptPath(),
+                "-ResultsRoot",
+                resultsRoot,
+                "-LegManifest",
+                manifestPath,
+            ],
+            environment: null,
+            description: CollectorDescription);
+    }
+
+    private static string BuildTwoCaseTrx(int totalSeconds)
+    {
+        // Split across two cases so the reported sum is an aggregate, not a single duration.
+        var first = TimeSpan.FromSeconds(totalSeconds - 1).ToString(
+            "c",
+            CultureInfo.InvariantCulture);
+        var second = TimeSpan.FromSeconds(1).ToString("c", CultureInfo.InvariantCulture);
+        return $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results>
+                <UnitTestResult testId="a" testName="one" outcome="Passed" duration="{first}" />
+                <UnitTestResult testId="b" testName="two" outcome="Passed" duration="{second}" />
+              </Results>
+              <TestDefinitions>
+                <UnitTest id="a">
+                  <TestMethod className="Example.Alpha" name="One" />
+                </UnitTest>
+                <UnitTest id="b">
+                  <TestMethod className="Example.Beta" name="Two" />
+                </UnitTest>
+              </TestDefinitions>
+            </TestRun>
+            """;
+    }
+
+    private static string GetCollectorScriptPath() => Path.Combine(
+        TestFixtureFileSystem.FindRepositoryRoot(),
+        "eng",
+        "collect-hosted-shard-timings.ps1");
 
     private static string CreateFixtureRoot()
     {
@@ -140,7 +704,10 @@ public sealed class TestResultsSummaryContractTests
             GetScriptPath(),
         };
         processArguments.AddRange(arguments);
-        return RunPowerShellAsync(processArguments, environment: null);
+        return RunPowerShellAsync(
+            processArguments,
+            environment: null,
+            description: SummarizerDescription);
     }
 
     private static string GetScriptPath() => Path.Combine(
@@ -150,13 +717,14 @@ public sealed class TestResultsSummaryContractTests
 
     private static Task<PwshScriptResult> RunPowerShellAsync(
         IEnumerable<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment)
+        IReadOnlyDictionary<string, string?>? environment,
+        string description)
         => PwshScriptRunner.RunAsync(
             arguments,
             workingDirectory: TestFixtureFileSystem.FindRepositoryRoot(),
             environment: environment,
             timeout: _processTimeout,
-            description: "test-results summarizer");
+            description: description);
 
     private static void AssertSucceeded(PwshScriptResult result) => Assert.AreEqual(
         0,
@@ -169,7 +737,37 @@ public sealed class TestResultsSummaryContractTests
             0,
             result.ExitCode,
             $"Script unexpectedly succeeded. stdout={result.StdOut} stderr={result.StdErr}");
-        StringAssert.Contains(result.StdOut + result.StdErr, expectedDiagnostic);
+        StringAssert.Contains(
+            NormalizeConsoleDiagnostic(result.StdOut + result.StdErr),
+            NormalizeConsoleDiagnostic(expectedDiagnostic));
+    }
+
+    /// <summary>
+    /// Reduces PowerShell's rendered error output to the diagnostic's semantic content.
+    /// </summary>
+    /// <remarks>
+    /// An uncaught <c>throw</c> is printed through PowerShell's error formatter, which adds ANSI
+    /// colour codes and hard-wraps the message at the host's console width behind a <c>"     | "</c>
+    /// gutter. That width differs between a developer's Windows console and the hosted Linux leg, so
+    /// a diagnostic that matches as one contiguous substring locally can be split mid-sentence in CI
+    /// — which is exactly how this suite went green on Windows and red on ubuntu-latest. Assertions
+    /// must compare what the script said, not how a terminal happened to lay it out.
+    /// </remarks>
+    private static string NormalizeConsoleDiagnostic(string text)
+    {
+        var normalized = Regex.Replace(text, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
+
+        // Drop ConciseView's frame in the order it renders: the "Line |" header, the "   N | <source>"
+        // echo, and the "     | ~~~~" squiggle. Removing the source echo also stops an assertion from
+        // being satisfied by the text of the `throw` statement itself rather than by the message it
+        // produced.
+        normalized = Regex.Replace(normalized, @"(?m)^\s*Line\s*\|\s*$", string.Empty);
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\d+\s*\|.*$", string.Empty);
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s*~+\s*$", string.Empty);
+
+        // What remains of the message is gutter-prefixed and hard-wrapped at the console width.
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s?", string.Empty);
+        return Regex.Replace(normalized, @"\s+", " ").Trim();
     }
 
     private const string FirstTrx = """
