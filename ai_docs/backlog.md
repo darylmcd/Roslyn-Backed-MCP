@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T07:32:52Z
+**updated_at:** 2026-09-03T13:06:51Z
 
 ## Agent contract
 
@@ -105,6 +105,8 @@
 | `tool-merge-apply-file-lifecycle` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 5 applies into `file_lifecycle_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-file-lifecycle.md |
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `scaffold-target-type-ambiguity-before-sampling` | Medium | — | **Ambiguous target type pays a sampling round trip** — validate `targetTypeName` ambiguity before issuing the scaffold sampling request, so a guaranteed-failing call never reaches the client. [type: bug] [source: 2026-09-02 PR #1428 cold review] | S | items/scaffold-target-type-ambiguity-before-sampling.md |
+| `test-service-container-duplicate-service-instances` | Medium | — | **Container hands out services it did not use** — `RefactoringSuggestionService` is built with fresh CodeMetrics/Cohesion/UnusedCode instances while the container exposes its own; tests observe different objects than production DI. [type: bug] [source: 2026-09-03 PR #1431] | S | items/test-service-container-duplicate-service-instances.md |
+| `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 
 ## Low
 
@@ -226,6 +228,8 @@
 | `eng-trx-parser-duplicated-across-two-scripts` | Low | — | **Two copies of the hardened TRX reader** — extract the shared MSTest TRX parser used by `summarize-test-results.ps1` and `collect-hosted-shard-timings.ps1` into one dot-sourced helper. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/eng-trx-parser-duplicated-across-two-scripts.md |
 | `collector-diagnostics-bypass-error-formatter` | Low | — | **Collector diagnostics go through the PS error formatter** — emit fail-closed messages as one deterministic stderr line via `trap`, so output is not console-width dependent. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/collector-diagnostics-bypass-error-formatter.md |
 | `test-assembly-fixture-disposal-observable-postcondition` | Low | — | **Fixture disposal regression proves entry, not release** — assert a deterministic observable post-condition that the release block ran; needs a small read accessor on `WorkspaceIdCache`. [type: test] [source: 2026-09-03 PR #1431 cold review] | S | items/test-assembly-fixture-disposal-observable-postcondition.md |
+| `test-service-container-two-phase-construction-cycle` | Low | — | **Order-dependent gate/manager construction cycle** — a mutable local captured by a `Lazy<>` is assigned after the ctor call; correct only by statement ordering. [type: refactor] [source: 2026-09-03 PR #1431] | S | items/test-service-container-two-phase-construction-cycle.md |
+| `test-fixture-filesystem-shells-out-for-junctions` | Low | — | **Fixture helper launches cmd.exe for junctions** — `mklink /J` shell-out inside test setup is a proven flake surface under load. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | S | items/test-fixture-filesystem-shells-out-for-junctions.md |
 
 ## Defer
 

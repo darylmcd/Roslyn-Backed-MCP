@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-02T19:30:56.945Z",
-  "backlogSnapshot": "2026-09-02T19:01:48Z",
+  "backlogSnapshot": "2026-09-03T07:32:52Z",
   "addendaLoaded": true,
   "phase": "skeleton",
   "cycleCount": 0,
@@ -41,8 +41,8 @@
       "mergedAt": "2026-09-03T01:00:28Z",
       "notes": null,
       "fileSetHash": "c29a7b2789c7a1d97954c77af2344cf1c14d85ba387dea6541ee3559ede43614",
-      "stanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9",
-      "reviewedStanzaHash": "b4b911f2961b989b54fffeadc3cbe6a7d86363d9a4c09ec216f7e4892c6d71a9"
+      "stanzaHash": "7900f0ff4d11114ed98b142a7d7826a3435d09353bcaca04503a939aa54ec9fc",
+      "reviewedStanzaHash": "7900f0ff4d11114ed98b142a7d7826a3435d09353bcaca04503a939aa54ec9fc"
     },
     {
       "id": "scaffold-sampling-mrtr-replay-cost",
@@ -78,8 +78,8 @@
       "mergedAt": "2026-09-02T22:35:30Z",
       "notes": null,
       "fileSetHash": "d0640d2b66b033f8b7a6658002c21064df7144f55dd68560c530cebc16a76195",
-      "stanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2",
-      "reviewedStanzaHash": "126d771fca2f1e3040362f0ec0ba57c0a0e78a4e857846ace9abc6bbd26cd9c2"
+      "stanzaHash": "2a9346bd422448f3e4b23f77fc9005cbc8d19ad1a2f24a3c25b7b9b4817aa772",
+      "reviewedStanzaHash": "2a9346bd422448f3e4b23f77fc9005cbc8d19ad1a2f24a3c25b7b9b4817aa772"
     },
     {
       "id": "ci-hosted-shard-duration-balancing",
@@ -114,8 +114,8 @@
       "mergedAt": "2026-09-03T06:24:15Z",
       "notes": null,
       "fileSetHash": "f51579ffd313b16791a7d1056cd070df6f9dfb192281cac7e1ff5d82c7af2c1f",
-      "stanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3",
-      "reviewedStanzaHash": "066a7fa6e1a2427daa75db10d2027919eb05db8b6ad4a0aa62c65be7044763f3"
+      "stanzaHash": "321a07a858da1c995373d44033c1f38e98c9f5f6add6320002ebe2df7e04cf87",
+      "reviewedStanzaHash": "321a07a858da1c995373d44033c1f38e98c9f5f6add6320002ebe2df7e04cf87"
     },
     {
       "id": "formatter-baseline-generator-concurrent-load-timeout",
@@ -149,13 +149,13 @@
       "mergedAt": "2026-09-02T22:26:43Z",
       "notes": null,
       "fileSetHash": "c14b27d16a012fbbcca87f8b0f6af00ebe424f2ac8ddff1ffbd1abddd84d3631",
-      "stanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055",
-      "reviewedStanzaHash": "69e5227ccb1f27c18ce6f43f262087356c0d4ba38350bdbf927bc793cedf8055"
+      "stanzaHash": "6f0aff4283cf5d6f3f6cbdc54e80dbf46e953e9b8398310741d95abda69bd282",
+      "reviewedStanzaHash": "6f0aff4283cf5d6f3f6cbdc54e80dbf46e953e9b8398310741d95abda69bd282"
     },
     {
       "id": "test-base-static-service-locator-decomposition",
       "order": 5,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-base-static-service-locator-decomposition"
       ],
@@ -182,12 +182,12 @@
       ],
       "branch": "remediation/test-base-static-service-locator-decomposition",
       "worktreePath": ".worktrees/test-base-static-service-locator-decomposition",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1431",
+      "mergedAt": "2026-09-03T13:04:05Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228",
-      "reviewedStanzaHash": "0966e12726cf1326bfce31ffdb4460c06bb29462e3239f31456977ce6cccc228"
+      "stanzaHash": "f4657ba7b4152b97b489fa599e46eecc63ec2c718cefd311957a9f2c7e5f774d",
+      "reviewedStanzaHash": "f4657ba7b4152b97b489fa599e46eecc63ec2c718cefd311957a9f2c7e5f774d"
     }
   ],
   "anchorVerification": "performed",
@@ -527,8 +527,10 @@
     ]
   },
   "conflictGraphInputHash": "ea18fa40838acba7ce38bc1cc81db95f716825b971ccab278821cdefe9a122d4",
-  "planHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
-  "backlogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42",
-  "reviewedPlanHash": "54df364627f7dbf9c5cfd6ab93ca858539bb598a80f0d4194857de1522ad73db",
-  "reviewedBacklogSnapshotHash": "6e0ac66bef83dfdea47a8ca6c9064874fc447dff9d0db2d5b1d975a8ab63cb42"
+  "planHash": "8697b7ee8008fa909bc963162911b5aeec27037302d6f7abca1c3dfac8530211",
+  "backlogSnapshotHash": "a18f80e4242099bbdf936a11aba578ff38a856e18d3219b6e701b3566c25bc2d",
+  "reviewedPlanHash": "8697b7ee8008fa909bc963162911b5aeec27037302d6f7abca1c3dfac8530211",
+  "reviewedBacklogSnapshotHash": "a18f80e4242099bbdf936a11aba578ff38a856e18d3219b6e701b3566c25bc2d",
+  "completed": true,
+  "completedAt": "2026-09-03T13:04:47.190Z"
 }
