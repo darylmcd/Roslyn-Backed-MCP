@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T14:24:25Z
+**updated_at:** 2026-09-03T15:03:48Z
 
 ## Agent contract
 
@@ -107,7 +107,6 @@
 | `scaffold-target-type-ambiguity-before-sampling` | Medium | — | **Ambiguous target type pays a sampling round trip** — validate `targetTypeName` ambiguity before issuing the scaffold sampling request, so a guaranteed-failing call never reaches the client. [type: bug] [source: 2026-09-02 PR #1428 cold review] | S | items/scaffold-target-type-ambiguity-before-sampling.md |
 | `test-service-container-duplicate-service-instances` | Medium | — | **Container hands out services it did not use** — `RefactoringSuggestionService` is built with fresh CodeMetrics/Cohesion/UnusedCode instances while the container exposes its own; tests observe different objects than production DI. [type: bug] [source: 2026-09-03 PR #1431] | S | items/test-service-container-duplicate-service-instances.md |
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
-| `test-run-compact-execution-detail` | Medium | — | **Compact test_run execution detail — opt-in flag omits stdOut/stdErr/command/args/workingDirectory on clean runs.** [gh #1421](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/1421) — flip default polarity vs issue's proposal. [type: feature] [source: gh-issue] | M | items/test-run-compact-execution-detail.md |
 
 ## Low
 
