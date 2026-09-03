@@ -51,10 +51,7 @@ internal static class SurfaceRegistrationPolicy
             var toolName = tool.ProtocolTool.Name;
             var entry = GetCatalogEntry(ServerSurfaceCatalog.Tools, toolName, "tool");
 
-            if (ToolOutputSchemaIndex.GetSchema(toolName) is { } schema)
-            {
-                tool.ProtocolTool.OutputSchema = JsonSerializer.SerializeToElement(schema);
-            }
+            ProjectDeclaredOutputSchema(tool);
 
             if (!selectedToolNames.Contains(entry.Name))
             {
@@ -90,6 +87,50 @@ internal static class SurfaceRegistrationPolicy
 
             ProjectSelectedProfileDescription(resource, selection);
         }
+    }
+
+    /// <summary>
+    /// Replaces the SDK-generated <c>outputSchema</c> with the catalog-declared one, which is the
+    /// single generation authority for advertised structured output
+    /// (see <see cref="ToolOutputSchemaIndex"/>). The overwrite is load-bearing rather than
+    /// redundant: the SDK generator runs on its own serializer defaults, while the index clones
+    /// <see cref="JsonDefaults.Indented"/> — the exact options the runtime
+    /// <c>structuredContent</c> channel serializes with.
+    /// <para>
+    /// Both asymmetries fail closed, so neither authority can quietly become the only one:
+    /// an SDK-generated schema the index does not declare would ship an unreviewed shape, and an
+    /// index declaration the SDK never generated means the tool no longer opts into structured
+    /// content while still advertising a schema.
+    /// </para>
+    /// </summary>
+    private static void ProjectDeclaredOutputSchema(McpServerTool tool)
+    {
+        var toolName = tool.ProtocolTool.Name;
+        var declared = ToolOutputSchemaIndex.GetSchema(toolName);
+        var sdkGenerated = tool.ProtocolTool.OutputSchema;
+
+        if (declared is null)
+        {
+            if (sdkGenerated is not null)
+            {
+                throw new InvalidOperationException(
+                    $"MCP tool '{toolName}' advertises an SDK-generated outputSchema that " +
+                    $"{nameof(ToolOutputSchemaIndex)} does not declare. Declare the tool's generation route " +
+                    "there so one authority owns the advertised schema, or drop its OutputSchemaType.");
+            }
+
+            return;
+        }
+
+        if (sdkGenerated is null)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(ToolOutputSchemaIndex)} declares an outputSchema for MCP tool '{toolName}' but the " +
+                "registered tool advertises none. The tool must keep [McpServerTool(UseStructuredContent = true, " +
+                "OutputSchemaType = ...)] or the declaration must be removed.");
+        }
+
+        tool.ProtocolTool.OutputSchema = JsonSerializer.SerializeToElement(declared);
     }
 
     internal static void ValidateCatalogSupportTiers(
