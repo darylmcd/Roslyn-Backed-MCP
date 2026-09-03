@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T17:22:39Z
+**updated_at:** 2026-09-03T23:37:57Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `unused-symbol-scan-fail-unsafe-reference-count` | High | — | **Unused-symbol scan cannot tell "no references" from "the scan under-counted".** 8/8 confirmed-live symbols reported dead; the removal preview re-checks with the same predicate, so it adds no protection. [type: bug] [source: refactor-audit-downstream] | M | items/unused-symbol-scan-fail-unsafe-reference-count.md |
 
 ## Medium
 
@@ -55,7 +54,6 @@
 |----|-----|------|----|------|--------|
 | `structured-call-tool-filter-pipeline-decomposition` | Medium | workspace-auto-load-on-demand-design,structured-tool-dispatch-adapter,tool-error-envelope-sensitive-detail-disclosure | **Decompose the structured call filter pipeline** — split workspace resolution, dispatch/retry, and result/error projection out of `StructuredCallToolFilter.Create` without changing the public wire contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/structured-call-tool-filter-pipeline-decomposition.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
-| `tool-update-owned-process-shutdown` | Medium | — | **Owned-process shutdown for `just tool-update`** — the now-mandatory Layer 1 refresh fails with a locked tool-store directory whenever a `roslynmcp` process is running; reuse the local-pack ownership guard instead of matching on image name. [type: bug] [source: 2026-09-02 two-layer release-cut contract] | M | items/tool-update-owned-process-shutdown.md |
 | `method-diet-undo-workspace-lifecycle` | Medium | desc-budget-harness-method-family | **Method-description diet: undo + workspace-lifecycle slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (3471 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-undo-workspace-lifecycle.md |
 | `method-diet-fixall-bulk-operations` | Medium | desc-budget-harness-method-family | **Method-description diet: fix-all, bulk and operations slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (2025 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-fixall-bulk-operations.md |
 | `method-diet-refactoring-editorconfig` | Medium | desc-budget-harness-method-family | **Method-description diet: refactoring, editorconfig and type-move slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (1208 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-refactoring-editorconfig.md |
@@ -63,10 +61,8 @@
 | `method-diet-restructure-interface` | Medium | desc-budget-harness-method-family | **Method-description diet: restructure and interface slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (195 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-restructure-interface.md |
 | `method-diet-signature-extraction` | Medium | desc-budget-harness-method-family | **Method-description diet: signature and extraction slice** — cap method `[Description]`s at ~200-char capability statements across 3 `Tools/*.cs` files (40 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-signature-extraction.md |
 | `method-diet-ratchet-only-clean-slices` | Medium | desc-budget-harness-method-family | **Method-description diet: ratchet-only slice (already compliant)** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (0 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-ratchet-only-clean-slices.md |
-| `desc-budget-harness-method-family` | Medium | — | **Shared method-description budget harness** — extract the ~98-line reflection harness into one helper taking `(sliceTypes, perToolMax, sliceTotalMax)` + trigger substrings, and migrate the first two slice classes onto it. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-family.md |
 | `desc-budget-harness-method-adopt-wave-2` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 2)** — migrate the diagnostics/security, editing/MSBuild and scaffolding/mutation slice classes onto the shared helper without loosening any ceiling. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-2.md |
 | `desc-budget-harness-method-adopt-wave-3` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 3)** — migrate the server-surface, test-tooling and refactoring-core slice classes onto the shared helper, proving it fits the one-type outlier too. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-3.md |
-| `ci-router-pure-decision` | Medium | — | **Extract the CI topology into a pure decision** — move the 113-line inline router at `.github/workflows/ci.yml:40-152` into a table-tested `eng/resolve-ci-topology.ps1` emitting byte-identical JSON. [type: CI refactor] [source: ci-router-pure-decision-and-actionlint] | M | items/ci-router-pure-decision.md |
 | `ci-actionlint-pinned-gate` | Medium | — | **Checksum-pinned actionlint gate** — add a repository-owned, hash-verified `actionlint` runnable offline from `just ci`, with the pin declared in the script and no developer-global executable. [type: CI] [source: ci-router-pure-decision-and-actionlint] | M | items/ci-actionlint-pinned-gate.md |
 | `promotion-scorecard-refresh-toplevel-run` | Medium | — | BLOCKED: needs a top-level `/mcp-server-surface-test --full` session (a subagent cannot spawn the phase runners). **Refresh the promotion scorecard** — regenerate + commit the v1.38.1 snapshot against the current surface. [type: ops] [source: promotion-tier-execution-batch] | S | items/promotion-scorecard-refresh-toplevel-run.md |
 | `tool-consolidation-adr-and-alias-machinery` | Medium | — | **ADR + alias machinery for tool consolidation** — record the risk-bucket merge policy and deprecation cycle, and prove the declared-deprecated-alias mechanism on one representative merge. [type: design] [source: risk-aligned-tool-consolidation] | M | items/tool-consolidation-adr-and-alias-machinery.md |

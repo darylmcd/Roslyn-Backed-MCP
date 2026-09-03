@@ -3,16 +3,16 @@
   "generatedAt": "2026-09-03T17:41:03.723Z",
   "backlogSnapshot": "2026-09-03T17:22:39Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
-  "readyForExecute": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "unused-symbol-scan-fail-unsafe-reference-count",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "unused-symbol-scan-fail-unsafe-reference-count"
       ],
@@ -36,10 +36,10 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/unused-symbol-scan-fail-unsafe-reference-count",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1438",
+      "mergedAt": "2026-09-03T23:37:33Z",
       "notes": null,
       "fileSetHash": "81d45fbf9dc850b5c625706ca916cb66b65eee0892aeb047b88f10fc76b572a0",
       "stanzaHash": "0c89e41c22778a88e465f29b52d5c18b789ae23ea8b11fcc216bff8a684a0fdb",
@@ -48,7 +48,7 @@
     {
       "id": "tool-update-owned-process-shutdown",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-update-owned-process-shutdown"
       ],
@@ -73,10 +73,10 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-update-owned-process-shutdown",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1439",
+      "mergedAt": "2026-09-03T23:21:01Z",
       "notes": null,
       "fileSetHash": "0ba195d3926dff6510956d736ebf9e828a2b7bb1c342f40f398805454d5a17dd",
       "stanzaHash": "446f662ebe9072c6986208c47a0d4b8d9ada061479738207f17e1bfdf47944a3",
@@ -85,7 +85,7 @@
     {
       "id": "desc-budget-harness-method-family",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "desc-budget-harness-method-family"
       ],
@@ -105,10 +105,10 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/desc-budget-harness-method-family",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1440",
+      "mergedAt": "2026-09-03T23:21:08Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "154110f10e3af0309957d2eec7bc95beb7a4b1d970dfa37727cb08ee819819ab",
@@ -117,7 +117,7 @@
     {
       "id": "ci-router-pure-decision",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "ci-router-pure-decision"
       ],
@@ -127,7 +127,7 @@
         "eng/resolve-ci-topology.ps1",
         "CI_POLICY.md"
       ],
-      "testFilesAdded": 2,
+      "testFilesAdded": 3,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
@@ -141,14 +141,14 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/ci-router-pure-decision",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1441",
+      "mergedAt": "2026-09-03T23:27:14Z",
       "notes": null,
       "fileSetHash": "17d6c0559a1bf873b3fce2babb71c91591ac9dcf3b657b6db2808937374c7151",
-      "stanzaHash": "6611eea9711cd7b94e6f1f1a50c1ff7de2bc90d60ec1aa9d8be74fb828a981f5",
-      "reviewedStanzaHash": "6611eea9711cd7b94e6f1f1a50c1ff7de2bc90d60ec1aa9d8be74fb828a981f5"
+      "stanzaHash": "443d6cc11ae2dae04c4cae5176d305fdb266046fe5d76b8d288f8ac7f612ad9b",
+      "reviewedStanzaHash": "443d6cc11ae2dae04c4cae5176d305fdb266046fe5d76b8d288f8ac7f612ad9b"
     },
     {
       "id": "ci-actionlint-pinned-gate",
@@ -189,9 +189,33 @@
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 2,
+        "b": 5,
+        "sharedFiles": [
+          "justfile"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 5,
+        "sharedFiles": [
+          "CI_POLICY.md"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 0,
+      "2": 1,
+      "3": 0,
+      "4": 1,
+      "5": 2
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      3
+    ]
   },
   "selection": {
     "requestedCount": 5,
@@ -244,8 +268,51 @@
     ]
   },
   "conflictGraphInputHash": "24bc4eddd4cba81a0c698214f750588e295b226810a03ddb8ed3e4d0255b9d66",
-  "planHash": "57542950c3bcdabbf3c44a1618d457870953153c72c26928aea5092886725c67",
-  "backlogSnapshotHash": "62ebfe84f857512f5ec030263f91e3b4c3ab2b4c56fdfbfd08db922f1fd9a9c7",
-  "reviewedPlanHash": "57542950c3bcdabbf3c44a1618d457870953153c72c26928aea5092886725c67",
-  "reviewedBacklogSnapshotHash": "62ebfe84f857512f5ec030263f91e3b4c3ab2b4c56fdfbfd08db922f1fd9a9c7"
+  "planHash": "681ba8277dd02bc6459e71e15ccdf2e6b260ecd593f73375a19171a39594b19c",
+  "backlogSnapshotHash": "e56e808d84047605c5840454b175c385a3d93f5e9fc84875a874fa5493276665",
+  "reviewedPlanHash": "681ba8277dd02bc6459e71e15ccdf2e6b260ecd593f73375a19171a39594b19c",
+  "reviewedBacklogSnapshotHash": "e56e808d84047605c5840454b175c385a3d93f5e9fc84875a874fa5493276665",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 5,
+    "info": 1
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "tool-update-owned-process-shutdown",
+      "severity": "warn",
+      "rule": "5b",
+      "evidence": "No documented fanout probe for the Stop-OwnedRoslynMcpProcess -> Stop-OwnedToolStoreProcess signature change (remediated: probe added to Risks, fanoutEstimate: 0)."
+    },
+    {
+      "initiativeId": "ci-router-pure-decision",
+      "severity": "warn",
+      "rule": "5b",
+      "evidence": "No documented fanout probe for the 113-line PowerShell extraction + 48-assertion relocation (remediated: probe added to Risks, fanoutEstimate: 0)."
+    },
+    {
+      "initiativeId": "ci-router-pure-decision",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Consecutive-order sibling ci-actionlint-pinned-gate also touches CI_POLICY.md (remediated: documented in Risks, do-not-co-schedule constraint added)."
+    },
+    {
+      "initiativeId": "ci-actionlint-pinned-gate",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Same CI_POLICY.md collision from the other side (remediated: documented in Risks, do-not-co-schedule constraint added)."
+    },
+    {
+      "initiativeId": "plan",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "state.json.conflictGraph cache was empty at review time; bsweep-state.mjs generations recomputes from live productionFiles on every call (stored graph is only a cache) -- resolved automatically at Step 3 scheduling."
+    },
+    {
+      "initiativeId": "ci-actionlint-pinned-gate",
+      "severity": "info",
+      "rule": "C2-degree-2",
+      "evidence": "Rebuilt-graph degree 2 (justfile + CI_POLICY.md), scheduleHint: null -- accepted, both edges are simple two-way file overlaps, not a fanout hazard."
+    }
+  ]
 }
