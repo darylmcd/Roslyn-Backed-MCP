@@ -342,23 +342,36 @@ public sealed class TestResultsSummaryContractTests
     }
 
     [TestMethod]
-    public void NormalizeConsoleDiagnostic_ReassemblesAPowerShellWrappedError()
+    public void NormalizeConsoleDiagnostic_ReassemblesAPowerShellConciseViewError()
     {
-        // Captured verbatim from the hosted ubuntu-latest leg of run 33690371287, where PowerShell's
-        // error formatter wrapped the collector's minimum-samples diagnostic across two
-        // gutter-prefixed lines. The Windows console rendered the same message on one line, so every
-        // local gate passed while CI went red. Asserting on the raw text makes a fail-closed
-        // regression depend on the terminal that happened to run it.
-        const string wrapped =
+        // The full frame PowerShell's ConciseView emits for an uncaught throw, reproduced by running
+        // `pwsh -NoProfile -NonInteractive -File` against a throwing script and capturing the redirected
+        // stream: an "Exception:" header, a "Line |" header, the echoed source line, a squiggle, then
+        // the message behind a gutter. The message is shown wrapped as the hosted ubuntu-latest leg
+        // rendered it at width 80; a wider Windows console emits the same message on one line, which is
+        // why run 33690371287 was red in CI and green on every local gate.
+        const string conciseView =
             "\u001B[31;1mException: \u001B[0m/home/runner/work/eng/collect-hosted-shard-timings.ps1:369\u001B[0m\n"
-            + "\u001B[31;1m\u001B[0m\u001B[36;1m     | \u001B[31;1mHosted image 'windows-latest' has 4 sampled runs, below the required\u001B[0m\n"
-            + "\u001B[31;1m\u001B[0m\u001B[36;1m     | \u001B[31;1mminimum of 5.\u001B[0m\n";
+            + "\u001B[36;1mLine |\u001B[0m\n"
+            + "\u001B[36;1m 369 | \u001B[0m         \u001B[36;1mthrow (\"Hosted image '$imageName' has $($runIds.Count) sample\u001B[0m …\n"
+            + "\u001B[36;1m     | \u001B[31;1m         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\u001B[0m\n"
+            + "\u001B[36;1m     | \u001B[31;1mHosted image 'windows-latest' has 4 sampled runs, below the required\u001B[0m\n"
+            + "\u001B[36;1m     | \u001B[31;1mminimum of 5.\u001B[0m\n";
 
-        var normalized = NormalizeConsoleDiagnostic(wrapped);
+        var normalized = NormalizeConsoleDiagnostic(conciseView);
 
+        // The wrapped message is reassembled...
         StringAssert.Contains(normalized, "has 4 sampled runs, below the required minimum of 5");
+
+        // ...and the whole ConciseView frame is gone, including the echoed source line. That echo
+        // matters: it contains the throw statement's own text, so leaving it in would let an
+        // assertion pass on the source rather than on the rendered message.
         Assert.IsFalse(normalized.Contains('\u001B'), "ANSI escapes must not survive normalization.");
-        Assert.IsFalse(normalized.Contains(" | "), "The error-formatter gutter must not survive normalization.");
+        Assert.IsFalse(normalized.Contains('|'), $"No ConciseView gutter may survive: {normalized}");
+        Assert.IsFalse(
+            normalized.Contains("$imageName", StringComparison.Ordinal),
+            $"The echoed source line must not survive: {normalized}");
+        Assert.IsFalse(normalized.Contains('~'), $"The squiggle row must not survive: {normalized}");
     }
     [TestMethod]
     public async Task Collector_LegAndImageNamesWithMarkdownDelimiters_AreEscapedInReportAsync()
@@ -409,6 +422,50 @@ public sealed class TestResultsSummaryContractTests
                     CountMarkdownCells(row),
                     $"Row lost or gained a column: {row}");
             }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+    [TestMethod]
+    public async Task Collector_DegenerateManifestNames_FallBackAndAreLengthCappedAsync()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            // A control-character-only name survives Get-RequiredText's non-empty check but sanitizes
+            // to nothing, and an unbounded name would stretch a table cell without limit. Both are
+            // manifest-supplied, so the report must degrade visibly rather than emit an empty heading.
+            var longLeg = new string('w', 400);
+            var result = await RunCollectorAsync(
+                fixtureRoot,
+                BuildCompleteWindowsProfile(),
+                mutate: (manifest, _) =>
+                {
+                    foreach (var entry in manifest)
+                    {
+                        entry["image"] = "\u0001\u0002";
+                        if ((string)entry["leg"] == "w-1")
+                        {
+                            entry["leg"] = longLeg;
+                        }
+                    }
+                });
+
+            AssertSucceeded(result);
+            StringAssert.Contains(result.StdOut, "### (unnamed)");
+            Assert.IsFalse(
+                result.StdOut.Contains("### \n", StringComparison.Ordinal),
+                "A sanitized-to-empty image name must not render an empty heading.");
+
+            var cappedRow = result.StdOut
+                .Split('\n')
+                .Select(static line => line.Trim())
+                .Single(static line => line.StartsWith("| www", StringComparison.Ordinal));
+            var legCell = cappedRow.Split('|')[1].Trim();
+            Assert.EndsWith("...", legCell);
+            Assert.AreEqual(240, legCell.Length, $"Leg cell was not capped: {legCell.Length} chars.");
         }
         finally
         {
@@ -698,9 +755,19 @@ public sealed class TestResultsSummaryContractTests
     /// </remarks>
     private static string NormalizeConsoleDiagnostic(string text)
     {
-        var withoutAnsi = Regex.Replace(text, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
-        var withoutGutter = Regex.Replace(withoutAnsi, @"(?m)^\s*\|\s?", string.Empty);
-        return Regex.Replace(withoutGutter, @"\s+", " ").Trim();
+        var normalized = Regex.Replace(text, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
+
+        // Drop ConciseView's frame in the order it renders: the "Line |" header, the "   N | <source>"
+        // echo, and the "     | ~~~~" squiggle. Removing the source echo also stops an assertion from
+        // being satisfied by the text of the `throw` statement itself rather than by the message it
+        // produced.
+        normalized = Regex.Replace(normalized, @"(?m)^\s*Line\s*\|\s*$", string.Empty);
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\d+\s*\|.*$", string.Empty);
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s*~+\s*$", string.Empty);
+
+        // What remains of the message is gutter-prefixed and hard-wrapped at the console width.
+        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s?", string.Empty);
+        return Regex.Replace(normalized, @"\s+", " ").Trim();
     }
 
     private const string FirstTrx = """

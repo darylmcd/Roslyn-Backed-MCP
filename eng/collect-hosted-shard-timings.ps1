@@ -150,15 +150,31 @@ function ConvertTo-ReportCell {
 
     .DESCRIPTION
     Leg and image names come from the caller's manifest, so an unescaped pipe would silently add a
-    column and corrupt the report table. Mirrors ConvertTo-MarkdownCell in
-    eng/summarize-test-results.ps1 so both reports sanitize identically.
+    column and corrupt the report table. Mirrors the escaping, empty-value fallback and length cap of
+    ConvertTo-MarkdownCell in eng/summarize-test-results.ps1.
+
+    Deliberate divergence: that function also HtmlEncodes, because its output is injected into a
+    GitHub job summary. This report is plain Markdown written to stdout, where HTML-encoding a legal
+    character would corrupt the value rather than protect it.
     #>
     param([AllowEmptyString()][string]$Value)
 
     $sanitized = $Value.Replace('\', '\\').Replace('|', '\|')
     $sanitized = [System.Text.RegularExpressions.Regex]::Replace($sanitized, '[\x00-\x1F\x7F]+', ' ')
     $sanitized = [System.Text.RegularExpressions.Regex]::Replace($sanitized, '\s{2,}', ' ')
-    return $sanitized.Trim()
+    $sanitized = $sanitized.Trim()
+    if ([string]::IsNullOrEmpty($sanitized)) {
+        # A control-character-only name survives Get-RequiredText but would render an empty heading
+        # or an empty cell, which reads as a collector bug rather than a bad manifest.
+        return '(unnamed)'
+    }
+
+    $maximumCellLength = 240
+    if ($sanitized.Length -gt $maximumCellLength) {
+        $sanitized = $sanitized.Substring(0, $maximumCellLength - 3) + '...'
+    }
+
+    return $sanitized
 }
 
 function Read-TrxCaseDuration {
