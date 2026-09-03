@@ -14,7 +14,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find likely unused symbols."),
-     Description("Find symbols with zero solution-wide references — likely dead code. Each hit carries Confidence: high (private/internal), medium (public API), low (enum/interface members). Convention-invoked shapes are skipped by default.")]
+     Description("Find symbols with zero solution-wide references — likely dead code. Confidence: high (private/internal), medium (public), low (enum/interface). Convention-invoked shapes skipped by default. A scan failure throws; success may still under-count.")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,

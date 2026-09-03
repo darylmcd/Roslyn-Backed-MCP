@@ -42,12 +42,23 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<UnusedCodeAnalyzer> _logger;
+    private readonly Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> _referenceFinder;
 
     public UnusedCodeAnalyzer(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<UnusedCodeAnalyzer> logger)
+        : this(workspace, compilationCache, logger, static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct))
+    {
+    }
+
+    internal UnusedCodeAnalyzer(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<UnusedCodeAnalyzer> logger,
+        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> referenceFinder)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _referenceFinder = referenceFinder;
     }
 
     public async Task<IReadOnlyList<UnusedSymbolDto>> FindUnusedSymbolsAsync(
@@ -59,6 +70,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var failedCandidateCount = 0;
 
         var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
 
@@ -76,8 +88,14 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                 compilation, options, processedSymbols, ct).ConfigureAwait(false);
             if (candidates.Count == 0) continue;
 
-            await ScanCandidatesAndAppendResultsAsync(
+            failedCandidateCount += await ScanCandidatesAndAppendResultsAsync(
                 workspaceId, project, solution, candidates, options.Limit, results, ct).ConfigureAwait(false);
+        }
+
+        if (failedCandidateCount > 0)
+        {
+            throw new PublicInvalidOperationException(
+                $"Unused-symbol scan was incomplete: {failedCandidateCount} candidate(s) could not be verified and were excluded from the result rather than reported as unused.");
         }
 
         return results;
@@ -149,8 +167,11 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     /// order (project → tree → decl). Honors <paramref name="limit"/> once results
     /// are collected. Roslyn's <see cref="Solution"/> is immutable, so
     /// <see cref="SymbolFinder"/> is safe under concurrency.
+    /// Returns the number of candidates whose reference scan failed and were
+    /// therefore excluded from <paramref name="results"/> rather than confidently
+    /// reported as unused or not-unused.
     /// </summary>
-    private async Task ScanCandidatesAndAppendResultsAsync(
+    private async Task<int> ScanCandidatesAndAppendResultsAsync(
         string workspaceId,
         Project project,
         Solution solution,
@@ -161,9 +182,14 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     {
         var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
         using var semaphore = new SemaphoreSlim(parallelism, parallelism);
+        // A single-element array (not a plain int) so each concurrent
+        // TryBuildUnusedDtoAsync call can Interlocked.Increment the shared slot —
+        // async methods cannot declare `ref`/`out` parameters, so a boxed slot is
+        // the seam that lets this stay a per-call counter rather than an instance field.
+        var failedCandidateCount = new int[1];
 
         var tasks = candidates.Select(symbol =>
-            TryBuildUnusedDtoAsync(workspaceId, symbol, project, solution, semaphore, ct));
+            TryBuildUnusedDtoAsync(workspaceId, symbol, project, solution, semaphore, ct, failedCandidateCount));
 
         // Preserve original ordering (project → tree → declaration order) by awaiting
         // in input order, not completion order.
@@ -174,6 +200,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             results.Add(dto);
             if (results.Count >= limit) break;
         }
+
+        return failedCandidateCount[0];
     }
 
     /// <summary>
@@ -185,6 +213,16 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     /// extension methods and overloaded methods whose callers bind via implicit
     /// conversion — the project-local symbol from <c>GetDeclaredSymbol</c> may not
     /// match the reduced/converted form other compilations see.</para>
+    ///
+    /// <para>Fail-safe note: a failure verifying this candidate's reference count
+    /// (e.g. <see cref="SymbolFinder.FindReferencesAsync"/> throwing) must never be
+    /// treated as a zero-reference result — that would silently mislabel a symbol
+    /// as unused when its true reference count is simply unknown. The candidate is
+    /// excluded from the result and counted via the shared
+    /// <paramref name="failedCandidateCount"/> slot (incremented with
+    /// <see cref="Interlocked.Increment(ref int)"/> since this method runs
+    /// concurrently across candidates) so the caller can surface an
+    /// incomplete-scan error instead of returning a confidently partial list.</para>
     /// </summary>
     private async Task<UnusedSymbolDto?> TryBuildUnusedDtoAsync(
         string workspaceId,
@@ -192,21 +230,38 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         Project declaringProject,
         Solution solution,
         SemaphoreSlim semaphore,
-        CancellationToken ct)
+        CancellationToken ct,
+        int[] failedCandidateCount)
     {
         await semaphore.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var refs = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
-            var refCount = refs.Sum(r => r.Locations.Count());
-
-            if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
+            try
             {
-                refCount = await CountCrossCompilationReferencesAsync(
-                    workspaceId, symbol, declaringProject, solution, ct).ConfigureAwait(false);
-            }
+                var refs = await _referenceFinder(symbol, solution, ct).ConfigureAwait(false);
+                var refCount = refs.Sum(r => r.Locations.Count());
 
-            return refCount == 0 ? BuildUnusedDto(symbol) : null;
+                if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
+                {
+                    refCount = await CountCrossCompilationReferencesAsync(
+                        workspaceId, symbol, declaringProject, solution, ct).ConfigureAwait(false);
+                }
+
+                return refCount == 0 ? BuildUnusedDto(symbol) : null;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Interlocked.Increment(ref failedCandidateCount[0]);
+                var detail = UnexpectedExceptionReporting.Report(
+                    reporter: null,
+                    ex,
+                    UnexpectedExceptionCategory.AnalysisScan).Public;
+                _logger.LogWarning(
+                    "Unused-symbol scan could not verify one candidate's reference count after an unexpected failure; symbol={SymbolName} correlationId={CorrelationId}",
+                    symbol.Name,
+                    detail.CorrelationId);
+                return null;
+            }
         }
         finally
         {
