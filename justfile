@@ -64,6 +64,10 @@ verify-changed-format:
 verify-registry-readiness:
     pwsh -NoProfile -File ./eng/verify-registry-readiness.ps1
 
+# Lint GitHub Actions workflow YAML with a checksum-pinned repository-owned actionlint
+verify-actionlint:
+    pwsh -NoProfile -File ./eng/verify-actionlint.ps1
+
 # --- Run ---
 
 # Run the stdio host process locally
@@ -76,10 +80,10 @@ run:
 validate: build test
 
 # Local equivalent of the required pull-request pipeline (no coverage/live-network canary)
-ci: verify-docs verify-skills verify-changed-format verify-release-pr vuln-audit
+ci: verify-docs verify-skills verify-changed-format verify-actionlint verify-release-pr vuln-audit
 
 # Everything including coverage and the live-network canary
-full: verify-docs verify-skills verify-changed-format verify-release vuln-audit
+full: verify-docs verify-skills verify-changed-format verify-actionlint verify-release vuln-audit
 
 # --- Clean ---
 
