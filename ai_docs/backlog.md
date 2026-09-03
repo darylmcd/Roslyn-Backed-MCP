@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T13:06:51Z
+**updated_at:** 2026-09-03T14:03:56Z
 
 ## Agent contract
 
@@ -47,7 +47,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `unused-symbol-tools-false-positive-private-members` | High | — | **`find_unused_symbols` / `find_dead_fields` report directly-called private members as dead.** 6/6 false positives across 3 projects of a consumer repo; fix the reference walk or demote the tools off the default surface. [type: bug] [source: refactor-audit-downstream] | S | items/unused-symbol-tools-false-positive-private-members.md |
+| `unused-symbol-scan-fail-unsafe-reference-count` | High | — | **Unused-symbol scan cannot tell "no references" from "the scan under-counted".** 8/8 confirmed-live symbols reported dead; the removal preview re-checks with the same predicate, so it adds no protection. [type: bug] [source: refactor-audit-downstream] | M | items/unused-symbol-scan-fail-unsafe-reference-count.md |
 
 ## Medium
 
@@ -123,7 +123,7 @@
 | `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Low | — | **Couple the NuGet timeout-test wait bound to HttpTimeout** — the 30s hang-guard literal's `>> HttpTimeout(3s)` coupling is prose-only; derive it from a multiple of HttpTimeout, or close won't-fix. [type: test] [source: 2026-06-20 top-n row-4 cq] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
 | `filewatcher-markstaleifrelevant-stale-precedence-comment` | Low | — | **Fix stale MarkStaleIfRelevant precedence comment** — align it with unconditional last-writer-wins behavior in MarkStaleWithReason. [type: docs] [source: 2026-06-21 top-n cold-review] | S | items/filewatcher-markstaleifrelevant-stale-precedence-comment.md |
 | `analysis-services-dedup-reference-classifiers` | Low | — | **Unify the three independent reference-site classifiers in Roslyn analysis services** — merge ConsumerAnalysisService.ClassifyDependencyKind, TypeConsumersService.ClassifyKind. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-dedup-reference-classifiers.md |
-| `analysis-services-hardcoded-parallelism-clamp-magic-numbers` | Low | bulk-reference-error-detail-redaction | **Centralize the duplicated parallelism-clamp and regex-timeout magic numbers in Roslyn analysis services** — replace the three independent Math.Clamp(Environment.ProcessorCount, 4. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-hardcoded-parallelism-clamp-magic-numbers.md |
+| `analysis-services-hardcoded-parallelism-clamp-magic-numbers` | Low | bulk-reference-error-detail-redaction,unused-symbol-scan-fail-unsafe-reference-count | **Centralize the duplicated parallelism-clamp and regex-timeout magic numbers in Roslyn analysis services** — replace the three independent Math.Clamp(Environment.ProcessorCount, 4. [type: refactor] [source: refactor-matrix-pass1] | M | items/analysis-services-hardcoded-parallelism-clamp-magic-numbers.md |
 | `symbollocatorfactory-drift-tool-test-gap` | Low | resource-read-protocol-error-semantics | **Add unit coverage for SymbolLocatorFactory and workspace_drift_check** — write direct unit tests for SymbolLocatorFactory.Create(. [type: refactor] [source: refactor-matrix-pass1] | M | items/symbollocatorfactory-drift-tool-test-gap.md |
 | `stdoutwrite-analyzer-project-misplacement` | Low | — | **Move StdoutWriteAnalyzer out of the ServerSurfaceCatalog project** — relocate RMCP010's StdoutWriteAnalyzer (and update the RootNamespace/AssemblyName. [type: refactor] [source: refactor-matrix-pass1] | M | items/stdoutwrite-analyzer-project-misplacement.md |
 | `static-singleton-di-bypass-core-services` | Low | — | **Replace static singleton DI-bypass state with scoped services** — convert WorkspaceEvictionRegistry and AmbientGateMetrics from static/AsyncLocal globals into DI-registered scoped services (or. [type: refactor] [source: refactor-matrix-pass1] | M | items/static-singleton-di-bypass-core-services.md |
