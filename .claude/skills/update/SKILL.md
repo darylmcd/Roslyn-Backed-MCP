@@ -54,22 +54,32 @@ Resolves `Darylmcd.RoslynMcp` from NuGet.org (`dotnet tool update -g`, falling b
 
 If `dotnet tool update` reports the previous version right after a release, NuGet indexing has not caught up — wait and retry rather than accepting the old version.
 
-**Windows file lock.** A running Layer 1 process holds its store directory, and the update fails:
+**Windows file lock.** A running Layer 1 process holds its store directory, and the update can fail:
 
 ```
 Failed to uninstall tool package 'darylmcd.roslynmcp':
 Access to the path 'C:\Users\<user>\.dotnet\tools\.store\darylmcd.roslynmcp\<old>' is denied.
 ```
 
-This is the common case, not an edge case — anyone who actually uses Layer 1 has one running, and it is very often **this session's own MCP server**: when Claude Code launched the server from the Layer 1 shim rather than the `dnx` pin, the holder's PID equals `server_info`'s `stdioPid` (verified on the v4.1.2 cut). Restarting Claude Code first therefore clears the lock on its own, which is why the practical order is stop-or-restart *then* update.
+This is the common case, not an edge case — anyone who actually uses Layer 1 has one running, and it is very often **this session's own MCP server**: when Claude Code launched the server from the Layer 1 shim rather than the `dnx` pin, the holder's PID equals `server_info`'s `stdioPid` (verified on the v4.1.2 cut).
 
-Identify the holder by image path before retrying — the `ExecutablePath` is what distinguishes the layers, not the process name:
+`just tool-update` now stops one owned process automatically before mutating anything. It runs `eng/stop-owned-tool-store-process.ps1` as a leading step, which reads `ROSLYNMCP_REINSTALL_PROCESS_ID` and `ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC` (the same two variables `just tool-install-local` uses), stops that one process only after confirming its image name is `roslynmcp` AND its image path resolves under the tool store root, and then asserts the store is unlocked — failing closed and naming every PID + image path still holding it (never terminating anything it cannot attribute) if one remains. Identify the holder by image path, never by process name alone (the plugin's `dnx`-launched Layer 2 server is also called `roslynmcp.exe`, runs from the NuGet package cache rather than the tool store, does not hold the lock, and killing it drops the MCP connection of whoever is attached):
 
 ```bash
 pwsh -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='roslynmcp.exe'\" | Select-Object ProcessId, ExecutablePath, CreationDate"
 ```
 
-Stop only a process you have confirmed is an owned Layer 1 instance — one whose image path is under `~/.dotnet/tools/` — then re-run `just tool-update`. Never stop a `roslynmcp` process by image name alone: the plugin's `dnx`-launched Layer 2 server is also called `roslynmcp.exe`, runs from the NuGet package cache rather than the tool store, does not hold the lock, and killing it drops the MCP connection of whoever is attached. `just tool-update` has no owned-process shutdown of its own; only the local-pack path (`eng/reinstall-local-tool.ps1`, via `ROSLYNMCP_REINSTALL_PROCESS_ID` + `ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC`) does. Backlog row `tool-update-owned-process-shutdown` tracks closing that gap.
+Set the identity, then run the update:
+
+```bash
+$ownedPid = <owned-roslynmcp-pid>
+$owned = Get-Process -Id $ownedPid
+$env:ROSLYNMCP_REINSTALL_PROCESS_ID = $ownedPid
+$env:ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC = $owned.StartTime.ToUniversalTime().ToString('O')
+just tool-update
+```
+
+With no identity supplied, the leading step stops nothing and only asserts the store is unlocked — if a process still holds it, `just tool-update` fails closed with a clear "still locked by PID … " error instead of the opaque `dotnet` I/O failure above. Restarting Claude Code first also clears the lock on its own when the holder was this session's own server. The same shutdown/assert pair backs the local-pack path (`eng/reinstall-local-tool.ps1`, via the same two env vars or `-OwnedProcessId`/`-OwnedProcessStartedAtUtc`).
 
 ### Step 4: Verify both layers
 

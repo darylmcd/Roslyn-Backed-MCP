@@ -52,6 +52,8 @@ public sealed class LocalToolReinstallProcessOwnershipTests
                     ownedProcess.Id.ToString(CultureInfo.InvariantCulture),
                     "-OwnedProcessStartedAtUtc",
                     ownedStartUtc,
+                    "-ToolStoreRoot",
+                    fixtureRoot,
                     "-InvocationLogPath",
                     invocationLogPath,
                 ],
@@ -98,6 +100,7 @@ public sealed class LocalToolReinstallProcessOwnershipTests
             "RoslynMcp.Host.Stdio.csproj"));
         var justfile = File.ReadAllText(Path.Combine(repositoryRoot, "justfile"));
         var script = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "reinstall-local-tool.ps1"));
+        var sharedScript = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "stop-owned-tool-store-process.ps1"));
 
         StringAssert.Contains(project, "reinstall-local-tool.ps1");
         StringAssert.Contains(project, "ReinstallToolProcessId");
@@ -105,11 +108,16 @@ public sealed class LocalToolReinstallProcessOwnershipTests
         StringAssert.Contains(justfile, "reinstall-local-tool.ps1");
         StringAssert.Contains(script, "ROSLYNMCP_REINSTALL_PROCESS_ID");
         StringAssert.Contains(script, "ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC");
-        StringAssert.Contains(script, "Stop-Process -Id $OwnedProcessId");
+        // The termination call itself now lives in the shared, dot-sourced script
+        // (eng/stop-owned-tool-store-process.ps1) so eng/reinstall-local-tool.ps1 and
+        // `just tool-update` cannot drift out of sync on how a PID gets stopped.
+        StringAssert.Contains(sharedScript, "Stop-Process -Id $OwnedProcessId");
         Assert.IsFalse(project.Contains("taskkill", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(justfile.Contains("taskkill", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(script.Contains("Get-Process -Name", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(sharedScript.Contains("Get-Process -Name", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(script.Contains("killall", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(sharedScript.Contains("killall", StringComparison.OrdinalIgnoreCase));
     }
 
     private static Process StartNamedRoslynMcpProcess(string fixtureRoot, string instanceName)
@@ -151,6 +159,7 @@ public sealed class LocalToolReinstallProcessOwnershipTests
                 [string]$ProjectPath,
                 [int]$OwnedProcessId,
                 [string]$OwnedProcessStartedAtUtc,
+                [string]$ToolStoreRoot,
                 [string]$InvocationLogPath
             )
 
@@ -177,7 +186,8 @@ public sealed class LocalToolReinstallProcessOwnershipTests
                 -PackageSource $PackageSource `
                 -ProjectPath $ProjectPath `
                 -OwnedProcessId $OwnedProcessId `
-                -OwnedProcessStartedAtUtc $OwnedProcessStartedAtUtc
+                -OwnedProcessStartedAtUtc $OwnedProcessStartedAtUtc `
+                -ToolStoreRoot $ToolStoreRoot
             """);
         return wrapperPath;
     }
