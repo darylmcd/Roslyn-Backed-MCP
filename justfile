@@ -103,7 +103,11 @@ pack:
     dotnet pack {{ host-project }} -c Release -o {{ nupkg-dir }}
 
 # Update or install global `roslynmcp` from nuget.org (package id Darylmcd.RoslynMcp)
+# Stops one owned Layer 1 process (identified via ROSLYNMCP_REINSTALL_PROCESS_ID +
+# ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC, matched by image path under the tool
+# store) before mutating, then fails closed naming any holder it cannot attribute.
 tool-update:
+    pwsh -NoProfile -File ./eng/stop-owned-tool-store-process.ps1
     dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
     dotnet tool list -g
 

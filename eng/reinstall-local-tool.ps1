@@ -10,14 +10,16 @@ param(
     [ValidateRange(0, [int]::MaxValue)]
     [int]$OwnedProcessId = 0,
 
-    [string]$OwnedProcessStartedAtUtc = ''
+    [string]$OwnedProcessStartedAtUtc = '',
+
+    [string]$ToolStoreRoot = (Join-Path $env:USERPROFILE '.dotnet' 'tools')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$shutdownTimeout = [TimeSpan]::FromSeconds(10)
-$ownershipTimestampTolerance = [TimeSpan]::FromSeconds(1)
+. (Join-Path $PSScriptRoot 'stop-owned-tool-store-process.ps1')
+
 $currentPackageId = 'Darylmcd.RoslynMcp'
 $legacyPackageId = 'RoslynMcp'
 
@@ -28,74 +30,6 @@ if (-not $PSBoundParameters.ContainsKey('OwnedProcessId') -and
 if (-not $PSBoundParameters.ContainsKey('OwnedProcessStartedAtUtc') -and
     -not [string]::IsNullOrWhiteSpace($env:ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC)) {
     $OwnedProcessStartedAtUtc = $env:ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC
-}
-
-function Stop-OwnedRoslynMcpProcess {
-    if ($OwnedProcessId -eq 0) {
-        if (-not [string]::IsNullOrWhiteSpace($OwnedProcessStartedAtUtc)) {
-            throw 'OwnedProcessStartedAtUtc requires a nonzero OwnedProcessId.'
-        }
-
-        Write-Host 'No owned roslynmcp process identity was supplied; no process was stopped.'
-        return
-    }
-
-    if ([string]::IsNullOrWhiteSpace($OwnedProcessStartedAtUtc)) {
-        throw 'OwnedProcessId requires OwnedProcessStartedAtUtc as a PID-reuse guard.'
-    }
-
-    $expectedStart = [DateTimeOffset]::MinValue
-    if (-not [DateTimeOffset]::TryParseExact(
-            $OwnedProcessStartedAtUtc,
-            'O',
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::RoundtripKind,
-            [ref]$expectedStart)) {
-        throw 'OwnedProcessStartedAtUtc must use the round-trip UTC timestamp format.'
-    }
-
-    if ($OwnedProcessId -eq $PID) {
-        throw 'The reinstall helper refuses to terminate its own PowerShell process.'
-    }
-
-    try {
-        $process = Get-Process -Id $OwnedProcessId -ErrorAction Stop
-    }
-    catch [Microsoft.PowerShell.Commands.ProcessCommandException] {
-        Write-Host "Owned roslynmcp process $OwnedProcessId already exited; continuing."
-        return
-    }
-
-    if (-not [string]::Equals($process.ProcessName, 'roslynmcp', [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Process $OwnedProcessId is '$($process.ProcessName)', not roslynmcp; refusing termination."
-    }
-
-    try {
-        $actualStart = [DateTimeOffset]$process.StartTime.ToUniversalTime()
-    }
-    catch {
-        throw "Could not verify the start time for owned roslynmcp process $OwnedProcessId; refusing termination."
-    }
-
-    if (($actualStart - $expectedStart.ToUniversalTime()).Duration() -gt $ownershipTimestampTolerance) {
-        throw "Process $OwnedProcessId start time does not match the supplied ownership identity; refusing termination."
-    }
-
-    try {
-        Stop-Process -Id $OwnedProcessId -Force -ErrorAction Stop
-    }
-    catch {
-        $process.Refresh()
-        if (-not $process.HasExited) {
-            throw "Failed to stop owned roslynmcp process $OwnedProcessId."
-        }
-    }
-
-    if (-not $process.WaitForExit([int]$shutdownTimeout.TotalMilliseconds)) {
-        throw "Owned roslynmcp process $OwnedProcessId did not exit within $($shutdownTimeout.TotalSeconds) seconds."
-    }
-
-    Write-Host "Stopped owned roslynmcp process $OwnedProcessId."
 }
 
 function Invoke-DotnetStep {
@@ -148,7 +82,10 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     }
 }
 
-Stop-OwnedRoslynMcpProcess
+Stop-OwnedToolStoreProcess `
+    -OwnedProcessId $OwnedProcessId `
+    -OwnedProcessStartedAtUtc $OwnedProcessStartedAtUtc `
+    -ToolStoreRoot $ToolStoreRoot
 
 $inventoryJson = Invoke-DotnetStep `
     -Description 'Global tool inventory' `
