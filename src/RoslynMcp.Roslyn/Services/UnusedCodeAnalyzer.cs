@@ -94,7 +94,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
         if (failedCandidateCount > 0)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Unused-symbol scan was incomplete: {failedCandidateCount} candidate(s) could not be verified and were excluded from the result rather than reported as unused.");
         }
 

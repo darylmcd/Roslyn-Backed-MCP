@@ -107,13 +107,18 @@ public sealed class UnusedSymbolScanFailSafeTests
                 ? throw new InvalidOperationException("simulated reference-scan failure")
                 : SymbolFinder.FindReferencesAsync(symbol, solution, ct));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             analyzer.FindUnusedSymbolsAsync(
                 WorkspaceId,
                 new UnusedSymbolsAnalysisOptions(),
                 default));
 
         StringAssert.Contains(ex.Message, "1 candidate");
+        // The MCP tool boundary (ToolErrorHandler) surfaces PublicMessage verbatim for a
+        // PublicInvalidOperationException instead of its generic InvalidOperationException
+        // fallback — pin that the scan-failure text actually reaches the caller, not just the
+        // raw C# exception.
+        StringAssert.Contains(ex.PublicMessage, "1 candidate");
     }
 
     [TestMethod]
@@ -142,7 +147,7 @@ public sealed class UnusedSymbolScanFailSafeTests
             previewStore,
             (_, _, _) => throw new InvalidOperationException("simulated reference-scan failure"));
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             deadCodeService.PreviewRemoveDeadCodeAsync(
                 WorkspaceId,
                 new DeadCodeRemovalDto([handle]),
@@ -150,6 +155,9 @@ public sealed class UnusedSymbolScanFailSafeTests
 
         StringAssert.Contains(ex.Message, "Cannot verify");
         StringAssert.Contains(ex.Message, "refusing removal");
+        // Same MCP-boundary pin as the scan-failure test above: PublicMessage is what
+        // ToolErrorHandler actually surfaces to the remove_dead_code_preview caller.
+        StringAssert.Contains(ex.PublicMessage, "Cannot verify");
 
         // The UnusedCodeAnalyzer built above is not exercised by this DeadCodeService-focused
         // test; discard it so the shared BuildAnalyzerWithSource helper stays reusable across

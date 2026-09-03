@@ -57,7 +57,7 @@ public sealed class DeadCodeService : IDeadCodeService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     $"Cannot verify '{symbol.Name}' has zero references — the verification scan failed; refusing removal.",
                     ex);
             }
