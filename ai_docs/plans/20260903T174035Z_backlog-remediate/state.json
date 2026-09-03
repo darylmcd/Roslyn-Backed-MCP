@@ -153,7 +153,7 @@
     {
       "id": "ci-actionlint-pinned-gate",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "ci-actionlint-pinned-gate"
       ],
@@ -177,8 +177,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/ci-actionlint-pinned-gate",
+      "worktreePath": ".worktrees/ci-actionlint-pinned-gate",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
