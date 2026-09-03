@@ -44,9 +44,9 @@ None of the 5 initiatives' Scope files touch any addenda-listed hotspot file. No
 
 All 5 `backlogRowsClosed` ids confirmed present in `ai_docs/backlog.md` (lines 50, 58, 66, 69, 70). No findings.
 
-## Tooling gap surfaced during this review (not a plan defect)
+## Correction
 
-`~/.claude/scripts/bsweep-state.mjs` provides no writer for `state.json`'s top-level `reviewStatus` / `lastReviewFindings` fields (only the skeleton default of `'pending'` exists; `hash --mark-reviewed` stamps hashes, not review outcome). Per repo convention this is a global-tooling defect, not a Roslyn-Backed-MCP backlog item — tracked at closeout via a row in `~/.claude/ai_docs/backlog.md` rather than here. Practical effect on this run: `exec-args`'s warn-aware wave-size cap falls back to unconstrained sizing, which is not a blocker for this plan (the one relevant warn — the `CI_POLICY.md` overlap — is a cross-generation edge, not an intra-wave one).
+An earlier draft of this file claimed `bsweep-state.mjs` had no writer for `state.json`'s `reviewStatus`/`lastReviewFindings` — that was a research miss (a `grep` came back empty at the time), not a real gap. `set-review --plan <dir> --status passed-with-warnings --findings-file <path>` is the correct writer and was used to record this outcome: `reviewStatus: passed-with-warnings`, `readyForExecute: true`.
 
 ## Recommended next step
 
