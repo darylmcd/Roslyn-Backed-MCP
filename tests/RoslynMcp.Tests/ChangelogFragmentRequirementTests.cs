@@ -39,15 +39,20 @@ public sealed class ChangelogFragmentRequirementTests
         var docsOnlyOutputIndex = workflow.IndexOf(
             "docs_only: ${{ steps.decide.outputs.docs_only }}",
             StringComparison.Ordinal);
-        var docsLegIndex = workflow.IndexOf("New-Leg -Name 'docs-linux-1-of-2'", StringComparison.Ordinal);
+        // Leg construction now lives in eng/resolve-ci-topology.ps1 (a pure function, table-tested
+        // by CiTopologyDecisionContractTests) rather than inlined in this workflow file.
+        var topologyScript = File.ReadAllText(Path.Combine(repositoryRoot, "eng", "resolve-ci-topology.ps1"));
+        var docsLegIndex = topologyScript.IndexOf(
+            "New-CiTopologyLeg -Name 'docs-linux-1-of-2'",
+            StringComparison.Ordinal);
 
         Assert.IsTrue(checkoutIndex >= 0, "CI must check out the repository.");
         Assert.IsTrue(historyIndex > checkoutIndex, "Changelog comparison requires full base history.");
         Assert.IsTrue(changelogStepIndex > historyIndex, "CI must declare the changelog verifier after checkout.");
         Assert.IsTrue(changelogOwnerConditionIndex > changelogStepIndex);
         Assert.IsTrue(changelogIndex > historyIndex, "CI must run the changelog verifier after checkout.");
-        Assert.IsTrue(docsOnlyOutputIndex >= 0 && docsLegIndex > docsOnlyOutputIndex,
-            "The router must expose docs-only state and emit a dedicated hosted docs leg.");
+        Assert.IsTrue(docsOnlyOutputIndex >= 0, "The route job must expose docs-only state as a step output.");
+        Assert.IsTrue(docsLegIndex >= 0, "The topology decision must emit a dedicated hosted docs leg.");
         Assert.IsTrue(
             changelogOwnerConditionIndex < changelogIndex,
             "The changelog verifier must run on the sole artifact-owning leg, including docs-only PRs.");

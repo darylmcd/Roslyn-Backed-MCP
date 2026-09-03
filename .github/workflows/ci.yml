@@ -32,6 +32,9 @@ jobs:
       docs_only: ${{ steps.decide.outputs.docs_only }}
       runner_matrix: ${{ steps.decide.outputs.runner_matrix }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Decide validation topology
         id: decide
         shell: pwsh
@@ -40,61 +43,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          function New-Leg {
-            param(
-              [Parameter(Mandatory)][string] $Name,
-              [Parameter(Mandatory)]
-              [ValidateSet('ubuntu-latest', 'windows-latest')]
-              [string] $RunsOn,
-              [Parameter(Mandatory)][bool] $ArtifactOwner,
-              [Parameter(Mandatory)][int] $TimeoutMinutes,
-              [Parameter(Mandatory)][int] $TestShardIndex,
-              [Parameter(Mandatory)][int] $TestShardCount
-            )
-
-            [ordered]@{
-              name = $Name
-              runs_on = $RunsOn
-              artifact_owner = $ArtifactOwner
-              timeout_minutes = $TimeoutMinutes
-              test_shard_index = $TestShardIndex
-              test_shard_count = $TestShardCount
-            }
-          }
-
-          function Write-Route {
-            param(
-              [Parameter(Mandatory)][object[]] $Matrix,
-              [Parameter(Mandatory)][string] $Reason
-            )
-
-            $json = @($Matrix) | ConvertTo-Json -Compress -Depth 6 -AsArray
-            "runner_matrix=$json" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Host "::notice title=Validation route::$Reason"
-            exit 0
-          }
-
-          $codePullRequest = @(
-            New-Leg -Name 'windows-hosted-1-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 4
-            New-Leg -Name 'windows-hosted-2-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 1 -TestShardCount 4
-            New-Leg -Name 'windows-hosted-3-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 2 -TestShardCount 4
-            New-Leg -Name 'windows-hosted-4-of-4' -RunsOn 'windows-latest' -ArtifactOwner $false -TimeoutMinutes 45 -TestShardIndex 3 -TestShardCount 4
-            New-Leg -Name 'linux-1-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 2
-            New-Leg -Name 'linux-2-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 2
-          )
-          $docsOnlyPullRequest = @(
-            New-Leg -Name 'docs-linux-1-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 30 -TestShardIndex 0 -TestShardCount 2
-            New-Leg -Name 'docs-linux-2-of-2' -RunsOn 'ubuntu-latest' -ArtifactOwner $false -TimeoutMinutes 30 -TestShardIndex 1 -TestShardCount 2
-          )
-          $scheduledValidation = @(
-            New-Leg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 1
-          )
-
+          # All GitHub API access lives here, at the workflow-step boundary. The topology
+          # decision itself -- leg construction, docs-only classification, and the fail-closed
+          # count-mismatch/cap guard -- is a pure function in eng/resolve-ci-topology.ps1, so it
+          # can run (and be table-tested) outside GitHub Actions. See CiTopologyDecisionContractTests.
           $isPullRequest = '${{ github.event_name == 'pull_request' }}' -eq 'true'
-          $docsOnly = $false
+          $changedFilesJson = '[]'
+          $reportedChangedFileCount = $null
           if ($isPullRequest) {
             $pullRequestNumber = '${{ github.event.pull_request.number }}'
-            $changedPagesJson = gh api `
+            $changedFilesJson = gh api `
               --paginate `
               --slurp `
               "repos/${{ github.repository }}/pulls/$pullRequestNumber/files?per_page=100" |
@@ -102,54 +60,27 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Could not enumerate pull-request files and rename origins (gh exit $LASTEXITCODE)."
             }
-
-            $changedPages = $changedPagesJson | ConvertFrom-Json -ErrorAction Stop
             $reportedChangedFileCount = [int]'${{ github.event.pull_request.changed_files }}'
-            $enumeratedFileCount = 0
-            $changedSet = [System.Collections.Generic.HashSet[string]]::new(
-              [System.StringComparer]::Ordinal)
-            foreach ($page in @($changedPages)) {
-              foreach ($file in @($page)) {
-                $enumeratedFileCount++
-                foreach ($path in @($file.filename, $file.previous_filename)) {
-                  if (-not [string]::IsNullOrWhiteSpace($path)) {
-                    [void]$changedSet.Add($path)
-                  }
-                }
-              }
-            }
-
-            $changed = @($changedSet)
-            Write-Host "Enumerated $enumeratedFileCount pull-request file records and $($changed.Count) unique current/original paths."
-            $documentationPattern = '^(.*\.md|ai_docs/.*\.json)$'
-            $behaviorBearingMarkdownPattern = `
-              '(^CHANGELOG\.md$|^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/)'
-            $nonDocs = @($changed | Where-Object {
-              $_ -notmatch $documentationPattern -or
-              $_ -match $behaviorBearingMarkdownPattern
-            })
-            if ($enumeratedFileCount -ge 3000 -or $enumeratedFileCount -ne $reportedChangedFileCount) {
-              Write-Warning (
-                "GitHub reported $reportedChangedFileCount changed files but the files API returned " +
-                "$enumeratedFileCount; route full validation because the API result may be capped or incomplete.")
-            }
-            else {
-              $docsOnly = $changed.Count -gt 0 -and $nonDocs.Count -eq 0
-            }
           }
 
-          "docs_only=$($docsOnly.ToString().ToLowerInvariant())" |
+          # eng/resolve-ci-topology.ps1 signals failure by throwing (Set-StrictMode/
+          # $ErrorActionPreference = 'Stop' in that script, propagated by this step's own
+          # 'Stop' preference) rather than a process exit code, so no separate $LASTEXITCODE
+          # check follows this call -- an uncaught exception here already fails the step.
+          $eventName = if ($isPullRequest) { 'pull_request' } else { '${{ github.event_name }}' }
+          $decisionJson = & ./eng/resolve-ci-topology.ps1 `
+            -EventName $eventName `
+            -ChangedFilesJson $changedFilesJson `
+            -ReportedChangedFileCount $reportedChangedFileCount |
+            Out-String
+          $decision = $decisionJson | ConvertFrom-Json -Depth 8 -ErrorAction Stop
+
+          $matrixJson = $decision.runner_matrix | ConvertTo-Json -Compress -Depth 6 -AsArray
+          "docs_only=$($decision.docs_only.ToString().ToLowerInvariant())" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-          if ($docsOnly) {
-            Write-Route -Matrix $docsOnlyPullRequest -Reason 'Policy-only docs PR: two hosted Linux test shards.'
-          }
-
-          if (-not $isPullRequest) {
-            Write-Route -Matrix $scheduledValidation -Reason 'Dispatch/schedule: one unsharded Linux coverage leg.'
-          }
-
-          Write-Route -Matrix $codePullRequest -Reason 'Code PR: four hosted Windows and two hosted Linux shards.'
+          "runner_matrix=$matrixJson" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "::notice title=Validation route::$($decision.reason)"
 
   validate:
     name: validate-leg (${{ matrix.leg.name }})

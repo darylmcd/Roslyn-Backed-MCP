@@ -21,6 +21,12 @@ Rules:
 - Treat root `CHANGELOG.md` and behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix. Release assembly/version checks therefore cannot be bypassed by the policy-doc route.
 - Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
 
+The routing decision itself -- leg construction, docs-only classification, and the fail-closed
+count-mismatch/cap guard -- is a pure function in `eng/resolve-ci-topology.ps1`. The `route` job's
+step performs the `gh api` pull-request file listing (the only GitHub API access in the decision
+path) and hands the result to that script; it does not reimplement the decision inline. This keeps
+the decision runnable and table-tested (`CiTopologyDecisionContractTests`) outside GitHub Actions.
+
 The router emits typed leg fields. Keep their concerns separate:
 
 | Field | Meaning |
@@ -143,6 +149,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 ## Ownership
 
 - Workflow implementation: `.github/workflows/ci.yml`
+- Validation-topology decision (pure function, table-tested): `eng/resolve-ci-topology.ps1`
 - Human self-hosted operations: `docs/self-hosted-runner.md`
 - Runtime and local commands: `ai_docs/runtime.md`
 - Branch/worktree/PR workflow: `ai_docs/workflow.md`
