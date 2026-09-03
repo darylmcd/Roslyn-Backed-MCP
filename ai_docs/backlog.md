@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-02T19:01:48Z
+**updated_at:** 2026-09-03T06:27:04Z
 
 ## Agent contract
 
@@ -47,18 +47,15 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `unused-symbol-tools-false-positive-private-members` | High | — | **`find_unused_symbols` / `find_dead_fields` report directly-called private members as dead.** 6/6 false positives across 3 projects of a consumer repo; fix the reference walk or demote the tools off the default surface. [type: bug] [source: refactor-audit-downstream] | S | items/unused-symbol-tools-false-positive-private-members.md |
 
 ## Medium
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `test-base-static-service-locator-decomposition` | Medium | test-assembly-cleanup-failure-observability,mcp-roots-fixture-lifecycle-consolidation | **Decompose the TestBase static service locator** — Introduce one immutable assembly fixture context and separate shared-service, repository-path, and lifecycle ownership without changing test semantics. [type: refactor] [source: top-immediate-remediation adjacent review] | S | items/test-base-static-service-locator-decomposition.md |
-| `output-schema-generation-authority` | Medium | host-assembly-marker-foundation | **Establish one output-schema generation authority** — preserve explicit list/status unions without blindly overwriting SDK-generated fixed schemas. [type: refactor] [source: 2026-08-14 SDK implementation review] | M | items/output-schema-generation-authority.md |
 | `structured-call-tool-filter-pipeline-decomposition` | Medium | workspace-auto-load-on-demand-design,structured-tool-dispatch-adapter,tool-error-envelope-sensitive-detail-disclosure | **Decompose the structured call filter pipeline** — split workspace resolution, dispatch/retry, and result/error projection out of `StructuredCallToolFilter.Create` without changing the public wire contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/structured-call-tool-filter-pipeline-decomposition.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
-| `scaffold-sampling-mrtr-replay-cost` | Medium | — | Split scaffold sampling preparation from completion so MRTR replay does not repeat compilation and sibling discovery; keep request state bounded and secret-safe and prove one expensive preparation. | M | items/scaffold-sampling-mrtr-replay-cost.md |
-| `ci-hosted-shard-duration-balancing` | Medium | — | **Durable hosted-shard timing evidence** — gate RESOLVED 2026-09-02: no material skew (~1.2 min ceiling, inside noise), so static weights stay; ship `eng/collect-hosted-shard-timings.ps1` + record the decision at `CI_POLICY.md:78`. [type: CI] [source: 2026-08-24 CI timing audit] | M | items/ci-hosted-shard-duration-balancing.md |
-| `formatter-baseline-generator-concurrent-load-timeout` | Medium | — | Diagnose formatter baseline generator contention without masking five-minute timeouts. [type: test infrastructure] [source: 2026-09-01 just-ci] | M | items/formatter-baseline-generator-concurrent-load-timeout.md |
 | `tool-update-owned-process-shutdown` | Medium | — | **Owned-process shutdown for `just tool-update`** — the now-mandatory Layer 1 refresh fails with a locked tool-store directory whenever a `roslynmcp` process is running; reuse the local-pack ownership guard instead of matching on image name. [type: bug] [source: 2026-09-02 two-layer release-cut contract] | M | items/tool-update-owned-process-shutdown.md |
 | `method-diet-undo-workspace-lifecycle` | Medium | desc-budget-harness-method-family | **Method-description diet: undo + workspace-lifecycle slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (3471 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-undo-workspace-lifecycle.md |
 | `method-diet-fixall-bulk-operations` | Medium | desc-budget-harness-method-family | **Method-description diet: fix-all, bulk and operations slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (2025 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-fixall-bulk-operations.md |
@@ -108,6 +105,7 @@
 | `tool-merge-apply-code-transform-4` | Medium | tool-consolidation-adr-and-alias-machinery,tool-merge-apply-code-transform-3 | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 1 applies into `code_transform_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-code-transform-4.md |
 | `tool-merge-apply-file-lifecycle` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 5 applies into `file_lifecycle_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-file-lifecycle.md |
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
+| `scaffold-target-type-ambiguity-before-sampling` | Medium | — | **Ambiguous target type pays a sampling round trip** — validate `targetTypeName` ambiguity before issuing the scaffold sampling request, so a guaranteed-failing call never reaches the client. [type: bug] [source: 2026-09-02 PR #1428 cold review] | S | items/scaffold-target-type-ambiguity-before-sampling.md |
 
 ## Low
 
@@ -225,6 +223,9 @@
 | `workspace-id-flip-batch-09` | Low | workspace-id-optional-adoption-evidence,workspace-id-optional-named-argument-prerequisite | BLOCKED: gated on the adoption-evidence + named-argument children. **Flip read-only `workspaceId` to optional (batch 9/11)** — 4 tools across 4 file(s), mirroring the SymbolTools pilot. [type: feature] [source: workspace-id-optional-readonly-surface-full-sweep] | M | items/workspace-id-flip-batch-09.md |
 | `workspace-id-flip-batch-10` | Low | workspace-id-optional-adoption-evidence,workspace-id-optional-named-argument-prerequisite | BLOCKED: gated on the adoption-evidence + named-argument children. **Flip read-only `workspaceId` to optional (batch 10/11)** — 4 tools across 4 file(s), mirroring the SymbolTools pilot. [type: feature] [source: workspace-id-optional-readonly-surface-full-sweep] | M | items/workspace-id-flip-batch-10.md |
 | `workspace-id-flip-batch-11` | Low | workspace-id-optional-adoption-evidence,workspace-id-optional-named-argument-prerequisite | BLOCKED: gated on the adoption-evidence + named-argument children. **Flip read-only `workspaceId` to optional (batch 11/11)** — 3 tools across 3 file(s), mirroring the SymbolTools pilot. [type: feature] [source: workspace-id-optional-readonly-surface-full-sweep] | M | items/workspace-id-flip-batch-11.md |
+| `formatter-baseline-generator-double-restore-cost` | Low | — | **Formatter generator check pays two full restores** — drop the second `dotnet restore` in `RunGeneratorCheckAsync`, or document why the truncation contract requires it. [type: test] [source: 2026-09-02 PR #1429 cold review] | S | items/formatter-baseline-generator-double-restore-cost.md |
+| `eng-trx-parser-duplicated-across-two-scripts` | Low | — | **Two copies of the hardened TRX reader** — extract the shared MSTest TRX parser used by `summarize-test-results.ps1` and `collect-hosted-shard-timings.ps1` into one dot-sourced helper. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/eng-trx-parser-duplicated-across-two-scripts.md |
+| `collector-diagnostics-bypass-error-formatter` | Low | — | **Collector diagnostics go through the PS error formatter** — emit fail-closed messages as one deterministic stderr line via `trap`, so output is not console-width dependent. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/collector-diagnostics-bypass-error-formatter.md |
 
 ## Defer
 

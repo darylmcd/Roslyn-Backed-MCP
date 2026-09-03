@@ -17,3 +17,42 @@
 - The first 2026-08-22 `just ci` run failed only `WrongTypedPromptArgument_UsesStableInvalidParamsWithoutReporting`: the latest-era iteration expected `2026-07-28` but negotiated `2025-11-25`.
 - The exact Release test passed immediately in isolation, including both protocol eras.
 - A second complete `just ci` run passed 2,445 tests with zero failures.
+
+## Amendment — 2026-09-02 (second independent symptom, same root cause)
+
+A second test hit this defect from a different assertion, confirming it is not specific to
+`PromptCallErrorFilterTests`.
+
+`ElicitationChoicePromptTests.SupportsElicitation_UsesRequestCapabilitiesForModern_AndServerSnapshotForLegacy`
+failed once during a full-suite Release gate: `Assert.IsNull(modernHarness.Server.ClientCapabilities)`
+observed a non-null `ClientCapabilities`. The harness retains connection-scoped client capabilities
+ONLY for the legacy protocol version (`_legacyConnectionScopedProtocolVersion = "2025-11-25"`), so a
+non-null value is the same "latest request negotiated 2025-11-25" outcome this row already records —
+observed through capability retention rather than through an era assertion.
+
+Add `tests/RoslynMcp.Tests/ElicitationChoicePromptTests.cs` to the anchors; the concurrency regression
+in acceptance bullet 3 should cover it alongside the prompt and tool wire harnesses.
+
+Reproduction profile gathered 2026-09-02, all on commit 3fcd132b:
+
+| Shape | Result |
+|---|---|
+| Base, class in isolation, x3 | PASS |
+| Branch, class in isolation, x3 | PASS |
+| Branch, 3 interacting classes in one process, x5 | PASS |
+| Branch, full suite, 2 sibling suites running | PASS (2818/0) |
+| Branch, full suite, 4 concurrent full suites | **FAIL** |
+
+That gradient matches this row's own evidence (fails in a loaded full run, passes immediately in
+isolation) and strengthens the "state crosses in-memory server sessions under load" hypothesis.
+
+Ruled out as a cause: the `output-schema-generation-authority` diff under which it surfaced.
+`ElicitationChoicePromptTests` builds its server from a bare `McpServerOptions()` with no DI
+container, while `SurfaceRegistrationPolicy.Apply` is reachable only through
+`services.PostConfigure<McpServerOptions>()`.
+
+Distinct from the registered `WorkspaceExecutionGateTests` timing flake and from concurrent-load
+`TimeoutException`s: those are timeouts, this is a negotiation/capability assertion. Do not fold them
+together.
+
+[source: 2026-09-02 backlog-remediate triage]

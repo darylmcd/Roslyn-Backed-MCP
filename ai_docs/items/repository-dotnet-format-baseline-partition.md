@@ -34,3 +34,22 @@ Two child initiatives shipped: the baseline inventory + contract test (#1347) an
 **Operational trap discovered while landing #1347 — read before touching this row again.** `eng/format-baseline.json` is **base-sensitive**: it records the repository's live violation set, so any merge to `main` that adds a violating file makes a previously-tracked baseline stale and trips `FormatterBaselineContractTests.Generator_IsDeterministicAndTheTrackedInventoryCoversTheLiveRunAsync`. #1347 failed CI on exactly this — three test files created by sibling initiatives in the same sweep. **Regenerate the inventory as the last commit before landing anything that touches it.** The generator takes no path argument (the `-OutputPath` parameter was removed as unrequested scope); verify with `-Check`.
 
 **Root cause of the dominant debt class is now tracked separately.** IDE1006 is 306 of the 418 findings because `.editorconfig`'s private-field naming rule sets `applicable_kinds = field` with no `required_modifiers`, so it demands a `_` prefix on `private const` and `private static readonly` too — against a codebase that uses PascalCase consts. Do **not** repair baseline files by renaming consts to `_camelCase`; fix the rule scoping first. Row: `editorconfig-private-field-naming-rule-overbroad`.
+
+## Amendment — 2026-09-02 (measured on a clean tree)
+
+`eng/format-baseline.json` is stale in the SHRINKING direction, so
+`pwsh -NoProfile -File ./eng/generate-format-baseline.ps1 -Check` exits 1 on an unmodified checkout.
+
+Measured at commit `3fcd132b`, base and patched trees identical: the live run emits
+`findingCount=117 / fileCount=112 / diagnosticIds=[FINALNEWLINE, IDE1006, IMPORTS]` while the tracked
+artifact records `121 / 114` and still declares `WHITESPACE`. Repairs landed without regenerating, so
+the ratchet is loose by 4 findings and 2 files.
+
+`FormatterBaselineContractTests` stays green because its subset assertions deliberately tolerate
+shrink drift — which is why this went unnoticed. The practical cost is that the script's exit code is
+useless as a signal to any caller other than that test.
+
+Fold into this row's repair slices: regenerate the artifact so `-Check` exits 0 on a clean tree, or
+state explicitly that non-zero-on-shrink is intended and pin whichever contract is chosen.
+
+[source: 2026-09-02 backlog-remediate PR #1429 cold review]
