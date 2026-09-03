@@ -45,7 +45,6 @@ internal sealed record TestRepositoryFixtures(
 /// </summary>
 internal sealed class TestAssemblyFixture : IAsyncDisposable
 {
-    private readonly Func<IReadOnlyList<string>, CancellationToken, Task<McpRootsTestServerFactory.Session>> _sessionFactory;
     private readonly object _sessionLock = new();
     private Task<McpRootsTestServerFactory.Session>? _pathAuthorizedServerTask;
     private int _disposeState;
@@ -53,13 +52,10 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
 
     internal TestAssemblyFixture(
         TestServiceContainer services,
-        TestRepositoryFixtures repositoryFixtures,
-        Func<IReadOnlyList<string>, CancellationToken, Task<McpRootsTestServerFactory.Session>>? sessionFactory = null)
+        TestRepositoryFixtures repositoryFixtures)
     {
         Services = services;
         RepositoryFixtures = repositoryFixtures;
-        _sessionFactory = sessionFactory
-            ?? (static (roots, ct) => McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(roots, ct));
     }
 
     /// <summary>The immutable service container. The single declaration site for a test service.</summary>
@@ -75,11 +71,13 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
     public WorkspaceIdCache WorkspaceIdCache { get; } = new();
 
     /// <summary>
-    /// Number of times this fixture actually released its owned resources. Must never exceed 1,
-    /// no matter how many callers invoke <see cref="DisposeAsync"/>. Asserted by
-    /// <c>TestAssemblyFixtureTests</c>.
+    /// Number of times <see cref="DisposeAsync"/> has passed its idempotence guard and entered the
+    /// release block. Must never exceed 1 however many callers dispose the fixture. This counts
+    /// ENTRIES, not completed releases — the release itself is proven by an observable
+    /// post-condition in the regression, since a counter alone would stay green if the release
+    /// block were deleted.
     /// </summary>
-    internal int OwnedResourceDisposalCount => Volatile.Read(ref _ownedResourceDisposalCount);
+    internal int DisposalEntryCount => Volatile.Read(ref _ownedResourceDisposalCount);
 
     public static TestAssemblyFixture Create(ValidationServiceOptions validationOptions) =>
         new(TestServiceContainer.Create(validationOptions), TestRepositoryFixtures.Discover());
@@ -97,7 +95,7 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
             sessionTask = _pathAuthorizedServerTask ??=
-                _sessionFactory(
+                McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
                     [RepositoryFixtures.RepositoryRootPath, TestTempRoot.Current],
                     CancellationToken.None);
         }

@@ -92,15 +92,13 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
     [TestMethod]
     public async Task DisposeAsync_ReleasesOwnedResourcesExactlyOnce()
     {
-        // A standalone fixture, so the assembly-owned one stays live for the rest of the run.
-        // The session factory throws: this regression must never stand up a real MCP server.
+        // A standalone fixture, so the assembly-owned one stays live for the rest of the run. It
+        // never requests a path-authorized server, so no MCP server is stood up.
         var fixture = new TestAssemblyFixture(
             TestServiceContainer.Create(new ValidationServiceOptions()),
-            Fixture.RepositoryFixtures,
-            sessionFactory: static (_, _) => throw new InvalidOperationException(
-                "The disposal regression must not create a path-authorized server session."));
+            Fixture.RepositoryFixtures);
 
-        Assert.AreEqual(0, fixture.OwnedResourceDisposalCount, "A fresh fixture has released nothing.");
+        Assert.AreEqual(0, fixture.DisposalEntryCount, "A fresh fixture has released nothing.");
 
         await fixture.DisposeAsync();
         await fixture.DisposeAsync();
@@ -108,11 +106,23 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
 
         Assert.AreEqual(
             1,
-            fixture.OwnedResourceDisposalCount,
+            fixture.DisposalEntryCount,
             "Owned resources must be released exactly once however many callers dispose the fixture.");
+
+        // NOTE: this assertion proves the release block was ENTERED exactly once, not that it ran
+        // to completion — deleting the block's body would leave it green. An observable
+        // post-condition was attempted (asserting the disposed WorkspaceManager refuses a
+        // LoadAsync) and REVERTED: it throws only when the call reaches the disposed semaphore,
+        // and with the sample solutions pre-prepared by a full suite run it short-circuits before
+        // that, so it passed in isolation and failed under the full gate. A deterministic check
+        // needs a read accessor on WorkspaceIdCache to assert Clear() ran, which is a fourth test
+        // file and over this initiative's Rule 4 budget. Tracked by row
+        // test-assembly-fixture-disposal-observable-postcondition.
+
+        // Disposing the fixture must not reach through to the assembly-owned one.
         Assert.AreEqual(
             0,
-            Fixture.OwnedResourceDisposalCount,
+            Fixture.DisposalEntryCount,
             "The assembly-owned fixture must still be live; only AssemblyLifecycle.Cleanup disposes it.");
     }
 }
