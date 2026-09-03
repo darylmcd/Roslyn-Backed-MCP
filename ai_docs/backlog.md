@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T15:03:48Z
+**updated_at:** 2026-09-03T17:22:39Z
 
 ## Agent contract
 
@@ -107,6 +107,7 @@
 | `scaffold-target-type-ambiguity-before-sampling` | Medium | — | **Ambiguous target type pays a sampling round trip** — validate `targetTypeName` ambiguity before issuing the scaffold sampling request, so a guaranteed-failing call never reaches the client. [type: bug] [source: 2026-09-02 PR #1428 cold review] | S | items/scaffold-target-type-ambiguity-before-sampling.md |
 | `test-service-container-duplicate-service-instances` | Medium | — | **Container hands out services it did not use** — `RefactoringSuggestionService` is built with fresh CodeMetrics/Cohesion/UnusedCode instances while the container exposes its own; tests observe different objects than production DI. [type: bug] [source: 2026-09-03 PR #1431] | S | items/test-service-container-duplicate-service-instances.md |
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
+| `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 
 ## Low
 
@@ -230,6 +231,7 @@
 | `test-assembly-fixture-disposal-observable-postcondition` | Low | — | **Fixture disposal regression proves entry, not release** — assert a deterministic observable post-condition that the release block ran; needs a small read accessor on `WorkspaceIdCache`. [type: test] [source: 2026-09-03 PR #1431 cold review] | S | items/test-assembly-fixture-disposal-observable-postcondition.md |
 | `test-service-container-two-phase-construction-cycle` | Low | — | **Order-dependent gate/manager construction cycle** — a mutable local captured by a `Lazy<>` is assigned after the ctor call; correct only by statement ordering. [type: refactor] [source: 2026-09-03 PR #1431] | S | items/test-service-container-two-phase-construction-cycle.md |
 | `test-fixture-filesystem-shells-out-for-junctions` | Low | — | **Fixture helper launches cmd.exe for junctions** — `mklink /J` shell-out inside test setup is a proven flake surface under load. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | S | items/test-fixture-filesystem-shells-out-for-junctions.md |
+| `self-hosted-runner-doc-shard-decision-stale-crossref` | Low | — | **Refresh docs/self-hosted-runner.md's timing-evidence cross-reference.** It still frames shard rebalancing as open/future work; CI_POLICY.md's Hosted Shard Weighting Decision closed that calibration. Point the section there. [type: doc-staleness] [source: audit] | S | items/self-hosted-runner-doc-shard-decision-stale-crossref.md |
 
 ## Defer
 
