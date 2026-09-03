@@ -155,7 +155,7 @@
     {
       "id": "test-base-static-service-locator-decomposition",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "test-base-static-service-locator-decomposition"
       ],
@@ -180,8 +180,8 @@
         "ci-hosted-shard-duration-balancing",
         "formatter-baseline-generator-concurrent-load-timeout"
       ],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/test-base-static-service-locator-decomposition",
+      "worktreePath": ".worktrees/test-base-static-service-locator-decomposition",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,

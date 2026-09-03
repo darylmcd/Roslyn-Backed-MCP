@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T06:27:04Z
+**updated_at:** 2026-09-03T07:32:52Z
 
 ## Agent contract
 
@@ -53,7 +53,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `test-base-static-service-locator-decomposition` | Medium | test-assembly-cleanup-failure-observability,mcp-roots-fixture-lifecycle-consolidation | **Decompose the TestBase static service locator** — Introduce one immutable assembly fixture context and separate shared-service, repository-path, and lifecycle ownership without changing test semantics. [type: refactor] [source: top-immediate-remediation adjacent review] | S | items/test-base-static-service-locator-decomposition.md |
 | `structured-call-tool-filter-pipeline-decomposition` | Medium | workspace-auto-load-on-demand-design,structured-tool-dispatch-adapter,tool-error-envelope-sensitive-detail-disclosure | **Decompose the structured call filter pipeline** — split workspace resolution, dispatch/retry, and result/error projection out of `StructuredCallToolFilter.Create` without changing the public wire contract. [type: refactor] [source: 2026-08-16 remediation review] | M | items/structured-call-tool-filter-pipeline-decomposition.md |
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
 | `tool-update-owned-process-shutdown` | Medium | — | **Owned-process shutdown for `just tool-update`** — the now-mandatory Layer 1 refresh fails with a locked tool-store directory whenever a `roslynmcp` process is running; reuse the local-pack ownership guard instead of matching on image name. [type: bug] [source: 2026-09-02 two-layer release-cut contract] | M | items/tool-update-owned-process-shutdown.md |
@@ -226,6 +225,7 @@
 | `formatter-baseline-generator-double-restore-cost` | Low | — | **Formatter generator check pays two full restores** — drop the second `dotnet restore` in `RunGeneratorCheckAsync`, or document why the truncation contract requires it. [type: test] [source: 2026-09-02 PR #1429 cold review] | S | items/formatter-baseline-generator-double-restore-cost.md |
 | `eng-trx-parser-duplicated-across-two-scripts` | Low | — | **Two copies of the hardened TRX reader** — extract the shared MSTest TRX parser used by `summarize-test-results.ps1` and `collect-hosted-shard-timings.ps1` into one dot-sourced helper. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/eng-trx-parser-duplicated-across-two-scripts.md |
 | `collector-diagnostics-bypass-error-formatter` | Low | — | **Collector diagnostics go through the PS error formatter** — emit fail-closed messages as one deterministic stderr line via `trap`, so output is not console-width dependent. [type: refactor] [source: 2026-09-02 PR #1427 cold review] | M | items/collector-diagnostics-bypass-error-formatter.md |
+| `test-assembly-fixture-disposal-observable-postcondition` | Low | — | **Fixture disposal regression proves entry, not release** — assert a deterministic observable post-condition that the release block ran; needs a small read accessor on `WorkspaceIdCache`. [type: test] [source: 2026-09-03 PR #1431 cold review] | S | items/test-assembly-fixture-disposal-observable-postcondition.md |
 
 ## Defer
 

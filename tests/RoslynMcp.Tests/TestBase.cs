@@ -2,7 +2,6 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
-using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -11,8 +10,7 @@ public abstract class TestBase
     private static readonly object _initLock = new();
     private static bool _msbuildInitialized;
     private static bool _servicesInitialized;
-    private static readonly WorkspaceIdCache _workspaceIdCache = new();
-    private static Task<McpRootsTestServerFactory.Session>? _pathAuthorizedServerTask;
+    private static TestAssemblyFixture? _fixture;
 
     /// <summary>
     /// Validation timeouts for integration tests. Defaults match production
@@ -46,93 +44,99 @@ public abstract class TestBase
         return opts;
     }
 
-    protected static IPreviewStore PreviewStore { get; private set; } = null!;
-    protected static WorkspaceManager WorkspaceManager { get; private set; } = null!;
-    protected static IFileWatcherService FileWatcher { get; private set; } = null!;
-    protected static SymbolNavigationService SymbolNavigationService { get; private set; } = null!;
-    protected static SymbolSearchService SymbolSearchService { get; private set; } = null!;
-    protected static ReferenceService ReferenceService { get; private set; } = null!;
-    protected static SymbolRelationshipService SymbolRelationshipService { get; private set; } = null!;
-    protected static MutationAnalysisService MutationAnalysisService { get; private set; } = null!;
-    protected static TypeConsumersService TypeConsumersService { get; private set; } = null!;
-    protected static SemanticGrepService SemanticGrepService { get; private set; } = null!;
-    protected static DiagnosticService DiagnosticService { get; private set; } = null!;
-    protected static RefactoringService RefactoringService { get; private set; } = null!;
-    protected static BuildService BuildService { get; private set; } = null!;
-    protected static TestRunnerService TestRunnerService { get; private set; } = null!;
-    protected static TestDiscoveryService TestDiscoveryService { get; private set; } = null!;
-    protected static CompletionService CompletionService { get; private set; } = null!;
-    protected static CodeActionService CodeActionService { get; private set; } = null!;
-    protected static UnusedCodeAnalyzer UnusedCodeAnalyzer { get; private set; } = null!;
-    protected static CodeMetricsService CodeMetricsService { get; private set; } = null!;
-    protected static NamespaceDependencyService NamespaceDependencyService { get; private set; } = null!;
-    protected static DiRegistrationService DiRegistrationService { get; private set; } = null!;
-    protected static NuGetDependencyService NuGetDependencyService { get; private set; } = null!;
-    protected static CodePatternAnalyzer CodePatternAnalyzer { get; private set; } = null!;
-    protected static EditService EditService { get; private set; } = null!;
-    protected static FileOperationService FileOperationService { get; private set; } = null!;
-    protected static ProjectMutationService ProjectMutationService { get; private set; } = null!;
-    protected static CrossProjectRefactoringService CrossProjectRefactoringService { get; private set; } = null!;
-    protected static PackageMigrationOrchestrator PackageMigrationOrchestrator { get; private set; } = null!;
-    protected static ClassSplitOrchestrator ClassSplitOrchestrator { get; private set; } = null!;
-    protected static ExtractAndWireOrchestrator ExtractAndWireOrchestrator { get; private set; } = null!;
-    protected static CompositeApplyOrchestrator CompositeApplyOrchestrator { get; private set; } = null!;
-    protected static ScaffoldingService ScaffoldingService { get; private set; } = null!;
-    protected static DeadCodeService DeadCodeService { get; private set; } = null!;
-    protected static SyntaxService SyntaxService { get; private set; } = null!;
-    protected static WorkspaceExecutionGate WorkspaceExecutionGate { get; private set; } = null!;
-    protected static DotnetCommandRunner DotnetCommandRunner { get; private set; } = null!;
-    protected static GatedCommandExecutor GatedCommandExecutor { get; private set; } = null!;
-    protected static BulkRefactoringService BulkRefactoringService { get; private set; } = null!;
-    protected static CohesionAnalysisService CohesionAnalysisService { get; private set; } = null!;
-    protected static CouplingAnalysisService CouplingAnalysisService { get; private set; } = null!;
-    protected static RecordFieldAdditionService RecordFieldAdditionService { get; private set; } = null!;
-    protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
-    protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
-    protected static TypeMoveService TypeMoveService { get; private set; } = null!;
-    protected static UndoService UndoService { get; private set; } = null!;
-    protected static FlowAnalysisService FlowAnalysisService { get; private set; } = null!;
-    protected static CompileCheckService CompileCheckService { get; private set; } = null!;
-    protected static AnalyzerInfoService AnalyzerInfoService { get; private set; } = null!;
-    protected static FixAllService FixAllService { get; private set; } = null!;
-    protected static OperationService OperationService { get; private set; } = null!;
-    protected static SnippetAnalysisService SnippetAnalysisService { get; private set; } = null!;
-    protected static ScriptingService ScriptingService { get; private set; } = null!;
-    protected static EditorConfigService EditorConfigService { get; private set; } = null!;
-    protected static MsBuildEvaluationService MsBuildEvaluationService { get; private set; } = null!;
-    protected static ExtractMethodService ExtractMethodService { get; private set; } = null!;
-    protected static ChangeTracker ChangeTracker { get; private set; } = null!;
-    protected static RefactoringSuggestionService RefactoringSuggestionService { get; private set; } = null!;
-    protected static FormatVerifyService FormatVerifyService { get; private set; } = null!;
-    protected static InterfaceExtractionService InterfaceExtractionService { get; private set; } = null!;
-    protected static ExceptionFlowService ExceptionFlowService { get; private set; } = null!;
-    protected static WorkspaceWarmService WorkspaceWarmService { get; private set; } = null!;
-    protected static WorkspaceDriftService WorkspaceDriftService { get; private set; } = null!;
-    protected static ParameterObjectService ParameterObjectService { get; private set; } = null!;
+    /// <summary>
+    /// The single assembly-owned context that actually holds the services, the repository
+    /// fixture paths, the workspace-id cache, and the path-authorized MCP server session.
+    /// Every <c>protected static</c> member below is a get-only forwarder over it, so a test
+    /// service is declared once (in <see cref="TestServiceContainer"/>) rather than being
+    /// hand-copied into a mutable static here as well.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a shared service is touched before <see cref="InitializeServices"/> ran.
+    /// The previous mutable statics returned <see langword="null"/> in that window and failed
+    /// later with an opaque <see cref="NullReferenceException"/>; failing here names the cause.
+    /// </exception>
+    internal static TestAssemblyFixture Fixture =>
+        Volatile.Read(ref _fixture) ?? throw new InvalidOperationException(
+            "Test services have not been initialized. Call TestBase.InitializeServices() " +
+            "(normally from [ClassInitialize]) before touching a shared service or fixture path.");
 
-    protected static string RepositoryRootPath { get; private set; } = null!;
-    protected static string SampleSolutionPath { get; private set; } = null!;
-    protected static string BuildFailureSolutionPath { get; private set; } = null!;
-    protected static string GeneratedDocumentSolutionPath { get; private set; } = null!;
+    protected static IPreviewStore PreviewStore => Fixture.Services.PreviewStore;
+    protected static WorkspaceManager WorkspaceManager => Fixture.Services.WorkspaceManager;
+    protected static IFileWatcherService FileWatcher => Fixture.Services.FileWatcher;
+    protected static SymbolNavigationService SymbolNavigationService => Fixture.Services.SymbolNavigationService;
+    protected static SymbolSearchService SymbolSearchService => Fixture.Services.SymbolSearchService;
+    protected static ReferenceService ReferenceService => Fixture.Services.ReferenceService;
+    protected static SymbolRelationshipService SymbolRelationshipService => Fixture.Services.SymbolRelationshipService;
+    protected static MutationAnalysisService MutationAnalysisService => Fixture.Services.MutationAnalysisService;
+    protected static TypeConsumersService TypeConsumersService => Fixture.Services.TypeConsumersService;
+    protected static SemanticGrepService SemanticGrepService => Fixture.Services.SemanticGrepService;
+    protected static DiagnosticService DiagnosticService => Fixture.Services.DiagnosticService;
+    protected static RefactoringService RefactoringService => Fixture.Services.RefactoringService;
+    protected static BuildService BuildService => Fixture.Services.BuildService;
+    protected static TestRunnerService TestRunnerService => Fixture.Services.TestRunnerService;
+    protected static TestDiscoveryService TestDiscoveryService => Fixture.Services.TestDiscoveryService;
+    protected static CompletionService CompletionService => Fixture.Services.CompletionService;
+    protected static CodeActionService CodeActionService => Fixture.Services.CodeActionService;
+    protected static UnusedCodeAnalyzer UnusedCodeAnalyzer => Fixture.Services.UnusedCodeAnalyzer;
+    protected static CodeMetricsService CodeMetricsService => Fixture.Services.CodeMetricsService;
+    protected static NamespaceDependencyService NamespaceDependencyService => Fixture.Services.NamespaceDependencyService;
+    protected static DiRegistrationService DiRegistrationService => Fixture.Services.DiRegistrationService;
+    protected static NuGetDependencyService NuGetDependencyService => Fixture.Services.NuGetDependencyService;
+    protected static CodePatternAnalyzer CodePatternAnalyzer => Fixture.Services.CodePatternAnalyzer;
+    protected static EditService EditService => Fixture.Services.EditService;
+    protected static FileOperationService FileOperationService => Fixture.Services.FileOperationService;
+    protected static ProjectMutationService ProjectMutationService => Fixture.Services.ProjectMutationService;
+    protected static CrossProjectRefactoringService CrossProjectRefactoringService => Fixture.Services.CrossProjectRefactoringService;
+    protected static PackageMigrationOrchestrator PackageMigrationOrchestrator => Fixture.Services.PackageMigrationOrchestrator;
+    protected static ClassSplitOrchestrator ClassSplitOrchestrator => Fixture.Services.ClassSplitOrchestrator;
+    protected static ExtractAndWireOrchestrator ExtractAndWireOrchestrator => Fixture.Services.ExtractAndWireOrchestrator;
+    protected static CompositeApplyOrchestrator CompositeApplyOrchestrator => Fixture.Services.CompositeApplyOrchestrator;
+    protected static ScaffoldingService ScaffoldingService => Fixture.Services.ScaffoldingService;
+    protected static DeadCodeService DeadCodeService => Fixture.Services.DeadCodeService;
+    protected static SyntaxService SyntaxService => Fixture.Services.SyntaxService;
+    protected static WorkspaceExecutionGate WorkspaceExecutionGate => Fixture.Services.WorkspaceExecutionGate;
+    protected static DotnetCommandRunner DotnetCommandRunner => Fixture.Services.DotnetCommandRunner;
+    protected static GatedCommandExecutor GatedCommandExecutor => Fixture.Services.GatedCommandExecutor;
+    protected static BulkRefactoringService BulkRefactoringService => Fixture.Services.BulkRefactoringService;
+    protected static CohesionAnalysisService CohesionAnalysisService => Fixture.Services.CohesionAnalysisService;
+    protected static CouplingAnalysisService CouplingAnalysisService => Fixture.Services.CouplingAnalysisService;
+    protected static RecordFieldAdditionService RecordFieldAdditionService => Fixture.Services.RecordFieldAdditionService;
+    protected static ConsumerAnalysisService ConsumerAnalysisService => Fixture.Services.ConsumerAnalysisService;
+    protected static TypeExtractionService TypeExtractionService => Fixture.Services.TypeExtractionService;
+    protected static TypeMoveService TypeMoveService => Fixture.Services.TypeMoveService;
+    protected static UndoService UndoService => Fixture.Services.UndoService;
+    protected static FlowAnalysisService FlowAnalysisService => Fixture.Services.FlowAnalysisService;
+    protected static CompileCheckService CompileCheckService => Fixture.Services.CompileCheckService;
+    protected static AnalyzerInfoService AnalyzerInfoService => Fixture.Services.AnalyzerInfoService;
+    protected static FixAllService FixAllService => Fixture.Services.FixAllService;
+    protected static OperationService OperationService => Fixture.Services.OperationService;
+    protected static SnippetAnalysisService SnippetAnalysisService => Fixture.Services.SnippetAnalysisService;
+    protected static ScriptingService ScriptingService => Fixture.Services.ScriptingService;
+    protected static EditorConfigService EditorConfigService => Fixture.Services.EditorConfigService;
+    protected static MsBuildEvaluationService MsBuildEvaluationService => Fixture.Services.MsBuildEvaluationService;
+    protected static ExtractMethodService ExtractMethodService => Fixture.Services.ExtractMethodService;
+    protected static ChangeTracker ChangeTracker => Fixture.Services.ChangeTracker;
+    protected static RefactoringSuggestionService RefactoringSuggestionService => Fixture.Services.RefactoringSuggestionService;
+    protected static FormatVerifyService FormatVerifyService => Fixture.Services.FormatVerifyService;
+    protected static InterfaceExtractionService InterfaceExtractionService => Fixture.Services.InterfaceExtractionService;
+    protected static ExceptionFlowService ExceptionFlowService => Fixture.Services.ExceptionFlowService;
+    protected static WorkspaceWarmService WorkspaceWarmService => Fixture.Services.WorkspaceWarmService;
+    protected static WorkspaceDriftService WorkspaceDriftService => Fixture.Services.WorkspaceDriftService;
+    protected static ParameterObjectService ParameterObjectService => Fixture.Services.ParameterObjectService;
+
+    protected static string RepositoryRootPath => Fixture.RepositoryFixtures.RepositoryRootPath;
+    protected static string SampleSolutionPath => Fixture.RepositoryFixtures.SampleSolutionPath;
+    protected static string BuildFailureSolutionPath => Fixture.RepositoryFixtures.BuildFailureSolutionPath;
+    protected static string GeneratedDocumentSolutionPath => Fixture.RepositoryFixtures.GeneratedDocumentSolutionPath;
 
     /// <summary>
     /// Returns a real, connected MCP server whose server-owned security options explicitly
     /// sanction repository fixtures and the process temp directory. Direct tool tests use this
     /// instead of relying on a null-server path-validation bypass.
     /// </summary>
-    protected static async Task<McpServer> GetPathAuthorizedServerAsync()
-    {
-        Task<McpRootsTestServerFactory.Session> sessionTask;
-        lock (_initLock)
-        {
-            sessionTask = _pathAuthorizedServerTask ??=
-                McpRootsTestServerFactory.CreateWithSanctionedRootsAsync(
-                    [RepositoryRootPath, TestTempRoot.Current],
-                    CancellationToken.None);
-        }
-
-        return (await sessionTask.ConfigureAwait(false)).Server;
-    }
+    protected static Task<McpServer> GetPathAuthorizedServerAsync() =>
+        Fixture.GetPathAuthorizedServerAsync();
 
     protected static void InitializeServices()
     {
@@ -160,81 +164,13 @@ public abstract class TestBase
 
     private static void InitializeServicesCore()
     {
-        var services = TestServiceContainer.Create(TestValidationOptions);
-
         // Tests retain workspaces across the full assembly run instead of disposing them
         // per-class. We need a higher limit than the production default (8) because
         // ~22 test classes load fixture solutions (some loading multiple) without ever
         // closing them. The cap is still bounded so a runaway test that loads in a loop
-        // will fail loudly rather than exhaust memory.
-        PreviewStore = services.PreviewStore;
-        WorkspaceManager = services.WorkspaceManager;
-        FileWatcher = services.FileWatcher;
-        SymbolNavigationService = services.SymbolNavigationService;
-        SymbolSearchService = services.SymbolSearchService;
-        ReferenceService = services.ReferenceService;
-        SymbolRelationshipService = services.SymbolRelationshipService;
-        MutationAnalysisService = services.MutationAnalysisService;
-        TypeConsumersService = services.TypeConsumersService;
-        SemanticGrepService = services.SemanticGrepService;
-        DiagnosticService = services.DiagnosticService;
-        RefactoringService = services.RefactoringService;
-        BuildService = services.BuildService;
-        TestRunnerService = services.TestRunnerService;
-        TestDiscoveryService = services.TestDiscoveryService;
-        CompletionService = services.CompletionService;
-        CodeActionService = services.CodeActionService;
-        UnusedCodeAnalyzer = services.UnusedCodeAnalyzer;
-        CodeMetricsService = services.CodeMetricsService;
-        NamespaceDependencyService = services.NamespaceDependencyService;
-        DiRegistrationService = services.DiRegistrationService;
-        NuGetDependencyService = services.NuGetDependencyService;
-        CodePatternAnalyzer = services.CodePatternAnalyzer;
-        EditService = services.EditService;
-        FileOperationService = services.FileOperationService;
-        ProjectMutationService = services.ProjectMutationService;
-        CrossProjectRefactoringService = services.CrossProjectRefactoringService;
-        PackageMigrationOrchestrator = services.PackageMigrationOrchestrator;
-        ClassSplitOrchestrator = services.ClassSplitOrchestrator;
-        ExtractAndWireOrchestrator = services.ExtractAndWireOrchestrator;
-        CompositeApplyOrchestrator = services.CompositeApplyOrchestrator;
-        ScaffoldingService = services.ScaffoldingService;
-        DeadCodeService = services.DeadCodeService;
-        SyntaxService = services.SyntaxService;
-        WorkspaceExecutionGate = services.WorkspaceExecutionGate;
-        DotnetCommandRunner = services.DotnetCommandRunner;
-        GatedCommandExecutor = services.GatedCommandExecutor;
-        BulkRefactoringService = services.BulkRefactoringService;
-        CohesionAnalysisService = services.CohesionAnalysisService;
-        CouplingAnalysisService = services.CouplingAnalysisService;
-        RecordFieldAdditionService = services.RecordFieldAdditionService;
-        ConsumerAnalysisService = services.ConsumerAnalysisService;
-        TypeExtractionService = services.TypeExtractionService;
-        TypeMoveService = services.TypeMoveService;
-        UndoService = services.UndoService;
-        FlowAnalysisService = services.FlowAnalysisService;
-        CompileCheckService = services.CompileCheckService;
-        AnalyzerInfoService = services.AnalyzerInfoService;
-        FixAllService = services.FixAllService;
-        OperationService = services.OperationService;
-        SnippetAnalysisService = services.SnippetAnalysisService;
-        ScriptingService = services.ScriptingService;
-        EditorConfigService = services.EditorConfigService;
-        MsBuildEvaluationService = services.MsBuildEvaluationService;
-        ExtractMethodService = services.ExtractMethodService;
-        ChangeTracker = services.ChangeTracker;
-        RefactoringSuggestionService = services.RefactoringSuggestionService;
-        FormatVerifyService = services.FormatVerifyService;
-        InterfaceExtractionService = services.InterfaceExtractionService;
-        ExceptionFlowService = services.ExceptionFlowService;
-        WorkspaceWarmService = services.WorkspaceWarmService;
-        WorkspaceDriftService = services.WorkspaceDriftService;
-        ParameterObjectService = services.ParameterObjectService;
-
-        RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
-        SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
-        BuildFailureSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "BuildFailureSolution", "BuildFailureSolution.slnx", "BuildFailureSolution.sln");
-        GeneratedDocumentSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "GeneratedDocumentSolution", "GeneratedDocumentSolution.slnx", "GeneratedDocumentSolution.sln");
+        // will fail loudly rather than exhaust memory. TestServiceContainer.Create owns that
+        // option; this method only publishes the assembly-owned fixture.
+        Volatile.Write(ref _fixture, TestAssemblyFixture.Create(TestValidationOptions));
     }
 
     /// <summary>
@@ -248,38 +184,27 @@ public abstract class TestBase
     }
 
     /// <summary>
-    /// Disposes the shared <see cref="WorkspaceManager"/> and resets the workspace cache.
-    /// Called from <see cref="AssemblyLifecycle.Cleanup"/> after the entire test assembly
-    /// finishes. Test code should not call this directly.
+    /// Hands the assembly-owned <see cref="TestAssemblyFixture"/> back for disposal and clears
+    /// the once-per-assembly initialization gate so a later <see cref="InitializeServices"/>
+    /// rebuilds from scratch. Called from <see cref="AssemblyLifecycle.Cleanup"/> after the
+    /// entire test assembly finishes. Test code should not call this directly.
     /// </summary>
     internal static async Task DisposeAssemblyResourcesAsync()
     {
-        WorkspaceManager? workspaceManager = null;
-        Task<McpRootsTestServerFactory.Session>? pathAuthorizedServerTask;
+        TestAssemblyFixture? fixture;
         lock (_initLock)
         {
-            if (_servicesInitialized)
-            {
-                workspaceManager = WorkspaceManager;
-                _workspaceIdCache.Clear();
-                _servicesInitialized = false;
-            }
-
-            pathAuthorizedServerTask = _pathAuthorizedServerTask;
-            _pathAuthorizedServerTask = null;
+            fixture = _fixture;
+            Volatile.Write(ref _fixture, null);
+            _servicesInitialized = false;
         }
 
-        await CleanupFailureCollector.RunAsync(
-            "Shared test resource cleanup failed.",
-            CleanupFailureCollector.FromAction(() => workspaceManager?.Dispose()),
-            async () =>
-            {
-                if (pathAuthorizedServerTask is not null)
-                {
-                    var session = await pathAuthorizedServerTask.ConfigureAwait(false);
-                    await session.DisposeAsync().ConfigureAwait(false);
-                }
-            }).ConfigureAwait(false);
+        if (fixture is null)
+        {
+            return;
+        }
+
+        await fixture.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -293,7 +218,7 @@ public abstract class TestBase
     /// </summary>
     protected static async Task<string> GetOrLoadWorkspaceIdAsync(string solutionPath, CancellationToken ct = default)
     {
-        return await _workspaceIdCache.GetOrLoadAsync(WorkspaceManager, solutionPath, ct).ConfigureAwait(false);
+        return await Fixture.GetOrLoadWorkspaceIdAsync(solutionPath, ct).ConfigureAwait(false);
     }
 
     protected static string CreateSampleSolutionCopy()
