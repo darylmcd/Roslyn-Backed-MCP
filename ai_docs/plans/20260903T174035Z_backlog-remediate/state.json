@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-03T17:41:03.723Z",
+  "backlogSnapshot": "2026-09-03T17:22:39Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "unused-symbol-scan-fail-unsafe-reference-count",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "unused-symbol-scan-fail-unsafe-reference-count"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "tool-update-owned-process-shutdown",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-update-owned-process-shutdown"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "desc-budget-harness-method-family",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "desc-budget-harness-method-family"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "ci-router-pure-decision",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "ci-router-pure-decision"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "ci-actionlint-pinned-gate",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "ci-actionlint-pinned-gate"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": 5,
+    "selectedCount": 5,
+    "skipped": [
+      {
+        "id": "structured-call-tool-filter-pipeline-decomposition",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-undo-workspace-lifecycle",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-fixall-bulk-operations",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-refactoring-editorconfig",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-symbol-advanced-analysis",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-restructure-interface",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-signature-extraction",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "method-diet-ratchet-only-clean-slices",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "desc-budget-harness-method-adopt-wave-2",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "desc-budget-harness-method-adopt-wave-3",
+        "reason": "deps-unfinished"
+      },
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      }
+    ]
+  }
+}
