@@ -61,6 +61,29 @@ public sealed class MetaProjectionObservabilityTests
     }
 
     [TestMethod]
+    public void InjectMetaIfPossible_UnsetGateMetricsFields_AreOmittedNotNull()
+    {
+        const string original = "{\"value\":1}";
+        var reporter = new RecordingUnexpectedExceptionReporter();
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var result = ToolErrorHandler.InjectMetaIfPossible(original, "sample_tool", reporter);
+
+        using var document = JsonDocument.Parse(result);
+        var meta = document.RootElement.GetProperty("_meta");
+        Assert.IsFalse(meta.TryGetProperty("gateMode", out _), "Unset GateMode must be omitted, not serialized as null.");
+        Assert.IsFalse(meta.TryGetProperty("heartbeatCount", out _));
+        Assert.IsFalse(meta.TryGetProperty("staleAction", out _));
+        Assert.IsFalse(meta.TryGetProperty("staleReloadMs", out _));
+        Assert.IsFalse(meta.TryGetProperty("retriedAfterReload", out _));
+        Assert.IsFalse(meta.TryGetProperty("cacheHit", out _));
+        Assert.IsFalse(meta.TryGetProperty("reloadConfirmedNotFound", out _));
+        Assert.IsFalse(meta.TryGetProperty("autoResolution", out _));
+        Assert.IsFalse(meta.TryGetProperty("autoLoadElapsedMs", out _));
+        Assert.AreEqual(0, reporter.ReportCount);
+    }
+
+    [TestMethod]
     [DataRow("{\"_meta\":\"producer-string\"}")]
     [DataRow("{\"_meta\":{\"roslynMcp\":{\"producer\":true}}}")]
     public void InjectMetaIfPossible_UnsafeCollision_PassesThroughAndReports(string original)
