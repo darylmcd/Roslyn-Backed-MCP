@@ -1,6 +1,6 @@
 # analysis-services-hardcoded-parallelism-clamp-magic-numbers — Centralize the duplicated parallelism-clamp and regex-timeout magic numbers in Roslyn analysis services
 
-**row:** `analysis-services-hardcoded-parallelism-clamp-magic-numbers` · **pri:** `Low` · **size:** `M` · **deps:** `bulk-reference-error-detail-redaction`
+**row:** `analysis-services-hardcoded-parallelism-clamp-magic-numbers` · **pri:** `Low` · **size:** `M` · **deps:** `bulk-reference-error-detail-redaction,unused-symbol-scan-fail-unsafe-reference-count`
 
 ## Anchors
 
