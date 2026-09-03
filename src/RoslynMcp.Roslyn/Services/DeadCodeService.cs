@@ -11,11 +11,21 @@ public sealed class DeadCodeService : IDeadCodeService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> _referenceFinder;
 
     public DeadCodeService(IWorkspaceManager workspace, IPreviewStore previewStore)
+        : this(workspace, previewStore, static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct))
+    {
+    }
+
+    internal DeadCodeService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> referenceFinder)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _referenceFinder = referenceFinder;
     }
 
     public async Task<RefactoringPreviewDto> PreviewRemoveDeadCodeAsync(string workspaceId, DeadCodeRemovalDto request, CancellationToken ct)
@@ -34,7 +44,24 @@ public sealed class DeadCodeService : IDeadCodeService
             var symbol = await SymbolResolver.ResolveAsync(updatedSolution, SymbolLocator.ByHandle(symbolHandle), ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Symbol handle could not be resolved: {symbolHandle}");
 
-            var refs = await SymbolFinder.FindReferencesAsync(symbol, updatedSolution, ct).ConfigureAwait(false);
+            // Fail closed: a failure verifying this symbol's reference count must never be
+            // treated as a legitimate zero — that would let removal proceed on an
+            // unverifiable answer instead of refusing it. This makes the removal guard
+            // genuinely independent of the detector's failure path (though not of a
+            // detector scan that succeeds but under-counts — see UnusedCodeAnalyzer's
+            // matching guard for that documented, non-eliminated residual gap).
+            IEnumerable<ReferencedSymbol> refs;
+            try
+            {
+                refs = await _referenceFinder(symbol, updatedSolution, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot verify '{symbol.Name}' has zero references — the verification scan failed; refusing removal.",
+                    ex);
+            }
+
             if (refs.Sum(reference => reference.Locations.Count()) > 0)
             {
                 throw new InvalidOperationException($"Symbol '{symbol.Name}' still has references and cannot be removed safely.");
