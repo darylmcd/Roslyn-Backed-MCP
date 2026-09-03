@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Roslyn.Contracts;
@@ -207,13 +209,14 @@ public static class ValidationTools
         [Description("Optional: dotnet test filter expression")] string? filter = null,
         [Description("Number of failing tests to skip before returning failure detail (default: 0)")] int failuresOffset = 0,
         [Description("Maximum number of failing tests to return detail for (default: 25). Aggregate counts (total/passed/failed/skipped) are never truncated — only the per-failure detail array is paginated to keep the response within client context budgets.")] int failuresLimit = 25,
+        [Description("Optional: when true, trims the response for a clean run — omits execution.stdOut/stdErr/command/arguments/workingDirectory (redundant with the count fields once succeeded && failed == 0) and the failure-pagination fields when there are no failures to paginate. Default false preserves the existing shape.")] bool compact = false,
         IProgress<ProgressNotificationValue>? progress = null,
         IWorkspaceManager? workspaceManager = null,
         ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
         => RunTestsWithEvictionRetryAsync(
             gate, testRunnerService, workspaceManager, workspaceId, projectName, filter,
-            failuresOffset, failuresLimit, progress, loggerFactory, ct);
+            failuresOffset, failuresLimit, compact, progress, loggerFactory, ct);
 
     /// <summary>
     /// <c>workspace-eviction-no-auto-retry-on-tool-call</c> — runs <c>test_run</c> once and, when
@@ -252,6 +255,7 @@ public static class ValidationTools
         string? filter,
         int failuresOffset,
         int failuresLimit,
+        bool compact,
         IProgress<ProgressNotificationValue>? progress,
         ILoggerFactory? loggerFactory,
         CancellationToken ct)
@@ -260,7 +264,7 @@ public static class ValidationTools
         {
             return await RunTestsOnceAsync(
                     gate, testRunnerService, workspaceId, projectName, filter,
-                    failuresOffset, failuresLimit, progress, ct)
+                    failuresOffset, failuresLimit, compact, progress, ct)
                 .ConfigureAwait(false);
         }
         catch (KeyNotFoundException ex)
@@ -287,7 +291,7 @@ public static class ValidationTools
 
             return await RunTestsOnceAsync(
                     gate, testRunnerService, reloadedId, projectName, filter,
-                    failuresOffset, failuresLimit, progress, ct)
+                    failuresOffset, failuresLimit, compact, progress, ct)
                 .ConfigureAwait(false);
         }
     }
@@ -300,6 +304,7 @@ public static class ValidationTools
         string? filter,
         int failuresOffset,
         int failuresLimit,
+        bool compact,
         IProgress<ProgressNotificationValue>? progress,
         CancellationToken ct)
     {
@@ -346,20 +351,51 @@ public static class ValidationTools
                     .ToList();
                 var hasMoreFailures = failuresOffset + pagedFailures.Count < failuresTotal;
 
-                return JsonSerializer.Serialize(new
+                if (!compact)
                 {
-                    publicResult.Execution,
-                    result.Total,
-                    result.Passed,
-                    result.Failed,
-                    result.Skipped,
-                    failures = pagedFailures,
-                    failuresOffset,
-                    failuresLimit,
-                    failuresTotal,
-                    hasMoreFailures,
-                    publicResult.FailureEnvelope,
-                }, JsonDefaults.Indented);
+                    return JsonSerializer.Serialize(new
+                    {
+                        publicResult.Execution,
+                        result.Total,
+                        result.Passed,
+                        result.Failed,
+                        result.Skipped,
+                        failures = pagedFailures,
+                        failuresOffset,
+                        failuresLimit,
+                        failuresTotal,
+                        hasMoreFailures,
+                        publicResult.FailureEnvelope,
+                    }, JsonDefaults.Indented);
+                }
+
+                // compact=true: execution.stdOut/stdErr/command/arguments/workingDirectory
+                // duplicate what total/passed/failed/skipped already say once the run
+                // demonstrably ran (targetPath/exitCode/succeeded/durationMs kept — see gh #1421).
+                // Pagination fields are dropped only when there is nothing to paginate; a run with
+                // failures still needs failuresOffset/failuresLimit/hasMoreFailures to page them.
+                var compactExecution = new CompactCommandExecutionDto(
+                    publicResult.Execution.TargetPath,
+                    publicResult.Execution.ExitCode,
+                    publicResult.Execution.Succeeded,
+                    publicResult.Execution.DurationMs,
+                    publicResult.Execution.EarlyKillReason);
+                var hasFailuresToPaginate = failuresTotal > 0;
+
+                return JsonSerializer.Serialize(
+                    new CompactTestRunWireResponse(
+                        compactExecution,
+                        result.Total,
+                        result.Passed,
+                        result.Failed,
+                        result.Skipped,
+                        pagedFailures,
+                        hasFailuresToPaginate ? failuresOffset : null,
+                        hasFailuresToPaginate ? failuresLimit : null,
+                        failuresTotal,
+                        hasFailuresToPaginate ? hasMoreFailures : null,
+                        publicResult.FailureEnvelope),
+                    JsonDefaults.Indented);
             }
             catch (OperationCanceledException)
             {
@@ -455,3 +491,34 @@ public static class ValidationTools
         }, ct);
     }
 }
+
+/// <summary>
+/// Trimmed <c>test_run</c> <c>execution</c> shape used only when the caller passes
+/// <c>compact=true</c>. Drops <c>Command</c>/<c>Arguments</c>/<c>WorkingDirectory</c>/
+/// <c>StdOut</c>/<c>StdErr</c> — debugging aids for how a run failed to invoke, or output that
+/// duplicates the count fields once the run demonstrably passed. See gh #1421.
+/// </summary>
+internal sealed record CompactCommandExecutionDto(
+    string TargetPath,
+    int ExitCode,
+    bool Succeeded,
+    long DurationMs,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EarlyKillReason);
+
+/// <summary>
+/// Trimmed <c>test_run</c> wire response used only when the caller passes <c>compact=true</c>.
+/// The failure-pagination fields are omitted when there is nothing to paginate
+/// (<c>FailuresTotal == 0</c>) and kept when a run has failures to page through.
+/// </summary>
+internal sealed record CompactTestRunWireResponse(
+    CompactCommandExecutionDto Execution,
+    int Total,
+    int Passed,
+    int Failed,
+    int Skipped,
+    IReadOnlyList<TestFailureDto> Failures,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FailuresOffset,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FailuresLimit,
+    int FailuresTotal,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? HasMoreFailures,
+    TestRunFailureEnvelopeDto? FailureEnvelope);
