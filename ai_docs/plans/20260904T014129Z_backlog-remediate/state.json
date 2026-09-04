@@ -82,7 +82,7 @@
     {
       "id": "actionlint-unsupported-platform-contract",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "actionlint-unsupported-platform-contract"
       ],
@@ -106,10 +106,10 @@
       "dependsOn": [
         "actionlint-chmod-failure-diagnostic"
       ],
-      "branch": null,
+      "branch": "remediation/actionlint-unsupported-platform-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1468",
+      "mergedAt": "2026-09-04T08:14:01Z",
       "notes": null,
       "parentRow": "verify-actionlint-chmod-and-throw-branch-coverage",
       "fileSetHash": "ba141149fc76516568d310d488e43c08557a53863298de71597760f441e3b990",
@@ -469,7 +469,7 @@
     {
       "id": "tasks-extension-compatibility-decision",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tasks-extension-compatibility-decision"
       ],
@@ -494,10 +494,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tasks-extension-compatibility-decision",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1467",
+      "mergedAt": "2026-09-04T08:04:22Z",
       "notes": "Execution re-vet decision: ADOPT the exact Tasks/core 2.2.0 pair; no future cadence promise; document opt-in, finite retention, process-lifetime handles, central selector, and safe logging.",
       "fileSetHash": "512bc66cd2f3f0787f36b9a8d4a3ff32cbfef1ec1b81768818c70035e9a005d6",
       "stanzaHash": "73ce98e08e81faad76bbb54cc41726d5204c74cda3a2cc7527a8cea18edca2f8",
@@ -609,7 +609,7 @@
     {
       "id": "test-service-container-two-phase-construction-cycle",
       "order": 19,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-service-container-two-phase-construction-cycle"
       ],
@@ -631,10 +631,10 @@
       "dependsOn": [
         "test-service-container-duplicate-service-instances"
       ],
-      "branch": null,
+      "branch": "remediation/test-service-container-two-phase-construction-cycle",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1464",
+      "mergedAt": "2026-09-04T08:00:39Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "e90450c6bc596b6220ae5d1c473edb1ff1e9a0a58f938f59ecb94a88088800a4",
@@ -739,7 +739,7 @@
     {
       "id": "desc-budget-harness-method-adopt-wave-3",
       "order": 23,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "desc-budget-harness-method-adopt-wave-3"
       ],
@@ -761,10 +761,10 @@
       "dependsOn": [
         "desc-budget-harness-method-adopt-wave-2"
       ],
-      "branch": null,
+      "branch": "remediation/desc-budget-harness-method-adopt-wave-3",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1466",
+      "mergedAt": "2026-09-04T08:00:45Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "e734b1d277edc6a007eb596e06c4b12125080bdb7358502cd0bdaf6247211f73",
@@ -773,7 +773,7 @@
     {
       "id": "method-diet-undo-workspace-lifecycle",
       "order": 24,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "method-diet-undo-workspace-lifecycle"
       ],
@@ -800,10 +800,10 @@
       "dependsOn": [
         "structured-tool-dispatch-adapter"
       ],
-      "branch": null,
+      "branch": "remediation/method-diet-undo-workspace-lifecycle",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1465",
+      "mergedAt": "2026-09-04T08:13:21Z",
       "notes": null,
       "fileSetHash": "f328267d551702ff6a25b4fa8d71cf6890c32b394633d47078499ed270bee4f5",
       "stanzaHash": "3861f53de38cabef3cb4dfc66263388e975b56a25bb841e9456d8b0211b58a5a",
@@ -849,7 +849,7 @@
     {
       "id": "sibling-test-name-discovery-warning-signal",
       "order": 10.01,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 2,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs",
@@ -871,7 +871,10 @@
       "fileSetHash": "4fc275ddfb5e87d7efdd8f5a5e5f2bacae1325bffc6b229cbe76ae929de1b3d4",
       "stanzaHash": "80f84b192c4ecda4ec1b79d9705ae5d24d656263fbbfac020192cd0ee3edbe8f",
       "parentRow": "sibling-test-name-discovery-warning",
-      "reviewedStanzaHash": "80f84b192c4ecda4ec1b79d9705ae5d24d656263fbbfac020192cd0ee3edbe8f"
+      "reviewedStanzaHash": "80f84b192c4ecda4ec1b79d9705ae5d24d656263fbbfac020192cd0ee3edbe8f",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1469",
+      "mergedAt": "2026-09-04T08:09:02Z",
+      "branch": "remediation/sibling-test-name-discovery-warning-signal"
     },
     {
       "id": "sibling-test-name-discovery-warning",
