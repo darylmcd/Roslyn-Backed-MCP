@@ -1085,8 +1085,8 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task FindRelatedTestsForFiles_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
         var json = await ValidationTools.FindRelatedTestsForFiles(
-            new PassthroughGate(),
-            new ThrowingTestDiscoveryService(new InvalidOperationException("related-files blew up")),
+            gate: new PassthroughGate(),
+            testDiscoveryService: new ThrowingTestDiscoveryService(new InvalidOperationException("related-files blew up")),
             workspaceId: "ws-test-related-files-envelope",
             filePaths: ["C:/fake/Changed.cs"],
             maxResults: 100,
