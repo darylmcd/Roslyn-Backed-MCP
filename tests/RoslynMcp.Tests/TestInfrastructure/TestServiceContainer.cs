@@ -84,7 +84,9 @@ internal sealed class TestServiceContainer
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 },
             cacheStore: null,
             evictionGate: new Lazy<IWorkspaceExecutionGate>(deferredExecutionGate.Resolve));
-        var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+        var workspaceExecutionGate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue },
+            workspaceManager);
         deferredExecutionGate.Bind(workspaceExecutionGate);
         var compilationCache = new CompilationCache(workspaceManager);
         var dotnetCommandRunner = new DotnetCommandRunner();

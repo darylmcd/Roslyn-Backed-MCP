@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Host.Stdio.Services;
 
 namespace RoslynMcp.Tests;
@@ -13,6 +14,9 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class NuGetVersionCheckerTests
 {
+    private static readonly TimeSpan InFlightTestTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TimeoutTestTimeout = TimeSpan.FromSeconds(1);
+
     /// <summary>HttpMessageHandler whose send always throws — simulates a network failure.</summary>
     private sealed class ThrowingHandler : HttpMessageHandler
     {
@@ -95,10 +99,15 @@ public sealed class NuGetVersionCheckerTests
     /// <summary>HttpMessageHandler that waits for the checker's bounded timeout.</summary>
     private sealed class TimeoutHandler : HttpMessageHandler
     {
+        private readonly TaskCompletionSource _requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task RequestStarted => _requestStarted.Task;
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            _requestStarted.TrySetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException("unreachable");
         }
@@ -109,17 +118,11 @@ public sealed class NuGetVersionCheckerTests
         // Await the in-flight background fetch directly via the internal test seam rather than
         // spin-looping on the observable status — deterministic and free of timing sensitivity
         // under heavy CI parallel load. The bounded WaitAsync is ONLY a true-hang guard, never a
-        // normal-path timer: it MUST sit comfortably above NuGetVersionChecker.HttpTimeout (3 s,
-        // the checker's internal CancellationTokenSource), because the timeout-path test
-        // (GetLatestVersion_OnTimeout_...) relies on that 3 s timer firing AND its continuation
-        // recording TimedOut before this wait expires. A tight bound (e.g. 5 s, ~2 s margin) loses
-        // that race under self-hosted-runner CPU contention and throws TimeoutException spuriously
-        // — the flake this guard's previous values caused twice (nuget-version-checker-test-wallclock-poll,
-        // then nuget-version-checker-timeout-test-wallclock-race). 30 s gives ~10x headroom over the
-        // 3 s timer; do NOT lower it toward HttpTimeout. If HttpTimeout ever grows, keep this >> it.
+        // normal-path timer. Keep the guard mechanically coupled to the configured checker timeout
+        // so production and test timeout changes cannot silently erase the scheduling margin.
         var pending = checker.PendingCheckForTest;
         Assert.IsNotNull(pending, "Expected a background version check to be in flight.");
-        await pending.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+        await pending.WaitAsync(checker.HttpTimeoutForTest * 10).ConfigureAwait(false);
 
         Assert.AreNotEqual(VersionCheckStatus.Pending, checker.LastCheckStatus,
             "Background version check should have reached a terminal status.");
@@ -129,11 +132,17 @@ public sealed class NuGetVersionCheckerTests
     public async Task GetLatestVersion_WhileFetchInFlight_RecordsPendingStatus()
     {
         using var handler = new BlockingHandler();
-        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
+        var timeProvider = new FakeTimeProvider();
+        var checker = new NuGetVersionChecker(
+            new TestHttpClientFactory(handler),
+            InFlightTestTimeout,
+            timeProvider);
 
         Assert.IsNull(checker.GetLatestVersion(), "First call returns null while the check runs.");
 
         await handler.RequestStarted.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
+        timeProvider.Advance(NuGetVersionChecker.DefaultHttpTimeout + TimeSpan.FromSeconds(1));
 
         Assert.AreEqual(VersionCheckStatus.Pending, checker.LastCheckStatus);
         Assert.IsNull(checker.LastCheckedAt, "An in-flight check should not stamp completion time.");
@@ -192,10 +201,16 @@ public sealed class NuGetVersionCheckerTests
     public async Task GetLatestVersion_OnTimeout_StaysNonThrowingAndRecordsTimedOutStatus()
     {
         using var handler = new TimeoutHandler();
-        var checker = new NuGetVersionChecker(new TestHttpClientFactory(handler));
+        var timeProvider = new FakeTimeProvider();
+        var checker = new NuGetVersionChecker(
+            new TestHttpClientFactory(handler),
+            TimeoutTestTimeout,
+            timeProvider);
 
         Assert.IsNull(checker.GetLatestVersion(), "First call should return null while the check is in flight.");
 
+        await handler.RequestStarted.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        timeProvider.Advance(TimeoutTestTimeout);
         await WaitForCompletionAsync(checker);
 
         Assert.AreEqual(VersionCheckStatus.TimedOut, checker.LastCheckStatus);

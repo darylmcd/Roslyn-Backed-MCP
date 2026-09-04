@@ -56,11 +56,13 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     private const string PackageId = "darylmcd.roslynmcp";
     internal const string HttpClientName = nameof(NuGetVersionChecker);
     private static readonly Uri FlatContainerUri = new($"https://api.nuget.org/v3-flatcontainer/{PackageId}/index.json");
-    private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan DefaultHttpTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly bool _disposeCreatedClients;
+    private readonly TimeSpan _httpTimeout;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<NuGetVersionChecker> _logger;
     private readonly object _lock = new();
     private string? _latestVersion;
@@ -79,7 +81,12 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     public NuGetVersionChecker(
         IHttpClientFactory httpClientFactory,
         ILogger<NuGetVersionChecker>? logger = null)
-        : this(httpClientFactory, disposeCreatedClients: true, logger)
+        : this(
+            httpClientFactory,
+            disposeCreatedClients: true,
+            DefaultHttpTimeout,
+            TimeProvider.System,
+            logger)
     {
     }
 
@@ -97,18 +104,37 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     public NuGetVersionChecker(
         HttpClient http,
         ILogger<NuGetVersionChecker>? logger = null)
-        : this(new CallerOwnedHttpClientFactory(http), disposeCreatedClients: false, logger)
+        : this(
+            new CallerOwnedHttpClientFactory(http),
+            disposeCreatedClients: false,
+            DefaultHttpTimeout,
+            TimeProvider.System,
+            logger)
+    {
+    }
+
+    internal NuGetVersionChecker(
+        IHttpClientFactory httpClientFactory,
+        TimeSpan httpTimeout,
+        TimeProvider timeProvider,
+        ILogger<NuGetVersionChecker>? logger = null)
+        : this(httpClientFactory, disposeCreatedClients: true, httpTimeout, timeProvider, logger)
     {
     }
 
     private NuGetVersionChecker(
         IHttpClientFactory httpClientFactory,
         bool disposeCreatedClients,
+        TimeSpan httpTimeout,
+        TimeProvider timeProvider,
         ILogger<NuGetVersionChecker>? logger)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(httpTimeout, TimeSpan.Zero);
         _httpClientFactory = httpClientFactory
             ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _disposeCreatedClients = disposeCreatedClients;
+        _httpTimeout = httpTimeout;
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _logger = logger ?? NullLogger<NuGetVersionChecker>.Instance;
     }
 
@@ -140,6 +166,8 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     {
         get { lock (_lock) { return _pendingCheck; } }
     }
+
+    internal TimeSpan HttpTimeoutForTest => _httpTimeout;
 
     /// <summary>
     /// Returns the latest stable version string from NuGet, or null if the check
@@ -180,7 +208,7 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     {
         try
         {
-            using var cts = new CancellationTokenSource(HttpTimeout);
+            using var cts = new CancellationTokenSource(_httpTimeout, _timeProvider);
             var http = _httpClientFactory.CreateClient(HttpClientName);
             string json;
             try
@@ -243,7 +271,7 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
         {
             // Bounded HTTP timeout elapsed (linked CTS) — distinct from other failures.
             RecordFailure(VersionCheckStatus.TimedOut);
-            _logger.LogDebug(ex, "NuGet version check timed out after {Timeout} for {PackageId}", HttpTimeout, PackageId);
+            _logger.LogDebug(ex, "NuGet version check timed out after {Timeout} for {PackageId}", _httpTimeout, PackageId);
         }
         catch (Exception ex)
         {

@@ -4,12 +4,9 @@ using RoslynMcp.Roslyn.Services;
 namespace RoslynMcp.Tests.Services;
 
 /// <summary>
-/// Direct unit tests for <see cref="PersistentCompositeStorage"/> covering the cross-process
-/// TOCTOU hardening in <c>TryClaim</c> (<c>workspace-infra-resource-cleanup-hygiene</c>). The
-/// store's whole purpose is cross-process token redemption, so a sibling process deleting a
-/// version subdirectory (or the root) while <c>TryClaim</c> is enumerating is a real scenario;
-/// the enumeration must be treated as a cache miss rather than surfacing an uncaught
-/// <see cref="DirectoryNotFoundException"/>/<see cref="IOException"/>.
+/// Direct unit tests for <see cref="PersistentCompositeStorage"/> cross-process token redemption.
+/// Expected contention and disappearing paths are cache misses; unrelated I/O and permission
+/// failures remain visible so callers fail closed.
 /// </summary>
 /// <remarks>
 /// Each test uses an isolated cache root under <see cref="Path.GetTempPath"/> so concurrent test
@@ -228,6 +225,44 @@ public sealed class PersistentCompositeStorageTests
     }
 
     [TestMethod]
+    public void TryClaim_LockCollisionAfterWinnerCleanup_ReturnsNull()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        writer.Write(
+            token,
+            new CompositePreviewStore.Entry("ws-race", 11, "atomic claim", [], DateTime.UtcNow));
+        var store = CreateStore(
+            Directory.EnumerateDirectories,
+            File.GetLastWriteTimeUtc,
+            createClaimLock: lockPath =>
+            {
+                File.Delete(lockPath[..^".lock".Length]);
+                throw new IOException("Injected lock collision after the winner removed its artifacts.");
+            });
+
+        Assert.IsNull(
+            store.TryClaim(token),
+            "A loser must remain a cache miss after the winner removes the lock before exception filtering.");
+    }
+
+    [TestMethod]
+    public void TryClaim_UnrelatedLockCreationIOException_Propagates()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var writer = new PersistentCompositeStorage(_root, TimeSpan.FromMinutes(5));
+        writer.Write(
+            token,
+            new CompositePreviewStore.Entry("ws-io", 11, "I/O failure", [], DateTime.UtcNow));
+        var store = CreateStore(
+            Directory.EnumerateDirectories,
+            File.GetLastWriteTimeUtc,
+            createClaimLock: _ => throw new IOException("Injected storage fault."));
+
+        Assert.ThrowsExactly<IOException>(() => store.TryClaim(token));
+    }
+
+    [TestMethod]
     public void Delete_DirectoryEnumerationThrowsIOException_IsIdempotent()
     {
         var store = CreateStore(
@@ -285,14 +320,19 @@ public sealed class PersistentCompositeStorageTests
     private PersistentCompositeStorage CreateStore(
         Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
         Func<string, DateTime> getLastWriteTimeUtc,
-        Action<string>? deleteFile = null) =>
+        Action<string>? deleteFile = null,
+        Func<string, FileStream>? createClaimLock = null) =>
         new(
             _root,
             TimeSpan.FromMinutes(5),
             logger: null,
             enumerateDirectoriesForRead: enumerateDirectoriesForRead,
             getLastWriteTimeUtc: getLastWriteTimeUtc,
-            deleteFile: deleteFile ?? File.Delete);
+            deleteFile: deleteFile ?? File.Delete,
+            createClaimLock: createClaimLock ?? CreateClaimLock);
+
+    private static FileStream CreateClaimLock(string lockPath) =>
+        new(lockPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
 
     private static IEnumerable<string> ThrowOnMoveNext(Exception exception)
     {

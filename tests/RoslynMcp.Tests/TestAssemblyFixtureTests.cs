@@ -148,4 +148,21 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
                     () => TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDirectory)));
         }
     }
+
+    [TestMethod]
+    public async Task LoadGate_ParallelAssemblyTraffic_DoesNotExhaustProductionRateLimit()
+    {
+        await using var fixture = TestAssemblyFixture.Create(new ValidationServiceOptions());
+        var productionRateLimit = new ExecutionGateOptions().RateLimitMaxRequests;
+        var invocations = Enumerable.Range(0, productionRateLimit + 1)
+            .Select(index => fixture.Services.WorkspaceExecutionGate.RunLoadGateAsync(
+                _ => Task.FromResult(index),
+                CancellationToken.None));
+
+        var results = await Task.WhenAll(invocations);
+
+        Assert.HasCount(productionRateLimit + 1, results);
+        Assert.AreEqual(0, results.Min());
+        Assert.AreEqual(productionRateLimit, results.Max());
+    }
 }

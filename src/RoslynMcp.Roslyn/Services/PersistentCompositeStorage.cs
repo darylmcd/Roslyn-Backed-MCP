@@ -30,6 +30,7 @@ public sealed class PersistentCompositeStorage
     private readonly Func<string, IEnumerable<string>> _enumerateDirectoriesForRead;
     private readonly Func<string, DateTime> _getLastWriteTimeUtc;
     private readonly Action<string> _deleteFile;
+    private readonly Func<string, FileStream> _createClaimLock;
 
     public PersistentCompositeStorage(
         string rootDirectory,
@@ -41,7 +42,8 @@ public sealed class PersistentCompositeStorage
             logger,
             Directory.EnumerateDirectories,
             File.GetLastWriteTimeUtc,
-            File.Delete)
+            File.Delete,
+            CreateClaimLock)
     {
     }
 
@@ -51,7 +53,8 @@ public sealed class PersistentCompositeStorage
         ILogger<PersistentCompositeStorage>? logger,
         Func<string, IEnumerable<string>> enumerateDirectoriesForRead,
         Func<string, DateTime> getLastWriteTimeUtc,
-        Action<string> deleteFile)
+        Action<string> deleteFile,
+        Func<string, FileStream> createClaimLock)
     {
         _rootDirectory = rootDirectory ?? throw new ArgumentNullException(nameof(rootDirectory));
         _ttl = ttl > TimeSpan.Zero ? ttl : TimeSpan.FromMinutes(5);
@@ -61,6 +64,7 @@ public sealed class PersistentCompositeStorage
         _getLastWriteTimeUtc = getLastWriteTimeUtc
             ?? throw new ArgumentNullException(nameof(getLastWriteTimeUtc));
         _deleteFile = deleteFile ?? throw new ArgumentNullException(nameof(deleteFile));
+        _createClaimLock = createClaimLock ?? throw new ArgumentNullException(nameof(createClaimLock));
         Directory.CreateDirectory(_rootDirectory);
         CleanupExpiredClaimArtifacts();
     }
@@ -153,13 +157,9 @@ public sealed class PersistentCompositeStorage
         FileStream claimLock;
         try
         {
-            claimLock = new FileStream(
-                lockPath,
-                FileMode.CreateNew,
-                FileAccess.ReadWrite,
-                FileShare.None);
+            claimLock = _createClaimLock(lockPath);
         }
-        catch (IOException ex) when (File.Exists(lockPath))
+        catch (IOException ex) when (File.Exists(lockPath) || !File.Exists(path))
         {
             _logger?.LogDebug(ex, "PersistentCompositeStorage: token was claimed by another process.");
             return null;
@@ -278,6 +278,13 @@ public sealed class PersistentCompositeStorage
             }
         }
     }
+
+    private static FileStream CreateClaimLock(string lockPath) =>
+        new(
+            lockPath,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.None);
 
     private void CleanupExpiredClaimArtifacts()
     {

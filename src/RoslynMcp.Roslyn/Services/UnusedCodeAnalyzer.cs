@@ -43,9 +43,19 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<UnusedCodeAnalyzer> _logger;
     private readonly Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> _referenceFinder;
+    private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
-    public UnusedCodeAnalyzer(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<UnusedCodeAnalyzer> logger)
-        : this(workspace, compilationCache, logger, static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct))
+    public UnusedCodeAnalyzer(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<UnusedCodeAnalyzer> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(
+            workspace,
+            compilationCache,
+            logger,
+            static (symbol, solution, ct) => SymbolFinder.FindReferencesAsync(symbol, solution, ct),
+            exceptionReporter)
     {
     }
 
@@ -53,12 +63,14 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
         ILogger<UnusedCodeAnalyzer> logger,
-        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> referenceFinder)
+        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>> referenceFinder,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
         _referenceFinder = referenceFinder;
+        _exceptionReporter = exceptionReporter;
     }
 
     public async Task<IReadOnlyList<UnusedSymbolDto>> FindUnusedSymbolsAsync(
@@ -253,7 +265,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             {
                 Interlocked.Increment(ref failedCandidateCount[0]);
                 var detail = UnexpectedExceptionReporting.Report(
-                    reporter: null,
+                    _exceptionReporter,
                     ex,
                     UnexpectedExceptionCategory.AnalysisScan).Public;
                 _logger.LogWarning(

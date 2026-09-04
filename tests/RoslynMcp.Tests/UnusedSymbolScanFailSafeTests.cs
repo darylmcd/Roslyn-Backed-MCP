@@ -101,11 +101,13 @@ public sealed class UnusedSymbolScanFailSafeTests
             }
             """;
 
+        var exceptionReporter = new RecordingUnexpectedExceptionReporter();
         var (analyzer, _, _) = BuildAnalyzerWithSource(
             source,
             referenceFinder: (symbol, solution, ct) => symbol.Name == "Bar"
                 ? throw new InvalidOperationException("simulated reference-scan failure")
-                : SymbolFinder.FindReferencesAsync(symbol, solution, ct));
+                : SymbolFinder.FindReferencesAsync(symbol, solution, ct),
+            exceptionReporter: exceptionReporter);
 
         var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             analyzer.FindUnusedSymbolsAsync(
@@ -114,6 +116,8 @@ public sealed class UnusedSymbolScanFailSafeTests
                 default));
 
         StringAssert.Contains(ex.Message, "1 candidate");
+        Assert.AreEqual(1, exceptionReporter.ReportCount);
+        Assert.AreEqual(UnexpectedExceptionCategory.AnalysisScan, exceptionReporter.Categories.Single());
         // The MCP tool boundary (ToolErrorHandler) surfaces PublicMessage verbatim for a
         // PublicInvalidOperationException instead of its generic InvalidOperationException
         // fallback — pin that the scan-failure text actually reaches the caller, not just the
@@ -192,7 +196,8 @@ public sealed class UnusedSymbolScanFailSafeTests
 
     private static (UnusedCodeAnalyzer Analyzer, TestWorkspaceManager WorkspaceManager, PreviewStore PreviewStore) BuildAnalyzerWithSource(
         string source,
-        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>>? referenceFinder = null)
+        Func<ISymbol, Solution, CancellationToken, Task<IEnumerable<ReferencedSymbol>>>? referenceFinder = null,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
     {
         var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -228,10 +233,35 @@ public sealed class UnusedSymbolScanFailSafeTests
         var previewStore = new PreviewStore();
 
         var analyzer = referenceFinder is null
-            ? new UnusedCodeAnalyzer(wsManager, cache, NullLogger<UnusedCodeAnalyzer>.Instance)
-            : new UnusedCodeAnalyzer(wsManager, cache, NullLogger<UnusedCodeAnalyzer>.Instance, referenceFinder);
+            ? new UnusedCodeAnalyzer(
+                wsManager,
+                cache,
+                NullLogger<UnusedCodeAnalyzer>.Instance,
+                exceptionReporter)
+            : new UnusedCodeAnalyzer(
+                wsManager,
+                cache,
+                NullLogger<UnusedCodeAnalyzer>.Instance,
+                referenceFinder,
+                exceptionReporter);
 
         return (analyzer, wsManager, previewStore);
+    }
+
+    private sealed class RecordingUnexpectedExceptionReporter : IUnexpectedExceptionReporter
+    {
+        public int ReportCount { get; private set; }
+
+        public List<UnexpectedExceptionCategory> Categories { get; } = [];
+
+        public UnexpectedExceptionDetails ReportUnexpected(
+            Exception exception,
+            UnexpectedExceptionCategory category)
+        {
+            ReportCount++;
+            Categories.Add(category);
+            return PublicExceptionDetailPolicy.ProjectUnexpected(exception, $"unused-scan-test-{ReportCount}");
+        }
     }
 
     private sealed class TestWorkspaceManager : IWorkspaceManager
