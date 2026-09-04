@@ -10,10 +10,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class OperationTools
 {
+    /// <remarks>
+    /// The column must identify the token whose operation is wanted, not merely its enclosing
+    /// expression. For calls, target the method-name identifier; for binary expressions, target
+    /// the operator. When the cursor is approximate, query adjacent columns until the expected
+    /// operation kind appears.
+    /// </remarks>
     [McpServerTool(Name = "get_operations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Get the IOperation tree for behavioral analysis at a source position."),
-     Description("Get the IOperation tree (language-agnostic behavioral representation) for a syntax node. Returns operation kinds like Invocation, Assignment, Loop, etc. Use for behavioral pattern matching at a higher abstraction than syntax trees. IMPORTANT (UX-003): the column must point at the syntax token whose operation you want — calling on a token returns that token's operation, NOT the enclosing expression. To inspect a method call, place the column on the method-name identifier, not on '(' or whitespace; to inspect a binary expression, place it on the operator. If you only have an approximate cursor, walk outward by re-querying with adjacent columns until the desired operation kind appears.")]
+     Description("Return the language-agnostic IOperation tree at an exact source token for behavioral analysis. Use a method identifier or operator token; approximate cursors may select a narrower operation.")]
     public static Task<string> GetOperations(
         McpServer server,
         IWorkspaceExecutionGate gate,

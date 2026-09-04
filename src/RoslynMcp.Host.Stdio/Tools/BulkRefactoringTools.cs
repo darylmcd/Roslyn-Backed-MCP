@@ -16,10 +16,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class BulkRefactoringTools
 {
+    /// <remarks>
+    /// Scope may be <c>parameters</c>, <c>fields</c>, or <c>all</c>. Parameter scope also walks
+    /// generic arguments in implemented-interface and base-class declarations so the type's
+    /// contract remains aligned with rewritten parameter types.
+    /// </remarks>
     [McpServerTool(Name = "bulk_replace_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. 'parameters' also covers generic arguments in implemented-interface / base-class declarations so the class's interface contract stays in sync. Useful after extracting an interface."),
-     Description("Preview replacing all references to one type with another across the solution. Useful after extracting an interface to update all consumers. Scope can be 'parameters', 'fields', or 'all'. Under 'parameters' the replacement also walks generic arguments on implemented-interface / base-class declarations so the class's interface contract stays in sync with the rewritten parameter types.")]
+     Description("Preview replacing one type across solution consumers after interface extraction. Choose parameters, fields, or all; parameters also updates generic base/interface arguments.")]
     public static Task<string> PreviewBulkReplaceType(
         IWorkspaceExecutionGate gate,
         IBulkRefactoringService bulkRefactoringService,
@@ -37,10 +42,14 @@ public static class BulkRefactoringTools
             ct);
     }
 
+    /// <remarks>
+    /// Both supported preview routes store the same preview kind. Producer-family and workspace
+    /// provenance are validated before the shared apply path mutates the workspace.
+    /// </remarks>
     [McpServerTool(Name = "bulk_replace_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
         "Apply a previewed bulk type replacement or invocation rewrite. Redeems tokens from bulk_replace_type_preview and replace_invocation_preview."),
-     Description("Apply a token returned by bulk_replace_type_preview or replace_invocation_preview")]
+     Description("Apply a token from bulk_replace_type_preview or replace_invocation_preview. This shared route rejects other preview families before mutating the workspace.")]
     public static Task<string> ApplyBulkReplaceType(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -65,10 +74,15 @@ public static class BulkRefactoringTools
     // from parameter-name matching between the two signatures. Apply reuses the existing
     // bulk_replace_type_apply for symmetry — both tools store a previewed Solution snapshot,
     // which the shared apply path redeems via the preview token.
+    /// <remarks>
+    /// Supply fully-qualified signatures with parameter types to disambiguate overloads.
+    /// Parameter-name equality derives the reorder: positional arguments move, while named
+    /// arguments retain their names and are ordered to match the replacement signature.
+    /// </remarks>
     [McpServerTool(Name = "replace_invocation_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Redeem the token with bulk_replace_type_apply."),
-     Description("Preview rewriting every call-site of oldMethod with a call to newMethod whose parameter list is a permutation of oldMethod's. Supply fully-qualified signatures like 'Namespace.Type.Old(P1, P2, P3)' and 'Namespace.Type.New(P2, P3, P1)' — the parameter-type list disambiguates overloads; parameter-name equality (old P1 ↔ new P1) derives the reorder. Positional call sites are reordered; named-argument call sites keep their names and shuffle lexically into the new parameter order. Redeem the preview token with bulk_replace_type_apply.")]
+     Description("Preview rewriting every oldMethod call to newMethod by matching parameter names and reordering arguments. Redeem the returned token with bulk_replace_type_apply.")]
     public static Task<string> PreviewReplaceInvocation(
         IWorkspaceExecutionGate gate,
         IBulkRefactoringService bulkRefactoringService,
