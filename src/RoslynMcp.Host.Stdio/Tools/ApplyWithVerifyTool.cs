@@ -34,7 +34,7 @@ public static class ApplyWithVerifyTool
     [McpServerTool(Name = "apply_with_verify", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "experimental", false, true,
         "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
-     Description("Apply a previously previewed refactoring AND immediately verify the workspace still compiles. Supported producers: any token from a solution-snapshot *_preview tool (rename/organize_usings/format_document/format_range/code_fix_preview, plus untagged ones such as parameter_object_preview) — unlike the named *_apply routes this one is producer-agnostic and never rejects a token for its producer family. Composite and project-mutation tokens are not redeemable here; use apply_composite_preview / apply_project_mutation. When new compile errors appear (relative to the pre-apply baseline), automatically revert via revert_last_apply and return status=\"rolled_back\" with the introduced errors. Otherwise return status=\"applied\". Pass rollbackOnError=false to keep broken state for inspection (returns status=\"applied_with_errors\").")]
+     Description("Apply a solution-snapshot preview token, run compile_check, and auto-revert compile errors. Producer-specific apply routes enforce token-family checks; excludes composite and project-mutation tokens.")]
     public static Task<string> ApplyWithVerify(
         IWorkspaceExecutionGate gate,
         IApplyUndoWorkflowService workflowService,
