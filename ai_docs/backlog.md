@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-04T00:27:49Z
+**updated_at:** 2026-09-04T00:30:35Z
 
 ## Agent contract
 
@@ -103,6 +103,7 @@
 | `test-service-container-duplicate-service-instances` | Medium | — | **Container hands out services it did not use** — `RefactoringSuggestionService` is built with fresh CodeMetrics/Cohesion/UnusedCode instances while the container exposes its own; tests observe different objects than production DI. [type: bug] [source: 2026-09-03 PR #1431] | S | items/test-service-container-duplicate-service-instances.md |
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
+| `unused-code-analyzer-exception-reporter-not-wired` | Medium | — | **`UnusedCodeAnalyzer`'s AnalysisScan failure reporting doesn't wire the DI-resolved `IUnexpectedExceptionReporter`** — hardcodes `reporter: null` unlike every sibling AnalysisScan-category service. [type: bug] [source: unused-symbol-scan-fail-unsafe-reference-count cold review] | S | items/unused-code-analyzer-exception-reporter-not-wired.md |
 
 ## Low
 
@@ -227,6 +228,9 @@
 | `test-service-container-two-phase-construction-cycle` | Low | — | **Order-dependent gate/manager construction cycle** — a mutable local captured by a `Lazy<>` is assigned after the ctor call; correct only by statement ordering. [type: refactor] [source: 2026-09-03 PR #1431] | S | items/test-service-container-two-phase-construction-cycle.md |
 | `test-fixture-filesystem-shells-out-for-junctions` | Low | — | **Fixture helper launches cmd.exe for junctions** — `mklink /J` shell-out inside test setup is a proven flake surface under load. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | S | items/test-fixture-filesystem-shells-out-for-junctions.md |
 | `self-hosted-runner-doc-shard-decision-stale-crossref` | Low | — | **Refresh docs/self-hosted-runner.md's timing-evidence cross-reference.** It still frames shard rebalancing as open/future work; CI_POLICY.md's Hosted Shard Weighting Decision closed that calibration. Point the section there. [type: doc-staleness] [source: audit] | S | items/self-hosted-runner-doc-shard-decision-stale-crossref.md |
+| `update-skill-owned-process-snippet-bash-fence-mismatch` | Low | — | **update-skill's owned-process-identity snippet is fenced as bash but is raw PowerShell** — copy-pasting it into a bash/cmd shell fails with syntax errors. [type: bug] [source: tool-update-owned-process-shutdown cold review] | S | items/update-skill-owned-process-snippet-bash-fence-mismatch.md |
+| `resolve-ci-topology-enumeration-failed-unreachable` | Low | — | **`resolve-ci-topology.ps1`'s `-EnumerationFailed` fail-closed path is unreachable from the real `ci.yml` caller** — two different fail-closed mechanisms model the same failure with different runtime effects; only one is ever live. [type: chore] [source: ci-router-pure-decision cold review] | M | items/resolve-ci-topology-enumeration-failed-unreachable.md |
+| `verify-actionlint-chmod-and-throw-branch-coverage` | Low | — | **`verify-actionlint.ps1`: chmod failure is silently swallowed and several defensive throw branches are untested.** [type: chore] [source: ci-actionlint-pinned-gate cold review] | S | items/verify-actionlint-chmod-and-throw-branch-coverage.md |
 
 ## Defer
 
