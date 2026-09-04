@@ -10,6 +10,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class UndoTools
 {
+    /// <summary>Reverts the latest solution-snapshot apply for a workspace.</summary>
+    /// <remarks>
+    /// Reversion restores text snapshots but does not delete files created as refactoring side
+    /// effects. Use <c>delete_file_apply</c> on each created file to complete that recovery.
+    /// </remarks>
     [McpServerTool(Name = "revert_last_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "stable", false, true,
         "Revert the most recent Roslyn solution-level apply operation for a workspace."),
