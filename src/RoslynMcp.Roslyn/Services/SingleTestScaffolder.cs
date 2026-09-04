@@ -156,7 +156,8 @@ internal sealed class SingleTestScaffolder
         var context = new ScaffoldTestNameSuggestionContext(
             lookupTypeName,
             request.TargetMethodName,
-            siblingNames.Names);
+            siblingNames.Names,
+            siblingNames.Warning);
         var suggestion = NormalizeSuggestion(
             await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false));
         if (!string.IsNullOrWhiteSpace(siblingNames.Warning))

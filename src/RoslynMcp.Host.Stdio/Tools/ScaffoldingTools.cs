@@ -8,6 +8,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Elicitation;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -203,7 +204,7 @@ public static class ScaffoldingTools
                     return false;
                 }
 
-                result = ProjectOutcome(outcome, text);
+                result = RestoreSiblingNameDiscoveryWarning(ProjectOutcome(outcome, text));
                 return true;
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
@@ -213,7 +214,7 @@ public static class ScaffoldingTools
                 // (the capability gate or logger resolution). Report true with the sanitized
                 // fallback rather than false: falling through would re-issue the sampling request
                 // the client has already answered.
-                result = ReportSanitizedFailure(ex);
+                result = RestoreSiblingNameDiscoveryWarning(ReportSanitizedFailure(ex));
                 return true;
             }
         }
@@ -233,10 +234,35 @@ public static class ScaffoldingTools
                 ct.ThrowIfCancellationRequested();
                 return Task.FromResult(ProjectOutcome(outcome, text));
             }
-            catch (Exception ex) when (ex is not OperationCanceledException and not InputRequiredException)
+            catch (InputRequiredException inputRequired)
+            {
+                RequestStateCodec.PreserveSiblingNameDiscoveryWarning(
+                    inputRequired,
+                    context.SiblingNameDiscoveryWarning);
+                throw;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 return Task.FromResult(ReportSanitizedFailure(ex));
             }
+        }
+
+        private TestNameSuggestionResult RestoreSiblingNameDiscoveryWarning(
+            TestNameSuggestionResult result)
+        {
+            if (!RequestStateCodec.TryRestoreSiblingNameDiscoveryWarning(
+                    _requestContext.Params?.RequestState,
+                    out var warning))
+            {
+                return result;
+            }
+
+            return result with
+            {
+                Warning = string.IsNullOrWhiteSpace(result.Warning)
+                    ? warning
+                    : $"{result.Warning} {warning}",
+            };
         }
 
         private static TestNameSuggestionResult ProjectOutcome(
