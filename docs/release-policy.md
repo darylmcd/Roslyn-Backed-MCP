@@ -54,6 +54,11 @@ A release is production-ready when all of the following are true:
   `ModelContextProtocol` 2.1.0→2.2.0 servicing review, confirms that the separate ASP.NET Core
   hybrid-session feature is outside this stdio product, and retains both supported protocol eras
   without a consumer migration.
+- [ADR 0007](decisions/0007-tasks-extension-compatibility.md) adopts the exact
+  `ModelContextProtocol.Extensions.Tasks` 2.2.0 / core 2.2.0 pair for later opt-in runtime delivery.
+  It requires protocol 2026-07-28 plus per-request capability metadata, synchronous fallback, a
+  host-owned allowlist, finite retention, process-lifetime handles, and secret-safe background
+  failure handling. It does not promise that later extension and core releases remain in lockstep.
 - Future SDK major upgrades must add or supersede an ADR before release. The record must include the
   exact package lineage, supported protocol eras, public-change classification, raw-wire evidence,
   and consumer migration for each breaking correction.
