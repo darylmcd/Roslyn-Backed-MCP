@@ -611,9 +611,9 @@ public sealed class DogReplayTests
                 workspace.WorkspaceId, request, CancellationToken.None, provider));
 
         Assert.AreEqual(1, provider.SuggestCallCount, "The initial leg issues exactly one sampling request.");
-        Assert.AreEqual(0, countingWorkspace.GetCurrentSolutionCount,
-            "The initial leg must terminate before any target resolution or compilation — every " +
-            "semantic step taken ahead of the sampling request is paid again on the replay.");
+        Assert.AreEqual(1, countingWorkspace.GetCurrentSolutionCount,
+            "The initial leg may read one loaded Solution for the syntax-only ambiguity preflight, " +
+            "but must terminate before target resolution requests any compilation.");
         Assert.IsNotNull(provider.LastContext);
         CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenReplayed_ReturnsEcho",
             "Sibling naming conventions cost no compilation, so the prompt keeps them.");
@@ -629,7 +629,8 @@ public sealed class DogReplayTests
             "The replay must consume the answered suggestion, not request a second one.");
         Assert.AreEqual(2, provider.ConsumeCallCount, "Both legs probe for an already-answered suggestion first.");
         Assert.AreEqual(2, countingWorkspace.GetCurrentSolutionCount,
-            "One target resolution plus one test-project compilation, across both legs combined.");
+            "One syntax-only initial snapshot plus one replay snapshot reused for target resolution " +
+            "and test-project compilation, across both legs combined.");
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "Speak_WhenDogIsReady_ReturnsBark");
     }
