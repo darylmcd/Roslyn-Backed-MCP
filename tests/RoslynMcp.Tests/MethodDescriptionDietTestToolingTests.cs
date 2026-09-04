@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -34,88 +32,35 @@ public sealed class MethodDescriptionDietTestToolingTests
         typeof(RecordImpactTools),
     ];
 
-    [TestMethod]
-    public void SliceToolDescriptions_AreCapabilityStatements()
-    {
-        var violations = EnumerateSliceTools()
-            .Where(entry => entry.Description.Length > _maxDescriptionCharacters)
-            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
-            .Select(entry => $"{entry.Name}: {entry.Description.Length} chars")
-            .ToArray();
-
-        Assert.AreEqual(
-            0,
-            violations.Length,
-            $"Method [Description] for these tools must be <= {_maxDescriptionCharacters} characters " +
-            "(what it does plus the one discriminating trigger); move operational detail to XML " +
-            "<remarks>. Violations:\n  " + string.Join("\n  ", violations));
-    }
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] _triggerExpectations =
+    [
+        new("test_coverage", "Run tests with code coverage collection"),
+        new("test_coverage", "coverlet.collector"),
+        new("get_test_coverage_map", "Alias for `test_coverage`"),
+        new("get_test_coverage_map", "Prefer `test_coverage`"),
+        new("test_reference_map", "statically, without running tests"),
+        new("symbol_impact_sweep", "references"),
+        new("symbol_impact_sweep", "CS8509/CS8524/IDE0072"),
+        new("symbol_impact_sweep", "mapper/converter-suffix callsites"),
+        new("preview_record_field_addition", "adding a positional field to a record"),
+        new("preview_record_field_addition", "construction, deconstruction, property-pattern, and `with`-expression sites"),
+        new("preview_record_field_addition", "does NOT flag"),
+    ];
 
     [TestMethod]
-    public void SliceToolDescriptions_StayUnderAggregateBudget()
-    {
-        var entries = EnumerateSliceTools().ToArray();
-        var total = entries.Sum(entry => entry.Description.Length);
-
-        Assert.IsTrue(
-            entries.Length > 0,
-            "Expected the slice types to declare [McpServerTool] methods; reflection found none.");
-
-        Assert.IsTrue(
-            total <= _maxAggregateDescriptionCharacters,
-            $"Aggregate method-description budget for the slice is " +
-            $"{_maxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
-    }
+    public void SliceToolDescriptions_AreCapabilityStatements() =>
+        ToolDescriptionBudgetHarness.AssertPerToolBudget(_sliceToolTypes, _maxDescriptionCharacters);
 
     [TestMethod]
-    public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers()
-    {
-        // Runtime coverage collection — the discriminator against test_run and test_reference_map.
-        AssertDescriptionContains("test_coverage", "Run tests with code coverage collection");
-        AssertDescriptionContains("test_coverage", "coverlet.collector");
+    public void SliceToolDescriptions_StayUnderAggregateBudget() =>
+        ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
+            _sliceToolTypes, _maxAggregateDescriptionCharacters);
 
-        // The alias exists only to state its identity and point at the canonical tool.
-        AssertDescriptionContains("get_test_coverage_map", "Alias for `test_coverage`");
-        AssertDescriptionContains("get_test_coverage_map", "Prefer `test_coverage`");
+    [TestMethod]
+    public void SliceTools_AllHaveNonEmptyDescriptions() =>
+        ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(_sliceToolTypes);
 
-        // Static-vs-runtime is the only thing separating this from test_coverage in tool search.
-        AssertDescriptionContains("test_reference_map", "statically, without running tests");
-
-        // The three result buckets.
-        AssertDescriptionContains("symbol_impact_sweep", "references");
-        AssertDescriptionContains("symbol_impact_sweep", "CS8509/CS8524/IDE0072");
-        AssertDescriptionContains("symbol_impact_sweep", "mapper/converter-suffix callsites");
-
-        // Trigger plus the site categories the response buckets by.
-        AssertDescriptionContains(
-            "preview_record_field_addition",
-            "adding a positional field to a record");
-        AssertDescriptionContains(
-            "preview_record_field_addition",
-            "construction, deconstruction, property-pattern, and `with`-expression sites");
-        AssertDescriptionContains("preview_record_field_addition", "does NOT flag");
-    }
-
-    private static void AssertDescriptionContains(string toolName, string expected)
-    {
-        var entry = EnumerateSliceTools().SingleOrDefault(candidate => candidate.Name == toolName);
-
-        Assert.IsNotNull(entry.Name, $"Tool '{toolName}' was not found on the slice types.");
-        StringAssert.Contains(
-            entry.Description,
-            expected,
-            $"Trimming '{toolName}' dropped its discriminating trigger.");
-    }
-
-    private static IEnumerable<(string Name, string Description)> EnumerateSliceTools()
-        => _sliceToolTypes
-            .SelectMany(type => type.GetMethods(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
-            .Select(method => new
-            {
-                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
-                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
-            })
-            .Where(entry => entry.Tool is not null && entry.Description is not null)
-            .Select(entry => (entry.Tool!.Name ?? string.Empty, entry.Description!.Description));
+    [TestMethod]
+    public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers() =>
+        ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(_sliceToolTypes, _triggerExpectations);
 }

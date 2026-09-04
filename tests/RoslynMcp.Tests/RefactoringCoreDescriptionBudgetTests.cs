@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -15,57 +13,40 @@ namespace RoslynMcp.Tests;
 public sealed class RefactoringCoreDescriptionBudgetTests
 {
     private const int MaxDescriptionCharacters = 220;
+    private const int MaxAggregateDescriptionCharacters = 1_150;
 
-    private static readonly string[] RatchetedToolNames =
+    private static readonly Type[] SliceToolTypes =
     [
-        "change_signature_preview",
-        "extract_method_apply",
-        "extract_method_preview",
-        "extract_shared_expression_to_helper_preview",
-        "get_syntax_tree",
-        "parameter_object_preview",
+        typeof(ChangeSignatureTools),
+        typeof(ExtractMethodTools),
+        typeof(SyntaxTools),
+        typeof(ParameterObjectTools),
+    ];
+
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] TriggerExpectations =
+    [
+        new("change_signature_preview", "every callsite"),
+        new("extract_method_preview", "complete statements"),
+        new("extract_method_apply", "previously previewed"),
+        new("extract_shared_expression_to_helper_preview", "occurrences < 2"),
+        new("get_syntax_tree", "TruncationNotice"),
+        new("parameter_object_preview", "Refuses with a reason"),
     ];
 
     [TestMethod]
-    public void RefactoringCoreToolDescriptions_AreNonEmptyAndWithinSliceBudget()
-    {
-        var descriptions = typeof(ServerTools).Assembly.GetTypes()
-            .SelectMany(type => type.GetMethods(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
-            .Select(method => new
-            {
-                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
-                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
-            })
-            .Where(entry => entry.Tool?.Name is not null)
-            .GroupBy(entry => entry.Tool!.Name!, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().Description?.Description, StringComparer.Ordinal);
+    public void RefactoringCoreToolDescriptions_StayWithinPerToolBudget() =>
+        ToolDescriptionBudgetHarness.AssertPerToolBudget(SliceToolTypes, MaxDescriptionCharacters);
 
-        var violations = new List<string>();
-        foreach (var toolName in RatchetedToolNames)
-        {
-            if (!descriptions.TryGetValue(toolName, out var description))
-            {
-                violations.Add($"{toolName}: no [McpServerTool] method found");
-                continue;
-            }
+    [TestMethod]
+    public void RefactoringCoreToolDescriptions_StayWithinAggregateBudget() =>
+        ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
+            SliceToolTypes, MaxAggregateDescriptionCharacters);
 
-            if (string.IsNullOrWhiteSpace(description))
-            {
-                violations.Add($"{toolName}: description is missing or empty");
-                continue;
-            }
+    [TestMethod]
+    public void RefactoringCoreToolDescriptions_AreNonEmpty() =>
+        ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(SliceToolTypes);
 
-            if (description.Length > MaxDescriptionCharacters)
-            {
-                violations.Add($"{toolName}: {description.Length} chars");
-            }
-        }
-
-        Assert.AreEqual(
-            0,
-            violations.Count,
-            $"Refactoring-core tool descriptions must be non-empty and <= {MaxDescriptionCharacters} characters. " +
-            "Violations:\n  " + string.Join("\n  ", violations));
-    }
+    [TestMethod]
+    public void RefactoringCoreToolDescriptions_KeepDiscriminatingTriggers() =>
+        ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(SliceToolTypes, TriggerExpectations);
 }
