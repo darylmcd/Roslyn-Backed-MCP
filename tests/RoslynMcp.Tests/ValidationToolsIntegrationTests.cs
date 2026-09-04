@@ -255,12 +255,12 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
 
         var animalServicePath = FindDocumentPath("AnimalService.cs");
         var filesJson = await ValidationTools.FindRelatedTestsForFiles(
-            WorkspaceExecutionGate,
-            TestDiscoveryService,
-            WorkspaceId,
-            new[] { animalServicePath },
+            gate: WorkspaceExecutionGate,
+            testDiscoveryService: TestDiscoveryService,
+            workspaceId: WorkspaceId,
+            filePaths: new[] { animalServicePath },
             maxResults: 100,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         using var symbolDoc = JsonDocument.Parse(symbolJson);
         using var filesDoc = JsonDocument.Parse(filesJson);
