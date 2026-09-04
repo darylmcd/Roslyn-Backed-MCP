@@ -67,6 +67,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+trap {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+
 $invariantCulture = [System.Globalization.CultureInfo]::InvariantCulture
 
 function Format-Seconds {

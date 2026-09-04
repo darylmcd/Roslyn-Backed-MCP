@@ -24,6 +24,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+trap {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+}
+
 function ConvertTo-MarkdownCell {
     param([AllowEmptyString()][string]$Value)
 
