@@ -571,6 +571,130 @@ public sealed class DogExistingTests
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_Preview_SiblingNameReadFailure_PreservesNamesAndAddsOneSecretSafeWarning()
+    {
+        const string sentinel = "SECRET-SENTINEL-sibling-name-read";
+        const string secretSource = "SECRET-SOURCE-sibling-name-read";
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var readablePath = workspace.GetPath("SampleLib.Tests", "DogReadableTests.cs");
+        var unreadablePath = workspace.GetPath("SampleLib.Tests", "DogUnreadableTests.cs");
+        var secondUnreadablePath = workspace.GetPath("SampleLib.Tests", "DogAlsoUnreadableTests.cs");
+        await File.WriteAllTextAsync(readablePath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public sealed class DogReadableTests
+{
+    [TestMethod]
+    public void Speak_WhenReadable_ReturnsBark()
+    {
+    }
+}
+""", CancellationToken.None);
+        await File.WriteAllTextAsync(unreadablePath, "// injected read failure", CancellationToken.None);
+        await File.WriteAllTextAsync(secondUnreadablePath, "// second injected read failure", CancellationToken.None);
+
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        var failure = new IOException(sentinel) { Source = secretSource };
+        var project = WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
+            .Single(project => string.Equals(project.Name, "SampleLib.Tests", StringComparison.Ordinal));
+        var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
+        var scaffolder = new SingleTestScaffolder(
+            WorkspaceManager,
+            FileOperationService,
+            reporter,
+            readAllText: path =>
+                (string.Equals(path, unreadablePath, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(path, secondUnreadablePath, StringComparison.OrdinalIgnoreCase))
+                ? throw failure
+                : File.ReadAllText(path));
+
+        RefactoringPreviewDto preview;
+        using (RequestCorrelationContext.Begin())
+        {
+            preview = await scaffolder.PreviewAsync(
+                project,
+                "mstest",
+                workspace.WorkspaceId,
+                new ScaffoldTestDto(
+                    "SampleLib.Tests",
+                    "Dog",
+                    "Speak",
+                    ReferenceTestFile: string.Empty,
+                    UseSampling: true),
+                CancellationToken.None,
+                provider);
+        }
+
+        Assert.AreEqual(1, provider.CallCount);
+        Assert.IsNotNull(provider.LastContext);
+        CollectionAssert.Contains(
+            provider.LastContext.SiblingTestMethodNames.ToList(),
+            "Speak_WhenReadable_ReturnsBark",
+            "A failed sibling read must not discard method names collected from readable siblings.");
+        Assert.IsNotNull(preview.Warnings);
+        Assert.HasCount(1, preview.Warnings);
+        var warning = preview.Warnings.Single();
+        StringAssert.Contains(warning, "Sibling test-name discovery was incomplete");
+        StringAssert.Contains(warning, "correlationId=");
+        Assert.IsFalse(warning.Contains(sentinel, StringComparison.Ordinal));
+        Assert.IsFalse(warning.Contains(secretSource, StringComparison.Ordinal));
+        Assert.IsFalse(warning.Contains(unreadablePath, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(warning.Contains(Path.GetFileName(unreadablePath), StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(warning.Contains(Path.GetFileName(secondUnreadablePath), StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(warning.Contains(nameof(IOException), StringComparison.Ordinal));
+
+        Assert.HasCount(1, sink.Events);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events.Single())
+            .Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("cancellation")]
+    [DataRow("unexpected")]
+    public async Task Scaffold_Test_Preview_SiblingNameReadCancellationAndUnexpectedFailures_Propagate(
+        string failureKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "DogFailureTests.cs");
+        await File.WriteAllTextAsync(siblingPath, "// injected read failure", CancellationToken.None);
+
+        Exception expected = failureKind == "cancellation"
+            ? new OperationCanceledException("injected sibling read cancellation")
+            : new InvalidOperationException("injected unexpected sibling read failure");
+        var project = WorkspaceManager.GetStatus(workspace.WorkspaceId).Projects
+            .Single(project => string.Equals(project.Name, "SampleLib.Tests", StringComparison.Ordinal));
+        var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
+        var scaffolder = new SingleTestScaffolder(
+            WorkspaceManager,
+            FileOperationService,
+            readAllText: _ => throw expected);
+
+        Task Act() => scaffolder.PreviewAsync(
+            project,
+            "mstest",
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Dog",
+                "Speak",
+                ReferenceTestFile: string.Empty,
+                UseSampling: true),
+            CancellationToken.None,
+            provider);
+
+        Exception thrown = expected is OperationCanceledException
+            ? await Assert.ThrowsExactlyAsync<OperationCanceledException>(Act)
+            : await Assert.ThrowsExactlyAsync<InvalidOperationException>(Act);
+        Assert.AreSame(expected, thrown);
+        Assert.AreEqual(0, provider.CallCount,
+            "Sibling discovery failures must propagate before the sampling provider is invoked.");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_Preview_SamplingReplay_PaysSemanticPreparationOnce()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

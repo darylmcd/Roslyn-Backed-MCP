@@ -31,15 +31,18 @@ internal sealed class SingleTestScaffolder
     private readonly IWorkspaceManager _workspace;
     private readonly IFileOperationService _fileOperationService;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly Func<string, string> _readAllText;
 
     public SingleTestScaffolder(
         IWorkspaceManager workspace,
         IFileOperationService fileOperationService,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        Func<string, string>? readAllText = null)
     {
         _workspace = workspace;
         _fileOperationService = fileOperationService;
         _exceptionReporter = exceptionReporter;
+        _readAllText = readAllText ?? File.ReadAllText;
     }
 
     public async Task<RefactoringPreviewDto> PreviewAsync(
@@ -146,15 +149,26 @@ internal sealed class SingleTestScaffolder
 
         // Syntactic inputs only: this runs ahead of symbol resolution, so anything the compilation
         // would supply is out of reach here by design — see ScaffoldTestNameSuggestionContext.
+        var siblingNames = CollectSiblingTestMethodNames(
+            projectDirectory,
+            Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),
+            maxNames: 6);
         var context = new ScaffoldTestNameSuggestionContext(
             lookupTypeName,
             request.TargetMethodName,
-            CollectSiblingTestMethodNames(
-                projectDirectory,
-                Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),
-                maxNames: 6));
+            siblingNames.Names);
+        var suggestion = NormalizeSuggestion(
+            await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false));
+        if (!string.IsNullOrWhiteSpace(siblingNames.Warning))
+        {
+            suggestion = suggestion with
+            {
+                Warning = AppendWarning(suggestion.Warning, siblingNames.Warning),
+            };
+        }
+
         return (
-            NormalizeSuggestion(await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false)),
+            suggestion,
             solution);
     }
 
@@ -429,7 +443,7 @@ internal sealed class SingleTestScaffolder
 
         try
         {
-            var sourceText = File.ReadAllText(resolved);
+            var sourceText = _readAllText(resolved);
             var pattern = TestScaffoldRenderer.ExtractPatternFromSource(sourceText, Path.GetFileName(resolved), compilation, resolved);
             return new SiblingInferenceResult(pattern, warnings);
         }
@@ -469,18 +483,19 @@ internal sealed class SingleTestScaffolder
             .FirstOrDefault();
     }
 
-    private static IReadOnlyList<string> CollectSiblingTestMethodNames(
+    private SiblingTestMethodNameCollection CollectSiblingTestMethodNames(
         string projectDirectory,
         string destinationFilePath,
         int maxNames)
     {
         if (!Directory.Exists(projectDirectory))
         {
-            return Array.Empty<string>();
+            return SiblingTestMethodNameCollection.Empty;
         }
 
         var destinationNormalized = Path.GetFullPath(destinationFilePath);
         var names = new List<string>();
+        string? warning = null;
         foreach (var file in Directory.EnumerateFiles(projectDirectory, "*Tests.cs", SearchOption.AllDirectories)
                      .Where(p =>
                      {
@@ -500,7 +515,7 @@ internal sealed class SingleTestScaffolder
         {
             try
             {
-                var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file.FullName));
+                var tree = CSharpSyntaxTree.ParseText(_readAllText(file.FullName));
                 var root = tree.GetRoot();
                 foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
                 {
@@ -512,17 +527,19 @@ internal sealed class SingleTestScaffolder
                     names.Add(method.Identifier.Text);
                     if (names.Count >= maxNames)
                     {
-                        return names;
+                        return new SiblingTestMethodNameCollection(names, warning);
                     }
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                continue;
+                warning ??= ScaffoldingReadFailurePolicy.CreateSiblingNameDiscoveryWarning(
+                    _exceptionReporter,
+                    ex);
             }
         }
 
-        return names;
+        return new SiblingTestMethodNameCollection(names, warning);
     }
 
     private static bool LooksLikeTestMethod(MethodDeclarationSyntax method)
@@ -1760,6 +1777,17 @@ internal sealed record SiblingInferenceResult(
     IReadOnlyList<string> Warnings)
 {
     public static SiblingInferenceResult None { get; } = new(null, Array.Empty<string>());
+}
+
+/// <summary>
+/// Bounded sibling method-name discovery result. Expected per-file read failures retain names
+/// collected from readable siblings and contribute one secret-safe warning for the terminal result.
+/// </summary>
+internal sealed record SiblingTestMethodNameCollection(
+    IReadOnlyList<string> Names,
+    string? Warning)
+{
+    public static SiblingTestMethodNameCollection Empty { get; } = new(Array.Empty<string>(), null);
 }
 
 /// <summary>
