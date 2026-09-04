@@ -1,3 +1,4 @@
+using System.Reflection;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -137,6 +138,14 @@ internal sealed class TestServiceContainer
         var compileCheckService = new CompileCheckService(
             workspaceManager,
             NullLogger<CompileCheckService>.Instance);
+        var unusedCodeAnalyzer = new UnusedCodeAnalyzer(
+            workspaceManager,
+            compilationCache,
+            NullLogger<UnusedCodeAnalyzer>.Instance);
+        var codeMetricsService = new CodeMetricsService(workspaceManager);
+        var cohesionAnalysisService = new CohesionAnalysisService(
+            workspaceManager,
+            NullLogger<CohesionAnalysisService>.Instance);
 
         return new TestServiceContainer
         {
@@ -196,11 +205,8 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<CodeActionService>.Instance),
-            UnusedCodeAnalyzer = new UnusedCodeAnalyzer(
-                workspaceManager,
-                compilationCache,
-                NullLogger<UnusedCodeAnalyzer>.Instance),
-            CodeMetricsService = new CodeMetricsService(workspaceManager),
+            UnusedCodeAnalyzer = unusedCodeAnalyzer,
+            CodeMetricsService = codeMetricsService,
             NamespaceDependencyService = namespaceDependencyService,
             DiRegistrationService = diRegistrationService,
             NuGetDependencyService = nuGetDependencyService,
@@ -245,9 +251,7 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 compilationCache),
-            CohesionAnalysisService = new CohesionAnalysisService(
-                workspaceManager,
-                NullLogger<CohesionAnalysisService>.Instance),
+            CohesionAnalysisService = cohesionAnalysisService,
             CouplingAnalysisService = new CouplingAnalysisService(
                 workspaceManager,
                 compilationCache,
@@ -293,9 +297,9 @@ internal sealed class TestServiceContainer
                 NullLogger<ExtractMethodService>.Instance),
             ChangeTracker = changeTracker,
             RefactoringSuggestionService = new RefactoringSuggestionService(
-                new CodeMetricsService(workspaceManager),
-                new CohesionAnalysisService(workspaceManager, NullLogger<CohesionAnalysisService>.Instance),
-                new UnusedCodeAnalyzer(workspaceManager, compilationCache, NullLogger<UnusedCodeAnalyzer>.Instance),
+                codeMetricsService,
+                cohesionAnalysisService,
+                unusedCodeAnalyzer,
                 NullLogger<RefactoringSuggestionService>.Instance),
             FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance),
             ExceptionFlowService = new ExceptionFlowService(
@@ -308,5 +312,35 @@ internal sealed class TestServiceContainer
             WorkspaceDriftService = new WorkspaceDriftService(workspaceManager),
             ParameterObjectService = new ParameterObjectService(workspaceManager, previewStore)
         };
+    }
+}
+
+[TestClass]
+public sealed class TestServiceContainerTests
+{
+    [TestMethod]
+    public void Create_RefactoringSuggestionsReuseExposedAnalysisServices()
+    {
+        var services = TestServiceContainer.Create(new ValidationServiceOptions());
+
+        Assert.AreSame(
+            services.CodeMetricsService,
+            GetRequiredPrivateField(services.RefactoringSuggestionService, "_metricsService"));
+        Assert.AreSame(
+            services.CohesionAnalysisService,
+            GetRequiredPrivateField(services.RefactoringSuggestionService, "_cohesionService"));
+        Assert.AreSame(
+            services.UnusedCodeAnalyzer,
+            GetRequiredPrivateField(services.RefactoringSuggestionService, "_unusedCodeAnalyzer"));
+    }
+
+    private static object GetRequiredPrivateField(object instance, string fieldName)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"{instance.GetType().Name} must retain collaborator field '{fieldName}'.");
+
+        var value = field.GetValue(instance);
+        Assert.IsNotNull(value, $"{instance.GetType().Name}.{fieldName} must be initialized.");
+        return value;
     }
 }
