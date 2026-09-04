@@ -400,4 +400,21 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             WorkspaceManager.Close(workspaceId);
         }
     }
+
+    [TestMethod]
+    public void SpliceFormattedRange_LineCountMismatch_RefusesUnboundedResult()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From(
+            "outside-before\ninside\noutside-after\n");
+        var formatted = Microsoft.CodeAnalysis.Text.SourceText.From(
+            "changed-before\ninside\nextra\nchanged-after\n");
+
+        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            RoslynMcp.Roslyn.Services.RefactoringService.SpliceFormattedRange(
+                original, formatted, startLine: 2, endLine: 2));
+
+        StringAssert.Contains(exception.Message, "changed the line count");
+        Assert.AreEqual("outside-before\ninside\noutside-after\n", original.ToString(),
+            "refusing an unsafe formatter result must not mutate the original text.");
+    }
 }
