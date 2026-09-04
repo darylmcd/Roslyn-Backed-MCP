@@ -22,3 +22,8 @@ These are the remaining long-running operations named by the parent row's accept
 ## Context
 
 Split from `tasks-extension-slow-ops` (2026-09-02). Depends on `tasks-extension-workspace-load` so the `WithTasks(...)` wiring in `src/RoslynMcp.Host.Stdio/Program.cs` lands once and this child only adds tool-side opt-in.
+
+
+## 2026-09-04 compatibility re-vet addendum
+
+Extend the central `ExecutionModeSelector` allowlist rather than editing build/test tool implementations. Preserve the synchronous path for non-opted and down-level clients; add opted task lifecycle and cancellation wire regressions for the new allowlist entries.
