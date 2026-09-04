@@ -56,3 +56,4 @@ Distinct from the registered `WorkspaceExecutionGateTests` timing flake and from
 together.
 
 [source: 2026-09-02 backlog-remediate triage]
+Additional 2026-09-04 full-gate evidence: ServerDiscoveryWireTests returned protocol 2025-11-25 where 2026-07-28 was expected in two assertions (tests/RoslynMcp.Tests/ServerDiscoveryWireTests.cs:20-66,153-177). Both exact tests then passed three consecutive isolated runs. This is a third loaded-suite symptom of the same cross-session negotiation state row, not evidence that the actionlint change caused it.

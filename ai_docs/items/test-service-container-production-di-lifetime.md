@@ -25,3 +25,4 @@ The handwritten test graph is about 240 lines and already drifted from productio
 
 
 > Size correction (2026-09-04): canonical row size is `S`; the initial detail header said `M` before the anchor-derived size warning was reconciled.
+Cold review of PR #1464 confirmed the deferred gate holder is a safe interim cycle break, but it remains a bespoke two-phase construction protocol. Replace it with the production registration provider and explicit test overrides under this row; preserve the new identity and disposal regressions.
