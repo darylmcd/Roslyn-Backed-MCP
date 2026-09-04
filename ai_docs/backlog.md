@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T23:37:57Z
+**updated_at:** 2026-09-04T00:30:35Z
 
 ## Agent contract
 
@@ -63,7 +63,6 @@
 | `method-diet-ratchet-only-clean-slices` | Medium | desc-budget-harness-method-family | **Method-description diet: ratchet-only slice (already compliant)** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (0 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-ratchet-only-clean-slices.md |
 | `desc-budget-harness-method-adopt-wave-2` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 2)** — migrate the diagnostics/security, editing/MSBuild and scaffolding/mutation slice classes onto the shared helper without loosening any ceiling. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-2.md |
 | `desc-budget-harness-method-adopt-wave-3` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 3)** — migrate the server-surface, test-tooling and refactoring-core slice classes onto the shared helper, proving it fits the one-type outlier too. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-3.md |
-| `ci-actionlint-pinned-gate` | Medium | — | **Checksum-pinned actionlint gate** — add a repository-owned, hash-verified `actionlint` runnable offline from `just ci`, with the pin declared in the script and no developer-global executable. [type: CI] [source: ci-router-pure-decision-and-actionlint] | M | items/ci-actionlint-pinned-gate.md |
 | `promotion-scorecard-refresh-toplevel-run` | Medium | — | BLOCKED: needs a top-level `/mcp-server-surface-test --full` session (a subagent cannot spawn the phase runners). **Refresh the promotion scorecard** — regenerate + commit the v1.38.1 snapshot against the current surface. [type: ops] [source: promotion-tier-execution-batch] | S | items/promotion-scorecard-refresh-toplevel-run.md |
 | `tool-consolidation-adr-and-alias-machinery` | Medium | — | **ADR + alias machinery for tool consolidation** — record the risk-bucket merge policy and deprecation cycle, and prove the declared-deprecated-alias mechanism on one representative merge. [type: design] [source: risk-aligned-tool-consolidation] | M | items/tool-consolidation-adr-and-alias-machinery.md |
 | `promotion-tier-analysis-batch-1` | Medium | promotion-scorecard-refresh-toplevel-run | BLOCKED: gated on `promotion-scorecard-refresh-toplevel-run`. **Promote qualifying Analysis experimental tools** (batch 1/3) — 5 candidates across 3 tool file(s). Catalog hotspot. [type: ops] [source: promotion-tier-execution-batch] | M | items/promotion-tier-analysis-batch-1.md |
@@ -104,6 +103,7 @@
 | `test-service-container-duplicate-service-instances` | Medium | — | **Container hands out services it did not use** — `RefactoringSuggestionService` is built with fresh CodeMetrics/Cohesion/UnusedCode instances while the container exposes its own; tests observe different objects than production DI. [type: bug] [source: 2026-09-03 PR #1431] | S | items/test-service-container-duplicate-service-instances.md |
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
+| `unused-code-analyzer-exception-reporter-not-wired` | Medium | — | **`UnusedCodeAnalyzer`'s AnalysisScan failure reporting doesn't wire the DI-resolved `IUnexpectedExceptionReporter`** — hardcodes `reporter: null` unlike every sibling AnalysisScan-category service. [type: bug] [source: unused-symbol-scan-fail-unsafe-reference-count cold review] | S | items/unused-code-analyzer-exception-reporter-not-wired.md |
 
 ## Low
 
@@ -228,6 +228,9 @@
 | `test-service-container-two-phase-construction-cycle` | Low | — | **Order-dependent gate/manager construction cycle** — a mutable local captured by a `Lazy<>` is assigned after the ctor call; correct only by statement ordering. [type: refactor] [source: 2026-09-03 PR #1431] | S | items/test-service-container-two-phase-construction-cycle.md |
 | `test-fixture-filesystem-shells-out-for-junctions` | Low | — | **Fixture helper launches cmd.exe for junctions** — `mklink /J` shell-out inside test setup is a proven flake surface under load. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | S | items/test-fixture-filesystem-shells-out-for-junctions.md |
 | `self-hosted-runner-doc-shard-decision-stale-crossref` | Low | — | **Refresh docs/self-hosted-runner.md's timing-evidence cross-reference.** It still frames shard rebalancing as open/future work; CI_POLICY.md's Hosted Shard Weighting Decision closed that calibration. Point the section there. [type: doc-staleness] [source: audit] | S | items/self-hosted-runner-doc-shard-decision-stale-crossref.md |
+| `update-skill-owned-process-snippet-bash-fence-mismatch` | Low | — | **update-skill's owned-process-identity snippet is fenced as bash but is raw PowerShell** — copy-pasting it into a bash/cmd shell fails with syntax errors. [type: bug] [source: tool-update-owned-process-shutdown cold review] | S | items/update-skill-owned-process-snippet-bash-fence-mismatch.md |
+| `resolve-ci-topology-enumeration-failed-unreachable` | Low | — | **`resolve-ci-topology.ps1`'s `-EnumerationFailed` fail-closed path is unreachable from the real `ci.yml` caller** — two different fail-closed mechanisms model the same failure with different runtime effects; only one is ever live. [type: chore] [source: ci-router-pure-decision cold review] | M | items/resolve-ci-topology-enumeration-failed-unreachable.md |
+| `verify-actionlint-chmod-and-throw-branch-coverage` | Low | — | **`verify-actionlint.ps1`: chmod failure is silently swallowed and several defensive throw branches are untested.** [type: chore] [source: ci-actionlint-pinned-gate cold review] | S | items/verify-actionlint-chmod-and-throw-branch-coverage.md |
 
 ## Defer
 

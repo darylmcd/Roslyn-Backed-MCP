@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-03T17:41:03.723Z",
-  "backlogSnapshot": "2026-09-03T17:22:39Z",
+  "backlogSnapshot": "2026-09-04T00:27:49Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
@@ -153,7 +153,7 @@
     {
       "id": "ci-actionlint-pinned-gate",
       "order": 5,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "ci-actionlint-pinned-gate"
       ],
@@ -163,7 +163,7 @@
         "justfile",
         "CI_POLICY.md"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 42000,
       "toolPolicy": "edit-only",
@@ -179,12 +179,12 @@
       "dependsOn": [],
       "branch": "remediation/ci-actionlint-pinned-gate",
       "worktreePath": ".worktrees/ci-actionlint-pinned-gate",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1444",
+      "mergedAt": "2026-09-04T00:27:39Z",
       "notes": null,
       "fileSetHash": "6c488031f041491bb402ee6e5b68601c6c8838e8333ac648d7b3be9492e188ba",
-      "stanzaHash": "72044eb992a96a5d488ce764f6db5bf65c1ecf452a40bf6f5df6d6726815641b",
-      "reviewedStanzaHash": "72044eb992a96a5d488ce764f6db5bf65c1ecf452a40bf6f5df6d6726815641b"
+      "stanzaHash": "42963631762f943c4a26072a70a2bb649c58a042a5a59ab80ff85a3cd70869f4",
+      "reviewedStanzaHash": "42963631762f943c4a26072a70a2bb649c58a042a5a59ab80ff85a3cd70869f4"
     }
   ],
   "anchorVerification": "performed",
@@ -268,10 +268,10 @@
     ]
   },
   "conflictGraphInputHash": "24bc4eddd4cba81a0c698214f750588e295b226810a03ddb8ed3e4d0255b9d66",
-  "planHash": "681ba8277dd02bc6459e71e15ccdf2e6b260ecd593f73375a19171a39594b19c",
-  "backlogSnapshotHash": "e56e808d84047605c5840454b175c385a3d93f5e9fc84875a874fa5493276665",
-  "reviewedPlanHash": "681ba8277dd02bc6459e71e15ccdf2e6b260ecd593f73375a19171a39594b19c",
-  "reviewedBacklogSnapshotHash": "e56e808d84047605c5840454b175c385a3d93f5e9fc84875a874fa5493276665",
+  "planHash": "6614b413c539323ee2d816a9988c61fc72ad05893ebeecd78daf65f72d6479f4",
+  "backlogSnapshotHash": "9e6c5d92aa1b597782513e45b7346bb75d5c14c06825192c7d8884d85def38f2",
+  "reviewedPlanHash": "6614b413c539323ee2d816a9988c61fc72ad05893ebeecd78daf65f72d6479f4",
+  "reviewedBacklogSnapshotHash": "9e6c5d92aa1b597782513e45b7346bb75d5c14c06825192c7d8884d85def38f2",
   "reviewFindings": {
     "block": 0,
     "warn": 5,
@@ -314,5 +314,7 @@
       "rule": "C2-degree-2",
       "evidence": "Rebuilt-graph degree 2 (justfile + CI_POLICY.md), scheduleHint: null -- accepted, both edges are simple two-way file overlaps, not a fanout hazard."
     }
-  ]
+  ],
+  "completed": true,
+  "completedAt": "2026-09-04T00:27:56.029Z"
 }

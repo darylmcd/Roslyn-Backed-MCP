@@ -13,6 +13,7 @@
 - [ ] All three slice classes call the shared harness instead of carrying their own reflection enumeration and assertion bodies.
 - [ ] Each declares its own ceilings, tool-type set and discriminating-trigger substrings; no ceiling is loosened during the migration.
 - [ ] Behaviour is unchanged — the same tools pass and the same violations would fail, proven by the suite staying green with no constant edits.
+- [ ] `ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers` gets at least one real caller here (or this row adds a self-test) that exercises both its pass and fail branches — cold review of `desc-budget-harness-method-family` found the method ships with zero callers, so the trigger-ratchet branching is currently unverified.
 
 ## Evidence
 
