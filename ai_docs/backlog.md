@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-03T23:37:57Z
+**updated_at:** 2026-09-04T00:27:49Z
 
 ## Agent contract
 
@@ -63,7 +63,6 @@
 | `method-diet-ratchet-only-clean-slices` | Medium | desc-budget-harness-method-family | **Method-description diet: ratchet-only slice (already compliant)** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (0 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-ratchet-only-clean-slices.md |
 | `desc-budget-harness-method-adopt-wave-2` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 2)** — migrate the diagnostics/security, editing/MSBuild and scaffolding/mutation slice classes onto the shared helper without loosening any ceiling. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-2.md |
 | `desc-budget-harness-method-adopt-wave-3` | Medium | desc-budget-harness-method-family | **Adopt the shared description harness (wave 3)** — migrate the server-surface, test-tooling and refactoring-core slice classes onto the shared helper, proving it fits the one-type outlier too. [type: test-refactor] [source: tool-description-slice-test-harness-consolidation] | S | items/desc-budget-harness-method-adopt-wave-3.md |
-| `ci-actionlint-pinned-gate` | Medium | — | **Checksum-pinned actionlint gate** — add a repository-owned, hash-verified `actionlint` runnable offline from `just ci`, with the pin declared in the script and no developer-global executable. [type: CI] [source: ci-router-pure-decision-and-actionlint] | M | items/ci-actionlint-pinned-gate.md |
 | `promotion-scorecard-refresh-toplevel-run` | Medium | — | BLOCKED: needs a top-level `/mcp-server-surface-test --full` session (a subagent cannot spawn the phase runners). **Refresh the promotion scorecard** — regenerate + commit the v1.38.1 snapshot against the current surface. [type: ops] [source: promotion-tier-execution-batch] | S | items/promotion-scorecard-refresh-toplevel-run.md |
 | `tool-consolidation-adr-and-alias-machinery` | Medium | — | **ADR + alias machinery for tool consolidation** — record the risk-bucket merge policy and deprecation cycle, and prove the declared-deprecated-alias mechanism on one representative merge. [type: design] [source: risk-aligned-tool-consolidation] | M | items/tool-consolidation-adr-and-alias-machinery.md |
 | `promotion-tier-analysis-batch-1` | Medium | promotion-scorecard-refresh-toplevel-run | BLOCKED: gated on `promotion-scorecard-refresh-toplevel-run`. **Promote qualifying Analysis experimental tools** (batch 1/3) — 5 candidates across 3 tool file(s). Catalog hotspot. [type: ops] [source: promotion-tier-execution-batch] | M | items/promotion-tier-analysis-batch-1.md |
