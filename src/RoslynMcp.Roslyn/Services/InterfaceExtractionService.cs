@@ -418,7 +418,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                         $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
                 }
             }
-            catch (InvalidOperationException) { throw; }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // GetCompilationAsync ultimately re-reads source documents from disk; a file

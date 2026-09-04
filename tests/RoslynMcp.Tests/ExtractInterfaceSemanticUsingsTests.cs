@@ -1,6 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -548,6 +551,62 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         {
             WorkspaceManager.Close(workspaceId);
             TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExtractInterface_Propagates_Unexpected_CompilationCache_Failure()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sourceFilePath = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+        var expected = new KeyNotFoundException("synthetic unexpected cache failure");
+        var service = new InterfaceExtractionService(
+            WorkspaceManager,
+            new PreviewStore(),
+            new ThrowingCompilationCache(expected),
+            NullLogger<InterfaceExtractionService>.Instance);
+
+        try
+        {
+            var actual = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+                service.PreviewExtractInterfaceAsync(
+                    workspaceId,
+                    sourceFilePath,
+                    typeName: "AnimalService",
+                    interfaceName: "IUnexpectedCacheFailureProbe",
+                    memberNames: null,
+                    replaceUsages: false,
+                    CancellationToken.None));
+
+            Assert.AreSame(
+                expected,
+                actual,
+                "Unexpected compilation-cache failures must propagate unchanged instead of skipping conflict validation.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDir);
+        }
+    }
+
+    private sealed class ThrowingCompilationCache(Exception failure) : ICompilationCache
+    {
+        public Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct) =>
+            Task.FromException<Compilation?>(failure);
+
+        public Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(
+            string workspaceId,
+            Project project,
+            CancellationToken ct) => Task.FromException<CompilationWithAnalyzers?>(failure);
+
+        public bool IsLiveSolution(string workspaceId, Solution solution) => false;
+
+        public void Invalidate(string workspaceId)
+        {
         }
     }
 }
