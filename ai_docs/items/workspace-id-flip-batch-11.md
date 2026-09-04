@@ -1,6 +1,6 @@
 # workspace-id-flip-batch-11 — flip read-only `workspaceId` to optional (batch 11 of 11)
 
-**row:** `workspace-id-flip-batch-11` · **pri:** `Low` · **size:** `M` · **deps:** `workspace-id-optional-adoption-evidence,workspace-id-optional-named-argument-prerequisite`
+**row:** `workspace-id-flip-batch-11` · **pri:** `Low` · **size:** `M` · **deps:** `workspace-id-optional-adoption-evidence, workspace-id-named-args-symbol-search, workspace-id-named-args-symbol-navigation, workspace-id-named-args-expanded-surface, workspace-id-named-args-refactoring, workspace-id-named-args-shims-extraction, workspace-id-named-args-validation`
 
 ## Anchors
 
