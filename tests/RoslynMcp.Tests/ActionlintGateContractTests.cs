@@ -297,9 +297,9 @@ public sealed class ActionlintGateContractTests
     }
 
     // Live-network smoke test: downloads the real pinned release once (verifying the archive
-    // hash), then re-runs against the now-populated cache and asserts the second run completes
-    // in well under the time a fresh download+extract would take -- the offline cache-hit path,
-    // not a live re-download. Marked Network per CI_POLICY.md (excluded on PR; included
+    // hash), then re-runs against the now-populated cache with a fail-fast download tripwire --
+    // deterministic proof of the offline cache-hit path, independent of host timing. Marked
+    // Network per CI_POLICY.md (excluded on PR; included
     // weekly/manual), mirroring NuGetVulnerabilityScanIntegrationTests' precedent for a gate
     // that legitimately needs one real external call.
     [TestMethod]
@@ -313,14 +313,38 @@ public sealed class ActionlintGateContractTests
             Assert.AreEqual(0, coldResult.ExitCode, coldResult.AllOutput);
             StringAssert.Contains(coldResult.AllOutput, "no issues found");
 
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var cachedResult = await RunGateAsync(fixtureRoot, timeout: TimeSpan.FromSeconds(30));
-            stopwatch.Stop();
+            var cachedResult = await RunGateAsync(
+                fixtureRoot,
+                timeout: TimeSpan.FromSeconds(30),
+                failDownloadForTest: true);
 
             Assert.AreEqual(0, cachedResult.ExitCode, cachedResult.AllOutput);
-            Assert.IsTrue(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(10),
-                $"A cache hit must not re-download the archive; took {stopwatch.Elapsed.TotalSeconds:F1}s.");
+            StringAssert.Contains(cachedResult.AllOutput, "no issues found");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_ForcedDownloadFailure_TripsBeforeNetworkAccess()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(
+                fixtureRoot,
+                failDownloadForTest: true,
+                platformForTest: "windows",
+                architectureForTest: "x64");
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            Assert.AreEqual(
+                "verify-actionlint: download path entered while FailDownloadForTest was set.",
+                result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
         }
         finally
         {
@@ -383,6 +407,7 @@ public sealed class ActionlintGateContractTests
         bool failChmodForTest = false,
         bool failTarExtractionForTest = false,
         bool useArchiveFixtureForTest = false,
+        bool failDownloadForTest = false,
         string? platformForTest = null,
         string? architectureForTest = null)
     {
@@ -405,6 +430,10 @@ public sealed class ActionlintGateContractTests
         if (useArchiveFixtureForTest)
         {
             arguments.Add("-UseArchiveFixtureForTest");
+        }
+        if (failDownloadForTest)
+        {
+            arguments.Add("-FailDownloadForTest");
         }
         if (platformForTest is not null)
         {

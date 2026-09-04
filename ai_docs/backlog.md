@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-04T16:52:17Z
+**updated_at:** 2026-09-04T21:13:44Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `test-shared-gate-rate-limit-isolation` | High | — | Give the assembly-owned test gate a test-specific non-exhausting rate-limit policy so unrelated parallel classes cannot consume one shared production-sized window. [type: test-infrastructure] [source: 2026-09-04 hosted cascade diagnosis] | S | items/test-shared-gate-rate-limit-isolation.md |
 
 ## Medium
 
@@ -97,11 +96,8 @@
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
-| `unused-code-analyzer-exception-reporter-not-wired` | Medium | — | **`UnusedCodeAnalyzer`'s AnalysisScan failure reporting doesn't wire the DI-resolved `IUnexpectedExceptionReporter`** — hardcodes `reporter: null` unlike every sibling AnalysisScan-category service. [type: bug] [source: unused-symbol-scan-fail-unsafe-reference-count cold review] | S | items/unused-code-analyzer-exception-reporter-not-wired.md |
 | `scaffold-fqn-target-type-disambiguation` | Medium | scaffold-target-type-ambiguity-before-sampling | Preserve fully qualified targetTypeName through semantic resolution for single and batch scaffolding, using the matched symbol simple name only when rendering identifiers. [type: bug] [source: 2026-09-04 PR #1457 cold review] | M | items/scaffold-fqn-target-type-disambiguation.md |
-| `actionlint-cache-hit-deterministic-offline-proof` | Medium | — | Replace the fixed 10-second cache-hit assertion with deterministic download-path failure injection or equivalent offline proof that a valid cached binary is reused. [type: test-reliability] [source: 2026-09-04 PR #1454 hosted validation] | S | items/actionlint-cache-hit-deterministic-offline-proof.md |
 | `test-service-container-production-di-lifetime` | Medium | test-shared-gate-rate-limit-isolation, test-service-container-two-phase-construction-cycle | Replace the handwritten test composition-root lifetime with a test-owned production registration provider plus explicit overrides, and dispose the provider exactly once. [type: test-architecture] [source: 2026-09-04 execution re-vet] | S | items/test-service-container-production-di-lifetime.md |
-| `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Medium | — | Make NuGetVersionChecker timeout-driven tests deterministic through an injectable timeout seam, preserving production bounds while eliminating Pending-versus-TimedOut scheduling races and mechanically coupling hang guards. [type: test-reliability] [source: 2026-09-04 hosted shard failure] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
 | `scripting-supervisor-outer-cancellation-contended-timeout` | Medium | — | Replace the timing-sensitive scripting outer-cancellation regression with a causal supervisor lifecycle seam and repeated contention proof. | S | items/scripting-supervisor-outer-cancellation-contended-timeout.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 
@@ -227,6 +223,12 @@
 | `docs-decision-index-completeness` | Low | — | Add an AI-doc gate that requires every shipped decision to appear exactly once in the docs decision index. | S | items/docs-decision-index-completeness.md |
 | `scaffold-warning-mrtr-typed-state` | Low | scaffold-warning-domain-data | **Carry typed sibling warnings through MRTR replay** — preserve typed state, render once at the terminal boundary, and remove codec prose parsing. [type: refactor] [source: PR #1472 cold review] | M | items/scaffold-warning-mrtr-typed-state.md |
 | `scaffold-warning-domain-data` | Low | — | **Model incomplete sibling discovery as typed domain data** — replace redaction-sensitive prose state with a stable warning code and opaque correlation ID. [type: refactor] [source: PR #1472 cold review] | M | items/scaffold-warning-domain-data.md |
+| `nuget-version-checker-fetch-decomposition` | Low | — | Decompose FetchLatestVersionAsync into HTTP lifetime, response parsing, version selection, and terminal status projection while preserving its public contract. [type: quality] [source: 2026-09-04 touched-code review] | S | items/nuget-version-checker-fetch-decomposition.md |
+| `unused-code-analyzer-convention-complexity` | Low | — | Extract convention and framework-glue classification from UnusedCodeAnalyzer and reduce the four touched hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-convention-complexity.md |
+| `unused-code-analyzer-dead-field-complexity` | Low | — | Separate dead-field traversal, reference classification, and DTO projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-field-complexity.md |
+| `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
+| `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
+| `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
 
 ## Defer
 

@@ -33,7 +33,9 @@ param(
     [Parameter(DontShow)]
     [switch]$FailTarExtractionForTest,
     [Parameter(DontShow)]
-    [switch]$UseArchiveFixtureForTest
+    [switch]$UseArchiveFixtureForTest,
+    [Parameter(DontShow)]
+    [switch]$FailDownloadForTest
 )
 
 Set-StrictMode -Version Latest
@@ -238,6 +240,10 @@ elseif (Test-Path -LiteralPath $binaryPath -PathType Leaf) {
 }
 else {
     $downloadUrl = "https://github.com/rhysd/actionlint/releases/download/v$PinnedVersion/$($pin.Asset)"
+    if ($FailDownloadForTest) {
+        Stop-WithDiagnostic -Diagnostic (
+            'verify-actionlint: download path entered while FailDownloadForTest was set.')
+    }
     New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
     $archivePath = Join-Path $toolRoot $pin.Asset
     try {
