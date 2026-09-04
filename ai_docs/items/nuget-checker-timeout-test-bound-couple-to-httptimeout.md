@@ -1,6 +1,6 @@
 # nuget-checker-timeout-test-bound-couple-to-httptimeout — couple the test wait bound to HttpTimeout instead of a literal
 
-**row:** `nuget-checker-timeout-test-bound-couple-to-httptimeout` · **pri:** `Low` · **size:** `S`
+**row:** `nuget-checker-timeout-test-bound-couple-to-httptimeout` · **pri:** `Medium` · **size:** `S`
 
 ## Anchors
 
@@ -19,3 +19,19 @@
 ## Context
 
 Deferred from row 4 (a test-only size-S row) because the structurally-tighter fix touches **production visibility** — out of that row's scope (Directive #6). The 30 s bound is ~10× the 3 s internal timeout, so the margin is robust today; this row is a hardening/maintainability follow-on, not a correctness gap.
+
+
+## 2026-09-04 hosted failure addendum
+
+`GetLatestVersion_WhileFetchInFlight_RecordsPendingStatus` waited for the handler to start, then observed `TimedOut` rather than `Pending` because the production three-second timeout elapsed before the assertion under hosted scheduling. A larger assertion wait does not fix this race.
+
+### Expanded acceptance
+
+- [ ] Inject or otherwise control the checker timeout in tests without changing the production three-second default.
+- [ ] The in-flight test cannot transition to `TimedOut` before its explicit release, independent of scheduler delay.
+- [ ] The timeout test advances or uses a deliberately short test timeout and still proves `TimedOut` plus completion timestamp deterministically.
+- [ ] The completion hang guard is derived from the configured test timeout rather than an unrelated literal.
+
+### Regression
+
+Hold a request beyond the production timeout's wall-clock duration under a test-owned timeout policy, assert `Pending`, release it, and assert terminal success; separately trigger the controlled timeout and assert `TimedOut`.

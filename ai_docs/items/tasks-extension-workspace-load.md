@@ -24,3 +24,8 @@
 Split from `tasks-extension-slow-ops` (2026-09-02). Blocked until `tasks-extension-compatibility-decision` lands.
 
 `src/RoslynMcp.Host.Stdio/Program.cs` (the `WithTasks(...)` wiring point) is shared with the two sibling execution children — chain them or co-locate the wiring in this first one and have the siblings depend on it.
+
+
+## 2026-09-04 compatibility re-vet addendum
+
+Replace the obsolete tool-side opt-in assumption. Add the exact central package pin and host project reference, then configure `WithTasks` through a host-owned `ExecutionModeSelector`. The selector allowlists `workspace_load` and `workspace_warm`; every other tool stays synchronous. Configure finite retention and safely project or suppress background task exception logging. Remove unnecessary `WorkspaceTools.cs` and `WorkspaceWarmTools.cs` edit anchors. Raw-wire coverage must include modern opted task create/poll/result, modern non-opted synchronous behavior, down-level synchronous behavior, unsupported direct `tasks/*`, cancellation, and process-restart handle invalidation.
