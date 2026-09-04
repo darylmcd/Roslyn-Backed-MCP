@@ -1,4 +1,5 @@
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -92,37 +93,59 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
     [TestMethod]
     public async Task DisposeAsync_ReleasesOwnedResourcesExactlyOnce()
     {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDirectory = Path.GetDirectoryName(copiedSolutionPath)!;
+
         // A standalone fixture, so the assembly-owned one stays live for the rest of the run. It
         // never requests a path-authorized server, so no MCP server is stood up.
         var fixture = new TestAssemblyFixture(
             TestServiceContainer.Create(new ValidationServiceOptions()),
             Fixture.RepositoryFixtures);
+        Exception? primaryFailure = null;
 
-        Assert.AreEqual(0, fixture.DisposalEntryCount, "A fresh fixture has released nothing.");
+        try
+        {
+            Assert.AreEqual(0, fixture.DisposalEntryCount, "A fresh fixture has released nothing.");
+            Assert.AreEqual(0, fixture.WorkspaceIdCache.Count, "A fresh fixture cache must be empty.");
 
-        await fixture.DisposeAsync();
-        await fixture.DisposeAsync();
-        await fixture.DisposeAsync();
+            await fixture.GetOrLoadWorkspaceIdAsync(copiedSolutionPath);
+            Assert.AreEqual(
+                1,
+                fixture.WorkspaceIdCache.Count,
+                "The standalone fixture must own one deterministic cache entry before disposal.");
 
-        Assert.AreEqual(
-            1,
-            fixture.DisposalEntryCount,
-            "Owned resources must be released exactly once however many callers dispose the fixture.");
+            await fixture.DisposeAsync();
+            await fixture.DisposeAsync();
+            await fixture.DisposeAsync();
 
-        // NOTE: this assertion proves the release block was ENTERED exactly once, not that it ran
-        // to completion — deleting the block's body would leave it green. An observable
-        // post-condition was attempted (asserting the disposed WorkspaceManager refuses a
-        // LoadAsync) and REVERTED: it throws only when the call reaches the disposed semaphore,
-        // and with the sample solutions pre-prepared by a full suite run it short-circuits before
-        // that, so it passed in isolation and failed under the full gate. A deterministic check
-        // needs a read accessor on WorkspaceIdCache to assert Clear() ran, which is a fourth test
-        // file and over this initiative's Rule 4 budget. Tracked by row
-        // test-assembly-fixture-disposal-observable-postcondition.
+            Assert.AreEqual(
+                1,
+                fixture.DisposalEntryCount,
+                "Owned resources must be released exactly once however many callers dispose the fixture.");
+            Assert.AreEqual(
+                0,
+                fixture.WorkspaceIdCache.Count,
+                "Disposal must clear the fixture-owned workspace-id cache; entering the release block is insufficient.");
 
-        // Disposing the fixture must not reach through to the assembly-owned one.
-        Assert.AreEqual(
-            0,
-            Fixture.DisposalEntryCount,
-            "The assembly-owned fixture must still be live; only AssemblyLifecycle.Cleanup disposes it.");
+            // Disposing the fixture must not reach through to the assembly-owned one.
+            Assert.AreEqual(
+                0,
+                Fixture.DisposalEntryCount,
+                "The assembly-owned fixture must still be live; only AssemblyLifecycle.Cleanup disposes it.");
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            throw;
+        }
+        finally
+        {
+            await CleanupFailureCollector.RunAfterFailureAsync(
+                "Fixture-disposal regression and copied-solution cleanup both failed.",
+                primaryFailure,
+                () => fixture.DisposeAsync(),
+                CleanupFailureCollector.FromAction(
+                    () => TestFixtureFileSystem.DeleteDirectoryIfExists(solutionDirectory)));
+        }
     }
 }

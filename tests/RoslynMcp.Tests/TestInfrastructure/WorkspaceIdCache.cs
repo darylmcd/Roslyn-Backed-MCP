@@ -8,6 +8,8 @@ internal sealed class WorkspaceIdCache
     private readonly ConcurrentDictionary<string, string> _workspaceIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _loadGate = new(1, 1);
 
+    internal int Count => _workspaceIds.Count;
+
     public async Task<string> GetOrLoadAsync(IWorkspaceManager workspaceManager, string solutionPath, CancellationToken ct = default)
     {
         if (_workspaceIds.TryGetValue(solutionPath, out var cachedId)
