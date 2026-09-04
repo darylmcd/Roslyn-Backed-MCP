@@ -260,6 +260,42 @@ public sealed class ActionlintGateContractTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_ArchiveWithoutExpectedBinary_FailsClosedAfterSuccessfulExtraction()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var archivePath = Path.Combine(fixtureRoot, "missing-actionlint.tar.gz");
+            CreateTarGzipArchive(archivePath, "extraction-marker.txt", "archive extracted");
+
+            var result = await RunGateAsync(fixtureRoot, useArchiveFixtureForTest: true);
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            const string diagnostic =
+                "verify-actionlint: extraction of 'missing-actionlint.tar.gz' did not produce expected binary 'actionlint'.";
+            Assert.AreEqual(diagnostic, result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
+            var toolRoot = Path.Combine(fixtureRoot, "artifacts", "tools", "actionlint", "1.7.12");
+            Assert.AreEqual(
+                "archive extracted",
+                File.ReadAllText(Path.Combine(toolRoot, "extraction-marker.txt")),
+                "The fixture must prove extraction succeeded before the missing-binary refusal.");
+            Assert.IsFalse(File.Exists(Path.Combine(toolRoot, "actionlint")));
+            Assert.IsFalse(
+                result.AllOutput.Contains("could not be downloaded", StringComparison.Ordinal),
+                $"The archive fixture must stay offline. Output:{Environment.NewLine}{result.AllOutput}");
+            Assert.IsFalse(
+                result.AllOutput.Contains("running pinned actionlint", StringComparison.Ordinal),
+                $"A missing extracted binary must not reach actionlint execution. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     // Live-network smoke test: downloads the real pinned release once (verifying the archive
     // hash), then re-runs against the now-populated cache and asserts the second run completes
     // in well under the time a fresh download+extract would take -- the offline cache-hit path,
@@ -320,12 +356,33 @@ public sealed class ActionlintGateContractTests
         return root;
     }
 
+    private static void CreateTarGzipArchive(
+        string archivePath,
+        string entryName,
+        string contents)
+    {
+        using var archiveStream = File.Create(archivePath);
+        using var gzipStream = new System.IO.Compression.GZipStream(
+            archiveStream,
+            System.IO.Compression.CompressionLevel.SmallestSize);
+        using var writer = new System.Formats.Tar.TarWriter(gzipStream);
+        using var contentsStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(contents));
+        var entry = new System.Formats.Tar.PaxTarEntry(
+            System.Formats.Tar.TarEntryType.RegularFile,
+            entryName)
+        {
+            DataStream = contentsStream,
+        };
+        writer.WriteEntry(entry);
+    }
+
     private static Task<PwshScriptResult> RunGateAsync(
         string fixtureRoot,
         IReadOnlyDictionary<string, string?>? environment = null,
         TimeSpan? timeout = null,
         bool failChmodForTest = false,
         bool failTarExtractionForTest = false,
+        bool useArchiveFixtureForTest = false,
         string? platformForTest = null,
         string? architectureForTest = null)
     {
@@ -344,6 +401,10 @@ public sealed class ActionlintGateContractTests
         if (failTarExtractionForTest)
         {
             arguments.Add("-FailTarExtractionForTest");
+        }
+        if (useArchiveFixtureForTest)
+        {
+            arguments.Add("-UseArchiveFixtureForTest");
         }
         if (platformForTest is not null)
         {
