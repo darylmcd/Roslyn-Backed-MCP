@@ -26,7 +26,7 @@ public static class WorkspaceDriftTool
         UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceDriftResult)),
      McpToolMetadata("workspace", "experimental", true, false,
         "Compare the in-memory workspace snapshot against filesystem mtimes; return drift status, drifted file paths, and a reload/noop recommendation."),
-     Description("Compare a loaded workspace snapshot with files on disk and return drifted paths plus reload/noop guidance. Use before reads after out-of-band edits; source-generated documents are skipped.")]
+     Description("Compare a loaded workspace snapshot with files on disk and return filesDrifted plus reload/noop guidance. Use before reads after out-of-band edits; source-generated documents are skipped.")]
     public static Task<CallToolResult> WorkspaceDriftCheck(
         IWorkspaceExecutionGate gate,
         IWorkspaceDriftService driftService,

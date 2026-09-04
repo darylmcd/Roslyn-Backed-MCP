@@ -39,6 +39,7 @@ public sealed class MethodDescriptionDietUndoWorkspaceLifecycleTests
                 new("workspace_warm", "first read-side call"),
                 new("apply_with_verify", "auto-revert"),
                 new("apply_with_verify", "composite and project-mutation tokens"),
+                new("workspace_drift_check", "filesDrifted"),
                 new("workspace_drift_check", "out-of-band edits"),
                 new("workspace_drift_check", "source-generated documents are skipped"),
             ]);
