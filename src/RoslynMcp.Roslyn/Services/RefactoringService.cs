@@ -520,23 +520,92 @@ public sealed class RefactoringService : IRefactoringService
             _workspace, workspaceId, filePath);
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+        ValidateFormatRange(text, startLine, startColumn, endLine, endColumn);
+        var rangedText = await FormatRangeTextAsync(document, text, startLine, endLine, ct).ConfigureAwait(false);
+        var newSolution = rangedText.ContentEquals(text)
+            ? solution
+            : document.WithText(rangedText).Project.Solution;
 
-        // format-range-preview-nonfunctional: validate parameters upfront so callers get a
-        // structured error instead of an uninterpreted ArgumentOutOfRangeException from
-        // TextSpan.FromBounds(-1, …) or text.Lines[-1].
+        return await CreateFormatRangePreviewAsync(
+            workspaceId, filePath, startLine, endLine, solution, newSolution, ct).ConfigureAwait(false);
+    }
+
+    private async Task<RefactoringPreviewDto> CreateFormatRangePreviewAsync(
+        string workspaceId,
+        string filePath,
+        int startLine,
+        int endLine,
+        Solution originalSolution,
+        Solution newSolution,
+        CancellationToken ct)
+    {
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(originalSolution, newSolution, ct).ConfigureAwait(false);
+        var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
+        var token = _previewStore.Store(
+            workspaceId,
+            newSolution,
+            _workspace.GetCurrentVersion(workspaceId),
+            description,
+            changes,
+            PreviewKind.FormatRange);
+
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static void ValidateFormatRange(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine,
+        int startColumn,
+        int endLine,
+        int endColumn)
+    {
+        ValidatePositiveFormatCoordinates(startLine, startColumn, endLine, endColumn);
+        ValidateFormatLineBounds(text, startLine, endLine);
+        ValidateFormatRangeOrdering(startLine, startColumn, endLine, endColumn);
+    }
+
+    private static void ValidatePositiveFormatCoordinates(
+        int startLine,
+        int startColumn,
+        int endLine,
+        int endColumn)
+    {
         if (startLine < 1) throw new ArgumentException($"startLine must be >= 1 (got {startLine}).", nameof(startLine));
         if (endLine < 1) throw new ArgumentException($"endLine must be >= 1 (got {endLine}).", nameof(endLine));
         if (startColumn < 1) throw new ArgumentException($"startColumn must be >= 1 (got {startColumn}).", nameof(startColumn));
         if (endColumn < 1) throw new ArgumentException($"endColumn must be >= 1 (got {endColumn}).", nameof(endColumn));
-        if (endLine < startLine)
-            throw new ArgumentException($"endLine ({endLine}) must be >= startLine ({startLine}).", nameof(endLine));
+    }
+
+    private static void ValidateFormatLineBounds(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine,
+        int endLine)
+    {
         if (startLine > text.Lines.Count)
             throw new ArgumentException($"startLine ({startLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(startLine));
         if (endLine > text.Lines.Count)
             throw new ArgumentException($"endLine ({endLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(endLine));
+    }
+
+    private static void ValidateFormatRangeOrdering(
+        int startLine,
+        int startColumn,
+        int endLine,
+        int endColumn)
+    {
+        if (endLine < startLine)
+            throw new ArgumentException($"endLine ({endLine}) must be >= startLine ({startLine}).", nameof(endLine));
         if (startLine == endLine && startColumn > endColumn)
             throw new ArgumentException($"startColumn ({startColumn}) must be <= endColumn ({endColumn}) when both are on the same line.", nameof(startColumn));
+    }
 
+    private static async Task<Microsoft.CodeAnalysis.Text.SourceText> FormatRangeTextAsync(
+        Document document,
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine,
+        int endLine,
+        CancellationToken ct)
+    {
         // format-range-preview-empty-diff-compile-check-filter-false-clean +
         // dr-9-12-flag-format-range-empty-returns-empty-diff-on-d:
         //
@@ -572,25 +641,7 @@ public sealed class RefactoringService : IRefactoringService
         // normalization which Roslyn's trivia formatter doesn't perform, so we do it
         // post-splice — only inside the caller's requested range so out-of-range blank-line
         // patterns stay untouched.
-        rangedText = CollapseBlankLineRunsInRange(rangedText, startLine, endLine);
-
-        Solution newSolution;
-        if (rangedText.ContentEquals(text))
-        {
-            // Either the range is already clean or the only formatter-proposed edits
-            // fall outside it. Either way: no-op preview, apply will also no-op.
-            newSolution = solution;
-        }
-        else
-        {
-            newSolution = document.WithText(rangedText).Project.Solution;
-        }
-
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
-        var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes, PreviewKind.FormatRange);
-
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return CollapseBlankLineRunsInRange(rangedText, startLine, endLine);
     }
 
     public async Task<RefactoringPreviewDto> PreviewCodeFixAsync(
@@ -1127,59 +1178,69 @@ public sealed class RefactoringService : IRefactoringService
     /// document formatting + line-splice gives the formatter full context AND keeps the apply
     /// scope honest to what the caller asked for.
     ///
-    /// Line correspondence is anchored at <c>startLine - 1</c>: we assume the formatter does
-    /// not insert or delete lines before the requested range. The formatter is a whitespace-
-    /// only transform; this assumption holds for every realistic input. If it is ever
-    /// violated, the splice is conservative — the original text is preserved outside the
-    /// requested range, so the worst case is an unexpected-but-harmless line-shift inside.
+    /// Line correspondence is anchored at <c>startLine - 1</c>. A formatter result with a
+    /// different line count cannot be mapped without risking edits outside the requested
+    /// range, so this method explicitly refuses that result.
     /// </summary>
-    private static Microsoft.CodeAnalysis.Text.SourceText SpliceFormattedRange(
+    internal static Microsoft.CodeAnalysis.Text.SourceText SpliceFormattedRange(
         Microsoft.CodeAnalysis.Text.SourceText originalText,
         Microsoft.CodeAnalysis.Text.SourceText formattedText,
         int startLine,
         int endLine)
     {
-        // 1-based caller indices → 0-based line indices in the SourceText.
-        var startIdx = startLine - 1;
-        var endIdx = endLine - 1;
-
-        // Defensive clamp — caller-side validation already rejects out-of-range inputs but
-        // this avoids any edge case where the formatter changed the line count.
-        if (startIdx < 0) startIdx = 0;
-        if (endIdx >= originalText.Lines.Count) endIdx = originalText.Lines.Count - 1;
-        if (endIdx < startIdx) return originalText;
-
-        // Same number of lines in the formatted text? Use direct line-by-line splice.
-        // This is the common case — Formatter.FormatAsync only adjusts whitespace inside
-        // existing lines and almost never alters line count.
-        if (originalText.Lines.Count == formattedText.Lines.Count)
+        var (startIdx, endIdx) = NormalizeSpliceRange(originalText, startLine, endLine);
+        if (endIdx < startIdx)
         {
-            var sb = new System.Text.StringBuilder(originalText.Length);
-            for (int i = 0; i < originalText.Lines.Count; i++)
-            {
-                var sourceLine = (i >= startIdx && i <= endIdx)
-                    ? formattedText.Lines[i]
-                    : originalText.Lines[i];
-                sb.Append(sourceLine.ToString());
-                // Preserve the line's break (LF / CRLF / nothing on EOF) from whichever side
-                // we're sourcing from so the splice doesn't smuggle in line-ending changes.
-                var lineBreakStart = sourceLine.End;
-                var lineBreakEnd = sourceLine.EndIncludingLineBreak;
-                if (lineBreakEnd > lineBreakStart)
-                {
-                    var breakSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(lineBreakStart, lineBreakEnd);
-                    sb.Append((i >= startIdx && i <= endIdx ? formattedText : originalText).GetSubText(breakSpan).ToString());
-                }
-            }
-            return Microsoft.CodeAnalysis.Text.SourceText.From(sb.ToString(), originalText.Encoding, originalText.ChecksumAlgorithm);
+            return originalText;
         }
 
-        // Formatter changed the line count inside the range (rare — would mean it
-        // collapsed or expanded multi-line constructs). Fall back to the formatter's
-        // entire output: the apply may touch lines outside the requested range but at
-        // least preview will match apply, which is the primary contract this method
-        // protects.
-        return formattedText;
+        if (originalText.Lines.Count != formattedText.Lines.Count)
+        {
+            throw new InvalidOperationException(
+                $"Format-range preview refused a formatter result that changed the line count " +
+                $"from {originalText.Lines.Count} to {formattedText.Lines.Count}; the requested range " +
+                $"cannot be kept bounded safely.");
+        }
+
+        return SpliceMatchingLineCounts(originalText, formattedText, startIdx, endIdx);
+    }
+
+    private static (int StartIdx, int EndIdx) NormalizeSpliceRange(
+        Microsoft.CodeAnalysis.Text.SourceText originalText,
+        int startLine,
+        int endLine)
+    {
+        var startIdx = startLine - 1;
+        var endIdx = endLine - 1;
+        if (startIdx < 0)
+        {
+            startIdx = 0;
+        }
+        if (endIdx >= originalText.Lines.Count)
+        {
+            endIdx = originalText.Lines.Count - 1;
+        }
+        return (startIdx, endIdx);
+    }
+
+    private static Microsoft.CodeAnalysis.Text.SourceText SpliceMatchingLineCounts(
+        Microsoft.CodeAnalysis.Text.SourceText originalText,
+        Microsoft.CodeAnalysis.Text.SourceText formattedText,
+        int startIdx,
+        int endIdx)
+    {
+        var builder = new System.Text.StringBuilder(originalText.Length);
+        for (var lineIndex = 0; lineIndex < originalText.Lines.Count; lineIndex++)
+        {
+            var useFormattedLine = lineIndex >= startIdx && lineIndex <= endIdx;
+            var sourceText = useFormattedLine ? formattedText : originalText;
+            AppendLineAndBreak(builder, sourceText, sourceText.Lines[lineIndex]);
+        }
+
+        return Microsoft.CodeAnalysis.Text.SourceText.From(
+            builder.ToString(),
+            originalText.Encoding,
+            originalText.ChecksumAlgorithm);
     }
 
     /// <summary>
