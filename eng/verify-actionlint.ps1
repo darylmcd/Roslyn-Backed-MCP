@@ -31,7 +31,9 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string]$ArchitectureForTest,
     [Parameter(DontShow)]
-    [switch]$FailTarExtractionForTest
+    [switch]$FailTarExtractionForTest,
+    [Parameter(DontShow)]
+    [switch]$UseArchiveFixtureForTest
 )
 
 Set-StrictMode -Version Latest
@@ -167,11 +169,37 @@ function Expand-ActionlintArchive {
     }
 }
 
+function Assert-ActionlintBinaryPresent {
+    param(
+        [Parameter(Mandatory)][string]$AssetName,
+        [Parameter(Mandatory)][string]$BinaryName,
+        [Parameter(Mandatory)][string]$BinaryPath
+    )
+
+    if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
+        Stop-WithDiagnostic -Diagnostic (
+            "verify-actionlint: extraction of '$AssetName' did not produce expected binary '$BinaryName'.")
+    }
+}
+
 if ($FailChmodForTest) {
     Set-ActionlintExecutablePermission -Path 'test-only' -FailForTest
 }
 if ($FailTarExtractionForTest) {
     Expand-ActionlintArchive -Rid 'linux-x64' -ArchivePath 'test-only.tar.gz' -DestinationPath 'test-only' -FailForTest
+}
+if ($UseArchiveFixtureForTest) {
+    $archiveFixturePath = Join-Path $RepoRoot 'missing-actionlint.tar.gz'
+    $fixtureToolRoot = Join-Path $RepoRoot "artifacts/tools/actionlint/$PinnedVersion"
+    New-Item -ItemType Directory -Path $fixtureToolRoot -Force | Out-Null
+    Expand-ActionlintArchive -Rid 'linux-x64' -ArchivePath $archiveFixturePath -DestinationPath $fixtureToolRoot
+    $binaryAssertionArguments = @{
+        AssetName  = [IO.Path]::GetFileName($archiveFixturePath)
+        BinaryName = $PinnedArchiveHashes['linux-x64'].BinaryName
+        BinaryPath = Join-Path $fixtureToolRoot $PinnedArchiveHashes['linux-x64'].BinaryName
+    }
+    Assert-ActionlintBinaryPresent @binaryAssertionArguments
+    exit 0
 }
 
 $ridArguments = @{}
@@ -225,9 +253,7 @@ else {
     }
     Expand-ActionlintArchive -Rid $rid -ArchivePath $archivePath -DestinationPath $toolRoot
     Remove-Item -LiteralPath $archivePath -Force
-    if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
-        throw "verify-actionlint: extraction of '$($pin.Asset)' did not produce the expected binary at '$binaryPath'."
-    }
+    Assert-ActionlintBinaryPresent -AssetName $pin.Asset -BinaryName $pin.BinaryName -BinaryPath $binaryPath
     $extractedHash = Get-FileSha256 -Path $binaryPath
     if ($extractedHash -ne $pin.BinarySha256) {
         throw "verify-actionlint: extracted binary at '$binaryPath' hash mismatch (expected $($pin.BinarySha256), got $extractedHash) -- the pinned archive hash matched but its extracted contents did not."
