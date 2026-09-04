@@ -19,6 +19,22 @@ internal static class ScaffoldingReadFailurePolicy
     }
 
     /// <summary>
+    /// Secret-safe diagnostic for partial sibling test-name discovery. The warning deliberately
+    /// omits the failed file identity and count because readable siblings remain usable.
+    /// </summary>
+    public static string CreateSiblingNameDiscoveryWarning(
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Exception exception)
+    {
+        var detail = UnexpectedExceptionReporting.Report(
+            exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.Scaffolding).Public;
+        return "Sibling test-name discovery was incomplete; sampled naming used the readable siblings. " +
+            PublicExceptionDetailPolicy.FormatCorrelationIdSuffix(detail.CorrelationId);
+    }
+
+    /// <summary>
     /// Secret-safe diagnostic for a recovered project-file parse failure. Carries only the
     /// redacted project identity (file name, never the full path), the deterministic outcome
     /// text, and the correlation ID from the shared unexpected-exception projection.
