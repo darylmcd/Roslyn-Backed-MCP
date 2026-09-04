@@ -358,7 +358,7 @@ public sealed class FormatterBaselineContractTests
     public async Task Generator_IsDeterministicAndTheTrackedInventoryCoversTheLiveRunAsync()
     {
         var firstRun = await RunGeneratorCheckAsync();
-        var secondRun = await RunGeneratorCheckAsync();
+        var secondRun = await RunGeneratorCheckAsync(noRestore: true);
 
         Assert.AreEqual(
             firstRun.StdOut,
@@ -370,12 +370,21 @@ public sealed class FormatterBaselineContractTests
         Assert.IsFalse(
             firstRun.StdOut.Contains(_formatPhaseMarkerPrefix, StringComparison.Ordinal),
             "Phase markers must never reach stdout; stdout is the byte-compared determinism payload.");
+        Assert.IsFalse(
+            secondRun.StdOut.Contains(_formatPhaseMarkerPrefix, StringComparison.Ordinal),
+            "Phase markers must never reach stdout on the no-restore pass.");
         CollectionAssert.AreEqual(
             new[] { "restore start", "restore end", "format start", "format end" },
             ExtractPhaseMarkers(firstRun.StdErr)
                 .Select(marker => string.Join(' ', marker.Split(' ').Skip(1).Take(2)))
                 .ToArray(),
             $"The generator must bracket both phases on stderr. stderr={firstRun.StdErr}");
+        CollectionAssert.AreEqual(
+            new[] { "format start", "format end" },
+            ExtractPhaseMarkers(secondRun.StdErr)
+                .Select(marker => string.Join(' ', marker.Split(' ').Skip(1).Take(2)))
+                .ToArray(),
+            $"The second deterministic pass must reuse the first restore and run formatting only. stderr={secondRun.StdErr}");
 
         var live = ParseInventory(
             firstRun.StdOut,
@@ -564,7 +573,7 @@ public sealed class FormatterBaselineContractTests
         }
     }
 
-    private static async Task<ProcessResult> RunGeneratorCheckAsync()
+    private static async Task<ProcessResult> RunGeneratorCheckAsync(bool noRestore = false)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var generatorPath = Path.Combine(repositoryRoot, "eng", "generate-format-baseline.ps1");
@@ -587,6 +596,10 @@ public sealed class FormatterBaselineContractTests
         // tracked artifact has drifted; drift in the shrinking direction is expected and is
         // evaluated by the subset assertions rather than by the exit code.
         startInfo.ArgumentList.Add("-Check");
+        if (noRestore)
+        {
+            startInfo.ArgumentList.Add("-NoRestore");
+        }
 
         // Taken before launch, so nothing the generator itself spawns can appear in it.
         var competingAtStart = SnapshotCompetingProcesses();
