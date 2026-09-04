@@ -32,9 +32,10 @@ public static class WorkspaceDriftTool
         IWorkspaceDriftService driftService,
         [Description("Workspace session id from workspace_load.")] string workspaceId,
         CancellationToken ct = default)
-        => gate.RunReadAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
             workspaceId,
-            async c => StructuredToolResult.Create(
-                await driftService.CheckDriftAsync(workspaceId, c).ConfigureAwait(false)),
+            c => driftService.CheckDriftAsync(workspaceId, c),
+            StructuredToolResult.Create,
             ct);
 }
