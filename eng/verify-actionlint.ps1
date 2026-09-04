@@ -33,6 +33,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $PinnedVersion = '1.7.12'
+$UnsupportedPlatformDiagnostic =
+    'verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).'
 $PinnedArchiveHashes = [ordered]@{
     'win-x64'     = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_windows_amd64.zip"
@@ -73,7 +75,7 @@ function Get-CurrentRid {
                 return 'linux-x64'
             }
             'unsupported' {
-                throw 'verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).'
+                Stop-UnsupportedPlatform
             }
         }
     }
@@ -85,7 +87,12 @@ function Get-CurrentRid {
         if ($arch -eq 'aarch64') { return 'linux-arm64' }
         return 'linux-x64'
     }
-    throw 'verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).'
+    Stop-UnsupportedPlatform
+}
+
+function Stop-UnsupportedPlatform {
+    [Console]::Error.WriteLine($UnsupportedPlatformDiagnostic)
+    exit 1
 }
 
 function Get-FileSha256 {

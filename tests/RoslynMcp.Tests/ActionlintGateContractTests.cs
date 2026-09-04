@@ -146,7 +146,8 @@ public sealed class ActionlintGateContractTests
             Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
             const string diagnostic =
                 "verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).";
-            StringAssert.Contains(result.AllOutput, diagnostic);
+            Assert.AreEqual(diagnostic, result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
             Assert.IsFalse(
                 Directory.Exists(Path.Combine(fixtureRoot, "artifacts")),
                 "Unsupported-platform detection must fail before creating the actionlint cache.");
