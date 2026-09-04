@@ -29,7 +29,9 @@ param(
     [string]$PlatformForTest,
     [Parameter(DontShow)]
     [ValidateSet('x64', 'arm64')]
-    [string]$ArchitectureForTest
+    [string]$ArchitectureForTest,
+    [Parameter(DontShow)]
+    [switch]$FailTarExtractionForTest
 )
 
 Set-StrictMode -Version Latest
@@ -139,8 +141,37 @@ function Set-ActionlintExecutablePermission {
     }
 }
 
+function Expand-ActionlintArchive {
+    param(
+        [Parameter(Mandatory)][string]$Rid,
+        [Parameter(Mandatory)][string]$ArchivePath,
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [Parameter(DontShow)][switch]$FailForTest
+    )
+
+    if ($Rid -like 'win-*') {
+        Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
+        return
+    }
+
+    if ($FailForTest) {
+        & (Get-Process -Id $PID).Path -NoProfile -NonInteractive -Command 'exit 23'
+    }
+    else {
+        & tar -xzf $ArchivePath -C $DestinationPath
+    }
+    $tarExitCode = $LASTEXITCODE
+    if ($tarExitCode -ne 0) {
+        Stop-WithDiagnostic -ExitCode $tarExitCode -Diagnostic (
+            "verify-actionlint: 'tar' extraction of '$ArchivePath' failed with exit code $tarExitCode.")
+    }
+}
+
 if ($FailChmodForTest) {
     Set-ActionlintExecutablePermission -Path 'test-only' -FailForTest
+}
+if ($FailTarExtractionForTest) {
+    Expand-ActionlintArchive -Rid 'linux-x64' -ArchivePath 'test-only.tar.gz' -DestinationPath 'test-only' -FailForTest
 }
 
 $ridArguments = @{}
@@ -192,13 +223,7 @@ else {
         Remove-Item -LiteralPath $archivePath -Force
         throw "verify-actionlint: downloaded archive '$downloadUrl' hash mismatch (expected $($pin.ArchiveSha256), got $archiveHash) -- refusing to extract an unverified archive."
     }
-    if ($rid -like 'win-*') {
-        Expand-Archive -LiteralPath $archivePath -DestinationPath $toolRoot -Force
-    }
-    else {
-        & tar -xzf $archivePath -C $toolRoot
-        if ($LASTEXITCODE -ne 0) { throw "verify-actionlint: 'tar' extraction of '$archivePath' failed with exit code $LASTEXITCODE." }
-    }
+    Expand-ActionlintArchive -Rid $rid -ArchivePath $archivePath -DestinationPath $toolRoot
     Remove-Item -LiteralPath $archivePath -Force
     if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
         throw "verify-actionlint: extraction of '$($pin.Asset)' did not produce the expected binary at '$binaryPath'."

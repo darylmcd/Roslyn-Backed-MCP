@@ -233,6 +233,33 @@ public sealed class ActionlintGateContractTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_TarExtractionFailure_ReportsBoundedDiagnosticBeforeExecution()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(fixtureRoot, failTarExtractionForTest: true);
+
+            Assert.AreEqual(23, result.ExitCode, result.AllOutput);
+            const string diagnostic =
+                "verify-actionlint: 'tar' extraction of 'test-only.tar.gz' failed with exit code 23.";
+            Assert.AreEqual(diagnostic, result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts")),
+                "The failure-only extraction seam must run before cache creation or download.");
+            Assert.IsFalse(
+                result.AllOutput.Contains("running pinned actionlint", StringComparison.Ordinal),
+                $"A failed extraction must not reach actionlint execution. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     // Live-network smoke test: downloads the real pinned release once (verifying the archive
     // hash), then re-runs against the now-populated cache and asserts the second run completes
     // in well under the time a fresh download+extract would take -- the offline cache-hit path,
@@ -298,6 +325,7 @@ public sealed class ActionlintGateContractTests
         IReadOnlyDictionary<string, string?>? environment = null,
         TimeSpan? timeout = null,
         bool failChmodForTest = false,
+        bool failTarExtractionForTest = false,
         string? platformForTest = null,
         string? architectureForTest = null)
     {
@@ -312,6 +340,10 @@ public sealed class ActionlintGateContractTests
         if (failChmodForTest)
         {
             arguments.Add("-FailChmodForTest");
+        }
+        if (failTarExtractionForTest)
+        {
+            arguments.Add("-FailTarExtractionForTest");
         }
         if (platformForTest is not null)
         {
