@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-04T01:41:29.916Z",
-  "backlogSnapshot": "2026-09-04T00:30:35Z",
+  "backlogSnapshot": "2026-09-04T16:52:17Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 1,
@@ -119,7 +119,7 @@
     {
       "id": "actionlint-unpinned-rid-contract",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "actionlint-unpinned-rid-contract"
       ],
@@ -143,10 +143,10 @@
       "dependsOn": [
         "actionlint-unsupported-platform-contract"
       ],
-      "branch": null,
+      "branch": "remediation/actionlint-unpinned-rid-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1471",
+      "mergedAt": "2026-09-04T14:16:17Z",
       "notes": "Execution re-vet corrected unreachable real RID refusal: derive pinned RID from OS plus architecture and fail closed before cache/artifact/network work.",
       "parentRow": "verify-actionlint-chmod-and-throw-branch-coverage",
       "fileSetHash": "ba141149fc76516568d310d488e43c08557a53863298de71597760f441e3b990",
@@ -156,7 +156,7 @@
     {
       "id": "actionlint-extraction-failure-contract",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "actionlint-extraction-failure-contract"
       ],
@@ -180,10 +180,10 @@
       "dependsOn": [
         "actionlint-unpinned-rid-contract"
       ],
-      "branch": null,
+      "branch": "remediation/actionlint-extraction-failure-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1474",
+      "mergedAt": "2026-09-04T15:59:42Z",
       "notes": null,
       "parentRow": "verify-actionlint-chmod-and-throw-branch-coverage",
       "fileSetHash": "ba141149fc76516568d310d488e43c08557a53863298de71597760f441e3b990",
@@ -193,7 +193,7 @@
     {
       "id": "actionlint-missing-binary-contract",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "actionlint-missing-binary-contract"
       ],
@@ -217,10 +217,10 @@
       "dependsOn": [
         "actionlint-extraction-failure-contract"
       ],
-      "branch": null,
+      "branch": "remediation/actionlint-missing-binary-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1475",
+      "mergedAt": "2026-09-04T16:39:43Z",
       "notes": null,
       "parentRow": "verify-actionlint-chmod-and-throw-branch-coverage",
       "fileSetHash": "ba141149fc76516568d310d488e43c08557a53863298de71597760f441e3b990",
@@ -399,7 +399,7 @@
     {
       "id": "workspace-id-optional-adoption-evidence",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-id-optional-adoption-evidence"
       ],
@@ -424,10 +424,10 @@
       "dependsOn": [
         "tasks-extension-compatibility-decision"
       ],
-      "branch": null,
+      "branch": "remediation/workspace-id-optional-adoption-evidence",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1473",
+      "mergedAt": "2026-09-04T15:38:42Z",
       "notes": null,
       "fileSetHash": "c07368b415d02c1c7d4fea94939e11dbe9d6044413951bf6511214e4ff0ae879",
       "stanzaHash": "dec7686a962e1a86215cdfb6d60af1066e3df7f2e8f44470c99544e245765d3d",
@@ -879,7 +879,7 @@
     {
       "id": "sibling-test-name-discovery-warning",
       "order": 10.02,
-      "status": "pending",
+      "status": "merged",
       "productionFilesTouched": 4,
       "productionFiles": [
         "src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs",
@@ -907,7 +907,10 @@
       "fileSetHash": "50cd0e087253fc95a79e3555816ca652190c69c94ad3ce100eb4997302da264c",
       "stanzaHash": "e8cbc8501b5662b0a38dc03e40222896afbd5da34fda66e4718f67f52512a669",
       "parentRow": "sibling-test-name-discovery-warning",
-      "reviewedStanzaHash": "e8cbc8501b5662b0a38dc03e40222896afbd5da34fda66e4718f67f52512a669"
+      "reviewedStanzaHash": "e8cbc8501b5662b0a38dc03e40222896afbd5da34fda66e4718f67f52512a669",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1472",
+      "mergedAt": "2026-09-04T14:58:40Z",
+      "branch": "remediation/sibling-test-name-discovery-warning"
     }
   ],
   "anchorVerification": "performed",
@@ -1526,8 +1529,10 @@
     }
   ],
   "conflictGraphInputHash": "1c732ced9cd58782f1152f64cd98729979fd80a1c35c875a927498fe91731156",
-  "planHash": "e26b953379fcf6d6d54721ce3bbeddac9038678a1adbbd0a5c3e9d21d536d1e8",
-  "backlogSnapshotHash": "a17b4de39624a6984d202217eaef62595ce01458caa3fc965f86e929b1d2b0c7",
-  "reviewedPlanHash": "e26b953379fcf6d6d54721ce3bbeddac9038678a1adbbd0a5c3e9d21d536d1e8",
-  "reviewedBacklogSnapshotHash": "a17b4de39624a6984d202217eaef62595ce01458caa3fc965f86e929b1d2b0c7"
+  "planHash": "fe6e6a32624b5fff0004b261c21ce5d8fb18e4b4ecc7b20a963910a24626f2be",
+  "backlogSnapshotHash": "02710486532a501a8401daa9997debd4a0839a2c1a8e3c445bbfa06037961617",
+  "reviewedPlanHash": "fe6e6a32624b5fff0004b261c21ce5d8fb18e4b4ecc7b20a963910a24626f2be",
+  "reviewedBacklogSnapshotHash": "02710486532a501a8401daa9997debd4a0839a2c1a8e3c445bbfa06037961617",
+  "completed": true,
+  "completedAt": "2026-09-04T16:52:32.824Z"
 }

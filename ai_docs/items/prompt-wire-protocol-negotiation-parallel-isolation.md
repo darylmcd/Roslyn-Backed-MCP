@@ -57,3 +57,12 @@ together.
 
 [source: 2026-09-02 backlog-remediate triage]
 Additional 2026-09-04 full-gate evidence: ServerDiscoveryWireTests returned protocol 2025-11-25 where 2026-07-28 was expected in two assertions (tests/RoslynMcp.Tests/ServerDiscoveryWireTests.cs:20-66,153-177). Both exact tests then passed three consecutive isolated runs. This is a third loaded-suite symptom of the same cross-session negotiation state row, not evidence that the actionlint change caused it.
+
+## Amendment — 2026-09-04 (fourth independent loaded-suite symptom)
+
+The final actionlint contract's unsharded Release gate failed only
+`ElicitationChoicePromptTests.SupportsElicitation_UsesRequestCapabilitiesForModern_AndServerSnapshotForLegacy`:
+the modern harness unexpectedly retained a non-null `ClientCapabilities` snapshot. The exact test passed
+immediately in isolation (1/1 in 184 ms). The same run built with zero warnings/errors and passed 2,922
+other tests, so this is further evidence of cross-session protocol negotiation state under a loaded suite,
+not an actionlint regression.
