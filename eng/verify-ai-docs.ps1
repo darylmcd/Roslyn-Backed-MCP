@@ -108,6 +108,42 @@ catch {
     $issues.Add("Third-party notice parity: $($_.Exception.Message)")
 }
 
+$toolSurfaceDecisionRelativePath = 'docs/decisions/0009-tool-surface-policy.md'
+$toolSurfaceDecisionPath = Join-Path $RepoRoot $toolSurfaceDecisionRelativePath
+$releasePolicyPath = Join-Path $RepoRoot 'docs/release-policy.md'
+if (-not [System.IO.File]::Exists($toolSurfaceDecisionPath)) {
+    $issues.Add("Missing tool-surface policy decision: $toolSurfaceDecisionRelativePath")
+}
+else {
+    $toolSurfaceDecision = [System.IO.File]::ReadAllText($toolSurfaceDecisionPath)
+    $requiredDecisionStatements = @(
+        '| Formatting |',
+        '| Text edit |',
+        '| Code transform |',
+        '| File lifecycle |',
+        '| Project file |',
+        'Prohibit apply-route consolidation across risk buckets',
+        'callable for at least one released minor version',
+        'Remove it only in the next major version'
+    )
+    foreach ($requiredStatement in $requiredDecisionStatements) {
+        if (-not $toolSurfaceDecision.Contains($requiredStatement, [System.StringComparison]::Ordinal)) {
+            $issues.Add("Tool-surface policy is missing required statement: $requiredStatement")
+        }
+    }
+}
+
+if (-not [System.IO.File]::Exists($releasePolicyPath)) {
+    $issues.Add('Missing release policy: docs/release-policy.md')
+}
+else {
+    $releasePolicy = [System.IO.File]::ReadAllText($releasePolicyPath)
+    $requiredDecisionLink = '(decisions/0009-tool-surface-policy.md)'
+    if (-not $releasePolicy.Contains($requiredDecisionLink, [System.StringComparison]::Ordinal)) {
+        $issues.Add("Release policy does not link ADR 0009: $requiredDecisionLink")
+    }
+}
+
 if ($issues.Count -gt 0) {
     $issues | Sort-Object -Unique | ForEach-Object { Write-Error $_ }
     exit 1
