@@ -1,6 +1,7 @@
 using System.Reflection;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
@@ -75,17 +76,16 @@ internal sealed class TestServiceContainer
     {
         var previewStore = new PreviewStore();
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        WorkspaceExecutionGate? workspaceExecutionGate = null;
+        var deferredExecutionGate = new DeferredWorkspaceExecutionGate();
         var workspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             previewStore,
             fileWatcher,
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 },
             cacheStore: null,
-            evictionGate: new Lazy<IWorkspaceExecutionGate>(() =>
-                workspaceExecutionGate ?? throw new InvalidOperationException(
-                    "The test workspace execution gate was resolved before initialization.")));
-        workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+            evictionGate: new Lazy<IWorkspaceExecutionGate>(deferredExecutionGate.Resolve));
+        var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+        deferredExecutionGate.Bind(workspaceExecutionGate);
         var compilationCache = new CompilationCache(workspaceManager);
         var dotnetCommandRunner = new DotnetCommandRunner();
         var gatedCommandExecutor = new GatedCommandExecutor(
@@ -313,11 +313,50 @@ internal sealed class TestServiceContainer
             ParameterObjectService = new ParameterObjectService(workspaceManager, previewStore)
         };
     }
+
+    internal sealed class DeferredWorkspaceExecutionGate
+    {
+        private IWorkspaceExecutionGate? _gate;
+
+        public IWorkspaceExecutionGate Resolve() =>
+            Volatile.Read(ref _gate) ?? throw new InvalidOperationException(
+                "The test workspace execution gate was resolved before initialization.");
+
+        public void Bind(IWorkspaceExecutionGate gate)
+        {
+            ArgumentNullException.ThrowIfNull(gate);
+            if (Interlocked.CompareExchange(ref _gate, gate, null) is not null)
+            {
+                throw new InvalidOperationException(
+                    "The test workspace execution gate was initialized more than once.");
+            }
+        }
+    }
 }
 
 [TestClass]
 public sealed class TestServiceContainerTests
 {
+    [TestMethod]
+    public void DeferredWorkspaceExecutionGate_RequiresExactlyOneBind()
+    {
+        var deferredGate = new TestServiceContainer.DeferredWorkspaceExecutionGate();
+
+        var unresolved = Assert.ThrowsExactly<InvalidOperationException>(deferredGate.Resolve);
+        Assert.AreEqual(
+            "The test workspace execution gate was resolved before initialization.",
+            unresolved.Message);
+
+        var gate = new PassThroughWorkspaceExecutionGate();
+        deferredGate.Bind(gate);
+
+        Assert.AreSame(gate, deferredGate.Resolve());
+        var duplicate = Assert.ThrowsExactly<InvalidOperationException>(() => deferredGate.Bind(gate));
+        Assert.AreEqual(
+            "The test workspace execution gate was initialized more than once.",
+            duplicate.Message);
+    }
+
     [TestMethod]
     public void Create_RefactoringSuggestionsReuseExposedAnalysisServices()
     {
