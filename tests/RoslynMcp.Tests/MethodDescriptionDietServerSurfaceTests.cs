@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -35,77 +33,30 @@ public sealed class MethodDescriptionDietServerSurfaceTests
         typeof(PromptShimTools),
     ];
 
-    [TestMethod]
-    public void SliceToolDescriptions_AreCapabilityStatements()
-    {
-        var violations = EnumerateSliceTools()
-            .Where(entry => entry.Description.Length > _maxDescriptionCharacters)
-            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
-            .Select(entry => $"{entry.Name}: {entry.Description.Length} chars")
-            .ToArray();
-
-        Assert.AreEqual(
-            0,
-            violations.Length,
-            $"Method [Description] for these tools must be <= {_maxDescriptionCharacters} characters " +
-            "(what it does plus the one discriminating trigger); move operational detail to XML " +
-            "<remarks>. Violations:\n  " + string.Join("\n  ", violations));
-    }
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] _triggerExpectations =
+    [
+        new("server_heartbeat", "Do not poll waiting for `idle` to self-advance"),
+        new("server_info", "workspace_list is authoritative"),
+        new("server_heartbeat", "cheaper than server_info"),
+        new("suggest_refactorings", "LCOM4"),
+        new("get_prompt_text", "prompts/get"),
+        new("recommend_workflow", "requiredWorkspaceState"),
+    ];
 
     [TestMethod]
-    public void SliceToolDescriptions_StayUnderAggregateBudget()
-    {
-        var entries = EnumerateSliceTools().ToArray();
-        var total = entries.Sum(entry => entry.Description.Length);
-
-        Assert.IsTrue(
-            entries.Length > 0,
-            "Expected the slice types to declare [McpServerTool] methods; reflection found none.");
-
-        Assert.IsTrue(
-            total <= _maxAggregateDescriptionCharacters,
-            $"Aggregate method-description budget for the slice is " +
-            $"{_maxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
-    }
+    public void SliceToolDescriptions_AreCapabilityStatements() =>
+        ToolDescriptionBudgetHarness.AssertPerToolBudget(_sliceToolTypes, _maxDescriptionCharacters);
 
     [TestMethod]
-    public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers()
-    {
-        // The two clauses most at risk of being dropped rather than relocated.
-        AssertDescriptionContains(
-            "server_heartbeat",
-            "Do not poll waiting for `idle` to self-advance");
-        AssertDescriptionContains(
-            "server_info",
-            "workspace_list is authoritative");
+    public void SliceToolDescriptions_StayUnderAggregateBudget() =>
+        ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
+            _sliceToolTypes, _maxAggregateDescriptionCharacters);
 
-        // Remaining per-tool discriminators.
-        AssertDescriptionContains("server_heartbeat", "cheaper than server_info");
-        AssertDescriptionContains("suggest_refactorings", "LCOM4");
-        AssertDescriptionContains("get_prompt_text", "prompts/get");
-        AssertDescriptionContains("recommend_workflow", "requiredWorkspaceState");
-    }
+    [TestMethod]
+    public void SliceTools_AllHaveNonEmptyDescriptions() =>
+        ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(_sliceToolTypes);
 
-    private static void AssertDescriptionContains(string toolName, string expected)
-    {
-        var entry = EnumerateSliceTools().SingleOrDefault(candidate => candidate.Name == toolName);
-
-        Assert.IsNotNull(entry.Name, $"Tool '{toolName}' was not found on the slice types.");
-        StringAssert.Contains(
-            entry.Description,
-            expected,
-            $"Trimming '{toolName}' dropped its discriminating trigger.");
-    }
-
-    private static IEnumerable<(string Name, string Description)> EnumerateSliceTools()
-        => _sliceToolTypes
-            .SelectMany(type => type.GetMethods(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
-            .Select(method => new
-            {
-                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
-                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
-            })
-            .Where(entry => entry.Tool is not null && entry.Description is not null)
-            .Select(entry => (entry.Tool!.Name ?? string.Empty, entry.Description!.Description));
+    [TestMethod]
+    public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers() =>
+        ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(_sliceToolTypes, _triggerExpectations);
 }
