@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,10 +24,16 @@ namespace RoslynMcp.Tests;
 /// <summary>Raw-wire and redaction coverage for request-scoped sampling.</summary>
 [DoNotParallelize]
 [TestClass]
-public sealed class SamplingMrtrWireTests
+public sealed class SamplingMrtrWireTests : IsolatedWorkspaceTestBase
 {
     private const string _suggestedName = "Load_WhenCacheMiss_ReturnsValue";
     private const string _samplingMethod = "sampling/createMessage";
+
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    [ClassCleanup]
+    public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
     [Timeout(30_000, CooperativeCancellation = true)]
@@ -167,6 +174,169 @@ public sealed class SamplingMrtrWireTests
             prior,
             _samplingMethod),
             "MRTR sampling must not also issue a deprecated nested sampling request.");
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ModernSession_AmbiguousTarget_FailsBeforeSamplingRequest()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(
+            workspace.GetPath("SampleLib", "AmbiguousDog.cs"),
+            "namespace Alternate; public sealed class Dog { public void Speak() { } }",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+        var directProvider = new CountingTestNameSuggestionProvider();
+        var ambiguity = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ScaffoldingService.PreviewScaffoldTestAsync(
+                workspace.WorkspaceId,
+                new ScaffoldTestDto("SampleLib.Tests", "Dog", "Speak", UseSampling: true),
+                CancellationToken.None,
+                directProvider));
+        StringAssert.Contains(ambiguity.Message, "Ambiguous type name 'Dog'");
+        Assert.AreEqual(0, directProvider.CallCount,
+            "The service must detect target ambiguity before entering its sampling provider boundary.");
+
+        var samplingCount = 0;
+#pragma warning disable MCP9005 // The handler proves no client sampling request is issued for deterministic ambiguity.
+        await using var harness = await CreateProductionHarnessAsync(
+            ScaffoldingService,
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref samplingCount);
+                return ValueTask.FromResult(SamplingResult(_suggestedName));
+            },
+            WorkspaceManager);
+#pragma warning restore MCP9005
+
+        var prior = harness.RawServerMessages.Count;
+        var result = await harness.Client.CallToolAsync(
+            "scaffold_test_preview",
+            new Dictionary<string, object?>
+            {
+                ["workspaceId"] = workspace.WorkspaceId,
+                ["testProjectName"] = "SampleLib.Tests",
+                ["targetTypeName"] = "Dog",
+                ["targetMethodName"] = "Speak",
+                ["useSampling"] = true,
+            },
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsTrue(result.IsError is true);
+        var envelope = JsonDocument.Parse(((TextContentBlock)result.Content![0]).Text).RootElement;
+        Assert.AreEqual("InvalidOperation", envelope.GetProperty("category").GetString());
+        Assert.AreEqual("InvalidOperationException", envelope.GetProperty("exceptionType").GetString());
+        Assert.AreEqual(0, samplingCount,
+            "A deterministic target-type ambiguity must fail before the client receives a sampling request.");
+        Assert.IsFalse(AnyServerRequest(
+            harness.RawServerMessages,
+            prior,
+            _samplingMethod));
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ModernSession_ConditionalDuplicate_UsesLoadedProjectParseOptionsBeforeSampling()
+    {
+        const string conditionalSource = """
+#if CONDITIONAL_DOG
+namespace Alternate;
+public sealed class Dog { public void Speak() { } }
+#endif
+""";
+        var request = new ScaffoldTestDto("SampleLib.Tests", "Dog", "Speak", UseSampling: true);
+
+        await using (var inactiveWorkspace = CreateIsolatedWorkspaceCopy())
+        {
+            await File.WriteAllTextAsync(
+                inactiveWorkspace.GetPath("SampleLib", "ConditionalDog.cs"),
+                conditionalSource,
+                CancellationToken.None);
+            await inactiveWorkspace.LoadAsync(CancellationToken.None);
+
+            var inactiveProvider = new CountingTestNameSuggestionProvider();
+            _ = await ScaffoldingService.PreviewScaffoldTestAsync(
+                inactiveWorkspace.WorkspaceId,
+                request,
+                CancellationToken.None,
+                inactiveProvider);
+
+            Assert.AreEqual(1, inactiveProvider.CallCount,
+                "A declaration disabled by the loaded project's parse options must not be treated as a candidate.");
+        }
+
+        await using (var activeWorkspace = CreateIsolatedWorkspaceCopy())
+        {
+            await File.WriteAllTextAsync(
+                activeWorkspace.GetPath("SampleLib", "ConditionalDog.cs"),
+                conditionalSource,
+                CancellationToken.None);
+            var projectPath = activeWorkspace.GetPath("SampleLib", "SampleLib.csproj");
+            var projectDocument = XDocument.Load(projectPath, LoadOptions.PreserveWhitespace);
+            var propertyGroup = projectDocument.Root?.Element("PropertyGroup")
+                ?? throw new AssertFailedException("SampleLib.csproj must retain its primary PropertyGroup fixture.");
+            propertyGroup.Add(new XElement("DefineConstants", "$(DefineConstants);CONDITIONAL_DOG"));
+            projectDocument.Save(projectPath);
+            await activeWorkspace.LoadAsync(CancellationToken.None);
+
+            var activeProvider = new CountingTestNameSuggestionProvider();
+            var ambiguity = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                ScaffoldingService.PreviewScaffoldTestAsync(
+                    activeWorkspace.WorkspaceId,
+                    request,
+                    CancellationToken.None,
+                    activeProvider));
+
+            StringAssert.Contains(ambiguity.Message, "Ambiguous type name 'Dog'");
+            Assert.AreEqual(0, activeProvider.CallCount,
+                "The same declaration enabled by loaded parse options must block before sampling.");
+        }
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ModernSession_DiskDriftWithoutReload_PreflightUsesLoadedSolutionSnapshot()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await workspace.LoadAsync(CancellationToken.None);
+
+        // PassThroughWorkspaceExecutionGate below models the no-reload behavior of the off policy
+        // (and the execution behavior of warn after reporting staleness). The loaded Solution has
+        // one Dog; disk is then made ambiguous. Sampling must follow the loaded snapshot that the
+        // authoritative resolver will use, rather than independently re-evaluating MSBuild/disk.
+        await File.WriteAllTextAsync(
+            workspace.GetPath("SampleLib", "AmbiguousDog.cs"),
+            "namespace Alternate; public sealed class Dog { public void Speak() { } }",
+            CancellationToken.None);
+
+        var samplingCount = 0;
+#pragma warning disable MCP9005 // The handler proves stale disk does not override the loaded snapshot.
+        await using var harness = await CreateProductionHarnessAsync(
+            ScaffoldingService,
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref samplingCount);
+                return ValueTask.FromResult(SamplingResult(_suggestedName));
+            },
+            WorkspaceManager);
+#pragma warning restore MCP9005
+
+        var result = await harness.Client.CallToolAsync(
+            "scaffold_test_preview",
+            new Dictionary<string, object?>
+            {
+                ["workspaceId"] = workspace.WorkspaceId,
+                ["testProjectName"] = "SampleLib.Tests",
+                ["targetTypeName"] = "Dog",
+                ["targetMethodName"] = "Speak",
+                ["useSampling"] = true,
+            },
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsFalse(result.IsError is true,
+            "With reload disabled, both preflight and resolution must use the same loaded snapshot.");
+        Assert.AreEqual(1, samplingCount);
+        StringAssert.Contains(((TextContentBlock)result.Content![0]).Text, _suggestedName);
     }
 
     [TestMethod]
@@ -559,7 +729,7 @@ public sealed class SamplingMrtrWireTests
 
 #pragma warning disable MCP9005 // The SDK client handler advertises sampling for this production-tool MRTR fixture.
     private static async Task<InMemoryMcpClientServerHarness> CreateProductionHarnessAsync(
-        RecordingScaffoldingService scaffoldingService,
+        IScaffoldingService scaffoldingService,
         Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>?, CancellationToken,
             ValueTask<CreateMessageResult>> samplingHandler,
         IWorkspaceManager workspaceManager)
@@ -663,6 +833,19 @@ public sealed class SamplingMrtrWireTests
         {
             LastReport = PublicExceptionDetailPolicy.ProjectUnexpected(exception, "sampling-test");
             return LastReport;
+        }
+    }
+
+    private sealed class CountingTestNameSuggestionProvider : ITestNameSuggestionProvider
+    {
+        public int CallCount { get; private set; }
+
+        public Task<TestNameSuggestionResult> SuggestTestNameAsync(
+            ScaffoldTestNameSuggestionContext context,
+            CancellationToken ct)
+        {
+            CallCount++;
+            return Task.FromResult(new TestNameSuggestionResult(_suggestedName));
         }
     }
 

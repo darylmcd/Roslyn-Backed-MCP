@@ -67,11 +67,16 @@ internal sealed class SingleTestScaffolder
         // the request is resolved again on every replay. Hoisted here, the initial leg builds only
         // the syntactic prompt context and the retry leg consumes the answer without rebuilding it,
         // leaving project resolution, compilation and sibling inference paid exactly once.
-        var sampledTestName = await SuggestSampledTestNameAsync(
-            request, lookupName, projectDirectory, testNameSuggestionProvider, ct).ConfigureAwait(false);
+        var (sampledTestName, solution) = await SuggestSampledTestNameAsync(
+            request, lookupName, workspaceId, project, projectDirectory, testNameSuggestionProvider, ct).ConfigureAwait(false);
+
+        // The initial MRTR leg obtains a snapshot for the syntax-only ambiguity preflight, then
+        // terminates while requesting input. The replay skips that preflight and obtains exactly
+        // one snapshot here, which is reused by target resolution and sibling compilation.
+        solution ??= _workspace.GetCurrentSolution(workspaceId);
 
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
-            workspaceId, request.TestProjectName, lookupName, request.TargetMethodName, ct).ConfigureAwait(false);
+            solution, request.TestProjectName, lookupName, request.TargetMethodName, ct).ConfigureAwait(false);
 
         var simpleTypeName = typeInfo.MatchedType?.Name ?? lookupName;
         var testFilePath = Path.Combine(projectDirectory, GeneratedTestFileName(simpleTypeName));
@@ -84,7 +89,6 @@ internal sealed class SingleTestScaffolder
         // compilation so usings can be trimmed to those actually referenced by the captured
         // surface (base list + ctor params). Without semantic resolution the scaffold pulls in
         // every using from the sibling fixture (typically 10+ unused imports).
-        var solution = _workspace.GetCurrentSolution(workspaceId);
         var testRoslynProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, project.Name, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p.FilePath, project.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -110,29 +114,35 @@ internal sealed class SingleTestScaffolder
     /// <see cref="ITestNameSuggestionProvider.TryConsumePendingSuggestion"/> on the retry leg, so
     /// the sibling enumerate-and-parse below is paid only on the leg that actually sends a prompt.
     /// </summary>
-    private static async Task<TestNameSuggestionResult> SuggestSampledTestNameAsync(
+    private async Task<(TestNameSuggestionResult Suggestion, Solution? Solution)> SuggestSampledTestNameAsync(
         ScaffoldTestDto request,
         string lookupTypeName,
+        string workspaceId,
+        ProjectStatusDto project,
         string projectDirectory,
         ITestNameSuggestionProvider? provider,
         CancellationToken ct)
     {
         if (!request.UseSampling || string.IsNullOrWhiteSpace(request.TargetMethodName))
         {
-            return new TestNameSuggestionResult(null);
+            return (new TestNameSuggestionResult(null), null);
         }
 
         if (provider is null)
         {
-            return new TestNameSuggestionResult(
+            return (new TestNameSuggestionResult(
                 null,
-                "useSampling was true but no sampling provider was available; emitted the deterministic placeholder test name.");
+                "useSampling was true but no sampling provider was available; emitted the deterministic placeholder test name."), null);
         }
 
         if (provider.TryConsumePendingSuggestion(out var pending))
         {
-            return NormalizeSuggestion(pending);
+            return (NormalizeSuggestion(pending), null);
         }
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        await ThrowIfTargetTypeIsSyntacticallyAmbiguousAsync(
+            solution, project.Name, project.FilePath, lookupTypeName, ct).ConfigureAwait(false);
 
         // Syntactic inputs only: this runs ahead of symbol resolution, so anything the compilation
         // would supply is out of reach here by design — see ScaffoldTestNameSuggestionContext.
@@ -143,8 +153,112 @@ internal sealed class SingleTestScaffolder
                 projectDirectory,
                 Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),
                 maxNames: 6));
-        return NormalizeSuggestion(await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false));
+        return (
+            NormalizeSuggestion(await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false)),
+            solution);
     }
+
+    /// <summary>
+    /// Refuses a guaranteed-ambiguous target before the first sampling request. The probe inspects
+    /// the loaded solution's cached syntax trees without requesting a compilation. A replay
+    /// carrying an answered suggestion skips this method through
+    /// <see cref="ITestNameSuggestionProvider.TryConsumePendingSuggestion"/>.
+    /// </summary>
+    private static async Task ThrowIfTargetTypeIsSyntacticallyAmbiguousAsync(
+        Solution solution,
+        string testProjectName,
+        string testProjectFilePath,
+        string targetTypeName,
+        CancellationToken ct)
+    {
+        var candidates = await FindSyntacticTargetTypeCandidatesAsync(
+            solution, testProjectName, testProjectFilePath, targetTypeName, ct).ConfigureAwait(false);
+        if (candidates is { Count: > 1 })
+        {
+            throw CreateAmbiguousTargetTypeException(targetTypeName, candidates);
+        }
+    }
+
+    private static async Task<IReadOnlyList<string>> FindSyntacticTargetTypeCandidatesAsync(
+        Solution solution,
+        string testProjectName,
+        string testProjectFilePath,
+        string targetTypeName,
+        CancellationToken ct)
+    {
+        var testProject = solution.Projects.FirstOrDefault(project =>
+            string.Equals(project.Name, testProjectName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(project.FilePath, testProjectFilePath, StringComparison.OrdinalIgnoreCase));
+        if (testProject is null)
+        {
+            return [];
+        }
+
+        // Match FindTargetTypeAsync exactly: inspect the test project, then each direct
+        // reference in project-reference order, and stop at the first project with any matches.
+        // Documents and their cached syntax trees come from this same loaded Solution snapshot,
+        // so stale-policy and evaluated-property differences cannot make the preflight disagree
+        // with the authoritative resolver that follows on the same logical call.
+        foreach (var project in GetProjectsToSearch(solution, testProject))
+        {
+            ct.ThrowIfCancellationRequested();
+            var candidates = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var document in project.Documents)
+            {
+                ct.ThrowIfCancellationRequested();
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                if (root is null)
+                {
+                    continue;
+                }
+
+                foreach (var declaration in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+                {
+                    if (declaration.Kind() is not (SyntaxKind.ClassDeclaration or SyntaxKind.StructDeclaration or
+                            SyntaxKind.RecordDeclaration or SyntaxKind.RecordStructDeclaration) ||
+                        !string.Equals(declaration.Identifier.ValueText, targetTypeName, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var (identity, display) = GetQualifiedTypeNames(declaration);
+                    candidates[identity] = display;
+                }
+            }
+
+            if (candidates.Count > 0)
+            {
+                return candidates.Values.Order(StringComparer.Ordinal).ToArray();
+            }
+        }
+
+        return [];
+    }
+
+    private static (string Identity, string Display) GetQualifiedTypeNames(TypeDeclarationSyntax declaration)
+    {
+        var namespaceSegments = declaration.Ancestors()
+            .OfType<BaseNamespaceDeclarationSyntax>()
+            .Reverse()
+            .Select(static namespaceDeclaration => namespaceDeclaration.Name.ToString())
+            .ToArray();
+        var containingTypes = declaration.Ancestors()
+            .OfType<TypeDeclarationSyntax>()
+            .Reverse()
+            .ToArray();
+        var display = string.Join('.', namespaceSegments
+            .Concat(containingTypes.Select(static containingType => containingType.Identifier.ValueText))
+            .Append(declaration.Identifier.ValueText));
+        var identity = string.Join('.', namespaceSegments
+            .Concat(containingTypes.Select(GetMetadataTypeName))
+            .Append(GetMetadataTypeName(declaration)));
+        return (identity, display);
+    }
+
+    private static string GetMetadataTypeName(TypeDeclarationSyntax declaration) =>
+        declaration.TypeParameterList is { Parameters.Count: > 0 } typeParameters
+            ? $"{declaration.Identifier.ValueText}`{typeParameters.Parameters.Count}"
+            : declaration.Identifier.ValueText;
 
     private static string GeneratedTestFileName(string simpleTypeName) => $"{simpleTypeName}GeneratedTests.cs";
 
@@ -184,9 +298,8 @@ internal sealed class SingleTestScaffolder
 
     private async Task<ResolvedTargetTypeInfo>
         ResolveTargetTypeAndMethodAsync(
-            string workspaceId, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
+            Solution solution, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
         var testProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, testProjectName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p.FilePath, testProjectName, StringComparison.OrdinalIgnoreCase));
@@ -251,15 +364,22 @@ internal sealed class SingleTestScaffolder
 
             if (candidates.Count > 1)
             {
-                throw new InvalidOperationException(
-                    $"Ambiguous type name '{targetTypeName}' — found in multiple namespaces: " +
-                    string.Join(", ", candidates.Select(c => c.ToDisplayString())) +
-                    ". Use the fully qualified type name.");
+                throw CreateAmbiguousTargetTypeException(
+                    targetTypeName,
+                    candidates.Select(static candidate => candidate.ToDisplayString()));
             }
         }
 
         return null;
     }
+
+    private static InvalidOperationException CreateAmbiguousTargetTypeException(
+        string targetTypeName,
+        IEnumerable<string> candidates) =>
+        new(
+            $"Ambiguous type name '{targetTypeName}' — found in multiple namespaces: " +
+            string.Join(", ", candidates) +
+            ". Use the fully qualified type name.");
 
     /// <summary>
     /// Per scaffold-test-sibling-pattern-inference: infers the boilerplate shape from a
