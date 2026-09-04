@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -37,79 +35,51 @@ public sealed class MethodDescriptionDietDiagnosticsSecurityTests
         typeof(AnalyzerInfoTools),
     ];
 
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] _triggerExpectations =
+    [
+        // trace_exception_flow: both handling AND origination sites, and the find_references contrast.
+        new("trace_exception_flow", "`throw new` origination sites"),
+        new("trace_exception_flow", "usage sites, not handling sites"),
+
+        // nuget_vulnerability_scan: direct-vs-transitive default and the SDK floor.
+        new("nuget_vulnerability_scan", "includeTransitive=false returns direct references only"),
+        new("nuget_vulnerability_scan", ".NET 8+ SDK"),
+
+        // analyze_snippet: ephemeral workspace with no solution load, and the kind-selects-wrapper pointer.
+        new("analyze_snippet", "ephemeral workspace"),
+        new("analyze_snippet", "`kind` selects the wrapper"),
+
+        // list_analyzers: the code-fix discovery use case and flattened-rule pagination unit.
+        new("list_analyzers", "code_fix_preview or fix_all_preview"),
+        new("list_analyzers", "flattened rule list, not whole analyzers"),
+    ];
+
     [TestMethod]
     public void SliceToolDescriptions_AreCapabilityStatements()
-    {
-        var violations = EnumerateSliceTools()
-            .Where(entry => entry.Description.Length > _maxDescriptionCharacters)
-            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
-            .Select(entry => $"{entry.Name}: {entry.Description.Length} chars")
-            .ToArray();
-
-        Assert.AreEqual(
-            0,
-            violations.Length,
-            $"Method [Description] for these tools must be <= {_maxDescriptionCharacters} characters " +
-            "(what it does plus the one discriminating trigger); move operational detail to XML " +
-            "<remarks>. Violations:\n  " + string.Join("\n  ", violations));
-    }
+        => ToolDescriptionBudgetHarness.AssertPerToolBudget(_sliceToolTypes, _maxDescriptionCharacters);
 
     [TestMethod]
     public void SliceToolDescriptions_StayUnderAggregateBudget()
-    {
-        var entries = EnumerateSliceTools().ToArray();
-        var total = entries.Sum(entry => entry.Description.Length);
+        => ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
+            _sliceToolTypes, _maxAggregateDescriptionCharacters);
 
-        Assert.IsTrue(
-            entries.Length > 0,
-            "Expected the slice types to declare [McpServerTool] methods; reflection found none.");
-
-        Assert.IsTrue(
-            total <= _maxAggregateDescriptionCharacters,
-            $"Aggregate method-description budget for the slice is " +
-            $"{_maxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
-    }
+    [TestMethod]
+    public void SliceTools_AllHaveNonEmptyDescriptions()
+        => ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(_sliceToolTypes);
 
     [TestMethod]
     public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers()
+        => ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(_sliceToolTypes, _triggerExpectations);
+
+    [TestMethod]
+    public void DiscriminatingTriggerHarness_RejectsMissingSubstring()
     {
-        // trace_exception_flow: both handling AND origination sites, and the find_references contrast.
-        AssertDescriptionContains("trace_exception_flow", "`throw new` origination sites");
-        AssertDescriptionContains("trace_exception_flow", "usage sites, not handling sites");
+        ToolDescriptionBudgetHarness.TriggerExpectation[] missingTrigger =
+        [
+            new("trace_exception_flow", "__missing_discriminating_trigger__"),
+        ];
 
-        // nuget_vulnerability_scan: direct-vs-transitive default and the SDK floor.
-        AssertDescriptionContains("nuget_vulnerability_scan", "includeTransitive=false returns direct references only");
-        AssertDescriptionContains("nuget_vulnerability_scan", ".NET 8+ SDK");
-
-        // analyze_snippet: ephemeral workspace with no solution load, and the kind-selects-wrapper pointer.
-        AssertDescriptionContains("analyze_snippet", "ephemeral workspace");
-        AssertDescriptionContains("analyze_snippet", "`kind` selects the wrapper");
-
-        // list_analyzers: the code-fix discovery use case and the flattened-rule pagination unit.
-        AssertDescriptionContains("list_analyzers", "code_fix_preview or fix_all_preview");
-        AssertDescriptionContains("list_analyzers", "flattened rule list, not whole analyzers");
+        Assert.ThrowsExactly<AssertFailedException>(() =>
+            ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(_sliceToolTypes, missingTrigger));
     }
-
-    private static void AssertDescriptionContains(string toolName, string expected)
-    {
-        var entry = EnumerateSliceTools().SingleOrDefault(candidate => candidate.Name == toolName);
-
-        Assert.IsNotNull(entry.Name, $"Tool '{toolName}' was not found on the slice types.");
-        StringAssert.Contains(
-            entry.Description,
-            expected,
-            $"Trimming '{toolName}' dropped its discriminating trigger.");
-    }
-
-    private static IEnumerable<(string Name, string Description)> EnumerateSliceTools()
-        => _sliceToolTypes
-            .SelectMany(type => type.GetMethods(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
-            .Select(method => new
-            {
-                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
-                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
-            })
-            .Where(entry => entry.Tool is not null && entry.Description is not null)
-            .Select(entry => (entry.Tool!.Name ?? string.Empty, entry.Description!.Description));
 }
