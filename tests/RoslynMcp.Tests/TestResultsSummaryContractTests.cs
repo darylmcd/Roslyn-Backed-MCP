@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -142,9 +141,9 @@ public sealed class TestResultsSummaryContractTests
 
             var result = await RunCollectorAsync(fixtureRoot, observations);
 
-            AssertFailedWith(
+            AssertFailedWithExactDiagnostic(
                 result,
-                "has 4 sampled runs, below the required minimum of 5");
+                "Hosted image 'windows-latest' has 4 sampled runs, below the required minimum of 5.");
         }
         finally
         {
@@ -333,7 +332,7 @@ public sealed class TestResultsSummaryContractTests
             // The collector reads every leg of every sampled run, so the diagnostic must name the
             // offending file rather than just declaring "malformed".
             AssertFailedWith(result, "Malformed MSTest TRX input '");
-            StringAssert.Contains(NormalizeConsoleDiagnostic(result.StdOut + result.StdErr), "results.trx");
+            StringAssert.Contains(result.StdErr, "results.trx");
         }
         finally
         {
@@ -341,38 +340,6 @@ public sealed class TestResultsSummaryContractTests
         }
     }
 
-    [TestMethod]
-    public void NormalizeConsoleDiagnostic_ReassemblesAPowerShellConciseViewError()
-    {
-        // The full frame PowerShell's ConciseView emits for an uncaught throw, reproduced by running
-        // `pwsh -NoProfile -NonInteractive -File` against a throwing script and capturing the redirected
-        // stream: an "Exception:" header, a "Line |" header, the echoed source line, a squiggle, then
-        // the message behind a gutter. The message is shown wrapped as the hosted ubuntu-latest leg
-        // rendered it at width 80; a wider Windows console emits the same message on one line, which is
-        // why run 33690371287 was red in CI and green on every local gate.
-        const string conciseView =
-            "\u001B[31;1mException: \u001B[0m/home/runner/work/eng/collect-hosted-shard-timings.ps1:369\u001B[0m\n"
-            + "\u001B[36;1mLine |\u001B[0m\n"
-            + "\u001B[36;1m 369 | \u001B[0m         \u001B[36;1mthrow (\"Hosted image '$imageName' has $($runIds.Count) sample\u001B[0m …\n"
-            + "\u001B[36;1m     | \u001B[31;1m         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\u001B[0m\n"
-            + "\u001B[36;1m     | \u001B[31;1mHosted image 'windows-latest' has 4 sampled runs, below the required\u001B[0m\n"
-            + "\u001B[36;1m     | \u001B[31;1mminimum of 5.\u001B[0m\n";
-
-        var normalized = NormalizeConsoleDiagnostic(conciseView);
-
-        // The wrapped message is reassembled...
-        StringAssert.Contains(normalized, "has 4 sampled runs, below the required minimum of 5");
-
-        // ...and the whole ConciseView frame is gone, including the echoed source line. That echo
-        // matters: it contains the throw statement's own text, so leaving it in would let an
-        // assertion pass on the source rather than on the rendered message.
-        Assert.IsFalse(normalized.Contains('\u001B'), "ANSI escapes must not survive normalization.");
-        Assert.IsFalse(normalized.Contains('|'), $"No ConciseView gutter may survive: {normalized}");
-        Assert.IsFalse(
-            normalized.Contains("$imageName", StringComparison.Ordinal),
-            $"The echoed source line must not survive: {normalized}");
-        Assert.IsFalse(normalized.Contains('~'), $"The squiggle row must not survive: {normalized}");
-    }
     [TestMethod]
     public async Task Collector_LegAndImageNamesWithMarkdownDelimiters_AreEscapedInReportAsync()
     {
@@ -737,37 +704,21 @@ public sealed class TestResultsSummaryContractTests
             0,
             result.ExitCode,
             $"Script unexpectedly succeeded. stdout={result.StdOut} stderr={result.StdErr}");
-        StringAssert.Contains(
-            NormalizeConsoleDiagnostic(result.StdOut + result.StdErr),
-            NormalizeConsoleDiagnostic(expectedDiagnostic));
+        Assert.AreEqual(string.Empty, result.StdOut, "A failed script must not write a partial report.");
+
+        var diagnostic = result.StdErr.TrimEnd('\r', '\n');
+        Assert.IsFalse(
+            diagnostic.Contains('\n'),
+            $"The diagnostic must be exactly one stderr line: {result.StdErr}");
+        StringAssert.Contains(diagnostic, expectedDiagnostic);
     }
 
-    /// <summary>
-    /// Reduces PowerShell's rendered error output to the diagnostic's semantic content.
-    /// </summary>
-    /// <remarks>
-    /// An uncaught <c>throw</c> is printed through PowerShell's error formatter, which adds ANSI
-    /// colour codes and hard-wraps the message at the host's console width behind a <c>"     | "</c>
-    /// gutter. That width differs between a developer's Windows console and the hosted Linux leg, so
-    /// a diagnostic that matches as one contiguous substring locally can be split mid-sentence in CI
-    /// — which is exactly how this suite went green on Windows and red on ubuntu-latest. Assertions
-    /// must compare what the script said, not how a terminal happened to lay it out.
-    /// </remarks>
-    private static string NormalizeConsoleDiagnostic(string text)
+    private static void AssertFailedWithExactDiagnostic(
+        PwshScriptResult result,
+        string expectedDiagnostic)
     {
-        var normalized = Regex.Replace(text, @"\x1B\[[0-9;]*[A-Za-z]", string.Empty);
-
-        // Drop ConciseView's frame in the order it renders: the "Line |" header, the "   N | <source>"
-        // echo, and the "     | ~~~~" squiggle. Removing the source echo also stops an assertion from
-        // being satisfied by the text of the `throw` statement itself rather than by the message it
-        // produced.
-        normalized = Regex.Replace(normalized, @"(?m)^\s*Line\s*\|\s*$", string.Empty);
-        normalized = Regex.Replace(normalized, @"(?m)^\s*\d+\s*\|.*$", string.Empty);
-        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s*~+\s*$", string.Empty);
-
-        // What remains of the message is gutter-prefixed and hard-wrapped at the console width.
-        normalized = Regex.Replace(normalized, @"(?m)^\s*\|\s?", string.Empty);
-        return Regex.Replace(normalized, @"\s+", " ").Trim();
+        AssertFailedWith(result, expectedDiagnostic);
+        Assert.AreEqual(expectedDiagnostic, result.StdErr.TrimEnd('\r', '\n'));
     }
 
     private const string FirstTrx = """
