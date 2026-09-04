@@ -157,12 +157,12 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(releaseStep, "./eng/verify-release.ps1 @parameters");
         Assert.IsFalse(releaseStep.Contains("--filter", StringComparison.Ordinal));
 
-        StringAssert.Contains(justfile, "ci: verify-docs verify-skills verify-changed-format verify-release-pr vuln-audit");
+        StringAssert.Contains(justfile, "ci: verify-docs verify-skills verify-changed-format verify-actionlint verify-release-pr vuln-audit");
         StringAssert.Contains(
             justfile,
             "verify-release-pr:\n" +
             "    pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests");
-        StringAssert.Contains(justfile, "full: verify-docs verify-skills verify-changed-format verify-release vuln-audit");
+        StringAssert.Contains(justfile, "full: verify-docs verify-skills verify-changed-format verify-actionlint verify-release vuln-audit");
 
         // The changed-file formatter gate is a standalone validate-leg step, deliberately NOT a
         // verify-release child (that script's child set is a separate hard-listed contract). Local

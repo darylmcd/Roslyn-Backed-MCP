@@ -127,10 +127,11 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 | AI-doc changes | `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1` |
 | Required PR-equivalent gate | `just ci` |
 | Formatter debt on touched C# files | `pwsh -NoProfile -File ./eng/verify-changed-format.ps1` |
+| GitHub Actions workflow YAML/expression lint | `pwsh -NoProfile -File ./eng/verify-actionlint.ps1` |
 | Informational coverage/live-network gate | `just full` |
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 
-`just ci` composes docs, shipped skills, the changed-file formatter gate, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
+`just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
 
 ## Merge Gating Expectations
 
