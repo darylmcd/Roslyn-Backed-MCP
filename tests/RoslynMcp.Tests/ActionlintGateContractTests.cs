@@ -134,6 +134,33 @@ public sealed class ActionlintGateContractTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_UnsupportedPlatform_FailsClosedBeforeFilesystemOrNetworkMutation()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(fixtureRoot, platformForTest: "unsupported");
+
+            Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
+            const string diagnostic =
+                "verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).";
+            Assert.AreEqual(diagnostic, result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts")),
+                "Unsupported-platform detection must fail before creating the actionlint cache.");
+            Assert.IsFalse(
+                result.AllOutput.Contains("could not be downloaded", StringComparison.Ordinal),
+                $"The unsupported-platform test seam must fail before network access. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     // Live-network smoke test: downloads the real pinned release once (verifying the archive
     // hash), then re-runs against the now-populated cache and asserts the second run completes
     // in well under the time a fresh download+extract would take -- the offline cache-hit path,
@@ -198,7 +225,8 @@ public sealed class ActionlintGateContractTests
         string fixtureRoot,
         IReadOnlyDictionary<string, string?>? environment = null,
         TimeSpan? timeout = null,
-        bool failChmodForTest = false)
+        bool failChmodForTest = false,
+        string? platformForTest = null)
     {
         var arguments = new List<string>
         {
@@ -211,6 +239,11 @@ public sealed class ActionlintGateContractTests
         if (failChmodForTest)
         {
             arguments.Add("-FailChmodForTest");
+        }
+        if (platformForTest is not null)
+        {
+            arguments.Add("-PlatformForTest");
+            arguments.Add(platformForTest);
         }
 
         return PwshScriptRunner.RunAsync(

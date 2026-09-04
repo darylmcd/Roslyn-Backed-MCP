@@ -23,13 +23,18 @@ Resolution order:
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [Parameter(DontShow)]
-    [switch]$FailChmodForTest
+    [switch]$FailChmodForTest,
+    [Parameter(DontShow)]
+    [ValidateSet('windows', 'macos', 'linux', 'unsupported')]
+    [string]$PlatformForTest
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $PinnedVersion = '1.7.12'
+$UnsupportedPlatformDiagnostic =
+    'verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).'
 $PinnedArchiveHashes = [ordered]@{
     'win-x64'     = [ordered]@{
         Asset         = "actionlint_${PinnedVersion}_windows_amd64.zip"
@@ -58,6 +63,23 @@ $PinnedArchiveHashes = [ordered]@{
 }
 
 function Get-CurrentRid {
+    param([string]$PlatformForTest)
+
+    if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
+        switch ($PlatformForTest) {
+            'windows' { return 'win-x64' }
+            'macos' { return 'osx-arm64' }
+            'linux' {
+                $arch = (uname -m)
+                if ($arch -eq 'aarch64') { return 'linux-arm64' }
+                return 'linux-x64'
+            }
+            'unsupported' {
+                Stop-UnsupportedPlatform
+            }
+        }
+    }
+
     if ($IsWindows) { return 'win-x64' }
     if ($IsMacOS) { return 'osx-arm64' }
     if ($IsLinux) {
@@ -65,7 +87,12 @@ function Get-CurrentRid {
         if ($arch -eq 'aarch64') { return 'linux-arm64' }
         return 'linux-x64'
     }
-    throw 'verify-actionlint: unsupported platform (neither Windows, macOS, nor Linux detected).'
+    Stop-UnsupportedPlatform
+}
+
+function Stop-UnsupportedPlatform {
+    [Console]::Error.WriteLine($UnsupportedPlatformDiagnostic)
+    exit 1
 }
 
 function Get-FileSha256 {
@@ -96,7 +123,12 @@ if ($FailChmodForTest) {
     Set-ActionlintExecutablePermission -Path 'test-only' -FailForTest
 }
 
-$rid = Get-CurrentRid
+$rid = if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
+    Get-CurrentRid -PlatformForTest $PlatformForTest
+}
+else {
+    Get-CurrentRid
+}
 if (-not $PinnedArchiveHashes.Contains($rid)) {
     throw "verify-actionlint: no pinned actionlint archive/hash recorded for RID '$rid'."
 }
