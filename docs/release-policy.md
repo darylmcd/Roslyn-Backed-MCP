@@ -37,6 +37,14 @@ A release is production-ready when all of the following are true:
 - Experimental-surface changes must still be called out in release notes.
 - Deprecate stable entries for at least one minor release before removal.
 
+## Tool-Surface Consolidation
+
+- [ADR 0009](decisions/0009-tool-surface-policy.md) defines formatting, text-edit,
+  code-transform, file-lifecycle, and project-file risk buckets for preview/apply families.
+- Consolidate apply routes only within one risk bucket; cross-bucket apply merges are prohibited.
+- Keep deprecated aliases callable for at least one released minor version, and remove them only in
+  the next major release with a migration note naming the canonical replacement.
+
 ## SDK And Protocol Migration Records
 
 - [ADR 0003](decisions/0003-sdk-2x-wire-compatibility.md) records the direct
