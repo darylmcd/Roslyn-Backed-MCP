@@ -65,13 +65,16 @@ public sealed class ActionlintGateContractTests
         {
             var toolRoot = Path.Combine(fixtureRoot, "artifacts", "tools", "actionlint", "1.7.12");
             Directory.CreateDirectory(toolRoot);
-            var binaryName = OperatingSystem.IsWindows() ? "actionlint.exe" : "actionlint";
+            const string binaryName = "actionlint.exe";
             // A cached binary whose bytes do NOT match the pinned hash -- this must be detected
             // and refused BEFORE the script ever considers re-downloading, so a tampered or
             // corrupted cache entry never silently runs.
             File.WriteAllText(Path.Combine(toolRoot, binaryName), "not the real actionlint binary");
 
-            var result = await RunGateAsync(fixtureRoot);
+            var result = await RunGateAsync(
+                fixtureRoot,
+                platformForTest: "windows",
+                architectureForTest: "x64");
 
             Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
             StringAssert.Contains(result.AllOutput, "hash mismatch");
@@ -97,7 +100,9 @@ public sealed class ActionlintGateContractTests
                 environment: new Dictionary<string, string?>
                 {
                     ["ROSLYNMCP_ACTIONLINT_PATH"] = overridePath,
-                });
+                },
+                platformForTest: "windows",
+                architectureForTest: "x64");
 
             Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
             StringAssert.Contains(result.AllOutput, "ROSLYNMCP_ACTIONLINT_PATH");
@@ -154,6 +159,73 @@ public sealed class ActionlintGateContractTests
             Assert.IsFalse(
                 result.AllOutput.Contains("could not be downloaded", StringComparison.Ordinal),
                 $"The unsupported-platform test seam must fail before network access. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("windows", "x64", "actionlint.exe", "54ca21be3de4c7cfa26914aa8b61bd76bf573ef3caac5f80d110558cdf241718")]
+    [DataRow("macos", "arm64", "actionlint", "8db11704dc296f096216db4db65d86cd7f0ebfdf4c38453a1da276b137b88388")]
+    [DataRow("linux", "x64", "actionlint", "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4")]
+    [DataRow("linux", "arm64", "actionlint", "ac0323433c2853ec3fb978c611430c5b3dc5d43c58d1a1ec031b00ab572beb60")]
+    public async Task VerifyActionlint_SupportedPlatformArchitecture_UsesMatchingPin(
+        string platform,
+        string architecture,
+        string binaryName,
+        string expectedBinaryHash)
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var toolRoot = Path.Combine(fixtureRoot, "artifacts", "tools", "actionlint", "1.7.12");
+            Directory.CreateDirectory(toolRoot);
+            File.WriteAllText(Path.Combine(toolRoot, binaryName), "not the real actionlint binary");
+
+            var result = await RunGateAsync(
+                fixtureRoot,
+                platformForTest: platform,
+                architectureForTest: architecture);
+
+            Assert.AreNotEqual(0, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(result.AllOutput, "cached binary");
+            StringAssert.Contains(result.AllOutput, expectedBinaryHash);
+            Assert.IsFalse(
+                result.AllOutput.Contains("could not be downloaded", StringComparison.Ordinal),
+                $"Supported RID selection must use its cached pin without network access. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyActionlint_UnpinnedPlatformArchitecture_FailsClosedBeforeFilesystemOrNetworkMutation()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var result = await RunGateAsync(
+                fixtureRoot,
+                platformForTest: "windows",
+                architectureForTest: "arm64");
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            const string diagnostic =
+                "verify-actionlint: no pinned actionlint archive/hash recorded for RID 'win-arm64'.";
+            Assert.AreEqual(diagnostic, result.StdErr.Trim());
+            Assert.AreEqual(string.Empty, result.StdOut);
+            Assert.IsFalse(
+                Directory.Exists(Path.Combine(fixtureRoot, "artifacts")),
+                "Unpinned-RID detection must fail before creating the actionlint cache.");
+            Assert.IsFalse(
+                result.AllOutput.Contains("could not be downloaded", StringComparison.Ordinal),
+                $"The unpinned-RID test seam must fail before network access. Output:{Environment.NewLine}{result.AllOutput}");
         }
         finally
         {
@@ -226,7 +298,8 @@ public sealed class ActionlintGateContractTests
         IReadOnlyDictionary<string, string?>? environment = null,
         TimeSpan? timeout = null,
         bool failChmodForTest = false,
-        string? platformForTest = null)
+        string? platformForTest = null,
+        string? architectureForTest = null)
     {
         var arguments = new List<string>
         {
@@ -244,6 +317,11 @@ public sealed class ActionlintGateContractTests
         {
             arguments.Add("-PlatformForTest");
             arguments.Add(platformForTest);
+        }
+        if (architectureForTest is not null)
+        {
+            arguments.Add("-ArchitectureForTest");
+            arguments.Add(architectureForTest);
         }
 
         return PwshScriptRunner.RunAsync(

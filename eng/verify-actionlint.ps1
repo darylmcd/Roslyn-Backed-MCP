@@ -26,7 +26,10 @@ param(
     [switch]$FailChmodForTest,
     [Parameter(DontShow)]
     [ValidateSet('windows', 'macos', 'linux', 'unsupported')]
-    [string]$PlatformForTest
+    [string]$PlatformForTest,
+    [Parameter(DontShow)]
+    [ValidateSet('x64', 'arm64')]
+    [string]$ArchitectureForTest
 )
 
 Set-StrictMode -Version Latest
@@ -62,37 +65,55 @@ $PinnedArchiveHashes = [ordered]@{
     }
 }
 
-function Get-CurrentRid {
-    param([string]$PlatformForTest)
+function Stop-WithDiagnostic {
+    param(
+        [Parameter(Mandatory)][string]$Diagnostic,
+        [int]$ExitCode = 1
+    )
 
-    if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
-        switch ($PlatformForTest) {
-            'windows' { return 'win-x64' }
-            'macos' { return 'osx-arm64' }
-            'linux' {
-                $arch = (uname -m)
-                if ($arch -eq 'aarch64') { return 'linux-arm64' }
-                return 'linux-x64'
-            }
-            'unsupported' {
-                Stop-UnsupportedPlatform
-            }
-        }
-    }
-
-    if ($IsWindows) { return 'win-x64' }
-    if ($IsMacOS) { return 'osx-arm64' }
-    if ($IsLinux) {
-        $arch = (uname -m)
-        if ($arch -eq 'aarch64') { return 'linux-arm64' }
-        return 'linux-x64'
-    }
-    Stop-UnsupportedPlatform
+    [Console]::Error.WriteLine($Diagnostic)
+    exit $ExitCode
 }
 
-function Stop-UnsupportedPlatform {
-    [Console]::Error.WriteLine($UnsupportedPlatformDiagnostic)
-    exit 1
+function Get-CurrentRid {
+    param(
+        [string]$PlatformForTest,
+        [string]$ArchitectureForTest
+    )
+
+    if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
+        $platform = $PlatformForTest
+    }
+    elseif ($IsWindows) {
+        $platform = 'windows'
+    }
+    elseif ($IsMacOS) {
+        $platform = 'macos'
+    }
+    elseif ($IsLinux) {
+        $platform = 'linux'
+    }
+    else {
+        $platform = 'unsupported'
+    }
+
+    if ($platform -eq 'unsupported') {
+        Stop-WithDiagnostic -Diagnostic $UnsupportedPlatformDiagnostic
+    }
+
+    $architecture = if ($PSBoundParameters.ContainsKey('ArchitectureForTest')) {
+        $ArchitectureForTest
+    }
+    else {
+        ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture).ToString().ToLowerInvariant()
+    }
+    $ridPlatform = switch ($platform) {
+        'windows' { 'win' }
+        'macos' { 'osx' }
+        'linux' { 'linux' }
+    }
+
+    return "$ridPlatform-$architecture"
 }
 
 function Get-FileSha256 {
@@ -113,9 +134,8 @@ function Set-ActionlintExecutablePermission {
     }
     $chmodExitCode = $LASTEXITCODE
     if ($chmodExitCode -ne 0) {
-        [Console]::Error.WriteLine(
+        Stop-WithDiagnostic -ExitCode $chmodExitCode -Diagnostic (
             "verify-actionlint: failed to mark actionlint executable (chmod exit code $chmodExitCode).")
-        exit $chmodExitCode
     }
 }
 
@@ -123,14 +143,17 @@ if ($FailChmodForTest) {
     Set-ActionlintExecutablePermission -Path 'test-only' -FailForTest
 }
 
-$rid = if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
-    Get-CurrentRid -PlatformForTest $PlatformForTest
+$ridArguments = @{}
+if ($PSBoundParameters.ContainsKey('PlatformForTest')) {
+    $ridArguments['PlatformForTest'] = $PlatformForTest
 }
-else {
-    Get-CurrentRid
+if ($PSBoundParameters.ContainsKey('ArchitectureForTest')) {
+    $ridArguments['ArchitectureForTest'] = $ArchitectureForTest
 }
+$rid = Get-CurrentRid @ridArguments
 if (-not $PinnedArchiveHashes.Contains($rid)) {
-    throw "verify-actionlint: no pinned actionlint archive/hash recorded for RID '$rid'."
+    Stop-WithDiagnostic -Diagnostic (
+        "verify-actionlint: no pinned actionlint archive/hash recorded for RID '$rid'.")
 }
 $pin = $PinnedArchiveHashes[$rid]
 
