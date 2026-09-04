@@ -10,10 +10,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class UndoTools
 {
+    /// <summary>Reverts the latest solution-snapshot apply for a workspace.</summary>
+    /// <remarks>
+    /// Reversion restores text snapshots but does not delete files created as refactoring side
+    /// effects. Use <c>delete_file_apply</c> on each created file to complete that recovery.
+    /// </remarks>
     [McpServerTool(Name = "revert_last_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "stable", false, true,
         "Revert the most recent Roslyn solution-level apply operation for a workspace."),
-     Description("SINGLE-SLOT LIFO: reverts ONLY the most recent apply — after one revert it reports 'No operation to revert' even if 20+ earlier applies are still listed in workspace_changes. To revert an EARLIER apply, use revert_apply_by_sequence with the target's workspace_changes sequence number (that is the multi-step path; this tool cannot reach back past the last apply). Restores the previous solution state. Coverage: renames, code fixes, format, organize usings, apply_text_edit / apply_multi_file_edit, create_file / delete_file / move_file / extract_interface_apply / extract_type_apply / move_type_to_file_apply (Item #2 — 2026-04-16). Project-file (csproj) mutations route through Item #5's SDK-style-safe apply path, which restores the pre-apply csproj bytes as part of the apply itself; on revert the csproj is already in its pre-apply state. Limitation: reverts text edits only — it does NOT remove files created as side effects (e.g. extracted files from extract_type_apply / extract_method_apply / extract_interface_apply). Pair with delete_file_apply on the extracted file to fully undo a file-creating refactor. workspaceId is required.")]
+     Description("SINGLE-SLOT LIFO: reverts only the latest apply; a second call reports 'No operation to revert'. For earlier workspace_changes entries, use revert_apply_by_sequence. Does not remove created files.")]
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,
         IUndoService undoService,
@@ -63,7 +68,7 @@ public static class UndoTools
     [McpServerTool(Name = "revert_apply_by_sequence", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "stable", false, true,
         "Revert a specific earlier apply identified by its workspace_changes sequence number."),
-     Description("Revert a specific earlier apply by its sequence number — the value reported by workspace_changes. Complements revert_last_apply: instead of LIFO, this revert targets any historical apply still in this session's revert history. Conservative dependency check: if a later apply touched any file that the target apply also touched, the revert is blocked and the offending later sequence numbers are returned in `blockingSequences` so the caller can revert them first. workspaceId is required. sequenceNumber must match a value returned by workspace_changes for this workspace. Returns `{reverted, revertedOperation, affectedFiles, reason?, blockingSequences?}` — `reason` is `unknown-sequence` when the sequence has no recorded snapshot, `dependency-blocked` when a later apply overlaps in files, and `revert-failed` when the snapshot exists but disk/workspace mechanics rejected the revert.")]
+     Description("Revert a specific earlier solution-snapshot apply by its workspace_changes sequence number. Refuses when a later apply touched the same file; revert blocking sequences first.")]
     public static Task<string> RevertApplyBySequence(
         IWorkspaceExecutionGate gate,
         IApplyUndoWorkflowService workflowService,

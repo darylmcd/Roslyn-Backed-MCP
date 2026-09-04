@@ -26,7 +26,7 @@ public static class WorkspaceWarmTools
     [McpServerTool(Name = "workspace_warm", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("workspace", "experimental", false, false,
         "Opt-in compilation prewarm: force GetCompilationAsync + first-semantic-model resolution across the workspace to cut the cold-start penalty of the first read-side tool call."),
-     Description("Opt-in compilation prewarm for a loaded workspace. Forces Roslyn's internal compilation cache and semantic-model cache to populate by calling GetCompilationAsync on every project (or the subset named by the `projects` filter) and resolving one semantic model per project. On a mid-sized solution this shifts the ~4600ms cold-start penalty of the first symbol_search / find_references call into this explicit warm invocation, so follow-up reads run at ~40ms. workspace_load may run the same warm path automatically for solutions with more than 50 projects unless the caller passes prewarm=false. Returns ElapsedMs so callers can budget subsequent invocations; a repeat call on an unchanged workspace returns ColdCompilationCount=0 and typically ElapsedMs < 10% of the first call. No internal timeout — the caller's CancellationToken is the only cap.")]
+     Description("Prewarm Roslyn compilations and first semantic models for all or selected projects. Use before the first read-side call; workspace_load may prewarm large solutions automatically.")]
     public static Task<string> WorkspaceWarm(
         IWorkspaceExecutionGate gate,
         IWorkspaceWarmService warmService,
