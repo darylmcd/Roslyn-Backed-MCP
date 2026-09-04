@@ -17,6 +17,7 @@ using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -174,6 +175,143 @@ public sealed class SamplingMrtrWireTests : IsolatedWorkspaceTestBase
             prior,
             _samplingMethod),
             "MRTR sampling must not also issue a deprecated nested sampling request.");
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task ModernSession_IncompleteSiblingDiscoveryWarning_RoundTripsOnceWithoutRescan()
+    {
+        const string sentinel = "SECRET-SENTINEL-mrtr-sibling-read";
+        const string secretSource = "SECRET-SOURCE-mrtr-sibling-read";
+        const string countSentinel = "SECRET-COUNT-mrtr-sibling-read";
+        const string readableMethodName = "Speak_WhenReadable_ReturnsBark";
+        const string warningPrefix = "Sibling test-name discovery was incomplete";
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var readablePath = workspace.GetPath("SampleLib.Tests", "DogReadableTests.cs");
+        var unreadablePath = workspace.GetPath("SampleLib.Tests", "DogUnreadableTests.cs");
+        var secondUnreadablePath = workspace.GetPath("SampleLib.Tests", "DogAlsoUnreadableTests.cs");
+        await File.WriteAllTextAsync(readablePath, $$"""
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public sealed class DogReadableTests
+{
+    [TestMethod]
+    public void {{readableMethodName}}()
+    {
+    }
+}
+""", CancellationToken.None);
+        await File.WriteAllTextAsync(unreadablePath, "// injected read failure", CancellationToken.None);
+        await File.WriteAllTextAsync(secondUnreadablePath, "// second injected read failure", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var failingReadCount = 0;
+        var failure = new IOException(sentinel) { Source = secretSource };
+        failure.Data["count"] = countSentinel;
+        string ReadAllText(string path)
+        {
+            if (string.Equals(path, unreadablePath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(path, secondUnreadablePath, StringComparison.OrdinalIgnoreCase))
+            {
+                Interlocked.Increment(ref failingReadCount);
+                throw failure;
+            }
+
+            return File.ReadAllText(path);
+        }
+
+        var reporter = new RecordingReporter();
+        var scaffoldingService = new SingleTestScaffoldingService(
+            WorkspaceManager,
+            FileOperationService,
+            reporter,
+            ReadAllText);
+        var samplingCount = 0;
+        string? samplingRequest = null;
+#pragma warning disable MCP9005 // The handler proves the real scaffold flow carries one warning across MRTR.
+        await using var harness = await CreateProductionHarnessAsync(
+            scaffoldingService,
+            (request, _, _) =>
+            {
+                Interlocked.Increment(ref samplingCount);
+                samplingRequest = JsonSerializer.Serialize(request);
+                return ValueTask.FromResult(SamplingResult(_suggestedName));
+            },
+            WorkspaceManager);
+#pragma warning restore MCP9005
+
+        var prior = harness.RawServerMessages.Count;
+        var result = await harness.Client.CallToolAsync(
+            "scaffold_test_preview",
+            new Dictionary<string, object?>
+            {
+                ["workspaceId"] = workspace.WorkspaceId,
+                ["testProjectName"] = "SampleLib.Tests",
+                ["targetTypeName"] = "Dog",
+                ["targetMethodName"] = "Speak",
+                ["referenceTestFile"] = string.Empty,
+                ["useSampling"] = true,
+            },
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsFalse(result.IsError is true);
+        Assert.AreEqual(1, samplingCount);
+        Assert.AreEqual(2, scaffoldingService.AttemptCount,
+            "MRTR must execute one input-required leg and one terminal replay.");
+        Assert.AreEqual(2, failingReadCount,
+            "Each injected failure must be observed on the initial scan only; replay must not rescan siblings.");
+        Assert.IsNotNull(samplingRequest);
+        StringAssert.Contains(samplingRequest, readableMethodName,
+            "Readable sibling names must remain available to the sampling prompt.");
+
+        var results = FindNewResults(harness.RawServerMessages, prior);
+        Assert.HasCount(2, results);
+        var requestState = results[0].GetProperty("requestState").GetString();
+        Assert.IsNotNull(requestState);
+        Assert.IsTrue(RequestStateCodec.TryRestoreWorkspaceId(requestState, out var restoredWorkspaceId));
+        Assert.AreEqual(workspace.WorkspaceId, restoredWorkspaceId);
+        Assert.IsTrue(RequestStateCodec.TryRestoreSiblingNameDiscoveryWarning(requestState, out var restoredWarning));
+        StringAssert.Contains(restoredWarning, warningPrefix);
+        StringAssert.Contains(restoredWarning, "correlationId=sampling-test");
+        Assert.IsFalse(requestState.Contains(warningPrefix, StringComparison.Ordinal),
+            "Request state must carry only the warning code and correlation state, not client prose.");
+        AssertSecretSafe(requestState);
+
+        var terminalText = ((TextContentBlock)result.Content![0]).Text;
+        StringAssert.Contains(terminalText, _suggestedName);
+        Assert.AreEqual(1, CountOccurrences(terminalText, warningPrefix),
+            "The terminal preview must contain exactly one incomplete-discovery warning.");
+        Assert.AreEqual(1, CountOccurrences(terminalText, "correlationId=sampling-test"));
+        AssertSecretSafe(terminalText);
+
+        void AssertSecretSafe(string value)
+        {
+            Assert.IsFalse(value.Contains(sentinel, StringComparison.Ordinal));
+            Assert.IsFalse(value.Contains(secretSource, StringComparison.Ordinal));
+            Assert.IsFalse(value.Contains(countSentinel, StringComparison.Ordinal));
+            Assert.IsFalse(value.Contains(unreadablePath, StringComparison.OrdinalIgnoreCase));
+            Assert.IsFalse(value.Contains(Path.GetFileName(unreadablePath), StringComparison.OrdinalIgnoreCase));
+            Assert.IsFalse(value.Contains(Path.GetFileName(secondUnreadablePath), StringComparison.OrdinalIgnoreCase));
+            Assert.IsFalse(value.Contains(nameof(IOException), StringComparison.Ordinal));
+        }
+    }
+
+    [TestMethod]
+    [DataRow("roslynmcp.request.v1:-:-:-")]
+    [DataRow("roslynmcp.request.v1:not-a-guid:sibling-name-discovery-incomplete:sampling-test")]
+    [DataRow("roslynmcp.request.v1:0123456789abcdef0123456789abcdef:-:sampling-test")]
+    [DataRow("roslynmcp.request.v1:0123456789abcdef0123456789abcdef:unknown:sampling-test")]
+    [DataRow("roslynmcp.request.v1:0123456789abcdef0123456789abcdef:sibling-name-discovery-incomplete:bad!")]
+    [DataRow("roslynmcp.request.v1:0123456789abcdef0123456789abcdef:sibling-name-discovery-incomplete:sampling-test:extra")]
+    public void CompoundRequestState_MalformedOrUnknownComponent_FailsClosed(string state)
+    {
+        Assert.IsFalse(RequestStateCodec.TryRestoreWorkspaceId(state, out var workspaceId));
+        Assert.AreEqual(string.Empty, workspaceId);
+        Assert.IsFalse(RequestStateCodec.TryRestoreSiblingNameDiscoveryWarning(state, out var warning));
+        Assert.AreEqual(string.Empty, warning);
     }
 
     [TestMethod]
@@ -797,6 +935,19 @@ public sealed class Dog { public void Speak() { } }
             .OfType<JsonObject>()
             .Any(message => (string?)message["method"] == method);
 
+    private static int CountOccurrences(string value, string search)
+    {
+        var count = 0;
+        var startIndex = 0;
+        while ((startIndex = value.IndexOf(search, startIndex, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            startIndex += search.Length;
+        }
+
+        return count;
+    }
+
     [McpServerToolType]
     private sealed class SyntheticSamplingTools
     {
@@ -912,6 +1063,59 @@ public sealed class Dog { public void Speak() { } }
                 $"Scaffolded {suggestion.MethodName}",
                 [],
                 suggestion.Warning is null ? null : [suggestion.Warning]);
+        }
+
+        public Task<RefactoringPreviewDto> PreviewScaffoldTestBatchAsync(
+            string workspaceId,
+            ScaffoldTestBatchDto request,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<RefactoringPreviewDto> PreviewScaffoldFirstTestFileAsync(
+            string workspaceId,
+            ScaffoldFirstTestFileDto request,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class SingleTestScaffoldingService(
+        IWorkspaceManager workspace,
+        IFileOperationService fileOperationService,
+        IUnexpectedExceptionReporter exceptionReporter,
+        Func<string, string> readAllText) : IScaffoldingService
+    {
+        private int _attemptCount;
+
+        public int AttemptCount => Volatile.Read(ref _attemptCount);
+
+        public Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(
+            string workspaceId,
+            ScaffoldTypeDto request,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(
+            string workspaceId,
+            ScaffoldTestDto request,
+            CancellationToken ct,
+            ITestNameSuggestionProvider? testNameSuggestionProvider = null)
+        {
+            Interlocked.Increment(ref _attemptCount);
+            var project = workspace.GetStatus(workspaceId).Projects.Single(project =>
+                string.Equals(project.Name, request.TestProjectName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(project.FilePath, request.TestProjectName, StringComparison.OrdinalIgnoreCase));
+            var scaffolder = new SingleTestScaffolder(
+                workspace,
+                fileOperationService,
+                exceptionReporter,
+                readAllText);
+            return scaffolder.PreviewAsync(
+                project,
+                "mstest",
+                workspaceId,
+                request,
+                ct,
+                testNameSuggestionProvider);
         }
 
         public Task<RefactoringPreviewDto> PreviewScaffoldTestBatchAsync(

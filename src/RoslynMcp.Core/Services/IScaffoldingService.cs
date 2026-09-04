@@ -90,15 +90,18 @@ public interface ITestNameSuggestionProvider
 }
 
 /// <summary>
-/// Everything the suggestion prompt is built from. Every member is obtainable WITHOUT a
+/// Syntactic inputs for the suggestion prompt plus optional redacted warning state that must
+/// survive a two-phase transport replay. Every member is obtainable WITHOUT a
 /// <c>Compilation</c>: the request is issued ahead of symbol resolution (see the two-phase
 /// contract on <see cref="ITestNameSuggestionProvider"/>), so symbol-derived detail such as a
 /// method signature or declaring namespace is deliberately not part of this contract — carrying
-/// it would either be permanently null or reintroduce the semantic work the hoist defers.
+/// it would either be permanently null or reintroduce the semantic work the hoist defers. The
+/// warning is continuation metadata and is not included in the sampling prompt.
 /// </summary>
 public sealed record ScaffoldTestNameSuggestionContext(
     string TargetTypeName,
     string TargetMethodName,
-    IReadOnlyList<string> SiblingTestMethodNames);
+    IReadOnlyList<string> SiblingTestMethodNames,
+    string? SiblingNameDiscoveryWarning = null);
 
 public sealed record TestNameSuggestionResult(string? MethodName, string? Warning = null);
