@@ -6,9 +6,9 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// Coverage for the <c>workspace-id-optional-readonly-surface-flip</c> initiative (pilot subset).
 /// Asserts, via the reflection-derived <see cref="ToolParameterIndex"/>, that the pilot read-only
-/// tools now advertise <c>workspaceId</c> as OPTIONAL (so agents proactively omit it and order-1's
-/// read-path middleware resolves it), while write/destructive tools — and the deferred
-/// <c>symbol_search</c> — keep it REQUIRED.
+/// tools now advertise <c>workspaceId</c> as OPTIONAL (so clients may omit it and order-1's
+/// read-path middleware can resolve an unambiguous omission), while write/destructive tools — and
+/// the deferred <c>symbol_search</c> — keep it REQUIRED.
 ///
 /// <para>
 /// The pilot flipped 3 tools (<c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>);
@@ -40,7 +40,7 @@ public sealed class WorkspaceIdOptionalSurfaceTests
             Assert.IsNotNull(schema, $"{tool} should declare a workspaceId parameter.");
             Assert.AreEqual("string", schema!.Type, $"{tool}.workspaceId should remain a string.");
             Assert.IsFalse(schema.Required,
-                $"{tool}.workspaceId must be Required=false after the flip so agents proactively omit it.");
+                $"{tool}.workspaceId must be Required=false after the flip so clients may omit it.");
         }
     }
 
