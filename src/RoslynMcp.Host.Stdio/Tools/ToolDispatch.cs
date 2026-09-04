@@ -13,7 +13,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Shared runtime dispatch helper for MCP tool shims under
 /// <c>src/RoslynMcp.Host.Stdio/Tools/*Tools.cs</c>. Every <c>*_apply</c>, <c>*_preview</c>,
 /// and read-only tool method whose body is pure "resolve workspace → gate → service →
-/// serialize" delegates inline to the workspace-ID guard or one of the dispatch
+/// project result" delegates inline to the workspace-ID guard or one of the dispatch
 /// methods below; 87+ of ~157 stable tool shims currently route through this helper.
 /// </summary>
 /// <remarks>
@@ -94,11 +94,11 @@ internal static class ToolDispatch
     /// <param name="previewStore">The preview store holding the token → workspaceId mapping.</param>
     /// <param name="previewToken">The opaque token returned by the paired <c>*_preview</c> tool.</param>
     /// <param name="serviceCall">
-    /// A closure the generator emits that invokes the service method with the
+    /// A closure the tool shim supplies that invokes the service method with the
     /// <paramref name="previewToken"/> and the gate-provided <see cref="CancellationToken"/>.
     /// Kept as <c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c> rather than
-    /// <c>Func&lt;string, CancellationToken, Task&lt;TDto&gt;&gt;</c> so the generator
-    /// can emit a parameter-less lambda identical to the existing hand-written body.
+    /// <c>Func&lt;string, CancellationToken, Task&lt;TDto&gt;&gt;</c> so each tool shim
+    /// can use a parameter-less lambda identical to the existing hand-written body.
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
     /// <param name="expectedKind">
@@ -408,7 +408,7 @@ internal static class ToolDispatch
     /// <param name="gate">The workspace execution gate.</param>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="serviceCall">
-    /// A closure the generator emits that invokes the service method with the
+    /// A closure the tool shim supplies that invokes the service method with the
     /// tool's parameters (captured via closure) and the gate-provided
     /// <see cref="CancellationToken"/>.
     /// </param>
@@ -433,7 +433,7 @@ internal static class ToolDispatch
     /// <param name="gate">The workspace execution gate.</param>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="serviceCall">
-    /// A closure the generator emits that invokes the service method with the
+    /// A closure the tool shim supplies that invokes the service method with the
     /// tool's parameters (captured via closure) and the gate-provided
     /// <see cref="CancellationToken"/>.
     /// </param>
@@ -444,10 +444,42 @@ internal static class ToolDispatch
         string workspaceId,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
+        => ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            serviceCall,
+            result => JsonSerializer.Serialize(result, JsonDefaults.Indented),
+            ct);
+
+    /// <summary>
+    /// Dispatch body for read-only tools that take an explicit
+    /// <paramref name="workspaceId"/>, run under the per-workspace read gate, and own a
+    /// non-string result projection such as structured MCP content.
+    /// </summary>
+    /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
+    /// <typeparam name="TResult">The tool-owned projected result type.</typeparam>
+    /// <param name="gate">The workspace execution gate.</param>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="serviceCall">
+    /// A closure the tool shim supplies that invokes the service method with the
+    /// tool's parameters (captured via closure) and the gate-provided
+    /// <see cref="CancellationToken"/>.
+    /// </param>
+    /// <param name="resultProjection">
+    /// The tool-owned projection from the service DTO to its public result type.
+    /// </param>
+    /// <param name="ct">The caller's cancellation token.</param>
+    /// <returns>The projected result.</returns>
+    public static Task<TResult> ReadByWorkspaceIdAsync<TDto, TResult>(
+        IWorkspaceExecutionGate gate,
+        string workspaceId,
+        Func<CancellationToken, Task<TDto>> serviceCall,
+        Func<TDto, TResult> resultProjection,
+        CancellationToken ct)
         => gate.RunReadAsync(workspaceId, async c =>
         {
             var result = await serviceCall(c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            return resultProjection(result);
         }, ct);
 
     /// <summary>

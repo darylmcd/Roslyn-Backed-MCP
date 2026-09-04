@@ -1,3 +1,8 @@
+using ModelContextProtocol.Protocol;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
+
 namespace RoslynMcp.Tests.Services;
 
 /// <summary>
@@ -14,6 +19,45 @@ public sealed class WorkspaceDriftServiceTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public async Task WorkspaceDriftCheck_UsesStructuredReadDispatch_AndPreservesInputs()
+    {
+        const string workspaceId = "workspace-with-identity";
+        using var callerCancellation = new CancellationTokenSource();
+        using var gateCancellation = new CancellationTokenSource();
+        var expected = new WorkspaceDriftResult(
+            Stale: true,
+            FilesDrifted: ["/workspace/Changed.cs"],
+            Recommended: "reload");
+        var gate = new RecordingReadGate(gateCancellation.Token);
+        var service = new RecordingWorkspaceDriftService(expected);
+
+        var result = await WorkspaceDriftTool.WorkspaceDriftCheck(
+            gate,
+            service,
+            workspaceId,
+            callerCancellation.Token);
+
+        Assert.AreEqual(1, gate.ReadCallCount, "Structured dispatch must use exactly one read gate hop.");
+        Assert.AreEqual(workspaceId, gate.WorkspaceId, "The caller's workspace id must reach the gate unchanged.");
+        Assert.AreEqual(callerCancellation.Token, gate.CallerCancellationToken,
+            "The caller's cancellation token must reach the gate unchanged.");
+        Assert.AreEqual(workspaceId, service.WorkspaceId,
+            "The caller's workspace id must reach the service unchanged.");
+        Assert.AreEqual(gateCancellation.Token, service.CancellationToken,
+            "The gate-provided cancellation token must reach the service unchanged.");
+
+        Assert.IsNotNull(result.StructuredContent);
+        var structured = result.StructuredContent.Value;
+        Assert.IsTrue(structured.GetProperty("stale").GetBoolean());
+        Assert.AreEqual("/workspace/Changed.cs", structured.GetProperty("filesDrifted")[0].GetString());
+        Assert.AreEqual("reload", structured.GetProperty("recommended").GetString());
+        Assert.AreEqual(
+            structured.GetRawText(),
+            ((TextContentBlock)result.Content![0]).Text,
+            "Structured and legacy text channels must retain the same projected payload.");
+    }
 
     /// <summary>
     /// Clean workspace: no on-disk changes since load → drift check returns
@@ -142,5 +186,54 @@ public sealed class WorkspaceDriftServiceTests : IsolatedWorkspaceTestBase
             expected,
             result.FilesDrifted.ToArray(),
             "files_drifted must be sorted ordinally for deterministic output.");
+    }
+
+    private sealed class RecordingReadGate(CancellationToken gateCancellationToken) : IWorkspaceExecutionGate
+    {
+        public int ReadCallCount { get; private set; }
+
+        public string? WorkspaceId { get; private set; }
+
+        public CancellationToken CallerCancellationToken { get; private set; }
+
+        public async Task<T> RunReadAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct)
+        {
+            ReadCallCount++;
+            WorkspaceId = workspaceId;
+            CallerCancellationToken = ct;
+            return await action(gateCancellationToken).ConfigureAwait(false);
+        }
+
+        public Task<T> RunWriteAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct,
+            bool applyStalenessPolicy = true) => throw Unsupported(nameof(RunWriteAsync));
+
+        public Task<T> RunLoadGateAsync<T>(
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct) => throw Unsupported(nameof(RunLoadGateAsync));
+
+        public void RemoveGate(string workspaceId) => throw Unsupported(nameof(RemoveGate));
+
+        private static NotSupportedException Unsupported(string member) =>
+            new($"Structured read dispatch must not call {member}.");
+    }
+
+    private sealed class RecordingWorkspaceDriftService(WorkspaceDriftResult result) : IWorkspaceDriftService
+    {
+        public string? WorkspaceId { get; private set; }
+
+        public CancellationToken CancellationToken { get; private set; }
+
+        public Task<WorkspaceDriftResult> CheckDriftAsync(string workspaceId, CancellationToken ct)
+        {
+            WorkspaceId = workspaceId;
+            CancellationToken = ct;
+            return Task.FromResult(result);
+        }
     }
 }
