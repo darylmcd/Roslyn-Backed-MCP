@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -34,70 +32,26 @@ public sealed class MethodDescriptionDietScaffoldingMutationTests
         typeof(CrossProjectRefactoringTools),
     ];
 
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] TriggerExpectations =
+    [
+        new("scaffold_first_test_file_preview", "Errors when the destination file already exists"),
+        new("apply_multi_file_edit", "preview_multi_file_edit + preview_multi_file_edit_apply"),
+    ];
+
     [TestMethod]
     public void SliceToolDescriptions_AreCapabilityStatements()
-    {
-        var violations = EnumerateSliceTools()
-            .Where(entry => entry.Description.Length > MaxDescriptionCharacters)
-            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
-            .Select(entry => $"{entry.Name}: {entry.Description.Length} chars")
-            .ToArray();
-
-        Assert.AreEqual(
-            0,
-            violations.Length,
-            $"Method [Description] for these tools must be <= {MaxDescriptionCharacters} characters " +
-            "(what it does plus the one discriminating trigger); move operational detail to XML " +
-            "<remarks>. Violations:\n  " + string.Join("\n  ", violations));
-    }
+        => ToolDescriptionBudgetHarness.AssertPerToolBudget(SliceToolTypes, MaxDescriptionCharacters);
 
     [TestMethod]
     public void SliceToolDescriptions_StayUnderAggregateBudget()
-    {
-        var entries = EnumerateSliceTools().ToArray();
-        var total = entries.Sum(entry => entry.Description.Length);
+        => ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
+            SliceToolTypes, MaxAggregateDescriptionCharacters);
 
-        Assert.IsTrue(
-            entries.Length > 0,
-            "Expected the slice types to declare [McpServerTool] methods; reflection found none.");
-
-        Assert.IsTrue(
-            total <= MaxAggregateDescriptionCharacters,
-            $"Aggregate method-description budget for the slice is " +
-            $"{MaxAggregateDescriptionCharacters} chars across {entries.Length} tools; measured {total}.");
-    }
+    [TestMethod]
+    public void SliceTools_AllHaveNonEmptyDescriptions()
+        => ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(SliceToolTypes);
 
     [TestMethod]
     public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers()
-    {
-        AssertDescriptionContains(
-            "scaffold_first_test_file_preview",
-            "Errors when the destination file already exists");
-        AssertDescriptionContains(
-            "apply_multi_file_edit",
-            "preview_multi_file_edit + preview_multi_file_edit_apply");
-    }
-
-    private static void AssertDescriptionContains(string toolName, string expected)
-    {
-        var entry = EnumerateSliceTools().SingleOrDefault(candidate => candidate.Name == toolName);
-
-        Assert.IsNotNull(entry.Name, $"Tool '{toolName}' was not found on the slice types.");
-        StringAssert.Contains(
-            entry.Description,
-            expected,
-            $"Trimming '{toolName}' dropped its discriminating trigger.");
-    }
-
-    private static IEnumerable<(string Name, string Description)> EnumerateSliceTools()
-        => SliceToolTypes
-            .SelectMany(type => type.GetMethods(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
-            .Select(method => new
-            {
-                Tool = method.GetCustomAttribute<McpServerToolAttribute>(),
-                Description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>(),
-            })
-            .Where(entry => entry.Tool is not null && entry.Description is not null)
-            .Select(entry => (entry.Tool!.Name ?? string.Empty, entry.Description!.Description));
+        => ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(SliceToolTypes, TriggerExpectations);
 }
