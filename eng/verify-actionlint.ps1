@@ -21,7 +21,9 @@ Resolution order:
      any network failure -- never falls back to an unpinned download.
 #>
 param(
-    [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [Parameter(DontShow)]
+    [switch]$FailChmodForTest
 )
 
 Set-StrictMode -Version Latest
@@ -69,6 +71,29 @@ function Get-CurrentRid {
 function Get-FileSha256 {
     param([Parameter(Mandatory)][string]$Path)
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Set-ActionlintExecutablePermission {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(DontShow)][switch]$FailForTest
+    )
+    if ($FailForTest) {
+        & (Get-Process -Id $PID).Path -NoProfile -NonInteractive -Command 'exit 1'
+    }
+    else {
+        & chmod +x $Path 2>$null
+    }
+    $chmodExitCode = $LASTEXITCODE
+    if ($chmodExitCode -ne 0) {
+        [Console]::Error.WriteLine(
+            "verify-actionlint: failed to mark actionlint executable (chmod exit code $chmodExitCode).")
+        exit $chmodExitCode
+    }
+}
+
+if ($FailChmodForTest) {
+    Set-ActionlintExecutablePermission -Path 'test-only' -FailForTest
 }
 
 $rid = Get-CurrentRid
@@ -130,7 +155,7 @@ else {
 }
 
 if ($rid -notlike 'win-*') {
-    & chmod +x $binaryPath 2>$null
+    Set-ActionlintExecutablePermission -Path $binaryPath
 }
 
 $workflowDir = Join-Path $RepoRoot '.github/workflows'
