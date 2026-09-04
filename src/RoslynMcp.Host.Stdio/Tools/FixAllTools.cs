@@ -16,10 +16,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class FixAllTools
 {
+    /// <remarks>
+    /// Scope is document, project, or solution. Discover diagnostic ids with
+    /// <c>list_analyzers</c> or <c>project_diagnostics</c>. When no provider or Fix All support
+    /// exists, <c>guidanceMessage</c> names the next route. Provider crashes return a structured
+    /// <c>FixAllProviderCrash</c> envelope and state whether per-occurrence fallback is available.
+    /// </remarks>
     [McpServerTool(Name = "fix_all_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview fixing ALL instances of a diagnostic across a scope."),
-     Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs. When no provider or no FixAll support exists, the response includes guidanceMessage with next steps (e.g. organize_usings_preview for IDE0005). When the registered FixAll provider itself throws (e.g. the 'Sequence contains no elements' crash on IDE0300 / IDE0305 and analogous failures on other fixers), the response is a structured envelope with error=true, category='FixAllProviderCrash', and perOccurrenceFallbackAvailable=true so callers can fall back to code_fix_preview on individual occurrences.")]
+     Description("Preview one Fix All provider across document, project, or solution scope. Use after list_analyzers or project_diagnostics; the result identifies per-occurrence code_fix_preview fallback when needed.")]
     public static Task<string> PreviewFixAll(
         IWorkspaceExecutionGate gate,
         IFixAllService fixAllService,
@@ -35,10 +41,14 @@ public static class FixAllTools
             c => fixAllService.PreviewFixAllAsync(workspaceId, diagnosticId, scope, filePath, projectName, c),
             ct);
 
+    /// <remarks>
+    /// The preview token records its producer family and workspace. Tokens minted by unrelated
+    /// preview routes are rejected before any mutation.
+    /// </remarks>
     [McpServerTool(Name = "fix_all_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
         "Apply a previously previewed fix-all operation."),
-     Description("Apply a previously previewed fix-all operation using its preview token")]
+     Description("Apply a fix-all preview token across its recorded scope. Use only after fix_all_preview; tokens from unrelated preview families are rejected before workspace mutation.")]
     public static Task<string> ApplyFixAll(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
