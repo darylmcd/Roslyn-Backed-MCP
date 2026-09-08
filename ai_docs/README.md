@@ -48,7 +48,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `ai_docs/prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
 | `ai_docs/prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
 | `ai_docs/prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
-| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific addenda for backlog-sweep planner/review prompts |
+| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific `/backlog-remediate` addenda; historical filename retained for compatibility |
 
 ## Reports And Archive
 
