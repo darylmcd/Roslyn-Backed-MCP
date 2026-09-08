@@ -3,7 +3,7 @@ name: reconcile-backlog-sweep-plan
 installed_as: reconcile-backlog-sweep-plan
 description: "Reconcile a remediation plan's state.json + plan.md against merged/closed PR reality. Use when: multiple remediation PRs have landed and the plan still shows them as in-review/in-progress, or before picking the next pending initiative to avoid re-shipping already-merged work. Queries `gh pr view` per initiative, applies merged/deferred transitions, mirrors status into plan.md's table, and commits on a short-lived branch + PR (main is branch-protected). Automates the in-review reconcile from `/backlog-remediate`."
 user-invocable: true
-argument-hint: "[plan-dir path] — defaults to the oldest non-terminal ai_docs/plans/*_backlog-sweep/ per `/backlog-remediate` FIFO selection"
+argument-hint: "[plan-dir path] — defaults to the oldest non-terminal plan across ai_docs/plans/*_backlog-remediate/ and the legacy *_backlog-sweep/ directories"
 ---
 
 # Reconcile Remediation Plan
@@ -18,7 +18,7 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 
 ## Input
 
-`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-sweep`). The `_backlog-sweep` directory suffix is a historical compatibility label. If omitted, enumerate `ai_docs/plans/*_backlog-sweep/`, classify each as terminal vs non-terminal (terminal = `completed: true` AND every initiative status in `{merged, obsolete, deferred}` — the canonical terminal set in `~/.claude/prompts/backlog-remediate-rules.md`), and select the **oldest non-terminal** plan (FIFO drain). This mirrors `/backlog-remediate` plan selection — do NOT default to newest-by-name, which strands older non-terminal plans whose in-review PRs never get reconciled.
+`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-remediate`). The `_backlog-sweep` directory suffix is a historical compatibility label. If omitted, enumerate the union of `ai_docs/plans/*_backlog-remediate/` and legacy `ai_docs/plans/*_backlog-sweep/` directories. Classify every candidate under one terminal rule (terminal = `completed: true` AND every initiative status in `{merged, obsolete, deferred}` — the canonical terminal set in `~/.claude/prompts/backlog-remediate-rules.md`), then select the **oldest non-terminal** plan across the combined set (FIFO drain). This mirrors `/backlog-remediate` plan selection — do NOT prefer one suffix or default to newest-by-name, either of which can strand an older non-terminal plan whose in-review PRs never get reconciled.
 
 ## Preconditions (HARD GATES — refuse if any fail)
 
