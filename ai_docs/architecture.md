@@ -92,12 +92,13 @@ The server is also distributed as a Claude Code plugin. Plugin artifacts live ou
 
 | Directory | Purpose |
 |-----------|---------|
-| `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
+| `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Shipped plugin and marketplace manifests |
+| `.claude-plugin/mcp.json` | Shipped plugin MCP descriptor; launches the release-matched `Darylmcd.RoslynMcp` package for plugin installs |
 | `skills/` | 32 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows (shipped with the plugin). Repo-only maintainer skills live in `.claude/skills/` and are not shipped. |
 | `hooks/` | `hooks.json` with safety hooks (preview-before-apply guard, post-refactoring compile-check reminder) |
-| `.mcp.json` | MCP server config with userConfig env var passthrough |
+| User/session MCP client config | External registration for the `roslynmcp` stdio host; not shipped from this repository |
 
-The plugin layer is a pure orchestration concern — it adds no code to the C# projects. Skills reference tools by MCP name and compose them into multi-step workflows; hooks enforce safety patterns (preview before apply, compile after refactor).
+The shipped `.claude-plugin/mcp.json` descriptor is distinct from external user/session-scoped registrations; the repository does not ship a root `.mcp.json` registration. The plugin layer is a pure orchestration concern — it adds no code to the C# projects. Skills reference tools by MCP name and compose them into multi-step workflows; hooks enforce safety patterns (preview before apply, compile after refactor).
 
 ## Known Gaps
 

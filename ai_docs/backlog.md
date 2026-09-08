@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T20:22:56Z
+**updated_at:** 2026-09-08T20:56:16Z
 
 ## Agent contract
 
@@ -230,7 +230,6 @@
 | `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
 | `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
 | `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
-| `retire-root-roslyn-mcp-bootstrap-docs` | Low | user-scoped-roslyn-mcp-editor-guidance,user-scoped-roslyn-mcp-runtime-guidance | **Remove obsolete root-registration documentation** — delete the file-triggered bootstrap and distinguish the shipped plugin descriptor. [type: chore] [source: retire-root-roslyn-mcp-registration] | M | items/retire-root-roslyn-mcp-bootstrap-docs.md |
 | `reserved-row-remediation-route-guidance` | Low | — | **Correct active Reserved-row remediation guidance** — replace the retired command with canonical `/backlog-remediate` guidance and add scoped validation. [type: chore] [source: adjacent-cold-review] | M | items/reserved-row-remediation-route-guidance.md |
 
 ## Defer

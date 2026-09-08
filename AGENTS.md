@@ -54,17 +54,6 @@ Read these files in order before doing work:
 
 After the required reads, use `ai_docs/planning_index.md` for next-step routing and `ai_docs/README.md` for task-specific documents.
 
-## MCP Bootstrap
-
-- Read `.mcp.json` after the required session-start files and before task-specific tool decisions.
-- Treat `.mcp.json` as the repository's declared MCP intent, not as proof that a server is live in the current session.
-- Always distinguish:
-  1. Declared in `.mcp.json`
-  2. Documented in repository docs (e.g. `ai_docs/runtime.md`)
-  3. Verified live in the current session
-- Prefer a verified live MCP server over shell or broad text search when available.
-- If a server is declared in `.mcp.json` but unavailable at runtime, say so explicitly and continue with the best supported fallback.
-
 ## Conflict Precedence
 
 - For implementation quality and safety conflicts, follow `.github/copilot-instructions.md`.
