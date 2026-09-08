@@ -1,6 +1,6 @@
 # reserved-row-remediation-route-guidance — Correct active Reserved-row remediation guidance
 
-**row:** `reserved-row-remediation-route-guidance` · **pri:** `Low` · **size:** `S`
+**row:** `reserved-row-remediation-route-guidance` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 

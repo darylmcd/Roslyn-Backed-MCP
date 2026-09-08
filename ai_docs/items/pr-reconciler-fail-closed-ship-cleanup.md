@@ -1,6 +1,6 @@
 # pr-reconciler-fail-closed-ship-cleanup — Route reconciler cleanup through fail-closed shipping
 
-**row:** `pr-reconciler-fail-closed-ship-cleanup` · **pri:** `Medium` · **size:** `S`
+**row:** `pr-reconciler-fail-closed-ship-cleanup` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
