@@ -1,14 +1,14 @@
 ---
 name: backlog-intake
 installed_as: backlog-intake
-description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and Rule 1/3/4/5 sizing for the backlog-sweep-plan.md planner prompt. Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
+description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and sizing for the `/backlog-remediate` workflow. Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
 user-invocable: true
 argument-hint: "[--stage | --skip-verify | --no-commit | --publish] — defaults: stage files first, verify against CHANGELOG, commit on a fresh branch; pass --publish to file each accepted row as a public GitHub Issue via gh issue create"
 ---
 
 # Backlog intake
 
-You are triaging a batch of deep-review artifacts into `ai_docs/backlog.md`. Your job is to turn raw audit / retro / experimental-promotion markdown files into **properly-sized, anchor-verified, de-duplicated, priority-ranked** rows that the `backlog-sweep-plan.md` planner prompt can plan against without re-processing.
+You are triaging a batch of deep-review artifacts into `ai_docs/backlog.md`. Your job is to turn raw audit / retro / experimental-promotion markdown files into **properly-sized, anchor-verified, de-duplicated, priority-ranked** rows that `/backlog-remediate` can route without re-processing.
 
 This skill replaces the `eng/new-deep-review-batch.ps1 → sync-deep-review-backlog.ps1` pipeline. The PowerShell pipeline handled only `*_mcp-server-audit.md`, did literal-text dedupe, and couldn't verify anchors or size rows to Rule 1/3/4. The judgment work belongs in an LLM; the mechanical file-staging is delegated to `eng/stage-review-inbox.ps1`.
 
@@ -139,7 +139,7 @@ Skip this phase if `--skip-verify` is set.
 For each candidate row, cross-check:
 
 1. **`CHANGELOG.md` [Unreleased] + last 3 versions** — grep for the tool name, service, or symbol the row cites.
-2. **Newest backlog-sweep plan** under `ai_docs/plans/*_backlog-sweep/` — read its `state.json` and `plan.md`. Does any shipped initiative describe the same fix?
+2. **Newest remediation plan** under `ai_docs/plans/*_backlog-remediate/` — read its `state.json` and `plan.md`. Also inspect `*_backlog-sweep/` when historical compatibility evidence is relevant. Does any shipped initiative describe the same fix?
 3. **Git log, last 100 commits** — `git log --oneline -n 100 | grep -i <keyword>` on tool / service / symbol names.
 4. **Code spot-check for rows flagged by 1-3** — open the named service / tool file and confirm the specific behavior still reproduces. For example, if the row says `symbol_search("")` overflows, grep `SymbolSearchService.cs` for an empty-query guard.
 
@@ -161,14 +161,14 @@ For each remaining row, verify every service class, tool file, and file:line anc
 
 Rewrite each row's `do` text to cite **both** the core service (under `src/RoslynMcp.Roslyn/Services/`) **and** the tool registration (under `src/RoslynMcp.Host.Stdio/Tools/`). Executors can then land on the right file immediately.
 
-If an anchor genuinely cannot be resolved, tag the row with `[stale — cited anchor not found; executor may use synthetic examples]` per `backlog-sweep-plan.md` Step 3's anchor-verification guidance, rather than dropping the row.
+If an anchor genuinely cannot be resolved, tag the row with `[stale — cited anchor not found; executor may use synthetic examples]` per the `/backlog-remediate` anchor-verification contract, rather than dropping the row.
 
 ### Phase 4 — Split heroic rows
 
-Apply `backlog-sweep-plan.md` Rule 1 to each row. A row is **heroic** (and must be split) if any of:
+Apply the `/backlog-remediate` initiative-sizing contract to each row. A row is **heroic** (and must be split) if any of:
 
 - It describes two or more distinct bugs that live in **different code paths** (different functions, different files).
-- It asks for ≥4 production-file edits to fulfill.
+- It asks for more than 4 production-file edits to fulfill.
 - Its regression tests are not trivially-additive variants of one shape.
 - Its "do" field contains a numbered "(1) fix A, (2) fix B, (3) fix C" list where each item is a different code change.
 
@@ -185,7 +185,7 @@ For each split, give each child a distinct kebab-case id (prefix with the origin
 
 ### Phase 5 — Ensure planner-prompt refs
 
-Before writing, verify the Refs table in `ai_docs/backlog.md` includes these entries (add any missing). Note: the backlog-sweep **planner/executor prompts are NOT repo Refs entries** — they live globally in `~/.claude/prompts/` (`backlog-sweep-plan.md`, `backlog-sweep-execute.md`) and are loaded by the `/backlog-sweep:*` commands, so do NOT add repo-local rows for them:
+Before writing, verify the Refs table in `ai_docs/backlog.md` includes these entries (add any missing). Note: the remediation contract is NOT a repo Refs entry — it lives globally in `~/.claude/prompts/backlog-remediate.md` and `~/.claude/prompts/backlog-remediate-rules.md`, so do NOT add repo-local rows for it:
 
 | Path | Role (template text) |
 |---|---|
@@ -197,7 +197,7 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
 
 1. Update `updated_at:` to current UTC. Record this timestamp as the batch id in the form `YYYYMMDDTHHMMSSZ` (e.g. `20260424T031936Z`).
 2. Re-sort each priority band alphabetically by id.
-3. Ensure the "Standing rules" section includes the initiative-sizing rule: `"Size every row to a single backlog-sweep-plan.md initiative: one code path, ≤4 production files, ≤3 test files, one regression-test shape."` (add if missing).
+3. Ensure the "Standing rules" section includes the initiative-sizing rule: `"Size every row to a single /backlog-remediate initiative: one code path, ≤4 production files, ≤3 test files, one regression-test shape."` (add if missing).
 4. **Archive the processed review files.** Only the files that produced rows this batch — do NOT touch any existing `review-inbox/archive/<prior-batch>/` subdirectories.
    ```bash
    mkdir -p review-inbox/archive/{BATCH_ID}
@@ -230,7 +230,7 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
 
    - Splits applied: {list of heroic rows that were split}
    - Dropped (already shipped): {list, if any}
-   - Verified against CHANGELOG [Unreleased] + last 3 versions + newest backlog-sweep plan.
+   - Verified against CHANGELOG [Unreleased] + last 3 versions + newest remediation plan.
 
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
    ```
@@ -314,9 +314,9 @@ If the batch is small (≤3 files, ≤1000 total lines), skip the subagent and r
 ## Distinct from related skills
 
 - **`close-backlog-rows`**: removes specific row ids from the open table after their PRs ship. This skill (`backlog-intake`) ADDS rows from raw audit evidence. Use `close-backlog-rows` after a ship, this one after an audit wave.
-- **`reconcile-backlog-sweep-plan`**: updates a backlog-sweep plan's `state.json` when its PRs have merged. Different file, different concern.
+- **`reconcile-backlog-sweep-plan`**: legacy-named compatibility skill that updates a remediation plan's `state.json` when its PRs have merged. Different file, different concern.
 - **`draft-changelog-entry`**: drafts one changelog fragment per PR from commit metadata. Different artifact.
-- **`backlog-sweep-plan.md` (prompt, not skill)**: consumes the backlog this skill produces. Run `backlog-intake` first, then the sweep planner.
+- **`/backlog-remediate`**: consumes the backlog this skill produces. Run `backlog-intake` first, then remediation.
 
 ## Historical note
 
