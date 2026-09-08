@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T16:37:30Z
+**updated_at:** 2026-09-08T17:29:41Z
 
 ## Agent contract
 
@@ -100,7 +100,6 @@
 | `test-service-container-production-di-lifetime` | Medium | test-shared-gate-rate-limit-isolation, test-service-container-two-phase-construction-cycle | Replace the handwritten test composition-root lifetime with a test-owned production registration provider plus explicit overrides, and dispose the provider exactly once. [type: test-architecture] [source: 2026-09-04 execution re-vet] | S | items/test-service-container-production-di-lifetime.md |
 | `scripting-supervisor-outer-cancellation-contended-timeout` | Medium | — | Replace the timing-sensitive scripting outer-cancellation regression with a causal supervisor lifecycle seam and repeated contention proof. | S | items/scripting-supervisor-outer-cancellation-contended-timeout.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
-| `retired-route-executor-guidance` | Medium | — | **Refresh executor-agent remediation routes** — route both executor-agent surfaces through `/backlog-remediate` while preserving historical labels. [type: chore] [source: retired-route-executor-intake-guidance] | M | items/retired-route-executor-guidance.md |
 | `retired-route-intake-workflow-guidance` | Medium | — | **Refresh intake and workflow remediation routes** — route both intake/workflow surfaces through `/backlog-remediate` while preserving compatibility semantics. [type: chore] [source: retired-route-executor-intake-guidance] | M | items/retired-route-intake-workflow-guidance.md |
 | `retired-route-reconciliation-guidance` | Medium | — | **Refresh reconciliation remediation routes** — route both reconciliation skills through `/backlog-remediate` without changing their durable semantics. [type: chore] [source: retired-route-recovery-guidance] | M | items/retired-route-reconciliation-guidance.md |
 | `retired-route-recovery-operations-guidance` | Medium | — | **Refresh recovery and flake remediation routes** — route recovery/flake guidance through `/backlog-remediate` without changing durable semantics. [type: chore] [source: retired-route-recovery-guidance] | M | items/retired-route-recovery-operations-guidance.md |
