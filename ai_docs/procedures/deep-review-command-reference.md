@@ -31,9 +31,9 @@ This runs the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) s
 1. Stages the recognized deep-review artifact shapes from sibling repos + this repo into `review-inbox/`. The canonical list of recognized shapes lives in `eng/stage-review-inbox.ps1` `.DESCRIPTION` -> "Recognized shapes" — read it there; do not re-list the globs here. (`backlog.d/` fragments are the exception: they are consumed in place, not staged.)
 2. Extracts actionable items via a subagent (context-protecting).
 3. Deduplicates semantically across files.
-4. Verifies each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan.
+4. Verifies each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest remediation plan.
 5. Fixes service / tool anchors so each row lands on real files.
-6. Splits heroic rows per `~/.claude/prompts/backlog-sweep-plan.md` Rule 1 / 3 / 4.
+6. Splits heroic rows per `~/.claude/prompts/backlog-remediate-rules.md` initiative-sizing rules.
 7. Ranks P2 / P3 / P4.
 8. Commits to a fresh branch off `main`.
 
