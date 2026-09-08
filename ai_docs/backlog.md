@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T21:42:07Z
+**updated_at:** 2026-09-08T20:56:16Z
 
 ## Agent contract
 
@@ -101,8 +101,6 @@
 | `scripting-supervisor-outer-cancellation-contended-timeout` | Medium | — | Replace the timing-sensitive scripting outer-cancellation regression with a causal supervisor lifecycle seam and repeated contention proof. | S | items/scripting-supervisor-outer-cancellation-contended-timeout.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `pr-reconciler-fail-closed-ship-cleanup` | Medium | — | **Make reconciler cleanup fail closed** — route cleanup through canonical shipping, preserve dirty-residue reporting, and reject force removal or swallowed deletion failures. [type: chore] [source: adjacent-cold-review] | M | items/pr-reconciler-fail-closed-ship-cleanup.md |
-| `backlog-intake-v15-writer-contract` | Medium | — | **Align backlog intake with the v15 writer contract** — replace retired priorities and direct-edit guidance with the current taxonomy and transactional writer. [type: chore] [source: adjacent-cold-review] | M | items/backlog-intake-v15-writer-contract.md |
-| `workspace-warm-cancellation-propagation` | Medium | — | **Fail warm requests on caller cancellation** — propagate cancellation instead of returning a successful partial warm result. [type: correctness] [source: adjacent-cold-review] | S | items/workspace-warm-cancellation-propagation.md |
 
 ## Low
 
@@ -232,12 +230,7 @@
 | `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
 | `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
 | `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
-| `reserved-row-remediation-route-guidance` | Low | — | **Correct active Reserved-row and remediation-route guidance** — replace retired command and subagent wording with canonical backlog-remediate routing and scoped validation. [type: chore] [source: adjacent-cold-review] | M | items/reserved-row-remediation-route-guidance.md |
-| `reconcile-backlog-vs-issues-canonical-update-guidance` | Low | — | **Use canonical backlog updates during issue reconciliation** — route row repairs through the v15 writer without weakening operator-controlled close behavior. [type: chore] [source: adjacent-cold-review] | M | items/reconcile-backlog-vs-issues-canonical-update-guidance.md |
-| `workspace-warm-repeat-cache-causal-regression` | Low | — | **Make repeat-warm coverage causal** — replace the brittle wall-clock speed ratio with the cold-to-cached state transition. [type: test] [source: adjacent-cold-review] | S | items/workspace-warm-repeat-cache-causal-regression.md |
-| `copilot-self-edit-mutation-policy-consistency` | Low | — | **Make self-edit mutation policy session-aware** — reconcile the blanket apply rule with the documented checkout-under-build boundary. [type: chore] [source: adjacent-cold-review] | M | items/copilot-self-edit-mutation-policy-consistency.md |
-| `retire-cursor-roslyn-mcp-config` | Low | — | **Remove the second repository-scoped MCP registration** — retire the tracked Cursor startup config while preserving rules and the public plugin descriptor. [type: chore] [source: adjacent-cold-review] | M | items/retire-cursor-roslyn-mcp-config.md |
-| `retired-root-mcp-doc-index-audit-sync` | Low | — | **Synchronize current documentation after root registration retirement** — repair the document index and generated audit state while preserving dated history. [type: docs] [source: adjacent-cold-review] | M | items/retired-root-mcp-doc-index-audit-sync.md |
+| `reserved-row-remediation-route-guidance` | Low | — | **Correct active Reserved-row remediation guidance** — replace the retired command with canonical `/backlog-remediate` guidance and add scoped validation. [type: chore] [source: adjacent-cold-review] | M | items/reserved-row-remediation-route-guidance.md |
 
 ## Defer
 
