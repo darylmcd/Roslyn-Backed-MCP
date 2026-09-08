@@ -164,7 +164,7 @@ For the long-form decision tree, use `domains/tool-usage-guide.md`.
 - Sessions are kept in memory by the stdio host. There is no inactivity TTL.
 - If a workspace-scoped tool reports that the workspace is missing, the usual causes are host restart, `workspace_close`, or eviction at the concurrent-workspace cap.
 - Recovery is `workspace_load` on the same path; repeated loads are idempotent.
-- Call `workspace_load` before workspace-scoped tools, or poll `server_heartbeat` / `server_info.connection` until the server reports a loaded workspace.
+- Call `workspace_load` before workspace-scoped tools. An idle server does not load a workspace by itself; poll `server_heartbeat` / `server_info.connection` only to observe a load that another caller has already initiated.
 
 ## Connection-State Signals
 
