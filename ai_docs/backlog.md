@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T19:09:50Z
+**updated_at:** 2026-09-08T19:41:21Z
 
 ## Agent contract
 
@@ -230,7 +230,6 @@
 | `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
 | `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
 | `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
-| `user-scoped-roslyn-mcp-editor-guidance` | Low | — | **Refresh editor-agent MCP guidance** — use user/session-scoped intent and explicit live probes without a repo-local registration. [type: chore] [source: user-scoped-roslyn-mcp-guidance] | M | items/user-scoped-roslyn-mcp-editor-guidance.md |
 | `user-scoped-roslyn-mcp-runtime-guidance` | Low | — | **Refresh runtime MCP guidance** — distinguish configured intent from verified liveness and stop relying on the repo-local transition file. [type: chore] [source: user-scoped-roslyn-mcp-guidance] | M | items/user-scoped-roslyn-mcp-runtime-guidance.md |
 | `retire-root-roslyn-mcp-config` | Low | user-scoped-roslyn-mcp-editor-guidance,user-scoped-roslyn-mcp-runtime-guidance | **Remove the redundant root MCP configuration** — delete the root registration and keep local project registrations ignored. [type: chore] [source: retire-root-roslyn-mcp-registration] | M | items/retire-root-roslyn-mcp-config.md |
 | `retire-root-roslyn-mcp-bootstrap-docs` | Low | user-scoped-roslyn-mcp-editor-guidance,user-scoped-roslyn-mcp-runtime-guidance | **Remove obsolete root-registration documentation** — delete the file-triggered bootstrap and distinguish the shipped plugin descriptor. [type: chore] [source: retire-root-roslyn-mcp-registration] | M | items/retire-root-roslyn-mcp-bootstrap-docs.md |
