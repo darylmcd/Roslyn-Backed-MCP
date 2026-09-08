@@ -3,7 +3,7 @@ name: reconcile-backlog-sweep-plan
 installed_as: reconcile-backlog-sweep-plan
 description: "Reconcile a remediation plan's state.json + plan.md against merged/closed PR reality. Use when: multiple remediation PRs have landed and the plan still shows them as in-review/in-progress, or before picking the next pending initiative to avoid re-shipping already-merged work. Queries `gh pr view` per initiative, applies merged/deferred transitions, mirrors status into plan.md's table, and commits on a short-lived branch + PR (main is branch-protected). Automates the in-review reconcile from `/backlog-remediate`."
 user-invocable: true
-argument-hint: "[plan-dir path] — defaults to oldest non-terminal ai_docs/plans/*_backlog-sweep/ (FIFO drain; mirrors :execute Step 0b)"
+argument-hint: "[plan-dir path] — defaults to the oldest non-terminal ai_docs/plans/*_backlog-sweep/ per `/backlog-remediate` FIFO selection"
 ---
 
 # Reconcile Remediation Plan
