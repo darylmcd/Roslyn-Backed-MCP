@@ -95,7 +95,7 @@ The server is also distributed as a Claude Code plugin. Plugin artifacts live ou
 | `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
 | `skills/` | 32 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows (shipped with the plugin). Repo-only maintainer skills live in `.claude/skills/` and are not shipped. |
 | `hooks/` | `hooks.json` with safety hooks (preview-before-apply guard, post-refactoring compile-check reminder) |
-| `.mcp.json` | MCP server config with userConfig env var passthrough |
+| User/session MCP client config | External registration for the `roslynmcp` stdio host; not shipped from this repository |
 
 The plugin layer is a pure orchestration concern — it adds no code to the C# projects. Skills reference tools by MCP name and compose them into multi-step workflows; hooks enforce safety patterns (preview before apply, compile after refactor).
 
