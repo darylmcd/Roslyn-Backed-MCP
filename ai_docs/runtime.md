@@ -93,7 +93,7 @@ Plugin-relevant files in this repo:
 - `.claude-plugin/` — plugin manifest and marketplace descriptor
 - `skills/` — bundled skill prompts
 - `hooks/` — PreToolUse and PostToolUse safety hooks
-- `.mcp.json` — repo-local MCP declaration; may include literal `env` overrides for project-specific tuning
+- User/session-scoped MCP client configuration — the intended source of the `roslynmcp` stdio registration; do not depend on the redundant repository-local transition file or treat its presence as liveness evidence
 
 Install via:
 
@@ -112,7 +112,7 @@ Copy-ready `.mcp.json` examples live under `docs/mcp-json-examples/`.
 
 ## Roslyn MCP Client Policy (AI sessions)
 
-The Roslyn MCP server is the default tool surface for C# work in this repository: navigation, search, diagnostics, verification, and covered refactoring flows.
+The Roslyn MCP server is the expected tool surface for C# work in this repository: navigation, search, diagnostics, verification, and covered refactoring flows. User/session-scoped client configuration declares intent; only a successful `server_heartbeat`, `server_info`, or other `mcp__roslyn__*` call verifies liveness. Do not depend on the repository-local transition file.
 
 ### Read-side default
 
