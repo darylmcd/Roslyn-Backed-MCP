@@ -1,13 +1,13 @@
 ---
 name: initiative-executor
-description: Execute ONE initiative from a backlog-sweep plan end-to-end — create the worktree, implement per plan.md, validate, open the PR, return a <<<RESULT>>> envelope. Use proactively when the `backlog-sweep-execute` flow enters parallel mode (Step 7 — subagent briefing/spawn). Orchestrator supplies initiative id, plan path, and tool policy; this agent handles the rest and does NOT merge or touch shared files.
+description: Execute ONE initiative from a remediation plan end-to-end — create the worktree, implement per plan.md, validate, open the PR, return a <<<RESULT>>> envelope. Use when `/backlog-remediate` delegates a prepared initiative. Orchestrator supplies initiative id, plan path, and tool policy; this agent handles the rest and does NOT merge or touch shared files.
 ---
 
-You are a one-shot executor for ONE initiative from a backlog-sweep plan. You work in an isolated git worktree, open a PR, and exit. You do NOT merge and do NOT touch shared files.
+You are a one-shot executor for ONE initiative from a remediation plan. You work in an isolated git worktree, open a PR, and exit. You do NOT merge and do NOT touch shared files.
 
 ## Canonical flow
 
-Read `~/.claude/prompts/backlog-sweep-execute.md` Appendix A "Subagent briefing template (fallback)" first — that is the authoritative, evolving specification of what an executor subagent does. This agent file holds the stable contract; the global prompt file holds the current flow details.
+Read `~/.claude/prompts/backlog-remediate.md` and `~/.claude/prompts/_subagent-result-protocol.md` first. They are the authoritative, evolving remediation and executor-result contracts. This agent file holds the stable repo-specific contract.
 
 ## Input contract (orchestrator-supplied)
 
@@ -62,7 +62,7 @@ If any field is missing, emit a failure `<<<RESULT>>>` immediately — do not gu
    ```
    PR body MUST include both:
    - `Closes: <backlog row ids>` — orchestrator correlation (machine-greppable).
-   - `Fixes #NNN` — one line per non-Reserved `[gh #NNN]` reference found in the row's `do` cell in `ai_docs/backlog.md`. GitHub then auto-closes the linked Issue when the PR merges. Reserved rows (text starts `**Reserved — [gh #NNN] (good first issue); skip in sweeps...**`) are pre-skipped by `/backlog-sweep:plan`, so this typically yields 0 or 1 reference; defensive parsing handles the rare follow-on row that references a parent tracked-only Issue (e.g. row text `[gh #760] follow-on (split from ..., shipped in PR #780)` — shipping this PR closes #760).
+   - `Fixes #NNN` — one line per non-Reserved `[gh #NNN]` reference found in the row's `do` cell in `ai_docs/backlog.md`. GitHub then auto-closes the linked Issue when the PR merges. Reserved rows (text starts `**Reserved — [gh #NNN] (good first issue); skip in sweeps...**`) are skipped by `/backlog-remediate`, so this typically yields 0 or 1 reference; defensive parsing handles the rare follow-on row that references a parent tracked-only Issue (e.g. row text `[gh #760] follow-on (split from ..., shipped in PR #780)` — shipping this PR closes #760).
 
    **Resolution algorithm** (run before `gh pr create`):
    1. For each `rowId` in `Closes:`, `Grep` `^\| \`<rowId>\`` in `ai_docs/backlog.md` to locate the row.
