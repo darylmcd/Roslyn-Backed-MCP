@@ -10,7 +10,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 |------|---------|
 | `../CI_POLICY.md` | Validation and merge-gating policy |
 | `workflow.md` | Git/branch/worktree/PR workflow |
-| `runtime.md` | Build, test, run commands; execution context; Roslyn MCP client policy |
+| `runtime.md` | Build, test, run commands; user/session-scoped Roslyn MCP intent versus live-probe evidence |
 | `bootstrap-read-tool-primer.md` | Canonical pattern-to-tool cheat sheet for read-side MCP usage |
 | `planning_index.md` | Router for in-repo planning docs and scope boundaries |
 | `backlog.md` | Open work only; sync when closing rows |
@@ -48,7 +48,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `ai_docs/prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
 | `ai_docs/prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
 | `ai_docs/prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
-| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific addenda for backlog-sweep planner/review prompts |
+| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific `/backlog-remediate` addenda; historical filename retained for compatibility |
 
 ## Reports And Archive
 

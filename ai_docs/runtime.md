@@ -93,7 +93,7 @@ Plugin-relevant files in this repo:
 - `.claude-plugin/` — plugin manifest and marketplace descriptor
 - `skills/` — bundled skill prompts
 - `hooks/` — PreToolUse and PostToolUse safety hooks
-- `.mcp.json` — repo-local MCP declaration; may include literal `env` overrides for project-specific tuning
+- User/session-scoped MCP client configuration — the intended source of the `roslynmcp` stdio registration; do not depend on the redundant repository-local transition file or treat its presence as liveness evidence
 
 Install via:
 
@@ -112,7 +112,7 @@ Copy-ready `.mcp.json` examples live under `docs/mcp-json-examples/`.
 
 ## Roslyn MCP Client Policy (AI sessions)
 
-The Roslyn MCP server is the default tool surface for C# work in this repository: navigation, search, diagnostics, verification, and covered refactoring flows.
+The Roslyn MCP server is the expected tool surface for C# work in this repository: navigation, search, diagnostics, verification, and covered refactoring flows. User/session-scoped client configuration declares intent; only a successful `server_heartbeat`, `server_info`, or other `mcp__roslyn__*` call verifies liveness. Do not depend on the repository-local transition file.
 
 ### Read-side default
 
@@ -164,7 +164,7 @@ For the long-form decision tree, use `domains/tool-usage-guide.md`.
 - Sessions are kept in memory by the stdio host. There is no inactivity TTL.
 - If a workspace-scoped tool reports that the workspace is missing, the usual causes are host restart, `workspace_close`, or eviction at the concurrent-workspace cap.
 - Recovery is `workspace_load` on the same path; repeated loads are idempotent.
-- Call `workspace_load` before workspace-scoped tools, or poll `server_heartbeat` / `server_info.connection` until the server reports a loaded workspace.
+- Call `workspace_load` before workspace-scoped tools. An idle server does not load a workspace by itself; poll `server_heartbeat` / `server_info.connection` only to observe a load that another caller has already initiated.
 
 ## Connection-State Signals
 
