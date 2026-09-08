@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-08T16:22:01.622Z",
+  "backlogSnapshot": "2026-09-08T16:37:30Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "failed",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "retired-route-executor-intake-guidance",
+      "order": 1,
+      "status": "obsolete",
+      "backlogRowsClosed": [
+        "retired-route-executor-intake-guidance"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        ".claude/agents/initiative-executor.md",
+        ".claude/agents/pr-reconciler.md",
+        ".claude/skills/backlog-intake/SKILL.md",
+        "ai_docs/workflow.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 20000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "serial",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Rule 3: four target files plus required detail deletion total five production files; replaced by retired-route-executor-guidance and retired-route-intake-workflow-guidance."
+    },
+    {
+      "id": "retired-route-recovery-guidance",
+      "order": 2,
+      "status": "obsolete",
+      "backlogRowsClosed": [
+        "retired-route-recovery-guidance"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        ".claude/skills/reconcile-backlog-sweep-plan/SKILL.md",
+        ".claude/skills/reconcile-backlog-vs-issues/SKILL.md",
+        ".claude/skills/recover-stalled-subagent/SKILL.md",
+        "ai_docs/known-flakes.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 20000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "serial",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Rule 3: four target files plus required detail deletion total five production files; replaced by retired-route-reconciliation-guidance and retired-route-recovery-operations-guidance."
+    },
+    {
+      "id": "user-scoped-roslyn-mcp-guidance",
+      "order": 3,
+      "status": "obsolete",
+      "backlogRowsClosed": [
+        "user-scoped-roslyn-mcp-guidance"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        ".cursor/rules/operational-essentials.md",
+        ".github/copilot-instructions.md",
+        "ai_docs/README.md",
+        "ai_docs/runtime.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "serial",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Rule 3: four target files plus required detail deletion total five production files; replaced by user-scoped-roslyn-mcp-editor-guidance and user-scoped-roslyn-mcp-runtime-guidance."
+    },
+    {
+      "id": "retire-root-roslyn-mcp-registration",
+      "order": 4,
+      "status": "obsolete",
+      "backlogRowsClosed": [
+        "retire-root-roslyn-mcp-registration"
+      ],
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        ".gitignore",
+        ".mcp.json",
+        "AGENTS.md",
+        "ai_docs/architecture.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "serial",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [
+        "user-scoped-roslyn-mcp-guidance"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Rule 3: four target files plus required detail deletion total five production files; replaced by retire-root-roslyn-mcp-config and retire-root-roslyn-mcp-bootstrap-docs."
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "selection": {
+    "requestedCount": 4,
+    "selectedCount": 4,
+    "skipped": []
+  },
+  "reviewFindings": {
+    "block": 4,
+    "warn": 4,
+    "info": 0
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "retired-route-executor-intake-guidance",
+      "severity": "block",
+      "rule": "3",
+      "evidence": "Four target files plus deletion of the child detail file yields five production files."
+    },
+    {
+      "initiativeId": "retired-route-recovery-guidance",
+      "severity": "block",
+      "rule": "3",
+      "evidence": "Four target files plus deletion of the child detail file yields five production files."
+    },
+    {
+      "initiativeId": "user-scoped-roslyn-mcp-guidance",
+      "severity": "block",
+      "rule": "3",
+      "evidence": "Four target files plus deletion of the child detail file yields five production files."
+    },
+    {
+      "initiativeId": "retire-root-roslyn-mcp-registration",
+      "severity": "block",
+      "rule": "3",
+      "evidence": "Four target files plus deletion of the child detail file yields five production files."
+    },
+    {
+      "initiativeId": "retired-route-executor-intake-guidance",
+      "severity": "warn",
+      "rule": "validation",
+      "evidence": "Validation omits eng/verify-release.ps1 -Configuration Release."
+    },
+    {
+      "initiativeId": "retired-route-recovery-guidance",
+      "severity": "warn",
+      "rule": "validation",
+      "evidence": "Validation omits eng/verify-release.ps1 -Configuration Release."
+    },
+    {
+      "initiativeId": "user-scoped-roslyn-mcp-guidance",
+      "severity": "warn",
+      "rule": "validation",
+      "evidence": "Validation omits eng/verify-release.ps1 -Configuration Release."
+    },
+    {
+      "initiativeId": "retire-root-roslyn-mcp-registration",
+      "severity": "warn",
+      "rule": "validation",
+      "evidence": "Validation omits eng/verify-release.ps1 -Configuration Release."
+    }
+  ],
+  "completed": true,
+  "completedAt": "2026-09-08T16:37:51.156Z"
+}

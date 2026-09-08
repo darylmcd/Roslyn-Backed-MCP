@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-08T16:39:01.353Z",
+  "backlogSnapshot": "2026-09-08T16:37:30Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 1,
+  "maxCycles": 2,
+  "reviewStatus": "passed",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "retired-route-executor-guidance",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retired-route-executor-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".claude/agents/initiative-executor.md",
+        ".claude/agents/pr-reconciler.md",
+        "ai_docs/items/retired-route-executor-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retired-route-executor-intake-guidance",
+      "fileSetHash": "07e102df039a05f56ba790bcfd2946ad749f610c7d0bea564bb9c128fcb38f95",
+      "stanzaHash": "4edd57692add091d6f2651cea590e79580d6b498b8d7d78f81e0d917c090e653",
+      "reviewedStanzaHash": "4edd57692add091d6f2651cea590e79580d6b498b8d7d78f81e0d917c090e653"
+    },
+    {
+      "id": "retired-route-intake-workflow-guidance",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retired-route-intake-workflow-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".claude/skills/backlog-intake/SKILL.md",
+        "ai_docs/workflow.md",
+        "ai_docs/items/retired-route-intake-workflow-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retired-route-executor-intake-guidance",
+      "fileSetHash": "52df3d5a5a0cfdb9bf08e64fe748975553c3e15deb11204a3813d34bbdba4d1b",
+      "stanzaHash": "55ab78bf91eba6c5aab5f0a45e6e052b71d6b990cd08db355eec16e3df8a0804",
+      "reviewedStanzaHash": "55ab78bf91eba6c5aab5f0a45e6e052b71d6b990cd08db355eec16e3df8a0804"
+    },
+    {
+      "id": "retired-route-reconciliation-guidance",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retired-route-reconciliation-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".claude/skills/reconcile-backlog-sweep-plan/SKILL.md",
+        ".claude/skills/reconcile-backlog-vs-issues/SKILL.md",
+        "ai_docs/items/retired-route-reconciliation-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retired-route-recovery-guidance",
+      "fileSetHash": "8effa29472b2b859dd6677d527b3e6afe57ae123642b5fb67b21cc26d0a1dd4d",
+      "stanzaHash": "4c74318baf7351122014f691949c3c79c42bd375783d8ac463ea01ada2b94ce1",
+      "reviewedStanzaHash": "4c74318baf7351122014f691949c3c79c42bd375783d8ac463ea01ada2b94ce1"
+    },
+    {
+      "id": "retired-route-recovery-operations-guidance",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retired-route-recovery-operations-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".claude/skills/recover-stalled-subagent/SKILL.md",
+        "ai_docs/known-flakes.md",
+        "ai_docs/items/retired-route-recovery-operations-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retired-route-recovery-guidance",
+      "fileSetHash": "d8fb3d1c321bdd04e0872fdf0517d1880cc62923b15f9fdb348481082b15f312",
+      "stanzaHash": "766ade3d183fde6c4a18744916b43c463badd118a315690bcfca6494ee6bb574",
+      "reviewedStanzaHash": "766ade3d183fde6c4a18744916b43c463badd118a315690bcfca6494ee6bb574"
+    },
+    {
+      "id": "user-scoped-roslyn-mcp-editor-guidance",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "user-scoped-roslyn-mcp-editor-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".cursor/rules/operational-essentials.md",
+        ".github/copilot-instructions.md",
+        "ai_docs/items/user-scoped-roslyn-mcp-editor-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "user-scoped-roslyn-mcp-guidance",
+      "fileSetHash": "4e140ec67a272cf7c81085edd7e079b15d707f046572d0c2f01ab230b5b4d434",
+      "stanzaHash": "9e6233ca7a9247152e12ab3af7642fc02707029cf0e7ddec4dacb6c3394e99b9",
+      "reviewedStanzaHash": "9e6233ca7a9247152e12ab3af7642fc02707029cf0e7ddec4dacb6c3394e99b9"
+    },
+    {
+      "id": "user-scoped-roslyn-mcp-runtime-guidance",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "user-scoped-roslyn-mcp-runtime-guidance"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "ai_docs/README.md",
+        "ai_docs/runtime.md",
+        "ai_docs/items/user-scoped-roslyn-mcp-runtime-guidance.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "user-scoped-roslyn-mcp-guidance",
+      "fileSetHash": "9ab9ab4753319d80639f040fadcb6891ad30392c86819983e0b33145d857b761",
+      "stanzaHash": "762fa3a33d01468bf70a711f03d92ad0650e8684f440ba100a4256e1c0618d91",
+      "reviewedStanzaHash": "762fa3a33d01468bf70a711f03d92ad0650e8684f440ba100a4256e1c0618d91"
+    },
+    {
+      "id": "retire-root-roslyn-mcp-config",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retire-root-roslyn-mcp-config"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".gitignore",
+        ".mcp.json",
+        "ai_docs/items/retire-root-roslyn-mcp-config.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [
+        "user-scoped-roslyn-mcp-editor-guidance",
+        "user-scoped-roslyn-mcp-runtime-guidance"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retire-root-roslyn-mcp-registration",
+      "fileSetHash": "f757478a0d152bf2e46f482015f28ceb3850b06a075eee4c7aae18d5b14bbc22",
+      "stanzaHash": "212df914a78bf40ab61a170df52d6ee62936345498e24883ed96625f9a061002",
+      "reviewedStanzaHash": "212df914a78bf40ab61a170df52d6ee62936345498e24883ed96625f9a061002"
+    },
+    {
+      "id": "retire-root-roslyn-mcp-bootstrap-docs",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "retire-root-roslyn-mcp-bootstrap-docs"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "AGENTS.md",
+        "ai_docs/architecture.md",
+        "ai_docs/items/retire-root-roslyn-mcp-bootstrap-docs.md"
+      ],
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "parallel",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": true
+      },
+      "dependsOn": [
+        "user-scoped-roslyn-mcp-editor-guidance",
+        "user-scoped-roslyn-mcp-runtime-guidance"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "parentRow": "retire-root-roslyn-mcp-registration",
+      "fileSetHash": "15ca1f648ebb2aa92283cbb94dbbf265c4ca0e80925cc70421d14dce197e264c",
+      "stanzaHash": "bb06123b6038e1a643c2f7a3639bb90d9d0a27cf51f63ccc1877a2c4aef738a9",
+      "reviewedStanzaHash": "bb06123b6038e1a643c2f7a3639bb90d9d0a27cf51f63ccc1877a2c4aef738a9"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "selection": {
+    "requestedCount": 8,
+    "selectedCount": 8,
+    "skipped": []
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 0,
+    "info": 0
+  },
+  "lastReviewFindings": [],
+  "conflictGraphInputHash": "50e1d1b26a1407c27c45948dd90f3be904fe1d449a36238454e4597acf2ac9a4",
+  "planHash": "70cec7ac27cff23e3c8c429261785bbb4164ac099deddcd0ff874013d68bd1f0",
+  "backlogSnapshotHash": "419ae02cac43544dc911327d6c57b07cb147940d59f94d9b38d2c87bf0cbe550",
+  "reviewedPlanHash": "70cec7ac27cff23e3c8c429261785bbb4164ac099deddcd0ff874013d68bd1f0",
+  "reviewedBacklogSnapshotHash": "419ae02cac43544dc911327d6c57b07cb147940d59f94d9b38d2c87bf0cbe550"
+}
