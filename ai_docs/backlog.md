@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T18:51:43Z
+**updated_at:** 2026-09-08T19:09:50Z
 
 ## Agent contract
 
@@ -100,7 +100,6 @@
 | `test-service-container-production-di-lifetime` | Medium | test-shared-gate-rate-limit-isolation, test-service-container-two-phase-construction-cycle | Replace the handwritten test composition-root lifetime with a test-owned production registration provider plus explicit overrides, and dispose the provider exactly once. [type: test-architecture] [source: 2026-09-04 execution re-vet] | S | items/test-service-container-production-di-lifetime.md |
 | `scripting-supervisor-outer-cancellation-contended-timeout` | Medium | — | Replace the timing-sensitive scripting outer-cancellation regression with a causal supervisor lifecycle seam and repeated contention proof. | S | items/scripting-supervisor-outer-cancellation-contended-timeout.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
-| `retired-route-recovery-operations-guidance` | Medium | — | **Refresh recovery and flake remediation routes** — route recovery/flake guidance through `/backlog-remediate` without changing durable semantics. [type: chore] [source: retired-route-recovery-guidance] | M | items/retired-route-recovery-operations-guidance.md |
 | `pr-reconciler-fail-closed-ship-cleanup` | Medium | — | **Make reconciler cleanup fail closed** — route cleanup through canonical shipping, preserve dirty-residue reporting, and reject force removal or swallowed deletion failures. [type: chore] [source: adjacent-cold-review] | M | items/pr-reconciler-fail-closed-ship-cleanup.md |
 
 ## Low
