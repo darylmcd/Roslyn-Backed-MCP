@@ -168,7 +168,7 @@ If an anchor genuinely cannot be resolved, tag the row with `[stale — cited an
 Apply the `/backlog-remediate` initiative-sizing contract to each row. A row is **heroic** (and must be split) if any of:
 
 - It describes two or more distinct bugs that live in **different code paths** (different functions, different files).
-- It asks for ≥4 production-file edits to fulfill.
+- It asks for more than 4 production-file edits to fulfill.
 - Its regression tests are not trivially-additive variants of one shape.
 - Its "do" field contains a numbered "(1) fix A, (2) fix B, (3) fix C" list where each item is a different code change.
 
