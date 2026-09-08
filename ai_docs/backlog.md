@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-04T21:13:44Z
+**updated_at:** 2026-09-08T16:03:08Z
 
 ## Agent contract
 
@@ -100,6 +100,8 @@
 | `test-service-container-production-di-lifetime` | Medium | test-shared-gate-rate-limit-isolation, test-service-container-two-phase-construction-cycle | Replace the handwritten test composition-root lifetime with a test-owned production registration provider plus explicit overrides, and dispose the provider exactly once. [type: test-architecture] [source: 2026-09-04 execution re-vet] | S | items/test-service-container-production-di-lifetime.md |
 | `scripting-supervisor-outer-cancellation-contended-timeout` | Medium | — | Replace the timing-sensitive scripting outer-cancellation regression with a causal supervisor lifecycle seam and repeated contention proof. | S | items/scripting-supervisor-outer-cancellation-contended-timeout.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
+| `retired-route-executor-intake-guidance` | Medium | — | **Route executor and intake guidance through `/backlog-remediate`.** Update the bounded executor/intake surfaces while preserving historical evidence. [type: chore] [source: bl-0318] | M | items/retired-route-executor-intake-guidance.md |
+| `retired-route-recovery-guidance` | Medium | — | **Route reconciliation and recovery guidance through `/backlog-remediate`.** Update the bounded recovery surfaces without changing durable semantics. [type: chore] [source: bl-0318] | M | items/retired-route-recovery-guidance.md |
 
 ## Low
 
@@ -229,6 +231,8 @@
 | `unused-code-analyzer-dead-local-complexity` | Low | — | Separate dead-local discovery, owner resolution, and exclusion policy; reduce the three hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-dead-local-complexity.md |
 | `unused-code-analyzer-duplicate-helper-complexity` | Low | — | Separate duplicate-helper enumeration, semantic classification, and projection; reduce both hotspots below CC10. [type: quality] [source: 2026-09-04 touched-code review] | S | items/unused-code-analyzer-duplicate-helper-complexity.md |
 | `mcp002-synthetic-test-tool-noise` | Low | — | **Remove MCP002 noise from the synthetic error-wire tool fixture** — decide whether the analyzer should exclude nested test tools or the fixture should use the supported description shape without altering its wire contract. [type: diagnostics] [source: 2026-09-04 compile_check] | S | items/mcp002-synthetic-test-tool-noise.md |
+| `user-scoped-roslyn-mcp-guidance` | Low | — | **Document user-scoped Roslyn MCP configuration.** Remove active reliance on the redundant root registration and require live probes. [type: chore] [source: bl-0207] | M | items/user-scoped-roslyn-mcp-guidance.md |
+| `retire-root-roslyn-mcp-registration` | Low | user-scoped-roslyn-mcp-guidance | **Remove the redundant root Roslyn MCP registration.** Delete its bootstrap while retaining the shipped plugin descriptor. [type: chore] [source: bl-0207] | M | items/retire-root-roslyn-mcp-registration.md |
 
 ## Defer
 
