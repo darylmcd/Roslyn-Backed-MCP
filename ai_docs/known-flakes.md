@@ -1,10 +1,10 @@
 # Known flakes
 
-<!-- purpose: Authoritative list of pre-existing flaky tests that subagents and the orchestrator should ignore when judging "is the build green?". Consulted by /backlog-sweep:execute Step 7 and Appendix B's failure-result parser. -->
+<!-- purpose: Authoritative list of pre-existing flaky tests that remediation executors and the orchestrator consult when judging "is the build green?". -->
 
 Pre-existing flaky tests that subagents and the orchestrator should ignore when judging "is the build green?". When all failing tests match a registered pattern, the validation step treats the result as success and surfaces the count via `known flakes encountered: N` in the report.
 
-**Discipline** (per `/backlog-sweep:execute` skill § *Known-flakes registry*):
+**Discipline** (per `/backlog-remediate`):
 
 - Subagents MUST NOT add new entries themselves — flakes go in via a dedicated PR after triage so the registry reflects real, investigated flakes, not noise.
 - The orchestrator may consult this registry to override a subagent's failure verdict, but MUST NOT add entries during a sweep.
