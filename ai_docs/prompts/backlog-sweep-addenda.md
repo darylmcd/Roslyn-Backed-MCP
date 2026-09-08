@@ -1,10 +1,10 @@
-# Backlog-sweep addenda — Roslyn-Backed-MCP
+# Backlog-remediation addenda — Roslyn-Backed-MCP
 
-<!-- purpose: Repo-specific facts consumed by the global /backlog-sweep:{plan,review,execute} commands. -->
+<!-- purpose: Repo-specific facts consumed by the global /backlog-remediate workflow. -->
 <!-- scope: in-repo -->
-<!-- contract: read by ~/.claude/commands/backlog-sweep/*.md when present in this repo. -->
+<!-- contract: historical filename retained for compatibility; read by /backlog-remediate when present. -->
 
-This file is the single source of repo-specific extensions to the generic `/backlog-sweep` workflow. The global commands handle Rules 1–5, state.json schema, plan-dir convention, ship discipline, and mode dispatch. Everything below is **facts about this repo** the global commands need to do their job here.
+This file is the single source of repo-specific extensions to `/backlog-remediate`. The global workflow handles routing, state schema, plan-directory convention, ship discipline, and mode dispatch. Everything below is **facts about this repo** the workflow needs to do its job here.
 
 If you change a fact (e.g. add a new hotspot file, swap build commands, ship a new analyzer that gates a structural unit), update this file in the same PR.
 
@@ -61,7 +61,7 @@ parallel_safety:
   scope_caveat: |
     The evidence covers the fixture-copy path, which is where the contention was.
     It is NOT a proof that every test in the suite is parallel-safe. Flip
-    parallelSafe back to false (which forces `/backlog-sweep:execute` serial mode
+    parallelSafe back to false (which forces `/backlog-remediate` serial mode
     and engages `bsweep-state.mjs ci-lock-acquire`) if a NEW machine-global
     dependency appears — a fixed port, a shared database, an HKCU/%AppData% write,
     or any test writing outside `TestTempRoot.Current`.
@@ -182,7 +182,7 @@ backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 
 
 When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. (Step 10 lands PRs via `/ship` directly — it no longer spawns a reconciler subagent.)
 
-## Skills wired to backlog-sweep workflow
+## Skills wired to backlog-remediation workflow
 
 ```yaml
 draft_changelog_entry: /draft-changelog-entry

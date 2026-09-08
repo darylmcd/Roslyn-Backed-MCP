@@ -120,7 +120,7 @@ Each batch rollup in `ai_docs/reports/` should include:
 
 ## Backlog intake rules
 
-Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest backlog-sweep plan, fixes service / tool anchors, splits heroic rows per `~/.claude/prompts/backlog-sweep-plan.md` Rule 1 / 3 / 4, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
+Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest remediation plan, fixes service / tool anchors, splits heroic rows per `~/.claude/prompts/backlog-remediate-rules.md`, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
 
 - Dedupe key (human triage): `tool + symptom + catalog-version + client-family`.
 - Narrative-only sources (test-suite audits, manual retros without a matching filename pattern) still need a by-hand row in `ai_docs/backlog.md`.
