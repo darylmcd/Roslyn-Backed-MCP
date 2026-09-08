@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T17:29:41Z
+**updated_at:** 2026-09-08T18:04:16Z
 
 ## Agent contract
 
@@ -103,6 +103,7 @@
 | `retired-route-intake-workflow-guidance` | Medium | — | **Refresh intake and workflow remediation routes** — route both intake/workflow surfaces through `/backlog-remediate` while preserving compatibility semantics. [type: chore] [source: retired-route-executor-intake-guidance] | M | items/retired-route-intake-workflow-guidance.md |
 | `retired-route-reconciliation-guidance` | Medium | — | **Refresh reconciliation remediation routes** — route both reconciliation skills through `/backlog-remediate` without changing their durable semantics. [type: chore] [source: retired-route-recovery-guidance] | M | items/retired-route-reconciliation-guidance.md |
 | `retired-route-recovery-operations-guidance` | Medium | — | **Refresh recovery and flake remediation routes** — route recovery/flake guidance through `/backlog-remediate` without changing durable semantics. [type: chore] [source: retired-route-recovery-guidance] | M | items/retired-route-recovery-operations-guidance.md |
+| `pr-reconciler-fail-closed-ship-cleanup` | Medium | — | **Make reconciler cleanup fail closed** — route cleanup through canonical shipping, preserve dirty-residue reporting, and reject force removal or swallowed deletion failures. [type: chore] [source: adjacent-cold-review] | M | items/pr-reconciler-fail-closed-ship-cleanup.md |
 
 ## Low
 
@@ -236,6 +237,7 @@
 | `user-scoped-roslyn-mcp-runtime-guidance` | Low | — | **Refresh runtime MCP guidance** — distinguish configured intent from verified liveness and stop relying on the repo-local transition file. [type: chore] [source: user-scoped-roslyn-mcp-guidance] | M | items/user-scoped-roslyn-mcp-runtime-guidance.md |
 | `retire-root-roslyn-mcp-config` | Low | user-scoped-roslyn-mcp-editor-guidance,user-scoped-roslyn-mcp-runtime-guidance | **Remove the redundant root MCP configuration** — delete the root registration and keep local project registrations ignored. [type: chore] [source: retire-root-roslyn-mcp-registration] | M | items/retire-root-roslyn-mcp-config.md |
 | `retire-root-roslyn-mcp-bootstrap-docs` | Low | user-scoped-roslyn-mcp-editor-guidance,user-scoped-roslyn-mcp-runtime-guidance | **Remove obsolete root-registration documentation** — delete the file-triggered bootstrap and distinguish the shipped plugin descriptor. [type: chore] [source: retire-root-roslyn-mcp-registration] | M | items/retire-root-roslyn-mcp-bootstrap-docs.md |
+| `reserved-row-remediation-route-guidance` | Low | — | **Correct active Reserved-row remediation guidance** — replace the retired command with canonical `/backlog-remediate` guidance and add scoped validation. [type: chore] [source: adjacent-cold-review] | M | items/reserved-row-remediation-route-guidance.md |
 
 ## Defer
 
