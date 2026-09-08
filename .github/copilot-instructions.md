@@ -24,7 +24,7 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 
 ## Roslyn MCP (AI sessions in this repo)
 
-- Enable the **`roslyn`** MCP server (`roslynmcp` via stdio; see repo `.mcp.json`).
+- Expect the **`roslyn`** MCP server from user/session-scoped client configuration (`roslynmcp` via stdio). Do not add or depend on a repo-local registration; verify liveness with `server_heartbeat` or `server_info` before relying on it.
 - **Read-side tools are the default** for every session — including bootstrap
   self-edit on this repo — and are 5–30× faster than `Grep` / `Bash: dotnet build` /
   `Bash: dotnet test`. Specifically: prefer `compile_check` over `dotnet build`,
@@ -35,7 +35,7 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
   multi-file text edits when a tool covers the operation (rename, extract/move type,
   code fixes, bulk type replace, etc.) — preview first, then apply.
 - **Write-side on THIS repo:** depends on session shape.
-  - *Worktree session* (default for backlog-sweep subagents; running against the
+  - *Worktree session* (default for `/backlog-remediate` delegated executors; running against the
     installed global `roslynmcp` tool): `*_apply` is safe — use it when a Roslyn MCP
     refactor tool covers the operation. Load the worktree's own `RoslynMcp.slnx`;
     `workspace_reload` after apply if a downstream call needs fresh state.

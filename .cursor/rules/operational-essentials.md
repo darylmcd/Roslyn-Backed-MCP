@@ -26,14 +26,14 @@ All commands are available as `just` recipes (`just --list` for the full menu).
 
 ## Roslyn MCP (C#)
 
-- Connect the **`roslyn`** MCP server (repo `.mcp.json`: `roslynmcp` stdio).
+- Connect the **`roslyn`** MCP server from user/session-scoped client configuration (`roslynmcp` stdio). Do not add or depend on a repo-local registration; confirm it is live with `server_heartbeat` or `server_info`.
 - **Read-side first (every session, including bootstrap):** `compile_check` over
   `dotnet build`; `test_related_files` + `test_run --filter` over `dotnet test`;
   `find_references` / `symbol_search` over `Grep`. Primer: `ai_docs/bootstrap-read-tool-primer.md`.
 - For C# edits on peer repos, use Roslyn MCP **refactoring** tools
   (`rename_*`, `extract_*`, `code_fix_*`, etc.) with preview → apply.
 - On THIS repo, write-side rules depend on session shape:
-  - **Worktree session** (default for backlog-sweep subagents; running against the
+  - **Worktree session** (default for `/backlog-remediate` delegated executors; running against the
     installed global tool): `*_apply` is safe — use it when a refactor tool covers the
     operation. Load the worktree's own `RoslynMcp.slnx`; `workspace_reload` after
     apply if a downstream call needs fresh state.
