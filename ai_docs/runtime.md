@@ -93,7 +93,7 @@ Plugin-relevant files in this repo:
 - `.claude-plugin/` — plugin manifest and marketplace descriptor
 - `skills/` — bundled skill prompts
 - `hooks/` — PreToolUse and PostToolUse safety hooks
-- User/session-scoped MCP client configuration — supplies the `roslynmcp` stdio registration; this repository intentionally carries no repo-local registration
+- User/session-scoped MCP client configuration — the preferred source of the `roslynmcp` stdio registration; do not depend on the redundant repo-local transition file while its removal is pending
 
 Install via:
 
