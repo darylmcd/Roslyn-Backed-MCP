@@ -112,7 +112,7 @@ Body, in order:
 - `## 4. Suggested findings (up to 8)` — ranked, informational only. Each: **id** (kebab slug), **priority hint** (low / medium / high plus a one-line justification from cross-session and cross-harness recurrence), **title** (imperative, ≤80 chars), **summary** (2–4 sentences, quote-backed), **proposed action**, **surface** (`server` / `claude-harness` / `codex-harness` / `docs`, derived from the 2a attribution — a client-side fix is not a server defect), **evidence** (`2a#<tool>`, `2b#<task>`, `3#<pattern>` plus agent-tagged session ids). Skip anything not pinned to a quote; mark single-session or single-harness findings as such.
 - `## 5. Meta-note`
 
-Evidence rule for every section: quote verbatim from the JSONL, tag each quote with agent and session id, no hypotheticals.
+Evidence rule for every section: quote verbatim from the JSONL; tag each quote with agent, session id, and a locator (the `call_id` for a tool call, the record line number or message id for prose) so a reader can find it without a text search; no hypotheticals.
 
 ---
 
