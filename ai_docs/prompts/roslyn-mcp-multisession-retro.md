@@ -1,176 +1,127 @@
-# Multi-session retrospective — Roslyn MCP issues, gaps, and recommendations (cross-repo, last N days)
-<!-- purpose: Prompt for producing a multi-session Roslyn MCP retrospective report. -->
+# Multi-session retrospective — Roslyn MCP issues, gaps, and recommendations (Claude Code + Codex, cross-repo, last N days)
+<!-- purpose: Prompt for producing a multi-session Roslyn MCP retrospective report from Claude Code and Codex transcripts. -->
 
-Review **recent Claude Code sessions across all repos** and produce a structured retrospective **report file** that captures Roslyn MCP server issues, missing-tool gaps, and recommendations worth fixing. The report is saved **locally** in the Roslyn MCP repo as a self-contained artifact — it is not pushed, appended, or synced to any external backlog. The maintainer can read the file directly when they want to triage findings.
+Review recent agent sessions from **both** Claude Code and Codex across all repos and write one local report file in this repo capturing Roslyn MCP server issues, missing-tool gaps, and recommendations. The report is the only deliverable: no commit, no PR, no backlog write.
 
-Follow the steps in order — do not skip step 0 or step 1.
-
----
-
-## Step 0 — Pick the window and discover sessions (do this first)
-
-Claude Code persists session transcripts as JSONL files under `~/.claude/projects/<encoded-repo-path>/*.jsonl` (one directory per repo, one `.jsonl` per session). **You are looking across all of them, not just the current session.**
-
-1. **Window** — default to **the last 14 days** measured by file mtime. If the user named a different window in their invocation (e.g. "last 7 days", "last month"), honor that. State the chosen window explicitly in your first user-facing line.
-2. **Enumerate session files** — for each subdirectory of `~/.claude/projects/`, list `*.jsonl` files whose mtime falls inside the window. Record for each: `(repo_slug, session_file_path, session_start_ts, session_end_ts, approx_line_count)`. The repo slug is recoverable from the directory name (Claude Code encodes the repo path with `-` separators — decode it back to a repo root when possible; fall back to the encoded form if ambiguous).
-3. **Filter to relevant sessions** — a session is relevant if **any** of:
-   - It contains at least one tool call whose name matches the regex `mcp__\S*roslyn\S*__\S+`, OR
-   - It contains a `/roslyn-mcp:*` skill invocation, OR
-   - It contains a verbatim reference to `roslyn-mcp`, `Roslyn MCP`, or a Roslyn MCP tool name in text content.
-
-   **The tool-call pattern is deliberately prefix-agnostic — do not narrow it to a literal prefix.** The MCP client prepends a prefix derived from the registration path it loaded the server under, so the same tool appears as `mcp__roslyn__symbol_search` on a dev-build/self-hosted entry, as `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on the marketplace-plugin install, and under a different prefix again for any other registration key (a custom `.mcp.json` key, a forked plugin name). Those two are **examples, not an allowed list** — matching only the bare form silently drops whole repos from the sample, which is exactly how earlier retros undercounted cross-repo usage. Accepted trade-off: the regex also matches an unrelated server whose registration key happens to contain the substring `roslyn`; a false-positive session is visible and recoverable at read time, a false-negative repo is neither.
-
-   Sessions with zero Roslyn-MCP surface area are dropped silently — they will not appear in §2 but will be counted in the meta-note so the reader knows the sample size.
-4. **Budget reads** — if the total JSONL payload in window exceeds ~200k lines, cap at the 40 largest-by-Roslyn-MCP-mention sessions and note the truncation in §5. Do not load all files into context blindly; use `Grep` / `jq` / `rg` over the JSONL to extract only tool-call and error records before deep-reading.
-
-### Resolve the report path
-
-1. **Repo name** — the Roslyn MCP repo itself: basename of the current working directory (the repo this prompt was launched in), slugified to `[a-z0-9-]`. The report lands **here**, not in each source repo.
-2. **Timestamp** — UTC, compact ISO-8601: `YYYYMMDDTHHMMSSZ`. Use `date -u +%Y%m%dT%H%M%SZ`.
-3. **Path** — `ai_docs/reports/<timestamp>_<repo-slug>_roslyn-mcp-multisession-retro.md` relative to the current repo root. Create `ai_docs/reports/` if it does not exist.
-4. **Echo the resolved path and the window** in your first user-facing line so the user can redirect before work begins.
-
-Assemble the full content, then `Write` once at the end of Step 4.
+Both harnesses are in scope. Each reaches the server through different plumbing (tool-name prefixing, lazy tool-search, context budget, retry policy), so a single-harness read misattributes harness bugs as server bugs. If either source is unreadable or empty, say so in §0 and §5 and set `sources_degraded: true`.
 
 ---
 
-## Step 1 — Classify each included session (one line per session)
+## 0. Window, sources, filter
 
-For every relevant session found in Step 0, state which phase dominated:
+**Window** — default last 14 days by file mtime; honor a window the user named. State the window, the resolved report path, and per-source session counts in your first user-facing line.
 
-- **refactoring** — C#/code edits, symbol-level changes, semantic moves
-- **release/operational** — version bumps, ship+merge, CI plumbing, git ops
-- **planning/docs** — markdown/backlog/plan.md edits, no code mutation
-- **mixed** — explicitly call out the split
+**Sources**
 
-Emit a compact table: `| session_id (short) | repo | date | phase | notes |`. This classification **determines the lens for step 3** on a per-session basis. Do not apply a refactoring-tool analysis to a session that did no code work.
+| | Claude Code | Codex |
+|---|---|---|
+| Files | `~/.claude/projects/<encoded-repo-path>/*.jsonl` — one dir per repo; worktrees get their own dir (attribute to the parent repo, keep the worktree marker in notes) | `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl` (live) **and** `~/.codex/archived_sessions/rollout-*.jsonl` (flat, no date dirs). Scan both — the archived dir has carried all Codex evidence in past windows |
+| Session id | `.jsonl` basename (UUID) | `session_meta.payload.id` |
+| Repo | decode the dir name against real `C:/Code-Repo/*` names — a blanket `-`→`/` replace mangles hyphenated repos | `session_meta.payload.cwd` (authoritative; the file path carries only a date) |
+| Tool call | `.message.content[]` entry with `.type=="tool_use"`; `.name` is flat and fully qualified | `response_item` with `.payload.type=="function_call"`; `.payload.name` is the **bare** tool name and `.payload.namespace` carries the server (`mcp__roslyn`). No flat `mcp__roslyn__<tool>` string exists in Codex records |
+| Tool result | `tool_result` matched by `tool_use_id`; `is_error` or error text | `function_call_output` matched by `call_id`; error text or non-success status |
+| Subagents | separate session files | separate rollouts with `thread_source: "subagent"` and `parent_thread_id` — roll up under the parent and count them in frontmatter |
+| Other useful records | `custom-title`, `last-prompt` | `token_count` (context pressure), `turn_context`, `tool_search_output` (schema dumps — never evidence of a call) |
 
-Also compute the **aggregate mix** (e.g. "8 sessions: 5 refactoring / 2 release-operational / 1 mixed") — that aggregate is what step 3 hangs off.
+`~/.codex/session_index.jsonl` gives thread titles. `~/.codex/logs_2.sqlite` is multi-GB and not a source. Extract call, result, and error records with `rg`/`jq` first; deep-read only sessions that carry findings.
 
----
+**Tool-name matching is prefix-agnostic.** The client-assigned prefix follows the registration key: `mcp__roslyn__symbol_search` on the dev-build entry, `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on the marketplace plugin, other prefixes on other keys. Claude: match `mcp__\S*roslyn\S*__\S+`. Codex: match a `namespace` containing `roslyn`. A false-positive server is visible at read time; a dropped prefix silently loses whole repos (three-quarters of Claude-side calls in a recent window sat under the plugin prefix). Normalize every tool name to flat `mcp__roslyn__<tool>` in the report so cross-harness collapse works.
 
-## Step 2 — Enumerate file-modifying and workflow tasks (aggregated across sessions)
+**Relevance filter** — include a session if any of: at least one actual Roslyn MCP invocation per the rule above; a `/roslyn-mcp:*` skill invocation; substantive discussion of Roslyn MCP or a named tool in user/assistant text. Never a bare full-file grep for `roslyn` — it matches every Codex rollout (schema dumps, `cwd`, AGENTS.md preambles) and half the archived hits carry no real call. Dropped sessions are counted per source in §0 and §5, not listed.
 
-For every task across the included sessions that touched a file OR ran a non-trivial command, record:
+**Budget** — no fixed session cap. Record extraction is cheap, and the old 40-session cap dropped 81 of 111 relevant Codex sessions in one window. If you must truncate, keep per-source balance, list the dropped sessions and why in §0, and set `truncated: true`.
 
-| Session | Task (one-line verb phrase) | Tool actually used | File type / domain | Right tool for the job? |
-
-If a task type repeats across sessions (e.g. "rename symbol across projects" happens in 4 sessions), collapse into one row with a repeat count rather than listing it 4 times — but keep the session-id list in the row so evidence is traceable.
-
-"Right tool" criterion is unchanged:
-- Roslyn MCP for C# semantic work (references, symbols, refactors, diagnostics)
-- `Edit`/`Write` for markdown/JSON/XML or small textual edits
-- `git` / `gh` / `dotnet` for their native domains
-- Mark **missed opportunity** ONLY when the Roslyn surface genuinely covered the task and was bypassed.
+**Report path** — `ai_docs/reports/<UTC YYYYMMDDTHHMMSSZ>_<cwd-basename slugified [a-z0-9-]>_roslyn-mcp-multisession-retro.md` in this repo (create `ai_docs/reports/` if absent). Write once, at the end.
 
 ---
 
-## Step 2a — Roslyn MCP issues encountered across sessions (required)
+## 0a. Normalize
 
-For **every** Roslyn MCP tool invocation across the included sessions that errored, returned wrong or partial results, timed out, was flaky, had confusing output, or required a retry — record one row:
-
-- **Tool** — exact Roslyn MCP tool name **including whichever client-assigned prefix the session used** (e.g. `mcp__roslyn__symbol_search` on a dev-build entry, `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on a plugin install — examples, not an allowed list)
-- **Sessions** — list of session ids where this failure mode appeared (drives `Repro confidence`)
-- **Inputs** — redacted/summarized inputs that triggered it
-- **Symptom** — what went wrong (error text, wrong result, perf, UX)
-- **Impact** — which task was blocked/slowed in each session, rough cumulative time cost
-- **Workaround** — fallback used (Grep, Edit, manual, another Roslyn tool)
-- **Repro confidence** — one-shot (1 session) / intermittent (2–3 sessions, same error) / deterministic (≥4 sessions OR same input → same failure every time)
-
-Quote the verbatim error or output from the JSONL — include the session id next to the quote so it is traceable. No hypotheticals.
-
-Collapse identical failures across sessions into one row (don't list the same stack trace 6 times); distinct failure modes of the same tool get separate rows.
-
-If there were zero issues in window, say so explicitly — a clean run across N sessions is a data point, not an excuse to skip the section.
+One record per Roslyn MCP invocation from either source: `agent` (`claude` | `codex`), `tool` (flat normalized), `call_id`, `inputs` (Codex `arguments` is a JSON string — parse it), `result`, `errored`, `ts`, `repo`, `session_id`, `is_subagent`, `parent_session_id`. `agent` is a required column on every downstream table row. Note harness facts that affect interpretation: Codex `model_provider` / `cli_version`, Claude model, context-window sizes, and whether tool schemas were lazily loaded via tool-search.
 
 ---
 
-## Step 2b — Missing Roslyn MCP tool gaps (required)
+## 1. Classify sessions
 
-For every task across the included sessions where **no Roslyn MCP tool fit but one semantically should have** (forcing fallback to Grep/Edit/raw `dotnet`), record:
-
-- **Task** — what was being attempted
-- **Sessions** — which sessions hit this gap (repeat count matters — a gap seen once is weaker evidence than one seen five times)
-- **Why Roslyn-shaped** — C#/semantic reasoning that argues for first-class coverage
-- **Proposed tool shape** — name, one-line description, input/output sketch
-- **Closest existing tool** — if any, and why it fell short
-
-If Step 2's "right tool" column flagged a missed opportunity and the root cause was a capability gap (not user error), it belongs here. Cross-session recurrence is a strong signal — flag any gap seen in ≥3 sessions as **recurring** in the row.
+One row per included session: `| agent | session_id (short) | repo | date | phase | subagent? | notes |`. Phase is one of refactoring / release-operational / planning-docs / mixed (name the split). Compute the aggregate mix and the per-harness mix; a lopsided split is itself a finding about which harness the report characterizes.
 
 ---
 
-## Step 3 — Recurring friction patterns (cross-session)
+## 2. Task inventory
 
-List up to **7** patterns (raised from 5 because the window is wider) where Roslyn MCP friction appeared in **≥2 sessions**, OR where a single-session failure pattern cost material time AND looks structurally likely to recur. For each:
-
-- **What happened** (1-2 sentences, tied to verbatim quotes from specific sessions — cite session ids — no hypotheticals)
-- **Session spread** — how many of the N included sessions hit this, and which phases they were in
-- **Why it recurs** (e.g. "every rename across projects", "every DI audit on a large solution")
-- **What would fix it** (one concrete proposal — new tool, behavior change, better error message, doc change)
-
-Adapt the lens to the dominant phase mix from step 1:
-
-- refactoring-heavy mix → symbol_search precision, rename cascades, preview/apply gaps, test-fixup
-- release/operational-heavy mix → version-bump behavior, nuget-preflight coverage, workspace-health signals
-- planning/docs-heavy mix → likely out of scope for Roslyn MCP — note briefly and move on
+For every task that touched a file or ran a non-trivial command: `| Agent(s) | Session(s) | Task | Tool actually used | File type / domain | Right tool? |`. Collapse repeats into one row with a count and per-agent breakdown (`codex ×3, claude ×1`). Right tool: Roslyn MCP for C# semantic work; `Edit`/`Write` for markdown/JSON/XML/small text; `git`/`gh`/`dotnet` for their domains. Mark **missed opportunity** only when the Roslyn surface covered the task and was bypassed. For Codex, check `tool_search_output` first: a tool the harness never surfaced is a **discoverability** finding, not model judgment — say which.
 
 ---
 
-## Step 4 — Assemble the report and write it
+## 2a. Roslyn MCP issues (required)
 
-Compose the full report body and `Write` it to the path resolved in Step 0. This local file is the only deliverable. Use this file structure (fields shown as angle-bracket placeholders — substitute real values):
+One row per distinct failure mode (errored, wrong or partial result, timeout, flaky, confusing output, needed retry), collapsed across sessions and harnesses:
 
-Frontmatter (YAML, between `---` lines):
+| Tool | Agents (`claude` / `codex` / `both`) | Sessions (harness-tagged) | Inputs (summarized) | Symptom (verbatim quote; one per harness when `both`) | Impact | Workaround | Repro confidence | Attribution |
 
-- `generated_at`: ISO-8601 UTC timestamp
-- `window`: "last N days (<start_ts> → <end_ts>)"
-- `host_repo`: repo-slug of the Roslyn MCP repo where this report lives
-- `host_repo_path`: absolute path
-- `sessions_scanned`: total sessions in window across all repos
-- `sessions_included`: subset that touched Roslyn MCP
-- `repos_covered`: list of repo slugs
-- `phase_mix`: object with counts for `refactoring`, `release_operational`, `planning_docs`, `mixed`
-- `truncated`: boolean; if true, note which sessions were dropped and why
+- Repro confidence: one-shot (1 session) / intermittent (2–3) / deterministic (≥4, or same input → same failure). Reproduction in both harnesses upgrades one level.
+- Attribution: `server-side` (both harnesses, or error text unambiguously from the server) / `harness-specific` (one harness, and the failure implicates client plumbing — marshalling, namespace, timeout, truncation) / `unknown`. Fill it on every row; it is the point of reading both sources.
 
-Body sections, in order:
-
-- `# Roslyn MCP multi-session retrospective — <human date> — <N>-day window`
-- `## 1. Session classification` — Step 1 per-session table + aggregate mix line
-- `## 2. Task inventory (aggregated, with session ids)` — Step 2 table
-- `## 2a. Roslyn MCP issues encountered` — Step 2a rows, verbatim quotes preserved, session ids attached
-- `## 2b. Missing tool gaps` — Step 2b rows, recurrence counts attached
-- `## 3. Recurring friction patterns` — Step 3 list, up to 7
-- `## 4. Suggested findings (up to 7)` — ranked backlog-candidate findings for the Roslyn MCP maintainer's review. **Do not push, append, or sync these anywhere** — this list is informational only and lives solely in this file. For each finding:
-  - **id** — short kebab-case slug (e.g. `refactor-timeout-on-large-sln`)
-  - **priority hint** — low / medium / high, with a one-line justification grounded in cross-session recurrence
-  - **title** — imperative verb phrase (≤ 80 chars)
-  - **summary** — 2-4 sentences tying the finding to concrete Step 2a/2b/3 evidence (quote verbatim where possible, cite session ids)
-  - **proposed action** — new tool / behavior change / docs / error-message fix
-  - **evidence** — explicit cross-reference: `2a#<tool-name>`, `2b#<task>`, or `3#<pattern>`, plus session-id list
-
-  Quality beats quantity — skip anything you can't pin to a session quote or concrete step. A finding that only shows up in one session should be clearly marked as such (it may still be important, but the priority hint should reflect weaker evidence).
-- `## 5. Meta-note` — Step 5 output
+Zero issues is a data point — say so, and say if one harness was clean while the other was not.
 
 ---
 
-## Step 5 — Meta-note (3-5 sentences, lives in §5 of the report)
+## 2b. Missing tool gaps (required)
 
-Cover:
+One row per task where no Roslyn MCP tool fit but one semantically should have (fallback to Grep / Edit / raw `dotnet`):
 
-1. The phase mix of the window (e.g. "5 refactoring / 2 release / 1 mixed").
-2. Where Roslyn MCP friction is currently concentrated across the window (coverage / reliability / ergonomics / docs).
-3. Any repo-specific skew worth flagging (e.g. "3 of 5 refactor failures were on repo X's 200-project solution — may be scale-specific, not tool-general").
-4. One thing you would change about default Roslyn MCP usage next time.
-5. Whether the window was long enough — if most findings came from 1–2 sessions, recommend widening the window on the next retro.
+| Task | Agents / Sessions | Why Roslyn-shaped | Proposed tool shape (name, one-liner, in/out) | Closest existing tool + why it fell short | Real gap or discoverability gap? |
 
-This calibrates future retros and surfaces tool-level learning, not just project-level gaps.
+Flag ≥3 sessions as **recurring** and both harnesses as **cross-harness**. Step 2 missed opportunities whose root cause is a capability gap belong here.
 
 ---
 
-## Step 6 — Confirm and stop
+## 3. Recurring friction patterns
 
-After writing the file:
+Up to 8 patterns seen in ≥2 sessions, or a single costly pattern that is structurally likely to recur. Each: what happened (quote-backed), session spread with the Claude/Codex split and phases, harness sensitivity (both, or client-specific — and what that implies about root cause), why it recurs, one concrete fix. Pick the lens from the Step 1 mix: refactoring → symbol precision, rename cascades, preview/apply, test-fixup; release → version-bump, nuget-preflight, workspace health; planning/docs → mostly out of scope, note briefly. Reserve one slot for a **cross-harness parity** pattern (same operation, different behavior per client); if none, say so.
 
-1. Print the resolved report path.
-2. Print a one-line summary: window, sessions scanned, sessions included, repos covered, aggregate phase mix, count of Step 2a issues, count of Step 2b gaps, count of §4 findings.
-3. STOP. Do not commit, do not branch, do not PR, do not touch any external backlog. The user reads the file and decides what (if anything) to do with it.
+---
+
+## 4. Write the report
+
+Frontmatter (YAML):
+
+| key | value |
+|---|---|
+| `generated_at` | ISO-8601 UTC |
+| `window` | `"last N days (<start> → <end>)"` |
+| `host_repo`, `host_repo_path` | slug and absolute path of this repo |
+| `sources_scanned` | e.g. `["claude-code", "codex"]` |
+| `sources_degraded`, `sources_degraded_reason` | bool; reason string or null |
+| `sessions_scanned`, `sessions_included` | `{claude, codex, total}` |
+| `codex_subagent_sessions_rolled_up` | int |
+| `repos_covered` | list of slugs |
+| `phase_mix`, `phase_mix_by_agent` | `{refactoring, release_operational, planning_docs, mixed}`; the latter keyed by agent |
+| `issues_by_attribution` | `{server_side, harness_specific, unknown}` |
+| `truncated` | bool; if true, which sessions, which source, why |
+
+Body, in order:
+
+- `# Roslyn MCP multi-session retrospective — <date> — <N>-day window — Claude Code + Codex`
+- `## 0. Sources and coverage` — per-source paths, found / included / dropped counts, degradation, subagent roll-up. A reader must see at a glance that both harnesses were read.
+- `## 1. Session classification` — Step 1 table, aggregate mix, per-harness mix
+- `## 2. Task inventory (aggregated, with agent + session ids)`
+- `## 2a. Roslyn MCP issues encountered`
+- `## 2b. Missing tool gaps`
+- `## 3. Recurring friction patterns`
+- `## 4. Suggested findings (up to 8)` — ranked, informational only. Each: **id** (kebab slug), **priority hint** (low / medium / high plus a one-line justification from cross-session and cross-harness recurrence), **title** (imperative, ≤80 chars), **summary** (2–4 sentences, quote-backed), **proposed action**, **surface** (`server` / `claude-harness` / `codex-harness` / `docs`, derived from the 2a attribution — a client-side fix is not a server defect), **evidence** (`2a#<tool>`, `2b#<task>`, `3#<pattern>` plus agent-tagged session ids). Skip anything not pinned to a quote; mark single-session or single-harness findings as such.
+- `## 5. Meta-note`
+
+Evidence rule for every section: quote verbatim from the JSONL, tag each quote with agent and session id, no hypotheticals.
+
+---
+
+## 5. Meta-note
+
+Brief. Cover: phase mix per harness; sample balance and whether it biases the findings (one harness under 20% of included sessions means the report mostly characterizes the other); where friction concentrates (coverage / reliability / ergonomics / docs) and whether that differs by harness; the server-side vs harness-specific split and where fix effort should go; repo-specific skew (scale-specific vs tool-general); one default-usage change per harness; whether the window was long enough (findings resting on 1–2 sessions or one harness → widen or rebalance next time).
+
+---
+
+## 6. Confirm and stop
+
+Print the report path and one summary line (window; sessions scanned and included per source; repos; phase mix; 2a issues by attribution; 2b gaps; §4 findings). If a source was degraded, print a second line naming it. Then stop: no commit, branch, PR, or backlog write.
