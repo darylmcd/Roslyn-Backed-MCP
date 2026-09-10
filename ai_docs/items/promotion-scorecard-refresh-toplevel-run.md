@@ -28,3 +28,4 @@ Split from `promotion-tier-execution-batch` (2026-09-02) to separate the blocked
 **Stale anchor corrected here:** the parent cited `skills/promote-tier/`, which does not exist — the maintainer skill lives at `.claude/skills/promote-tier/`.
 
 **No staleness alarm exists.** Nothing compares `generatedAt` / `serverVersion` against the current build; tracked by `surface-test-audit-artifact-gate-and-scorecard-staleness`.
+2026-09-10 attempted top-level full audit stopped before closure: the client exposed get_prompt_text but not prompts/get, and unfiltered test_run returned isError after ~120s with no structured envelope. No scorecard was authored from partial evidence; reproducible defects were filed separately.
