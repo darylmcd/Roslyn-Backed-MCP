@@ -16,3 +16,4 @@
 ## Evidence
 
 - `.claude/skills/backlog-intake/SKILL.md:40,179,226,296` still requires and reports the retired P2/P3/P4 schema.
+Scope correction (2026-09-10): include .claude/agents/backlog-intake-extractor.md and ai_docs/items/backlog-d-fragment-schema.md alongside the skill and eng/verify-ai-docs.ps1. Define P0→Critical, P1→High, P2→Medium, P3→Low mapping for raw fragments; extractor emits v15 bands; active skill routes all mutations through backlog.mjs.

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-08T21:51:02Z
+**updated_at:** 2026-09-10T19:46:08Z
 
 ## Agent contract
 
@@ -103,6 +103,13 @@
 | `pr-reconciler-fail-closed-ship-cleanup` | Medium | — | **Make reconciler cleanup fail closed** — route cleanup through canonical shipping, preserve dirty-residue reporting, and reject force removal or swallowed deletion failures. [type: chore] [source: adjacent-cold-review] | M | items/pr-reconciler-fail-closed-ship-cleanup.md |
 | `backlog-intake-v15-writer-contract` | Medium | — | **Align backlog intake with the v15 writer contract** — replace retired priorities and direct-edit guidance with the current taxonomy and transactional writer. [type: chore] [source: adjacent-cold-review] | M | items/backlog-intake-v15-writer-contract.md |
 | `workspace-warm-cancellation-propagation` | Medium | — | **Fail warm requests on caller cancellation** — propagate cancellation instead of returning a successful partial warm result. [type: correctness] [source: adjacent-cold-review] | M | items/workspace-warm-cancellation-propagation.md |
+| `cohesion-multifile-partial-semantic-model` | Medium | — | Fix cohesion analysis across multi-file partial types so suggestions do not fail closed. [type: bug] [source: live-surface-audit] | M | items/cohesion-multifile-partial-semantic-model.md |
+| `unused-code-analyzer-static-lazy-field-read-safety` | Medium | — | Stop dead-field analysis from marking static Lazy-backed reads safely removable. [type: correctness] [source: live-surface-audit] | M | items/unused-code-analyzer-static-lazy-field-read-safety.md |
+| `unused-code-analyzer-captured-local-read-safety` | Medium | — | Treat locals read by nested local functions as live. [type: correctness] [source: live-surface-audit] | S | items/unused-code-analyzer-captured-local-read-safety.md |
+| `diagnostic-details-project-diagnostic-location-contract` | Medium | — | Make diagnostic_details accept the exact locations project_diagnostics emits. [type: bug] [source: live-surface-audit] | M | items/diagnostic-details-project-diagnostic-location-contract.md |
+| `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
+| `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
+| `workspace-manager-file-watcher-disposal-ownership` | Medium | — | Establish one explicit file-watcher disposal owner between production DI and WorkspaceManager. | M | items/workspace-manager-file-watcher-disposal-ownership.md |
 
 ## Low
 
@@ -237,6 +244,8 @@
 | `workspace-warm-repeat-cache-causal-regression` | Low | — | **Make repeat-warm coverage causal** — replace the brittle wall-clock speed ratio with the cold-to-cached state transition. [type: test] [source: adjacent-cold-review] | S | items/workspace-warm-repeat-cache-causal-regression.md |
 | `copilot-self-edit-mutation-policy-consistency` | Low | — | **Make self-edit mutation policy session-aware** — reconcile the blanket apply rule with the documented checkout-under-build boundary. [type: chore] [source: adjacent-cold-review] | M | items/copilot-self-edit-mutation-policy-consistency.md |
 | `retired-root-mcp-doc-index-audit-sync` | Low | — | **Synchronize current documentation after root registration retirement** — repair the document index and generated audit state while preserving dated history. [type: docs] [source: adjacent-cold-review] | M | items/retired-root-mcp-doc-index-audit-sync.md |
+| `cohesion-overload-cluster-symbol-identity` | Low | — | Preserve overload identities during cohesion clustering. [type: correctness] [source: live-surface-audit] | S | items/cohesion-overload-cluster-symbol-identity.md |
+| `tool-consolidation-merge-child-dependency-repair` | Low | — | Repair stale tool-consolidation merge-child dependency metadata. [type: planning] [source: live-backlog-review] | S | items/tool-consolidation-merge-child-dependency-repair.md |
 
 ## Defer
 
