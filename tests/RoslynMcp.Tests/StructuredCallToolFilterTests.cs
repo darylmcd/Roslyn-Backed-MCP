@@ -1,9 +1,15 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -226,5 +232,178 @@ public sealed class StructuredCallToolFilterTests
         Assert.AreSame(expected, actual,
             "The filter must rethrow the original cancellation rather than converting it to an error result.");
         Assert.AreEqual(1, invocationCount, "The test must reach the wrapped handler exactly once.");
+    }
+
+    // ── Missing-workspace recovery wire contract ─────────────────────────────
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task Create_MissingWorkspace_LegacyElicitationRetry_PreservesBoundDispatchAndLegacyWireShape()
+    {
+        await AssertMissingWorkspaceRecoveryWireAsync(
+            protocolVersion: "2025-11-25",
+            modern: false);
+    }
+
+    [TestMethod]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task Create_MissingWorkspace_ModernMrtrRetry_PreservesBoundDispatchAndWireShape()
+    {
+        await AssertMissingWorkspaceRecoveryWireAsync(protocolVersion: null, modern: true);
+    }
+
+    private static async Task AssertMissingWorkspaceRecoveryWireAsync(string? protocolVersion, bool modern)
+    {
+        await using var harness = await CreateWorkspaceRecoveryHarnessAsync(protocolVersion);
+        var priorMessageCount = harness.RawServerMessages.Count;
+
+        var clientResult = await harness.Client.CallToolAsync(
+            "workspace_status",
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsFalse(clientResult.IsError is true,
+            "A recovered workspace_status call must complete through the original bound handler.");
+        StringAssert.Contains(
+            ((TextContentBlock)clientResult.Content![0]).Text,
+            WorkspaceRecoveryWireTools.WorkspaceId);
+
+        var results = FindNewResults(harness.RawServerMessages, priorMessageCount);
+        var finalResult = results[^1];
+        Assert.IsFalse(finalResult.TryGetProperty("isError", out var isError) && isError.GetBoolean());
+        var finalText = finalResult.GetProperty("content")[0].GetProperty("text").GetString();
+        StringAssert.Contains(
+            finalText,
+            WorkspaceRecoveryWireTools.WorkspaceId);
+        using var finalPayload = JsonDocument.Parse(finalText);
+        Assert.IsTrue(
+            finalPayload.RootElement.TryGetProperty("_meta", out _),
+            "The recovered early-terminal result must retain StructuredResultProjector observability metadata.");
+
+        if (modern)
+        {
+            Assert.HasCount(2, results,
+                "A modern session must emit input_required, then the successful retry result.");
+            Assert.AreEqual("input_required", results[0].GetProperty("resultType").GetString());
+            Assert.AreEqual("complete", finalResult.GetProperty("resultType").GetString());
+            Assert.IsFalse(
+                AnyServerRequest(
+                    harness.RawServerMessages,
+                    priorMessageCount,
+                    RequestMethods.ElicitationCreate),
+                "MRTR must carry the request inside input_required instead of also issuing a nested request.");
+        }
+        else
+        {
+            Assert.HasCount(1, results,
+                "A legacy session must answer the original call after its nested elicitation round trip.");
+            Assert.IsFalse(finalResult.TryGetProperty("resultType", out _),
+                "Legacy callers must not receive the July 2026 result discriminator.");
+            Assert.IsTrue(
+                AnyServerRequest(
+                    harness.RawServerMessages,
+                    priorMessageCount,
+                    RequestMethods.ElicitationCreate),
+                "The legacy protocol must retain direct nested elicitation/create recovery.");
+        }
+    }
+
+    private static async Task<InMemoryMcpClientServerHarness> CreateWorkspaceRecoveryHarnessAsync(
+        string? protocolVersion)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IWorkspaceManager>(new FailClosedWorkspaceManagerStub());
+        services.AddSingleton(new SecurityOptions { SanctionedRoots = [] });
+        services
+            .AddMcpServer(options =>
+            {
+                options.ServerInfo = new Implementation
+                {
+                    Name = "structured-filter-recovery-contract",
+                    Version = "1.0.0",
+                };
+            })
+            .WithTools<WorkspaceRecoveryWireTools>()
+            .WithRequestFilters(static filters =>
+                filters.AddCallToolFilter(StructuredCallToolFilter.Create));
+        var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        return await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: $"structured-filter-recovery-{protocolVersion ?? "modern"}",
+            clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
+            clientHandlers: new McpClientHandlers
+            {
+                ElicitationHandler = (_, _) => ValueTask.FromResult(new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        [ElicitationAllowlistPolicy.PathParameterName] =
+                            JsonSerializer.SerializeToElement(WorkspaceRecoveryWireTools.WorkspacePath),
+                    },
+                }),
+            },
+            disposalFailureContext: "structured-filter-recovery-contract",
+            cancellationToken: CancellationToken.None,
+            protocolVersion: protocolVersion,
+            serverOptions: options,
+            serverServicesFactory: () => provider,
+            captureServerMessages: true);
+    }
+
+    private static IReadOnlyList<JsonElement> FindNewResults(
+        IReadOnlyList<string> rawMessages,
+        int priorMessageCount)
+    {
+        var results = new List<JsonElement>();
+        foreach (var rawMessage in rawMessages.Skip(priorMessageCount))
+        {
+            using var document = JsonDocument.Parse(rawMessage);
+            if (document.RootElement.TryGetProperty("result", out var result))
+            {
+                results.Add(result.Clone());
+            }
+        }
+
+        return results;
+    }
+
+    private static bool AnyServerRequest(
+        IReadOnlyList<string> rawMessages,
+        int priorMessageCount,
+        string method)
+    {
+        foreach (var rawMessage in rawMessages.Skip(priorMessageCount))
+        {
+            using var document = JsonDocument.Parse(rawMessage);
+            if (document.RootElement.TryGetProperty("method", out var candidate) &&
+                string.Equals(candidate.GetString(), method, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [McpServerToolType]
+    private sealed class WorkspaceRecoveryWireTools
+    {
+        internal const string WorkspaceId = "11111111111111111111111111111111";
+        internal const string WorkspacePath = "C:/synthetic/structured-filter.slnx";
+
+        [McpServerTool(Name = "workspace_load")]
+        public static string Load(string path) => JsonSerializer.Serialize(new
+        {
+            workspaceId = WorkspaceId,
+            loadedPath = path,
+        });
+
+        [McpServerTool(Name = "workspace_status")]
+        public static string Status(string workspaceId) => JsonSerializer.Serialize(new
+        {
+            workspaceId,
+            state = "ready",
+        });
     }
 }
