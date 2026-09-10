@@ -1441,6 +1441,88 @@ public class NestedHost
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSingleSymbol()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await AddDuplicateWidgetFixtureAsync(workspace);
+
+        var ambiguous = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            ScaffoldingService.PreviewScaffoldTestAsync(
+                workspace.WorkspaceId,
+                new ScaffoldTestDto(
+                    "SampleLib.Tests",
+                    "Widget",
+                    "Describe",
+                    ReferenceTestFile: string.Empty),
+                CancellationToken.None));
+
+        StringAssert.Contains(ambiguous.Message, "Ambiguous type name 'Widget'");
+        StringAssert.Contains(ambiguous.Message, "Alpha.Widget");
+        StringAssert.Contains(ambiguous.Message, "Beta.Widget");
+
+        var provider = new RecordingTestNameSuggestionProvider("Describe_WhenAlphaWidgetIsReady_ReturnsAlpha");
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Alpha.Widget",
+                "Describe",
+                ReferenceTestFile: string.Empty,
+                UseSampling: true),
+            CancellationToken.None,
+            provider);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.AreEqual(1, provider.CallCount,
+            "A qualified target must pass the sampling ambiguity preflight and invoke the provider.");
+        Assert.IsNotNull(provider.LastContext);
+        Assert.AreEqual("Widget", provider.LastContext.TargetTypeName,
+            "Sampling context must use the simple type name, not an invalid dotted identifier.");
+
+        var generatedPath = workspace.GetPath("SampleLib.Tests", "WidgetGeneratedTests.cs");
+        var contents = await File.ReadAllTextAsync(generatedPath, CancellationToken.None);
+        StringAssert.Contains(contents, "using Alpha;");
+        Assert.IsFalse(contents.Contains("using Beta;", StringComparison.Ordinal));
+        StringAssert.Contains(contents, "public class WidgetGeneratedTests");
+        StringAssert.Contains(contents, "new Widget(");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Batch_QualifiedDuplicateTarget_RejectsSimpleNameAndSelectsExactSymbol()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await AddDuplicateWidgetFixtureAsync(workspace);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestBatchDto(
+                "SampleLib.Tests",
+                [
+                    new ScaffoldTestBatchTargetDto("Widget", "Describe"),
+                    new ScaffoldTestBatchTargetDto("Beta.Widget", "Describe"),
+                ],
+                "auto"),
+            CancellationToken.None);
+
+        Assert.AreEqual(1, preview.Changes.Count,
+            "The ambiguous simple target must be skipped while the qualified target creates one file.");
+        Assert.IsNotNull(preview.Warnings);
+        StringAssert.Contains(string.Join(Environment.NewLine, preview.Warnings), "Ambiguous type 'Widget'");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var generatedPath = workspace.GetPath("SampleLib.Tests", "WidgetGeneratedTests.cs");
+        var contents = await File.ReadAllTextAsync(generatedPath, CancellationToken.None);
+        StringAssert.Contains(contents, "using Beta;");
+        Assert.IsFalse(contents.Contains("using Alpha;", StringComparison.Ordinal));
+        StringAssert.Contains(contents, "public class WidgetGeneratedTests");
+        StringAssert.Contains(contents, "new Widget(");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_Preview_StaticClass_Omits_NewT_InArrange()
     {
         // scaffold-test-preview-static-target-body: a `static class` target should scaffold
@@ -1478,6 +1560,30 @@ public static class StaticUtil
             "Static-class scaffold must NOT emit `new StaticUtil(...)` in Arrange.");
         Assert.IsFalse(contents.Contains("var subject ="),
             "Static-class scaffold must NOT emit a `subject` instance.");
+    }
+
+    private static async Task AddDuplicateWidgetFixtureAsync(IsolatedWorkspaceScope workspace)
+    {
+        var fixturePath = workspace.GetPath("SampleLib", "DuplicateWidgetFixture.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace Alpha
+{
+    public sealed class Widget
+    {
+        public string Describe() => "alpha";
+    }
+}
+
+namespace Beta
+{
+    public sealed class Widget
+    {
+        public string Describe() => "beta";
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
     }
 
     [TestMethod]

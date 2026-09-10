@@ -57,12 +57,10 @@ internal sealed class SingleTestScaffolder
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
         var testNamespace = project.Name;
 
-        // Accept a dotted FQN as input (callers who hit the ambiguity error get pointed at
-        // "the fully qualified type name", then re-invoke with `Namespace.Type`). The resolver
-        // only ever looks up the simple name, so strip to that for lookup — and treat the
-        // matched symbol's Name as authoritative once we have it, so the downstream class
-        // identifier is always a single identifier (dotted identifiers are a CS syntax error).
-        var lookupName = TestScaffoldRenderer.StripToSimpleTypeName(request.TargetTypeName);
+        // Preserve a dotted FQN until candidate selection. The renderer enumerates Roslyn symbols
+        // by their simple tail, then filters qualified requests by the matched symbol's full display
+        // name. Only the resolved symbol's simple Name can flow into generated C# identifiers.
+        var requestedTypeName = request.TargetTypeName;
 
         // scaffold-sampling-mrtr-replay-cost: the sampling exchange runs FIRST, ahead of every
         // semantic step below. Its provider may terminate this leg with a protocol input-required
@@ -71,7 +69,7 @@ internal sealed class SingleTestScaffolder
         // the syntactic prompt context and the retry leg consumes the answer without rebuilding it,
         // leaving project resolution, compilation and sibling inference paid exactly once.
         var (sampledTestName, solution) = await SuggestSampledTestNameAsync(
-            request, lookupName, workspaceId, project, projectDirectory, testNameSuggestionProvider, ct).ConfigureAwait(false);
+            request, requestedTypeName, workspaceId, project, projectDirectory, testNameSuggestionProvider, ct).ConfigureAwait(false);
 
         // The initial MRTR leg obtains a snapshot for the syntax-only ambiguity preflight, then
         // terminates while requesting input. The replay skips that preflight and obtains exactly
@@ -79,9 +77,9 @@ internal sealed class SingleTestScaffolder
         solution ??= _workspace.GetCurrentSolution(workspaceId);
 
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
-            solution, request.TestProjectName, lookupName, request.TargetMethodName, ct).ConfigureAwait(false);
+            solution, request.TestProjectName, requestedTypeName, request.TargetMethodName, ct).ConfigureAwait(false);
 
-        var simpleTypeName = typeInfo.MatchedType?.Name ?? lookupName;
+        var simpleTypeName = typeInfo.MatchedType?.Name ?? TestScaffoldRenderer.StripToSimpleTypeName(requestedTypeName);
         var testFilePath = Path.Combine(projectDirectory, GeneratedTestFileName(simpleTypeName));
 
         // Sibling-pattern inference (scaffold-test-sibling-pattern-inference). When an explicit
@@ -119,7 +117,7 @@ internal sealed class SingleTestScaffolder
     /// </summary>
     private async Task<(TestNameSuggestionResult Suggestion, Solution? Solution)> SuggestSampledTestNameAsync(
         ScaffoldTestDto request,
-        string lookupTypeName,
+        string requestedTypeName,
         string workspaceId,
         ProjectStatusDto project,
         string projectDirectory,
@@ -143,18 +141,19 @@ internal sealed class SingleTestScaffolder
             return (NormalizeSuggestion(pending), null);
         }
 
+        var simpleTypeName = TestScaffoldRenderer.StripToSimpleTypeName(requestedTypeName);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         await ThrowIfTargetTypeIsSyntacticallyAmbiguousAsync(
-            solution, project.Name, project.FilePath, lookupTypeName, ct).ConfigureAwait(false);
+            solution, project.Name, project.FilePath, requestedTypeName, ct).ConfigureAwait(false);
 
         // Syntactic inputs only: this runs ahead of symbol resolution, so anything the compilation
         // would supply is out of reach here by design — see ScaffoldTestNameSuggestionContext.
         var siblingNames = CollectSiblingTestMethodNames(
             projectDirectory,
-            Path.Combine(projectDirectory, GeneratedTestFileName(lookupTypeName)),
+            Path.Combine(projectDirectory, GeneratedTestFileName(simpleTypeName)),
             maxNames: 6);
         var context = new ScaffoldTestNameSuggestionContext(
-            lookupTypeName,
+            simpleTypeName,
             request.TargetMethodName,
             siblingNames.Names,
             siblingNames.Warning);
@@ -209,6 +208,9 @@ internal sealed class SingleTestScaffolder
             return [];
         }
 
+        var simpleTypeName = TestScaffoldRenderer.StripToSimpleTypeName(targetTypeName);
+        var isQualifiedTypeName = TestScaffoldRenderer.IsQualifiedTypeName(targetTypeName);
+
         // Match FindTargetTypeAsync exactly: inspect the test project, then each direct
         // reference in project-reference order, and stop at the first project with any matches.
         // Documents and their cached syntax trees come from this same loaded Solution snapshot,
@@ -231,12 +233,17 @@ internal sealed class SingleTestScaffolder
                 {
                     if (declaration.Kind() is not (SyntaxKind.ClassDeclaration or SyntaxKind.StructDeclaration or
                             SyntaxKind.RecordDeclaration or SyntaxKind.RecordStructDeclaration) ||
-                        !string.Equals(declaration.Identifier.ValueText, targetTypeName, StringComparison.Ordinal))
+                        !string.Equals(declaration.Identifier.ValueText, simpleTypeName, StringComparison.Ordinal))
                     {
                         continue;
                     }
 
                     var (identity, display) = GetQualifiedTypeNames(declaration);
+                    if (isQualifiedTypeName && !string.Equals(display, targetTypeName, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     candidates[identity] = display;
                 }
             }
@@ -616,10 +623,13 @@ internal static class TestScaffoldRenderer
         string targetTypeName,
         CancellationToken ct)
     {
-        return compilation.GetSymbolsWithName(targetTypeName, SymbolFilter.Type, ct)
+        var simpleTypeName = StripToSimpleTypeName(targetTypeName);
+        var isQualifiedTypeName = IsQualifiedTypeName(targetTypeName);
+        return compilation.GetSymbolsWithName(simpleTypeName, SymbolFilter.Type, ct)
             .OfType<INamedTypeSymbol>()
             .Where(t => t.TypeKind is TypeKind.Class or TypeKind.Struct &&
-                        string.Equals(t.Name, targetTypeName, StringComparison.Ordinal));
+                        string.Equals(t.Name, simpleTypeName, StringComparison.Ordinal))
+            .Where(t => !isQualifiedTypeName || string.Equals(t.ToDisplayString(), targetTypeName, StringComparison.Ordinal));
     }
 
     internal static ResolvedTargetTypeInfo CreateResolvedTargetTypeInfo(
@@ -1039,11 +1049,9 @@ internal static class TestScaffoldRenderer
 
     /// <summary>
     /// Strip a dotted input (e.g. <c>"SampleLib.Hierarchy.Circle"</c>) to its last identifier
-    /// segment so it can be used both as a lookup key against <see cref="Compilation.GetSymbolsWithName"/>
-    /// (which indexes on the simple name) and as a C# identifier in scaffolded output. Callers
-    /// sometimes arrive here with a fully-qualified name because the ambiguity-resolution
-    /// error message suggests "use the fully qualified type name" — without this strip, the
-    /// dotted input would flow into the class-name template and produce a CS syntax error.
+    /// segment for <see cref="Compilation.GetSymbolsWithName"/> enumeration and generated C# identifiers.
+    /// Candidate resolution must retain the original input so a qualified request can be filtered by
+    /// the matched symbol's full display name.
     /// </summary>
     internal static string StripToSimpleTypeName(string input)
     {
@@ -1052,6 +1060,9 @@ internal static class TestScaffoldRenderer
         var lastDot = input.LastIndexOf('.');
         return lastDot < 0 ? input : input[(lastDot + 1)..];
     }
+
+    internal static bool IsQualifiedTypeName(string input) =>
+        !string.Equals(StripToSimpleTypeName(input), input, StringComparison.Ordinal);
 
     /// <summary>
     /// Roslyn-parses the sibling source file, picks the first top-level class declaration
