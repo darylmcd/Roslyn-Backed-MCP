@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-10T19:21:20Z
+**updated_at:** 2026-09-10T19:46:08Z
 
 ## Agent contract
 
@@ -109,6 +109,7 @@
 | `diagnostic-details-project-diagnostic-location-contract` | Medium | — | Make diagnostic_details accept the exact locations project_diagnostics emits. [type: bug] [source: live-surface-audit] | M | items/diagnostic-details-project-diagnostic-location-contract.md |
 | `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
 | `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
+| `workspace-manager-file-watcher-disposal-ownership` | Medium | — | Establish one explicit file-watcher disposal owner between production DI and WorkspaceManager. | M | items/workspace-manager-file-watcher-disposal-ownership.md |
 
 ## Low
 
