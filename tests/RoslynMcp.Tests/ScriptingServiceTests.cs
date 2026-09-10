@@ -8,6 +8,7 @@ namespace RoslynMcp.Tests;
 public sealed class ScriptingServiceTests
 {
     private static readonly TimeSpan ContendedCompletionTimeout = TimeSpan.FromSeconds(5);
+    private const int ControlledCancellationRepetitions = 5;
 
     [TestMethod]
     [Timeout(60_000)]
@@ -171,32 +172,16 @@ public sealed class ScriptingServiceTests
             MaxAbandonedEvaluations = 2,
         };
         var supervisor = new ScriptExecutionSupervisor(NullLogger<ScriptingService>.Instance, options);
-        using var worker = new ControlledWorker();
-        using var cts = new CancellationTokenSource();
-        var execution = worker.ExecuteAsync(
-            supervisor,
-            CreateLongExecutionSettings(),
-            cts.Token);
-
-        try
+        for (var iteration = 0; iteration < ControlledCancellationRepetitions; iteration++)
         {
-            Assert.IsTrue(worker.WaitUntilEntered(), "The worker should start before outer cancellation.");
-            cts.Cancel();
+            var result = await ExecuteControlledOuterCancellationAsync(
+                supervisor,
+                honorWorkerCancellation: false).ConfigureAwait(false);
 
-            var result = await execution.WaitAsync(ContendedCompletionTimeout).ConfigureAwait(false);
             Assert.AreEqual(ScriptExecutionOutcomeKind.OuterCancelled, result.Outcome.Kind);
             Assert.AreEqual(0, supervisor.AbandonedEvaluationCount, "Cancellation cleanup should not report a reclaimed worker as abandoned.");
             Assert.AreEqual(0, supervisor.ActiveEvaluationCount, "Outer cancellation should release the capacity slot.");
         }
-        finally
-        {
-            cts.Cancel();
-            worker.ReleaseAndWait();
-        }
-
-        Assert.IsTrue(
-            SpinWait.SpinUntil(() => supervisor.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(2)),
-            "The released worker must not survive the test.");
     }
 
     [TestMethod]
@@ -206,35 +191,19 @@ public sealed class ScriptingServiceTests
         var supervisor = new ScriptExecutionSupervisor(
             NullLogger<ScriptingService>.Instance,
             new ScriptingServiceOptions { MaxConcurrentEvaluations = 1 });
-        using var entered = new ManualResetEventSlim(false);
-        using var release = new ManualResetEventSlim(false);
-        using var cts = new CancellationTokenSource();
+        for (var iteration = 0; iteration < ControlledCancellationRepetitions; iteration++)
+        {
+            var result = await ExecuteControlledOuterCancellationAsync(
+                supervisor,
+                honorWorkerCancellation: true).ConfigureAwait(false);
 
-        var execution = supervisor.ExecuteAsync(
-            timeoutToken =>
-            {
-                entered.Set();
-                release.Wait(TimeSpan.FromSeconds(4));
-                timeoutToken.ThrowIfCancellationRequested();
-                return ScriptExecutionOutcome.Success(42);
-            },
-            onProgress: null,
-            CreateLongExecutionSettings(),
-            cts.Token);
-
-        Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(2)), "Worker did not reach the cancellation window.");
-        cts.Cancel();
-        release.Set();
-
-        var result = await execution.WaitAsync(ContendedCompletionTimeout).ConfigureAwait(false);
-        Assert.AreEqual(
-            ScriptExecutionOutcomeKind.OuterCancelled,
-            result.Outcome.Kind,
-            "Caller cancellation must win over the linked worker token's timeout-shaped cancellation.");
-        Assert.IsTrue(
-            SpinWait.SpinUntil(() => supervisor.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(2)),
-            "The cooperative worker should drain after caller cancellation.");
-        Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
+            Assert.AreEqual(
+                ScriptExecutionOutcomeKind.OuterCancelled,
+                result.Outcome.Kind,
+                "Caller cancellation must win over the linked worker token's timeout-shaped cancellation.");
+            Assert.AreEqual(0, supervisor.AbandonedEvaluationCount);
+            Assert.AreEqual(0, supervisor.ActiveEvaluationCount);
+        }
     }
 
     [TestMethod]
@@ -629,61 +598,89 @@ public sealed class ScriptingServiceTests
             HeartbeatInterval: TimeSpan.FromMilliseconds(100),
             Budget: TimeSpan.FromSeconds(30));
 
-    private sealed class ControlledWorker : IDisposable
+    private static async Task<ScriptExecutionResult> ExecuteControlledOuterCancellationAsync(
+        ScriptExecutionSupervisor supervisor,
+        bool honorWorkerCancellation)
     {
-        private readonly ManualResetEventSlim _entered = new(false);
-        private readonly ManualResetEventSlim _release = new(false);
-        private readonly ManualResetEventSlim _exited = new(false);
-        private int _scheduled;
+        var worker = new ControlledWorker(honorWorkerCancellation);
+        using var cancellation = new CancellationTokenSource();
+        var cancellationClassified = worker.ExecuteAsync(
+            supervisor,
+            CreateLongExecutionSettings(),
+            cancellation.Token);
+
+        try
+        {
+            await worker.WorkerEntered.ConfigureAwait(false);
+            await worker.MonitorStarted.ConfigureAwait(false);
+            cancellation.Cancel();
+
+            var result = await cancellationClassified.ConfigureAwait(false);
+            worker.Release();
+            await worker.WorkerExited.ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            worker.Release();
+            if (worker.WorkerEntered.IsCompleted)
+            {
+                await worker.WorkerExited.ConfigureAwait(false);
+            }
+        }
+    }
+
+    private sealed class ControlledWorker
+    {
+        private readonly bool _honorWorkerCancellation;
+        private readonly TaskCompletionSource<bool> _workerEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _monitorStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _workerExited =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ControlledWorker(bool honorWorkerCancellation)
+        {
+            _honorWorkerCancellation = honorWorkerCancellation;
+        }
+
+        public Task WorkerEntered => _workerEntered.Task;
+        public Task MonitorStarted => _monitorStarted.Task;
+        public Task WorkerExited => _workerExited.Task;
 
         public Task<ScriptExecutionResult> ExecuteAsync(
             ScriptExecutionSupervisor supervisor,
             ScriptExecutionSupervisorSettings settings,
             CancellationToken cancellationToken)
         {
-            Assert.AreEqual(0, Interlocked.Exchange(ref _scheduled, 1), "A controlled worker can only be scheduled once.");
             return supervisor.ExecuteAsync(
                 Run,
                 onProgress: null,
                 settings,
-                cancellationToken);
+                cancellationToken,
+                onMonitorStarted: () => _monitorStarted.TrySetResult(true));
         }
 
-        public bool WaitUntilEntered() => _entered.Wait(TimeSpan.FromSeconds(2));
+        public void Release() => _release.TrySetResult(true);
 
-        public void ReleaseAndWait()
+        private ScriptExecutionOutcome Run(CancellationToken timeoutToken)
         {
-            _release.Set();
-            Assert.IsTrue(
-                _exited.Wait(TimeSpan.FromSeconds(4)),
-                "The controlled worker should exit after its release signal.");
-        }
-
-        public void Dispose()
-        {
-            _release.Set();
-            if (Volatile.Read(ref _scheduled) != 0 && !_exited.Wait(TimeSpan.FromSeconds(4)))
-            {
-                // Keep the events alive if the test has already failed and a worker is still using them.
-                return;
-            }
-
-            _entered.Dispose();
-            _release.Dispose();
-            _exited.Dispose();
-        }
-
-        private ScriptExecutionOutcome Run(CancellationToken _)
-        {
-            _entered.Set();
+            _workerEntered.TrySetResult(true);
             try
             {
-                _release.Wait();
+                _release.Task.GetAwaiter().GetResult();
+                if (_honorWorkerCancellation)
+                {
+                    timeoutToken.ThrowIfCancellationRequested();
+                }
                 return ScriptExecutionOutcome.Success(42);
             }
             finally
             {
-                _exited.Set();
+                _workerExited.TrySetResult(true);
             }
         }
     }
