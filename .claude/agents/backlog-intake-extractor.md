@@ -64,13 +64,16 @@ Target ratio: 3-5 raw candidates → 1 deduped row. If you're at < 2:1 dedupe, l
 
 ### 5. Classify priority
 
-- **P2**: tool broken for its core purpose, blocks ship, correctness bug with silent bad output, host-crash-class.
-- **P3**: meaningful friction / gap that consistently hurts workflow quality; real fix needed.
-- **P4**: polish, nice-to-have, edge case, speculative.
+- **Critical**: tool broken for its core purpose, blocks ship, correctness bug with silent bad output, host-crash-class.
+- **High**: a material user-facing regression or broad workflow blocker with a bounded fix.
+- **Medium**: meaningful friction / gap that consistently hurts workflow quality; real fix needed.
+- **Low**: polish, nice-to-have, edge case, or speculative improvement.
+
+Raw external-source severity is not a local priority label. When a source explicitly carries a raw severity, map it only as `P0 -> Critical`, `P1 -> High`, `P2 -> Medium`, and `P3 -> Low`; otherwise classify directly with the v15 bands above. Emit only `Critical`, `High`, `Medium`, or `Low` in `pri`. Preserve an upstream raw value as evidence rather than emitting it as a backlog band.
 
 ### 6. Cross-check against existing backlog
 
-Read `existingBacklogPath`. For each new candidate, check if any existing row in P2/P3/P4 describes the same issue. If so, mark the candidate as `"refine existing row <id>"` rather than a new row.
+Read `existingBacklogPath`. For each new candidate, check every existing `Critical`, `High`, `Medium`, and `Low` row for the same issue. If one overlaps, mark the candidate as `"refine existing row <id>"` rather than a new row.
 
 ### 7. Emit the report
 
@@ -91,7 +94,7 @@ overlapsWithExisting: <int>
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `<kebab-id>` | P2|P3|P4 | — or <dep-id> | <one-paragraph summary citing tool/service/file anchors> |
+| `<kebab-id>` | Critical|High|Medium|Low | — or <dep-id> | <one-paragraph summary citing tool/service/file anchors> |
 ...
 
 ### Notes
@@ -105,9 +108,10 @@ overlapsWithExisting: <int>
 ## Hard rules
 
 - **Do NOT write to disk.** Read-only agent. If you find yourself calling a writer, stop and emit `ERROR: writer called`.
+- **Do NOT prescribe a direct table edit.** This result is a proposal only. The caller persists accepted rows, refinements, detail notes, preamble changes, and timestamps through the global `node ~/.claude/scripts/backlog.mjs` writer.
 - **Do NOT invent anchors.** If a review file names a service class like `FooService`, verify (via Glob or Grep in `src/RoslynMcp.Roslyn/Services/`) that the file exists before citing it in a row's `do` text. If the file doesn't exist but the described behavior is real, cite the actual file you found that handles the behavior.
 - **Do NOT exceed 50 rows** after dedupe. If you produce 50+, dedupe harder or return with `status: error, message: "dedupe ratio too low — review file set may need manual triage"`.
-- **Do NOT rank every row P3** to avoid decisions. Force P2 / P3 / P4 distribution to match the severity you observed.
+- **Do NOT rank every row Medium** to avoid decisions. Use the v15 bands that match the evidence.
 - **Do NOT split heroic rows yourself.** If a raw candidate describes 2-3 distinct code paths (e.g., "scaffold-test-preview emits invalid C# because (1) X (2) Y (3) Z"), emit it as ONE row and let the `/backlog-intake` skill's Phase 4 split it. Your job is to extract + dedupe, not to plan.
 
 ## Why this agent exists
