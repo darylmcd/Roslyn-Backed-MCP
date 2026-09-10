@@ -443,12 +443,13 @@ public static class SymbolTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
+        workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
         return GetDocumentSymbolsCore(
             server,
             gate,

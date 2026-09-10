@@ -1,14 +1,18 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn;
+using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
@@ -197,6 +201,50 @@ public sealed class ServerDiscoveryWireTests
     }
 
     [TestMethod]
+    [DoNotParallelize]
+    public async Task DeprecatedAlias_ToolsListAndOmittedWorkspaceDispatchMatchCanonical()
+    {
+        MsBuildInitializer.EnsureInitialized();
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var sampleSolution = TestFixtureFileSystem.FindFixturePath(
+            repositoryRoot,
+            "SampleSolution",
+            "SampleSolution.slnx",
+            "SampleSolution.sln");
+        var dogFile = Path.Combine(Path.GetDirectoryName(sampleSolution)!, "SampleLib", "Dog.cs");
+        await using var harness = await CreateDeprecatedAliasHarnessAsync(repositoryRoot);
+
+        var listed = await harness.Client.ListToolsAsync(
+            new ListToolsRequestParams(),
+            CancellationToken.None);
+        var canonicalTool = listed.Tools.Single(static tool => tool.Name == "document_symbols");
+        var aliasTool = listed.Tools.Single(static tool => tool.Name == "get_symbol_outline");
+        Assert.AreEqual(
+            canonicalTool.InputSchema.GetRawText(),
+            aliasTool.InputSchema.GetRawText(),
+            "The alias and canonical tool must advertise identical input schemas.");
+
+        var load = await harness.Client.CallToolAsync(
+            "workspace_load",
+            Args(("path", sampleSolution), ("prewarm", false), ("autoRestore", false)),
+            cancellationToken: CancellationToken.None);
+        Assert.IsFalse(load.IsError is true, load.TextPayload());
+
+        var canonical = await harness.Client.CallToolAsync(
+            "document_symbols",
+            Args(("filePath", dogFile)),
+            cancellationToken: CancellationToken.None);
+        var alias = await harness.Client.CallToolAsync(
+            "get_symbol_outline",
+            Args(("filePath", dogFile)),
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsFalse(canonical.IsError is true, canonical.TextPayload());
+        Assert.IsFalse(alias.IsError is true, alias.TextPayload());
+        AssertPayloadParityExcludingDeprecation(canonical.TextPayload(), alias.TextPayload());
+    }
+
+    [TestMethod]
     public async Task StableOnlyProfile_FiltersDiscoveryCatalogAndDirectDispatchAcrossEverySurface()
     {
         var selection = ToolTierSelection.Parse("stable");
@@ -374,6 +422,96 @@ public sealed class ServerDiscoveryWireTests
         Assert.HasCount(1, results, $"Expected one raw response result for {endpointName}.");
         return results[0];
     }
+
+    private static void AssertPayloadParityExcludingDeprecation(string canonicalJson, string aliasJson)
+    {
+        using var canonical = JsonDocument.Parse(canonicalJson);
+        using var alias = JsonDocument.Parse(aliasJson);
+
+        // `_meta` is request-local middleware observability (including elapsed time), not the
+        // tool response itself. Direct alias tests pin exact payload parity after removing only
+        // deprecation; this wire test additionally proves the dynamic dispatch path preserves
+        // every stable payload field while allowing the two independently timed calls to differ.
+        var canonicalFields = canonical.RootElement.EnumerateObject()
+            .Where(static property => property.Name is not ("deprecation" or "_meta"))
+            .Select(static property => $"{property.Name}\u001f{property.Value.GetRawText()}")
+            .ToArray();
+        var aliasFields = alias.RootElement.EnumerateObject()
+            .Where(static property => property.Name is not ("deprecation" or "_meta"))
+            .Select(static property => $"{property.Name}\u001f{property.Value.GetRawText()}")
+            .ToArray();
+        CollectionAssert.AreEqual(
+            canonicalFields,
+            aliasFields,
+            "The alias response must equal the canonical response apart from deprecation and request-local _meta.");
+
+        foreach (var (toolName, payload) in new[]
+                 {
+                     ("canonical", canonical.RootElement),
+                     ("alias", alias.RootElement),
+                 })
+        {
+            var meta = payload.GetProperty("_meta");
+            Assert.AreEqual(
+                "single-workspace",
+                meta.GetProperty("autoResolution").GetString(),
+                $"The {toolName} call must preserve omitted-workspace single-workspace recovery.");
+        }
+
+        Assert.AreEqual(JsonValueKind.Null, canonical.RootElement.GetProperty("deprecation").ValueKind);
+        var deprecation = alias.RootElement.GetProperty("deprecation");
+        Assert.AreEqual("get_symbol_outline", deprecation.GetProperty("aliasName").GetString());
+        Assert.AreEqual("document_symbols", deprecation.GetProperty("canonicalName").GetString());
+    }
+
+    private static async Task<InMemoryMcpClientServerHarness> CreateDeprecatedAliasHarnessAsync(
+        string repositoryRoot)
+    {
+        var hostAssembly = typeof(HostAssemblyMarker).Assembly;
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.ClearProviders());
+        services.AddRoslynMcpHostServices(
+            new WorkspaceManagerOptions(),
+            new ValidationServiceOptions(),
+            new PreviewStoreOptions(),
+            new ExecutionGateOptions(),
+            new SecurityOptions { SanctionedRoots = [repositoryRoot] },
+            new ScriptingServiceOptions());
+        services
+            .AddMcpServer(static options =>
+            {
+                options.ServerInfo = new Implementation
+                {
+                    Name = "deprecated-alias-wire-test",
+                    Version = "1.0.0",
+                };
+            })
+            .WithToolsFromAssembly(hostAssembly)
+            .WithResourcesFromAssembly(hostAssembly)
+            .WithPromptsFromAssembly(hostAssembly)
+            .WithRequestFilters(static filters =>
+            {
+                filters.AddListToolsFilter(StaticListResultFilter.CreateTools);
+                filters.AddCallToolFilter(StructuredCallToolFilter.Create);
+            });
+        services.AddRoslynMcpSurfaceRegistrationPolicy(ToolTierSelection.All);
+
+        var provider = services.BuildServiceProvider();
+        var serverOptions = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        return await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "deprecated-alias-wire",
+            clientCapabilities: new ClientCapabilities(),
+            clientHandlers: new McpClientHandlers(),
+            disposalFailureContext: "deprecated alias wire test",
+            cancellationToken: CancellationToken.None,
+            protocolVersion: null,
+            serverOptions: serverOptions,
+            serverServicesFactory: () => provider);
+    }
+
+    private static Dictionary<string, object?> Args(
+        params (string Name, object? Value)[] values) =>
+        values.ToDictionary(static value => value.Name, static value => value.Value, StringComparer.Ordinal);
 
     private static void AssertResultType(
         JsonElement result,

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -14,7 +15,7 @@ namespace RoslynMcp.Tests;
 ///      canonical's response payload (minus <c>deprecation</c>) — so callers see no
 ///      observable behavior difference.
 ///   2. The <c>deprecation</c> field is always present in the schema. It is
-///      <c>{ canonicalName, reason }</c> on the alias and JSON <c>null</c> on the canonical.
+///      a catalog-owned lifecycle declaration on the alias and JSON <c>null</c> on the canonical.
 /// </summary>
 [DoNotParallelize]
 [TestClass]
@@ -64,7 +65,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         AssertAliasParity(
             canonicalJson,
             aliasJson,
-            sharedFields: ["count", "symbols"],
+            expectedAliasName: "get_symbol_outline",
             expectedCanonicalName: "document_symbols");
     }
 
@@ -94,7 +95,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         AssertAliasParity(
             canonicalJson,
             aliasJson,
-            sharedFields: ["count", "groups"],
+            expectedAliasName: "find_duplicated_code",
             expectedCanonicalName: "find_duplicated_methods");
     }
 
@@ -125,7 +126,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         AssertAliasParity(
             canonicalJson,
             aliasJson,
-            sharedFields: ["success", "error", "lineCoveragePercent", "branchCoveragePercent", "modules", "failureEnvelope"],
+            expectedAliasName: "get_test_coverage_map",
             expectedCanonicalName: "test_coverage");
     }
 
@@ -152,6 +153,14 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
                 $"Alias '{name}' must be stable (matches the canonical tool's tier).");
             Assert.AreEqual(category, entry.Category,
                 $"Alias '{name}' must land in the canonical tool's catalog category.");
+            Assert.IsNotNull(entry.Deprecation,
+                $"Alias '{name}' must publish its lifecycle declaration in the catalog.");
+            Assert.AreEqual(name, entry.Deprecation.AliasName);
+            Assert.AreEqual(ToolAliasDeprecation.SisterServerReason, entry.Deprecation.Reason);
+            Assert.IsNull(entry.Deprecation.RiskBucket,
+                "Ordinary aliases must not claim a preview/apply mutation-risk bucket.");
+            Assert.AreEqual("1.33.0", entry.Deprecation.IntroducedRelease);
+            Assert.AreEqual(2, entry.Deprecation.EarliestRemovalMajor);
         }
     }
 
@@ -180,7 +189,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetSymbolOutline_Alias_DeprecationFieldShape()
     {
-        // Pin the deprecation envelope shape: { canonicalName, reason }.
+        // Pin every additive lifecycle field while retaining the legacy canonicalName/reason pair.
         var dogFile = FindDocumentPath("Dog.cs");
 
         var json = await SymbolTools.GetSymbolOutline(
@@ -194,39 +203,48 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("deprecation", out var deprecation));
         Assert.AreEqual(JsonValueKind.Object, deprecation.ValueKind);
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                "aliasName",
+                "canonicalName",
+                "reason",
+                "riskBucket",
+                "introducedRelease",
+                "earliestRemovalMajor",
+            },
+            deprecation.EnumerateObject().Select(static property => property.Name).ToArray());
+        Assert.AreEqual("get_symbol_outline", deprecation.GetProperty("aliasName").GetString());
         Assert.AreEqual("document_symbols", deprecation.GetProperty("canonicalName").GetString());
         Assert.AreEqual(
-            "alias for cross-MCP-server name compatibility",
+            ToolAliasDeprecation.SisterServerReason,
             deprecation.GetProperty("reason").GetString());
+        Assert.AreEqual(JsonValueKind.Null, deprecation.GetProperty("riskBucket").ValueKind,
+            "Ordinary aliases are not preview/apply routes and must not claim a risk bucket.");
+        Assert.AreEqual("1.33.0", deprecation.GetProperty("introducedRelease").GetString());
+        Assert.AreEqual(2, deprecation.GetProperty("earliestRemovalMajor").GetInt32());
     }
 
     /// <summary>
-    /// Project the canonical and alias payloads onto only the shared (non-deprecation) fields
-    /// and assert the JSON is byte-equal. This pins the contract that "the alias is the
-    /// canonical plus a deprecation envelope" — no semantic divergence is allowed.
+    /// Remove only <c>deprecation</c> and compare every remaining ordered field/value pair. This
+    /// pins the contract that an alias is the canonical payload plus lifecycle guidance — no
+    /// hidden response divergence is allowed.
     /// </summary>
     private static void AssertAliasParity(
         string canonicalJson,
         string aliasJson,
-        string[] sharedFields,
+        string expectedAliasName,
         string expectedCanonicalName)
     {
         using var canonicalDoc = JsonDocument.Parse(canonicalJson);
         using var aliasDoc = JsonDocument.Parse(aliasJson);
 
-        // Field-by-field equality on the shared subset. Comparing rendered RawText avoids
-        // floating-point/format jitter and matches what the wire delivers.
-        foreach (var field in sharedFields)
-        {
-            Assert.IsTrue(canonicalDoc.RootElement.TryGetProperty(field, out var canonicalField),
-                $"Canonical response missing expected field '{field}'.");
-            Assert.IsTrue(aliasDoc.RootElement.TryGetProperty(field, out var aliasField),
-                $"Alias response missing expected field '{field}'.");
-            Assert.AreEqual(
-                canonicalField.GetRawText(),
-                aliasField.GetRawText(),
-                $"Field '{field}' diverges between canonical and alias responses.");
-        }
+        var canonicalWithoutDeprecation = PayloadFieldsWithoutDeprecation(canonicalDoc.RootElement);
+        var aliasWithoutDeprecation = PayloadFieldsWithoutDeprecation(aliasDoc.RootElement);
+        CollectionAssert.AreEqual(
+            canonicalWithoutDeprecation,
+            aliasWithoutDeprecation,
+            "The alias response must equal the canonical response after removing only deprecation.");
 
         // Canonical must publish deprecation=null; alias must publish a populated envelope.
         Assert.IsTrue(canonicalDoc.RootElement.TryGetProperty("deprecation", out var canonicalDep));
@@ -236,11 +254,21 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
         Assert.IsTrue(aliasDoc.RootElement.TryGetProperty("deprecation", out var aliasDep));
         Assert.AreEqual(JsonValueKind.Object, aliasDep.ValueKind,
             "Alias response must emit a populated deprecation object.");
+        Assert.AreEqual(expectedAliasName,
+            aliasDep.GetProperty("aliasName").GetString());
         Assert.AreEqual(expectedCanonicalName,
             aliasDep.GetProperty("canonicalName").GetString());
         Assert.AreEqual(
-            "alias for cross-MCP-server name compatibility",
+            ToolAliasDeprecation.SisterServerReason,
             aliasDep.GetProperty("reason").GetString());
+        Assert.AreEqual(JsonValueKind.Null, aliasDep.GetProperty("riskBucket").ValueKind);
+        Assert.AreEqual("1.33.0", aliasDep.GetProperty("introducedRelease").GetString());
+        Assert.AreEqual(2, aliasDep.GetProperty("earliestRemovalMajor").GetInt32());
     }
 
+    private static string[] PayloadFieldsWithoutDeprecation(JsonElement payload) =>
+        payload.EnumerateObject()
+            .Where(static property => property.Name != "deprecation")
+            .Select(static property => $"{property.Name}\u001f{property.Value.GetRawText()}")
+            .ToArray();
 }

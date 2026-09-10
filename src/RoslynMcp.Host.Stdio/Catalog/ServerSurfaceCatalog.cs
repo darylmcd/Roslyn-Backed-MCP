@@ -415,6 +415,7 @@ public static partial class ServerSurfaceCatalog
         AddIfChanged(changes, "uriTemplate", prior.UriTemplate, current.UriTemplate);
         AddIfChanged(changes, "parameters", prior.Parameters, current.Parameters);
         AddIfChanged(changes, "outputSchema", prior.OutputSchema, current.OutputSchema);
+        AddIfChanged(changes, "deprecation", prior.Deprecation, current.Deprecation);
         return changes;
     }
 
@@ -430,11 +431,17 @@ public static partial class ServerSurfaceCatalog
     // any [McpServerTool(OutputSchemaType = ...)]-annotated method publishes a JSON-Schema
     // on its catalog entry without per-row plumbing in the partial-class files. Tools without
     // an opt-in stay schema-less (OutputSchema == null) — the existing text-only contract.
-    private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
-        new("tool", name, category, supportTier, readOnly, destructive, summary,
+    private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary)
+    {
+        var entry = new SurfaceEntry("tool", name, category, supportTier, readOnly, destructive, summary,
             UriTemplate: null,
             Parameters: null,
             OutputSchema: ToolOutputSchemaIndex.GetSchema(name));
+
+        return ToolAliasDeprecation.TryGet(name, out var deprecation)
+            ? entry with { Deprecation = deprecation }
+            : entry;
+    }
 
     private static SurfaceEntry Resource(string name, string category, string supportTier, bool readOnly, bool destructive, string summary, string uriTemplate) =>
         new("resource", name, category, supportTier, readOnly, destructive, summary, uriTemplate,
@@ -486,7 +493,16 @@ public sealed record SurfaceEntry(
     string Summary,
     string? UriTemplate,
     IReadOnlyList<PromptParameterEntry>? Parameters,
-    System.Text.Json.Nodes.JsonNode? OutputSchema = null);
+    System.Text.Json.Nodes.JsonNode? OutputSchema = null)
+{
+    /// <summary>
+    /// Lifecycle metadata for a retained deprecated tool alias, or <see langword="null"/> for
+    /// canonical tools, resources, and prompts. This init-only property deliberately stays out
+    /// of the public positional constructor so existing catalog consumers remain source and
+    /// binary compatible.
+    /// </summary>
+    public ToolAliasDeprecation? Deprecation { get; init; }
+}
 
 /// <summary>
 /// get-prompt-text-publish-parameter-schema: per-parameter schema row published on each
