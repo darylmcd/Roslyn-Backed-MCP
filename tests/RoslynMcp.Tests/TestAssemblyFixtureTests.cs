@@ -108,13 +108,22 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
             Assert.AreEqual(0, fixture.DisposalEntryCount, "A fresh fixture has released nothing.");
             Assert.AreEqual(0, fixture.WorkspaceIdCache.Count, "A fresh fixture cache must be empty.");
 
-            await fixture.GetOrLoadWorkspaceIdAsync(copiedSolutionPath);
+            var workspaceId = await fixture.GetOrLoadWorkspaceIdAsync(copiedSolutionPath);
             Assert.AreEqual(
                 1,
                 fixture.WorkspaceIdCache.Count,
                 "The standalone fixture must own one deterministic cache entry before disposal.");
 
             await fixture.DisposeAsync();
+
+            Assert.IsFalse(
+                fixture.Services.WorkspaceManager.ContainsWorkspace(workspaceId),
+                "Provider disposal must release the fixture-owned workspace manager and its loaded workspace.");
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() =>
+                fixture.Services.WorkspaceExecutionGate.RunLoadGateAsync(
+                    _ => Task.FromResult(0),
+                    CancellationToken.None));
+
             await fixture.DisposeAsync();
             await fixture.DisposeAsync();
 
@@ -126,6 +135,10 @@ public sealed class TestAssemblyFixtureSharingBetaTests : TestBase
                 0,
                 fixture.WorkspaceIdCache.Count,
                 "Disposal must clear the fixture-owned workspace-id cache; entering the release block is insufficient.");
+            Assert.AreEqual(
+                1,
+                fixture.Services.DisposalEntryCount,
+                "Fixture disposal must release the test-owned provider exactly once, not only its workspace manager.");
 
             // Disposing the fixture must not reach through to the assembly-owned one.
             Assert.AreEqual(

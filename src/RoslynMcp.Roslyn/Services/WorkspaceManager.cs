@@ -51,6 +51,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
+    private readonly bool _ownsFileWatcher;
     private readonly WorkspaceManagerOptions _options;
     /// <summary>
     /// workspace-load-uses-cache-fast-path: optional persistent-cache coordinator. Null when
@@ -124,9 +125,39 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         WorkspaceManagerOptions? options = null,
         IWorkspaceCacheStore? cacheStore = null,
         Lazy<IWorkspaceExecutionGate>? evictionGate = null)
-        : this(logger, previewStore, fileWatcher, options, cacheStore, sessionLoader: null, evictionGate: evictionGate)
+        : this(
+            logger,
+            previewStore,
+            fileWatcher,
+            options,
+            cacheStore,
+            sessionLoader: null,
+            evictionGate: evictionGate,
+            ownsFileWatcher: true)
     {
     }
+
+    /// <summary>
+    /// Creates a manager for an <see cref="IServiceProvider"/> that owns the supplied watcher.
+    /// The manager still detaches its event subscription during disposal, but leaves watcher
+    /// disposal to the provider so one singleton has one disposal owner.
+    /// </summary>
+    internal static WorkspaceManager CreateProviderOwned(
+        ILogger<WorkspaceManager> logger,
+        IPreviewStore previewStore,
+        IFileWatcherService fileWatcher,
+        WorkspaceManagerOptions? options,
+        IWorkspaceCacheStore? cacheStore,
+        Lazy<IWorkspaceExecutionGate>? evictionGate) =>
+        new(
+            logger,
+            previewStore,
+            fileWatcher,
+            options,
+            cacheStore,
+            sessionLoader: null,
+            evictionGate: evictionGate,
+            ownsFileWatcher: false);
 
     /// <summary>
     /// Internal constructor used by <see cref="WorkspaceSessionLoaderFailureTests"/> to inject
@@ -144,11 +175,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         WorkspaceSessionLoader? sessionLoader,
         RestoreStalenessDetector? restoreStalenessDetector = null,
         UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null,
-        Lazy<IWorkspaceExecutionGate>? evictionGate = null)
+        Lazy<IWorkspaceExecutionGate>? evictionGate = null,
+        bool ownsFileWatcher = true)
     {
         _logger = logger;
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
+        _ownsFileWatcher = ownsFileWatcher;
         _options = options ?? new WorkspaceManagerOptions();
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
@@ -1050,7 +1083,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // sessions or the slot semaphore. Retirement tasks never capture a synchronization
         // context and observe the lifetime token, making this join bounded and deadlock-free.
         Task.WhenAll(retirementTasks).GetAwaiter().GetResult();
-        _fileWatcher.Dispose();
+        if (_ownsFileWatcher)
+        {
+            _fileWatcher.Dispose();
+        }
 
         // Capture session ids before dispose so we can raise WorkspaceClosed for each one.
         // This lets singletons like ICompilationCache free per-workspace state on host shutdown

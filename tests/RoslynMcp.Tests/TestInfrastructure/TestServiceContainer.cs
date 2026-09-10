@@ -1,13 +1,28 @@
 using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
-using RoslynMcp.Tests.Helpers;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
-internal sealed class TestServiceContainer
+/// <summary>
+/// Assembly-test services resolved from the production Roslyn composition root with explicit
+/// test options. The owned provider is the sole disposal root; concrete TestBase-facing views
+/// are bridged from their production interface singletons so their identities cannot drift.
+/// </summary>
+internal sealed class TestServiceContainer : IDisposable
 {
+    private readonly ServiceProvider _provider;
+    private int _disposeState;
+
+    private TestServiceContainer(ServiceProvider provider)
+    {
+        _provider = provider;
+    }
+
     public required IPreviewStore PreviewStore { get; init; }
     public required WorkspaceManager WorkspaceManager { get; init; }
     public required IFileWatcherService FileWatcher { get; init; }
@@ -72,297 +87,128 @@ internal sealed class TestServiceContainer
     public required WorkspaceDriftService WorkspaceDriftService { get; init; }
     public required ParameterObjectService ParameterObjectService { get; init; }
 
+    /// <summary>Number of successful first-entry attempts into the provider disposal root.</summary>
+    internal int DisposalEntryCount => Volatile.Read(ref _disposeState);
+
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
-        var previewStore = new PreviewStore();
-        var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
-        var deferredExecutionGate = new DeferredWorkspaceExecutionGate();
-        var workspaceManager = new WorkspaceManager(
-            NullLogger<WorkspaceManager>.Instance,
-            previewStore,
-            fileWatcher,
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 },
-            cacheStore: null,
-            evictionGate: new Lazy<IWorkspaceExecutionGate>(deferredExecutionGate.Resolve));
-        var workspaceExecutionGate = new WorkspaceExecutionGate(
-            new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue },
-            workspaceManager);
-        deferredExecutionGate.Bind(workspaceExecutionGate);
-        var compilationCache = new CompilationCache(workspaceManager);
-        var dotnetCommandRunner = new DotnetCommandRunner();
-        var gatedCommandExecutor = new GatedCommandExecutor(
-            workspaceManager,
-            dotnetCommandRunner,
-            NullLogger<GatedCommandExecutor>.Instance);
-        var testDiscoveryService = new TestDiscoveryService(
-            workspaceManager,
-            NullLogger<TestDiscoveryService>.Instance,
-            validationOptions);
-        var referenceService = new ReferenceService(
-            workspaceManager,
-            compilationCache,
-            NullLogger<ReferenceService>.Instance);
-        var mutationAnalysisService = new MutationAnalysisService(workspaceManager, compilationCache);
-        var codeFixRegistry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
-        var diagnosticService = new DiagnosticService(
-            workspaceManager,
-            compilationCache,
-            codeFixRegistry);
-        var changeTracker = new ChangeTracker(workspaceManager);
-        var undoService = new UndoService(NullLogger<UndoService>.Instance, workspaceManager, changeTracker);
-        var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
-        var namespaceDependencyService = new NamespaceDependencyService(
-            workspaceManager,
-            compilationCache);
-        var diRegistrationService = new DiRegistrationService(
-            workspaceManager,
-            compilationCache,
-            NullLogger<DiRegistrationService>.Instance);
-        var nuGetDependencyService = new NuGetDependencyService(
-            workspaceManager,
-            gatedCommandExecutor,
-            msBuildEvaluationService,
-            NullLogger<NuGetDependencyService>.Instance,
-            validationOptions);
-        var fileOperationService = new FileOperationService(
-            workspaceManager,
-            previewStore,
-            NullLogger<FileOperationService>.Instance);
-        var crossProjectRefactoringService = new CrossProjectRefactoringService(
-            workspaceManager,
-            previewStore,
-            compilationCache);
-        var compositePreviewStore = new CompositePreviewStore();
+        ArgumentNullException.ThrowIfNull(validationOptions);
 
-        // semantic-edit-with-compile-check-wrapper: hoist CompileCheckService construction
-        // above EditService so EditService can accept it as an optional dependency for
-        // the verify+autoRevertOnError pathway.
-        var compileCheckService = new CompileCheckService(
-            workspaceManager,
-            NullLogger<CompileCheckService>.Instance);
-        var unusedCodeAnalyzer = new UnusedCodeAnalyzer(
-            workspaceManager,
-            compilationCache,
-            NullLogger<UnusedCodeAnalyzer>.Instance);
-        var codeMetricsService = new CodeMetricsService(workspaceManager);
-        var cohesionAnalysisService = new CohesionAnalysisService(
-            workspaceManager,
-            NullLogger<CohesionAnalysisService>.Instance);
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.ClearProviders());
+        services.AddSingleton(new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
+        services.AddSingleton(validationOptions);
+        services.AddSingleton(new PreviewStoreOptions());
+        services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
+        services.AddSingleton(new ScriptingServiceOptions());
+        services.AddRoslynServices();
 
-        return new TestServiceContainer
+        // Tests need the production graph but not a second copy of its watcher registration.
+        // Factory registration makes this watcher provider-owned and therefore disposed exactly
+        // once when this container, the explicit test disposal root, is released.
+        services.RemoveAll<IFileWatcherService>();
+        services.AddSingleton<IFileWatcherService>(sp =>
+            new FileWatcherService(sp.GetRequiredService<ILogger<FileWatcherService>>()));
+
+        var provider = services.BuildServiceProvider();
+        try
         {
-            PreviewStore = previewStore,
-            WorkspaceManager = workspaceManager,
-            FileWatcher = fileWatcher,
-            WorkspaceExecutionGate = workspaceExecutionGate,
-            DotnetCommandRunner = dotnetCommandRunner,
-            GatedCommandExecutor = gatedCommandExecutor,
-            SymbolNavigationService = new SymbolNavigationService(
-                workspaceManager,
-                NullLogger<SymbolNavigationService>.Instance),
-            SymbolSearchService = new SymbolSearchService(
-                workspaceManager,
-                compilationCache,
-                NullLogger<SymbolSearchService>.Instance),
-            ReferenceService = referenceService,
-            MutationAnalysisService = mutationAnalysisService,
-            TypeConsumersService = new TypeConsumersService(
-                workspaceManager,
-                compilationCache,
-                NullLogger<TypeConsumersService>.Instance),
-            SemanticGrepService = new SemanticGrepService(
-                workspaceManager,
-                NullLogger<SemanticGrepService>.Instance),
-            SymbolRelationshipService = new SymbolRelationshipService(
-                workspaceManager,
-                referenceService,
-                compilationCache,
-                NullLogger<SymbolRelationshipService>.Instance),
-            DiagnosticService = diagnosticService,
-            UndoService = undoService,
-            RefactoringService = new RefactoringService(
-                workspaceManager,
-                previewStore,
-                NullLogger<RefactoringService>.Instance,
-                undoService,
-                changeTracker,
-                codeFixRegistry,
-                new PostApplySymbolResolver()),
-            BuildService = new BuildService(
-                workspaceManager,
-                gatedCommandExecutor,
-                compilationCache,
-                NullLogger<BuildService>.Instance,
-                validationOptions),
-            TestRunnerService = new TestRunnerService(
-                workspaceManager,
-                gatedCommandExecutor,
-                NullLogger<TestRunnerService>.Instance,
-                testDiscoveryService,
-                validationOptions,
-                exceptionReporter: null),
-            TestDiscoveryService = testDiscoveryService,
-            CompletionService = new CompletionService(workspaceManager),
-            CodeActionService = new CodeActionService(
-                workspaceManager,
-                previewStore,
-                NullLogger<CodeActionService>.Instance),
-            UnusedCodeAnalyzer = unusedCodeAnalyzer,
-            CodeMetricsService = codeMetricsService,
-            NamespaceDependencyService = namespaceDependencyService,
-            DiRegistrationService = diRegistrationService,
-            NuGetDependencyService = nuGetDependencyService,
-            CodePatternAnalyzer = new CodePatternAnalyzer(
-                workspaceManager,
-                compilationCache,
-                NullLogger<CodePatternAnalyzer>.Instance),
-            EditService = new EditService(
-                workspaceManager,
-                NullLogger<EditService>.Instance,
-                undoService,
-                changeTracker,
-                previewStore: null,
-                compileCheckService: compileCheckService),
-            FileOperationService = fileOperationService,
-            ProjectMutationService = new ProjectMutationService(
-                workspaceManager,
-                new ProjectMutationPreviewStore(),
-                msBuildEvaluationService,
-                NullLogger<ProjectMutationService>.Instance,
-                changeTracker: changeTracker,
-                undoService: undoService),
-            CrossProjectRefactoringService = crossProjectRefactoringService,
-            PackageMigrationOrchestrator = new PackageMigrationOrchestrator(workspaceManager, compositePreviewStore),
-            ClassSplitOrchestrator = new ClassSplitOrchestrator(workspaceManager, compositePreviewStore),
-            ExtractAndWireOrchestrator = new ExtractAndWireOrchestrator(
-                workspaceManager,
-                compositePreviewStore,
-                previewStore,
-                crossProjectRefactoringService,
-                diRegistrationService),
-            CompositeApplyOrchestrator = new CompositeApplyOrchestrator(workspaceManager, compositePreviewStore, changeTracker),
-            ScaffoldingService = new ScaffoldingService(
-                workspaceManager,
-                fileOperationService,
-                previewStore),
-            DeadCodeService = new DeadCodeService(
-                workspaceManager,
-                previewStore),
-            SyntaxService = new SyntaxService(workspaceManager),
-            BulkRefactoringService = new BulkRefactoringService(
-                workspaceManager,
-                previewStore,
-                compilationCache),
-            CohesionAnalysisService = cohesionAnalysisService,
-            CouplingAnalysisService = new CouplingAnalysisService(
-                workspaceManager,
-                compilationCache,
-                NullLogger<CouplingAnalysisService>.Instance),
-            RecordFieldAdditionService = new RecordFieldAdditionService(workspaceManager),
-            ConsumerAnalysisService = new ConsumerAnalysisService(workspaceManager),
-            TypeExtractionService = new TypeExtractionService(
-                workspaceManager,
-                previewStore),
-            InterfaceExtractionService = new InterfaceExtractionService(
-                workspaceManager,
-                previewStore,
-                compilationCache,
-                NullLogger<InterfaceExtractionService>.Instance),
-            TypeMoveService = new TypeMoveService(
-                workspaceManager,
-                previewStore),
-            FlowAnalysisService = new FlowAnalysisService(workspaceManager),
-            CompileCheckService = compileCheckService,
-            AnalyzerInfoService = new AnalyzerInfoService(
-                workspaceManager,
-                compilationCache,
-                NullLogger<AnalyzerInfoService>.Instance),
-            FixAllService = new FixAllService(
-                workspaceManager,
-                previewStore,
-                compilationCache,
-                NullLogger<FixAllService>.Instance),
-            OperationService = new OperationService(workspaceManager),
-            SnippetAnalysisService = new SnippetAnalysisService(
-                NullLogger<SnippetAnalysisService>.Instance),
-            ScriptingService = new ScriptingService(
-                NullLogger<ScriptingService>.Instance,
-                new ScriptingServiceOptions()),
-            EditorConfigService = new EditorConfigService(
-                workspaceManager,
-                undoService,
-                changeTracker),
-            MsBuildEvaluationService = msBuildEvaluationService,
-            ExtractMethodService = new ExtractMethodService(
-                workspaceManager,
-                previewStore,
-                NullLogger<ExtractMethodService>.Instance),
-            ChangeTracker = changeTracker,
-            RefactoringSuggestionService = new RefactoringSuggestionService(
-                codeMetricsService,
-                cohesionAnalysisService,
-                unusedCodeAnalyzer,
-                NullLogger<RefactoringSuggestionService>.Instance),
-            FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance),
-            ExceptionFlowService = new ExceptionFlowService(
-                workspaceManager,
-                compilationCache,
-                NullLogger<ExceptionFlowService>.Instance),
-            WorkspaceWarmService = new WorkspaceWarmService(
-                workspaceManager,
-                NullLogger<WorkspaceWarmService>.Instance),
-            WorkspaceDriftService = new WorkspaceDriftService(workspaceManager),
-            ParameterObjectService = new ParameterObjectService(workspaceManager, previewStore)
-        };
-    }
-
-    internal sealed class DeferredWorkspaceExecutionGate
-    {
-        private IWorkspaceExecutionGate? _gate;
-
-        public IWorkspaceExecutionGate Resolve() =>
-            Volatile.Read(ref _gate) ?? throw new InvalidOperationException(
-                "The test workspace execution gate was resolved before initialization.");
-
-        public void Bind(IWorkspaceExecutionGate gate)
-        {
-            ArgumentNullException.ThrowIfNull(gate);
-            if (Interlocked.CompareExchange(ref _gate, gate, null) is not null)
+            return new TestServiceContainer(provider)
             {
-                throw new InvalidOperationException(
-                    "The test workspace execution gate was initialized more than once.");
-            }
+                PreviewStore = provider.GetRequiredService<IPreviewStore>(),
+                WorkspaceManager = ResolveConcrete<IWorkspaceManager, WorkspaceManager>(provider),
+                FileWatcher = provider.GetRequiredService<IFileWatcherService>(),
+                SymbolNavigationService = ResolveConcrete<ISymbolNavigationService, SymbolNavigationService>(provider),
+                SymbolSearchService = ResolveConcrete<ISymbolSearchService, SymbolSearchService>(provider),
+                ReferenceService = ResolveConcrete<IReferenceService, ReferenceService>(provider),
+                SymbolRelationshipService = ResolveConcrete<ISymbolRelationshipService, SymbolRelationshipService>(provider),
+                MutationAnalysisService = ResolveConcrete<IMutationAnalysisService, MutationAnalysisService>(provider),
+                TypeConsumersService = ResolveConcrete<ITypeConsumersService, TypeConsumersService>(provider),
+                SemanticGrepService = ResolveConcrete<ISemanticGrepService, SemanticGrepService>(provider),
+                DiagnosticService = ResolveConcrete<IDiagnosticService, DiagnosticService>(provider),
+                RefactoringService = ResolveConcrete<IRefactoringService, RefactoringService>(provider),
+                BuildService = ResolveConcrete<IBuildService, BuildService>(provider),
+                TestRunnerService = ResolveConcrete<ITestRunnerService, TestRunnerService>(provider),
+                TestDiscoveryService = ResolveConcrete<ITestDiscoveryService, TestDiscoveryService>(provider),
+                CompletionService = ResolveConcrete<ICompletionService, CompletionService>(provider),
+                CodeActionService = ResolveConcrete<ICodeActionService, CodeActionService>(provider),
+                UnusedCodeAnalyzer = ResolveConcrete<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>(provider),
+                CodeMetricsService = ResolveConcrete<ICodeMetricsService, CodeMetricsService>(provider),
+                NamespaceDependencyService = ResolveConcrete<INamespaceDependencyService, NamespaceDependencyService>(provider),
+                DiRegistrationService = ResolveConcrete<IDiRegistrationService, DiRegistrationService>(provider),
+                NuGetDependencyService = ResolveConcrete<INuGetDependencyService, NuGetDependencyService>(provider),
+                CodePatternAnalyzer = ResolveConcrete<ICodePatternAnalyzer, CodePatternAnalyzer>(provider),
+                EditService = ResolveConcrete<IEditService, EditService>(provider),
+                FileOperationService = ResolveConcrete<IFileOperationService, FileOperationService>(provider),
+                ProjectMutationService = ResolveConcrete<IProjectMutationService, ProjectMutationService>(provider),
+                CrossProjectRefactoringService = ResolveConcrete<ICrossProjectRefactoringService, CrossProjectRefactoringService>(provider),
+                PackageMigrationOrchestrator = ResolveConcrete<IPackageMigrationOrchestrator, PackageMigrationOrchestrator>(provider),
+                ClassSplitOrchestrator = ResolveConcrete<IClassSplitOrchestrator, ClassSplitOrchestrator>(provider),
+                ExtractAndWireOrchestrator = ResolveConcrete<IExtractAndWireOrchestrator, ExtractAndWireOrchestrator>(provider),
+                CompositeApplyOrchestrator = ResolveConcrete<ICompositeApplyOrchestrator, CompositeApplyOrchestrator>(provider),
+                ScaffoldingService = ResolveConcrete<IScaffoldingService, ScaffoldingService>(provider),
+                DeadCodeService = ResolveConcrete<IDeadCodeService, DeadCodeService>(provider),
+                SyntaxService = ResolveConcrete<ISyntaxService, SyntaxService>(provider),
+                WorkspaceExecutionGate = ResolveConcrete<IWorkspaceExecutionGate, WorkspaceExecutionGate>(provider),
+                DotnetCommandRunner = ResolveConcrete<IDotnetCommandRunner, DotnetCommandRunner>(provider),
+                GatedCommandExecutor = ResolveConcrete<IGatedCommandExecutor, GatedCommandExecutor>(provider),
+                BulkRefactoringService = ResolveConcrete<IBulkRefactoringService, BulkRefactoringService>(provider),
+                CohesionAnalysisService = ResolveConcrete<ICohesionAnalysisService, CohesionAnalysisService>(provider),
+                CouplingAnalysisService = ResolveConcrete<ICouplingAnalysisService, CouplingAnalysisService>(provider),
+                RecordFieldAdditionService = ResolveConcrete<IRecordFieldAdditionService, RecordFieldAdditionService>(provider),
+                ConsumerAnalysisService = ResolveConcrete<IConsumerAnalysisService, ConsumerAnalysisService>(provider),
+                TypeExtractionService = ResolveConcrete<ITypeExtractionService, TypeExtractionService>(provider),
+                TypeMoveService = ResolveConcrete<ITypeMoveService, TypeMoveService>(provider),
+                UndoService = ResolveConcrete<IUndoService, UndoService>(provider),
+                FlowAnalysisService = ResolveConcrete<IFlowAnalysisService, FlowAnalysisService>(provider),
+                CompileCheckService = ResolveConcrete<ICompileCheckService, CompileCheckService>(provider),
+                AnalyzerInfoService = ResolveConcrete<IAnalyzerInfoService, AnalyzerInfoService>(provider),
+                FixAllService = ResolveConcrete<IFixAllService, FixAllService>(provider),
+                OperationService = ResolveConcrete<IOperationService, OperationService>(provider),
+                SnippetAnalysisService = ResolveConcrete<ISnippetAnalysisService, SnippetAnalysisService>(provider),
+                ScriptingService = ResolveConcrete<IScriptingService, ScriptingService>(provider),
+                EditorConfigService = ResolveConcrete<IEditorConfigService, EditorConfigService>(provider),
+                MsBuildEvaluationService = ResolveConcrete<IMsBuildEvaluationService, MsBuildEvaluationService>(provider),
+                ExtractMethodService = ResolveConcrete<IExtractMethodService, ExtractMethodService>(provider),
+                ChangeTracker = ResolveConcrete<IChangeTracker, ChangeTracker>(provider),
+                RefactoringSuggestionService = ResolveConcrete<IRefactoringSuggestionService, RefactoringSuggestionService>(provider),
+                FormatVerifyService = ResolveConcrete<IFormatVerifyService, FormatVerifyService>(provider),
+                InterfaceExtractionService = ResolveConcrete<IInterfaceExtractionService, InterfaceExtractionService>(provider),
+                ExceptionFlowService = ResolveConcrete<IExceptionFlowService, ExceptionFlowService>(provider),
+                WorkspaceWarmService = ResolveConcrete<IWorkspaceWarmService, WorkspaceWarmService>(provider),
+                WorkspaceDriftService = ResolveConcrete<IWorkspaceDriftService, WorkspaceDriftService>(provider),
+                ParameterObjectService = ResolveConcrete<IParameterObjectService, ParameterObjectService>(provider)
+            };
+        }
+        catch
+        {
+            provider.Dispose();
+            throw;
         }
     }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposeState, 1) == 0)
+        {
+            _provider.Dispose();
+        }
+    }
+
+    private static TConcrete ResolveConcrete<TService, TConcrete>(IServiceProvider provider)
+        where TService : class
+        where TConcrete : class, TService =>
+        provider.GetRequiredService<TService>() as TConcrete ?? throw new InvalidOperationException(
+            $"The production registration for {typeof(TService).Name} must resolve as {typeof(TConcrete).Name}.");
 }
 
 [TestClass]
 public sealed class TestServiceContainerTests
 {
     [TestMethod]
-    public void DeferredWorkspaceExecutionGate_RequiresExactlyOneBind()
-    {
-        var deferredGate = new TestServiceContainer.DeferredWorkspaceExecutionGate();
-
-        var unresolved = Assert.ThrowsExactly<InvalidOperationException>(deferredGate.Resolve);
-        Assert.AreEqual(
-            "The test workspace execution gate was resolved before initialization.",
-            unresolved.Message);
-
-        var gate = new PassThroughWorkspaceExecutionGate();
-        deferredGate.Bind(gate);
-
-        Assert.AreSame(gate, deferredGate.Resolve());
-        var duplicate = Assert.ThrowsExactly<InvalidOperationException>(() => deferredGate.Bind(gate));
-        Assert.AreEqual(
-            "The test workspace execution gate was initialized more than once.",
-            duplicate.Message);
-    }
-
-    [TestMethod]
     public void Create_RefactoringSuggestionsReuseExposedAnalysisServices()
     {
-        var services = TestServiceContainer.Create(new ValidationServiceOptions());
+        using var services = TestServiceContainer.Create(new ValidationServiceOptions());
 
         Assert.AreSame(
             services.CodeMetricsService,
@@ -375,6 +221,45 @@ public sealed class TestServiceContainerTests
             GetRequiredPrivateField(services.RefactoringSuggestionService, "_unusedCodeAnalyzer"));
     }
 
+    [TestMethod]
+    public void AddRoslynServices_ProviderOwnedWorkspaceManager_DefersWatcherDisposalToProvider()
+    {
+        var watcher = new CountingFileWatcher();
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.ClearProviders());
+        services.AddSingleton(new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 });
+        services.AddSingleton(new ExecutionGateOptions { RateLimitMaxRequests = int.MaxValue });
+        services.AddRoslynServices();
+        services.RemoveAll<IFileWatcherService>();
+        services.AddSingleton<IFileWatcherService>(_ => watcher);
+
+        var provider = services.BuildServiceProvider();
+        try
+        {
+            var manager = (WorkspaceManager)provider.GetRequiredService<IWorkspaceManager>();
+
+            Assert.AreSame(watcher, provider.GetRequiredService<IFileWatcherService>());
+            Assert.AreEqual(1, watcher.RootMissingSubscriberCount,
+                "The manager must subscribe while its provider-owned watcher is live.");
+
+            manager.Dispose();
+
+            Assert.AreEqual(0, watcher.RootMissingSubscriberCount,
+                "Manager disposal must detach the watcher callback before the provider disposes the watcher.");
+            Assert.AreEqual(0, watcher.DisposeCount,
+                "A provider-owned watcher must remain alive when its consumer is manually disposed.");
+        }
+        finally
+        {
+            provider.Dispose();
+        }
+
+        Assert.AreEqual(1, watcher.DisposeCount,
+            "The provider must dispose its watcher exactly once after the manager has detached.");
+        Assert.AreEqual(0, watcher.RootMissingSubscriberCount,
+            "Provider disposal must not retain a callback to an already-disposed manager.");
+    }
+
     private static object GetRequiredPrivateField(object instance, string fieldName)
     {
         var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -383,5 +268,37 @@ public sealed class TestServiceContainerTests
         var value = field.GetValue(instance);
         Assert.IsNotNull(value, $"{instance.GetType().Name}.{fieldName} must be initialized.");
         return value;
+    }
+
+    private sealed class CountingFileWatcher : IFileWatcherService
+    {
+        private Action<string>? _workspaceRootMissing;
+        private int _disposeCount;
+
+        public event Action<string>? WorkspaceRootMissing
+        {
+            add => _workspaceRootMissing += value;
+            remove => _workspaceRootMissing -= value;
+        }
+
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
+
+        public int RootMissingSubscriberCount => _workspaceRootMissing?.GetInvocationList().Length ?? 0;
+
+        public void Watch(string workspaceId, string workspacePath) { }
+
+        public void Unwatch(string workspaceId) { }
+
+        public bool IsStale(string workspaceId) => false;
+
+        public Task WaitForStaleAsync(string workspaceId, CancellationToken ct) => Task.CompletedTask;
+
+        public string? GetStaleReason(string workspaceId) => null;
+
+        public void MarkStale(string workspaceId, string reason) { }
+
+        public void ClearStale(string workspaceId) { }
+
+        public void Dispose() => Interlocked.Increment(ref _disposeCount);
     }
 }
