@@ -24,7 +24,7 @@ worktree_lock_release: dotnet build-server shutdown
 
 The two `verify-*.ps1` scripts are the authoritative CI gate. Skip them only when context-tight; the `fallback_compile` + targeted `mcp__roslyn__test_run` is the documented minimum substitute.
 
-`dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. Always prepend before `git worktree remove --force` on Windows. Prints one informational line — not an error — so cleanup scripts must not treat non-zero stdout as failure.
+`dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. The parent `/ship` owner invokes it when its canonical cleanup needs it; this addendum must never prescribe branch or worktree deletion. Its informational stdout is not an error, so cleanup checks must use its exit status rather than treat output as failure.
 
 ## Read-side tool primer
 
@@ -175,12 +175,12 @@ See [ai_docs/runtime.md § Bootstrap scope](../runtime.md#bootstrap-scope--self-
 
 ```yaml
 initiative_executor: .claude/agents/initiative-executor.md  # use for Step 7 spawn
-pr_reconciler:       .claude/agents/pr-reconciler.md         # retained for manual merge+cleanup — NOTE: execute Step 10 now lands via /ship directly (no reconciler spawn)
+pr_reconciler:       .claude/agents/pr-reconciler.md         # readiness-only; parent owns /ship --land=<pr>
 backlog_anchor_auditor: .claude/agents/backlog-anchor-auditor.md  # pre-plan anchor scan
 backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 of /backlog-intake
 ```
 
-When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. (Step 10 lands PRs via `/ship` directly — it no longer spawns a reconciler subagent.)
+When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. The reconciler only reports readiness. The parent invokes `/ship --land=<pr>` and must preserve `SHIP_STATUS=landed-cleanup-failed` whenever landing succeeds but any local or remote cleanup proof fails; that status is a remediation signal, not a successful clean landing.
 
 ## Skills wired to backlog-remediation workflow
 
