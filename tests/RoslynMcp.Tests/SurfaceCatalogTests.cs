@@ -51,6 +51,24 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void ServerCatalogFull_ExposesAliasLifecycleMetadata()
+    {
+        using var document = JsonDocument.Parse(ServerResources.GetServerCatalogFull());
+        var alias = document.RootElement
+            .GetProperty("tools")
+            .EnumerateArray()
+            .Single(static entry => entry.GetProperty("name").GetString() == "get_symbol_outline");
+
+        var deprecation = alias.GetProperty("deprecation");
+        Assert.AreEqual("get_symbol_outline", deprecation.GetProperty("aliasName").GetString());
+        Assert.AreEqual("document_symbols", deprecation.GetProperty("canonicalName").GetString());
+        Assert.AreEqual(ToolAliasDeprecation.SisterServerReason, deprecation.GetProperty("reason").GetString());
+        Assert.AreEqual(JsonValueKind.Null, deprecation.GetProperty("riskBucket").ValueKind);
+        Assert.AreEqual("1.33.0", deprecation.GetProperty("introducedRelease").GetString());
+        Assert.AreEqual(2, deprecation.GetProperty("earliestRemovalMajor").GetInt32());
+    }
+
+    [TestMethod]
     public void PageEntries_HonoursOffsetAndLimit_SurfacesPaginationMetadata()
     {
         var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 10, resourceName: "test");
@@ -112,7 +130,18 @@ public sealed class SurfaceCatalogTests
             [
                 ToolEntry("added_tool", "stable", summary: "added"),
                 ToolEntry("promoted_tool", "stable", summary: "same"),
-                ToolEntry("changed_tool", "stable", summary: "new", outputSchema: """{"type":"object","properties":{"new":{"type":"string"}}}""")
+                ToolEntry(
+                    "changed_tool",
+                    "stable",
+                    summary: "new",
+                    outputSchema: """{"type":"object","properties":{"new":{"type":"string"}}}""",
+                    deprecation: new ToolAliasDeprecation(
+                        "old_changed_tool",
+                        "changed_tool",
+                        ToolAliasDeprecation.SisterServerReason,
+                        RiskBucket: null,
+                        IntroducedRelease: "1.33.0",
+                        EarliestRemovalMajor: 2))
             ],
             Resources: [],
             Prompts:
@@ -128,7 +157,7 @@ public sealed class SurfaceCatalogTests
 
         var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "changed_tool");
         CollectionAssert.AreEquivalent(
-            new[] { "summary", "outputSchema" },
+            new[] { "summary", "outputSchema", "deprecation" },
             changedTool.ChangedFields.Select(field => field.Field).ToArray());
 
         var changedPrompt = diff.Prompts.Changed.Single(entry => entry.Name == "changed_prompt");
@@ -159,7 +188,8 @@ public sealed class SurfaceCatalogTests
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
         // The full changed-tool set: get_completions, bulk_replace_type_apply, and
-        // replace_invocation_preview changed summary; server_info changed outputSchema. The three
+        // replace_invocation_preview changed summary; server_info changed outputSchema; the three
+        // retained aliases gained additive catalog deprecation metadata. The three
         // workspace-status-family tools below changed outputSchema because
         // restore-required-vs-build-conflation added `buildRequired` to
         // WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
@@ -170,6 +200,9 @@ public sealed class SurfaceCatalogTests
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
                 "server_info",
+                "get_symbol_outline",
+                "find_duplicated_code",
+                "get_test_coverage_map",
                 "workspace_status",
                 "workspace_health",
                 "workspace_list",
@@ -192,6 +225,15 @@ public sealed class SurfaceCatalogTests
         var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
         CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
 
+        foreach (var aliasToolName in new[] { "get_symbol_outline", "find_duplicated_code", "get_test_coverage_map" })
+        {
+            var changedAliasTool = diff.Tools.Changed.Single(entry => entry.Name == aliasToolName);
+            CollectionAssert.AreEqual(
+                new[] { "deprecation" },
+                changedAliasTool.ChangedFields.Select(field => field.Field).ToArray(),
+                $"{aliasToolName} changed only its additive lifecycle declaration.");
+        }
+
         foreach (var workspaceToolName in new[] { "workspace_status", "workspace_health", "workspace_list" })
         {
             var changedWorkspaceTool = diff.Tools.Changed.Single(entry => entry.Name == workspaceToolName);
@@ -204,7 +246,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(4, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(7, diff.Summary.Changed);
+        Assert.AreEqual(10, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -226,11 +268,25 @@ public sealed class SurfaceCatalogTests
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
                 "server_info",
+                "get_symbol_outline",
+                "find_duplicated_code",
+                "get_test_coverage_map",
                 "workspace_status",
                 "workspace_health",
                 "workspace_list",
             },
             changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
+
+        var aliasChange = changed.EnumerateArray().Single(
+            entry => entry.GetProperty("name").GetString() == "get_symbol_outline");
+        var deprecationChange = aliasChange.GetProperty("changedFields").EnumerateArray().Single(
+            field => field.GetProperty("field").GetString() == "deprecation");
+        Assert.AreEqual(JsonValueKind.Null, deprecationChange.GetProperty("before").ValueKind);
+        var lifecycle = deprecationChange.GetProperty("after");
+        Assert.AreEqual("get_symbol_outline", lifecycle.GetProperty("aliasName").GetString());
+        Assert.AreEqual("document_symbols", lifecycle.GetProperty("canonicalName").GetString());
+        Assert.AreEqual("1.33.0", lifecycle.GetProperty("introducedRelease").GetString());
+        Assert.AreEqual(2, lifecycle.GetProperty("earliestRemovalMajor").GetInt32());
     }
 
     [TestMethod]
@@ -640,7 +696,8 @@ public sealed class SurfaceCatalogTests
         string name,
         string supportTier,
         string summary,
-        string? outputSchema = null) =>
+        string? outputSchema = null,
+        ToolAliasDeprecation? deprecation = null) =>
         new(
             "tool",
             name,
@@ -651,7 +708,10 @@ public sealed class SurfaceCatalogTests
             summary,
             UriTemplate: null,
             Parameters: null,
-            OutputSchema: outputSchema is null ? null : JsonNode.Parse(outputSchema));
+            OutputSchema: outputSchema is null ? null : JsonNode.Parse(outputSchema))
+        {
+            Deprecation = deprecation,
+        };
 
     private static SurfaceEntry PromptEntry(
         string name,

@@ -64,6 +64,8 @@ public sealed class ToolParameterCanonicalFormTests
         ("go_to_definition", "workspaceId"),
         ("find_references", "workspaceId"),
         ("document_symbols", "workspaceId"),
+        // Compatibility alias: must retain document_symbols' optional-workspace schema and behavior.
+        ("get_symbol_outline", "workspaceId"),
         ("workspace_readiness_report", "workspaceId"),
         ("workspace_support_bundle", "workspaceId"),
     ];
