@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-10T19:46:08Z
+**updated_at:** 2026-09-11T16:13:10Z
 
 ## Agent contract
 
@@ -110,6 +110,7 @@
 | `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
 | `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
 | `workspace-manager-file-watcher-disposal-ownership` | Medium | — | Establish one explicit file-watcher disposal owner between production DI and WorkspaceManager. | M | items/workspace-manager-file-watcher-disposal-ownership.md |
+| `scripting-startup-cancellation-causal-barrier` | Medium | scripting-supervisor-outer-cancellation-contended-timeout | Replace the remaining startup-cancellation timing inference with a causal barrier and deterministic recovery proof. [type: test-reliability] [source: 2026-09-10 scripting supervisor remediation] | S | items/scripting-startup-cancellation-causal-barrier.md |
 
 ## Low
 
@@ -246,6 +247,9 @@
 | `retired-root-mcp-doc-index-audit-sync` | Low | — | **Synchronize current documentation after root registration retirement** — repair the document index and generated audit state while preserving dated history. [type: docs] [source: adjacent-cold-review] | M | items/retired-root-mcp-doc-index-audit-sync.md |
 | `cohesion-overload-cluster-symbol-identity` | Low | — | Preserve overload identities during cohesion clustering. [type: correctness] [source: live-surface-audit] | S | items/cohesion-overload-cluster-symbol-identity.md |
 | `tool-consolidation-merge-child-dependency-repair` | Low | — | Repair stale tool-consolidation merge-child dependency metadata. [type: planning] [source: live-backlog-review] | S | items/tool-consolidation-merge-child-dependency-repair.md |
+| `scaffold-syntactic-preflight-candidate-enumeration-decomposition` | Low | scaffold-fqn-target-type-disambiguation | Decompose syntactic scaffold preflight candidate enumeration so qualification-aware lookup and ambiguity policy have focused ownership. [type: maintainability] [source: 2026-09-10 scaffold FQN remediation] | S | items/scaffold-syntactic-preflight-candidate-enumeration-decomposition.md |
+| `structured-call-filter-owner-documentation-drift` | Low | structured-call-tool-filter-pipeline-decomposition | Correct stale structured-call ownership comments after pipeline decomposition. [type: documentation] [source: 2026-09-10 cold review] | M | items/structured-call-filter-owner-documentation-drift.md |
+| `structured-call-pipeline-collaborator-cohesion` | Low | structured-call-tool-filter-pipeline-decomposition | Further decompose structured workspace resolution and dispatch collaborators after the initial filter split. [type: refactor] [source: 2026-09-10 cold review] | M | items/structured-call-pipeline-collaborator-cohesion.md |
 
 ## Defer
 
