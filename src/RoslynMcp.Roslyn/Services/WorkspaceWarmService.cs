@@ -1,9 +1,9 @@
 using System.Diagnostics;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
-using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -53,6 +53,8 @@ public sealed class WorkspaceWarmService : IWorkspaceWarmService
 
     public async Task<WorkspaceWarmResult> WarmAsync(string workspaceId, string[]? projects, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         var stopwatch = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
@@ -62,7 +64,7 @@ public sealed class WorkspaceWarmService : IWorkspaceWarmService
 
         foreach (var project in solution.Projects)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
 
             if (projectFilter is not null && !projectFilter.Contains(project.Name))
                 continue;
@@ -72,6 +74,7 @@ public sealed class WorkspaceWarmService : IWorkspaceWarmService
             if (outcome.WasCold) coldCount++;
         }
 
+        ct.ThrowIfCancellationRequested();
         stopwatch.Stop();
         return new WorkspaceWarmResult(
             WorkspaceId: workspaceId,

@@ -39,6 +39,22 @@ public sealed class WorkspaceWarmServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task WarmAsync_PreCancelledLoadedMultiProjectWorkspace_PropagatesCancellation()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        Assert.IsTrue(
+            WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId).Projects.Count() > 1,
+            "The cancellation regression requires a loaded multi-project workspace.");
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            WorkspaceWarmService.WarmAsync(workspace.WorkspaceId, projects: null, cancellation.Token));
+    }
+
+    [TestMethod]
     public async Task WarmAsync_SecondCall_NoCold_FasterThanFirst()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
