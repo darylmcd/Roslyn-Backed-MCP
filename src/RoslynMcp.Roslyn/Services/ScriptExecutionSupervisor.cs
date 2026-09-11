@@ -34,26 +34,29 @@ internal sealed class ScriptExecutionSupervisor
         ScriptWorkerRequest request,
         Action<ScriptEvaluationProgress>? onProgress,
         ScriptExecutionSupervisorSettings settings,
-        CancellationToken ct) => ExecuteCoreAsync(_workerProcess, request, onProgress, settings, ct);
+        CancellationToken ct) => ExecuteCoreAsync(_workerProcess, request, onProgress, settings, ct, onMonitorStarted: null);
 
     // Deterministic unit-test seam. Production always uses the process-backed overload.
     internal Task<ScriptExecutionResult> ExecuteAsync(
         Func<CancellationToken, ScriptExecutionOutcome> executeWorker,
         Action<ScriptEvaluationProgress>? onProgress,
         ScriptExecutionSupervisorSettings settings,
-        CancellationToken ct) => ExecuteCoreAsync(
+        CancellationToken ct,
+        Action? onMonitorStarted = null) => ExecuteCoreAsync(
             new DelegateScriptWorkerProcess(executeWorker, settings.Budget),
             new ScriptWorkerRequest(string.Empty, null, settings.EffectiveTimeoutSeconds),
             onProgress,
             settings,
-            ct);
+            ct,
+            onMonitorStarted);
 
     private async Task<ScriptExecutionResult> ExecuteCoreAsync(
         IScriptWorkerProcess workerProcess,
         ScriptWorkerRequest request,
         Action<ScriptEvaluationProgress>? onProgress,
         ScriptExecutionSupervisorSettings settings,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action? onMonitorStarted)
     {
         ValidateSettings(settings);
         var capacityFailure = await TryAcquireCapacityAsync(ct).ConfigureAwait(false);
@@ -81,7 +84,7 @@ internal sealed class ScriptExecutionSupervisor
         }
 
         var completion = new TaskCompletionSource<ScriptExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var monitor = new Thread(() => MonitorWorker(session, onProgress, settings, ct, completion))
+        var monitor = new Thread(() => MonitorWorker(session, onProgress, settings, ct, completion, onMonitorStarted))
         {
             IsBackground = true,
             Name = CreateMonitorName(),
@@ -109,7 +112,8 @@ internal sealed class ScriptExecutionSupervisor
         Action<ScriptEvaluationProgress>? onProgress,
         ScriptExecutionSupervisorSettings settings,
         CancellationToken ct,
-        TaskCompletionSource<ScriptExecutionResult> completion)
+        TaskCompletionSource<ScriptExecutionResult> completion,
+        Action? onMonitorStarted)
     {
         var stopwatch = Stopwatch.StartNew();
         var workerName = session.Name;
@@ -119,6 +123,7 @@ internal sealed class ScriptExecutionSupervisor
 
         try
         {
+            onMonitorStarted?.Invoke();
             observation = WaitForOutcome(session, onProgress, settings, ct, stopwatch);
             if (observation.Outcome.Kind is ScriptExecutionOutcomeKind.HardDeadline or ScriptExecutionOutcomeKind.OuterCancelled)
             {
