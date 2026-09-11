@@ -66,3 +66,4 @@ the modern harness unexpectedly retained a non-null `ClientCapabilities` snapsho
 immediately in isolation (1/1 in 184 ms). The same run built with zero warnings/errors and passed 2,922
 other tests, so this is further evidence of cross-session protocol negotiation state under a loaded suite,
 not an actionlint regression.
+Anchor correction (2026-09-11): Include tests/RoslynMcp.Tests/ElicitationChoicePromptTests.cs in this item's affected-harness anchor set. After the loaded-suite failure, the exact test passed three Release and one Debug isolated reruns; preserve its coverage in the repeated concurrent regression.
