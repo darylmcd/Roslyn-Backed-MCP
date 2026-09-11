@@ -144,6 +144,129 @@ else {
     }
 }
 
+$prReconcilerRelativePath = '.claude/agents/pr-reconciler.md'
+$prReconcilerPath = Join-Path $RepoRoot $prReconcilerRelativePath
+$backlogAddendaRelativePath = 'ai_docs/prompts/backlog-sweep-addenda.md'
+$backlogAddendaPath = Join-Path $RepoRoot $backlogAddendaRelativePath
+
+# pr-reconciler-fail-closed-ship-cleanup: both the reconciler and its repository addenda are
+# readiness-only documents. Required handoff words alone are insufficient: a destructive command
+# in either body would let an autonomous reader bypass the parent-owned /ship cleanup boundary.
+$unsafeCleanupRules = @(
+    @{
+        Pattern = '(?im)^\s*git\b[^\r\n]*\bworktree\s+remove\b'
+        Description = 'worktree removal'
+        Examples = @(
+            'git worktree remove --force <path>',
+            'git -C <repo> worktree remove -f <path>',
+            'git -C "C:/repo with spaces" worktree remove --force <path>',
+            'git worktree remove <path>'
+        )
+    },
+    @{
+        Pattern = '(?im)^\s*gh\b[^\r\n]*\bpr\s+merge\b'
+        Description = 'PR merge'
+        Examples = @('gh pr merge 123 --merge')
+    },
+    @{
+        Pattern = '(?im)^\s*git\b[^\r\n]*\bbranch\b[^\r\n]*(?:\s-[dD]\b|\s--delete\b)'
+        Description = 'local branch deletion'
+        Examples = @(
+            'git branch -D remediation/example',
+            'git -C <repo> branch --delete remediation/example',
+            'git -C "C:/repo with spaces" branch --delete remediation/example'
+        )
+    },
+    @{
+        Pattern = '(?im)^\s*git\b[^\r\n]*\bpush\b[^\r\n]*(?:\s--delete\b|\s\+?:\S+)'
+        Description = 'remote branch deletion'
+        Examples = @(
+            'git push origin --delete remediation/example',
+            'git push origin :remediation/example',
+            'git -C "C:/repo with spaces" push origin +:refs/heads/remediation/example'
+        )
+    },
+    @{
+        Pattern = '(?is)(?:\b(?:cleanup|worktree|branch)\b.{0,160}\b(?:fails?|failed|failure|errors?)\b.{0,160}\b(?:continue|proceed|ignore|report\s+success|mark\s+success)\b|\b(?:continue|proceed|ignore|report\s+success|mark\s+success)\b.{0,160}\b(?:cleanup|worktree|branch)\b.{0,160}\b(?:fails?|failed|failure|errors?)\b)'
+        Description = 'continuation after cleanup failure'
+        Examples = @('If worktree removal fails, continue with reconciliation.', 'Proceed after branch cleanup failure.')
+    }
+)
+
+foreach ($unsafeRule in $unsafeCleanupRules) {
+    foreach ($example in $unsafeRule.Examples) {
+        if (-not [regex]::IsMatch($example, $unsafeRule.Pattern)) {
+            $issues.Add("Readiness-only guard does not reject its required unsafe example: $($unsafeRule.Description) -> $example")
+        }
+    }
+}
+
+# Keep the rejection rules narrowly tied to destructive operations. These representative
+# readiness-only instructions must remain valid as the rules evolve.
+$safeReadinessExamples = @(
+    'gh pr view 123 --json state,mergeable,mergeStateStatus',
+    'HANDOFF: parent /ship --land=<pr>',
+    'Never force-push, merge, delete a branch, or remove a worktree.',
+    'git -C "C:/repo with spaces" worktree list',
+    'git branch --show-current',
+    'git push origin remediation/example'
+)
+foreach ($safeExample in $safeReadinessExamples) {
+    foreach ($unsafeRule in $unsafeCleanupRules) {
+        if ([regex]::IsMatch($safeExample, $unsafeRule.Pattern)) {
+            $issues.Add("Readiness-only guard rejects a required safe example: $($unsafeRule.Description) -> $safeExample")
+        }
+    }
+}
+
+if (-not [System.IO.File]::Exists($prReconcilerPath)) {
+    $issues.Add("Missing PR reconciler guidance: $prReconcilerRelativePath")
+}
+else {
+    $prReconciler = [System.IO.File]::ReadAllText($prReconcilerPath)
+    $requiredReconcilerStatements = @(
+        'readiness-only',
+        'HANDOFF: parent /ship --land=<pr>',
+        'SHIP_STATUS=landed-cleanup-failed',
+        'Evaluate `state` before all other fields',
+        'If `gh pr view` fails, wait 5 seconds and retry once.',
+        'Never force-push, merge, delete a branch, or remove a worktree.'
+    )
+    foreach ($requiredStatement in $requiredReconcilerStatements) {
+        if (-not $prReconciler.Contains($requiredStatement, [System.StringComparison]::Ordinal)) {
+            $issues.Add("PR reconciler guidance is missing required fail-closed statement: $requiredStatement")
+        }
+    }
+
+    foreach ($unsafeRule in $unsafeCleanupRules) {
+        if ([regex]::IsMatch($prReconciler, $unsafeRule.Pattern)) {
+            $issues.Add("PR reconciler guidance contains unsafe cleanup instruction: $($unsafeRule.Description)")
+        }
+    }
+}
+
+if (-not [System.IO.File]::Exists($backlogAddendaPath)) {
+    $issues.Add("Missing backlog remediation addenda: $backlogAddendaRelativePath")
+}
+else {
+    $backlogAddenda = [System.IO.File]::ReadAllText($backlogAddendaPath)
+    $requiredAddendaStatements = @(
+        'readiness-only; parent owns /ship --land=<pr>',
+        'SHIP_STATUS=landed-cleanup-failed'
+    )
+    foreach ($requiredStatement in $requiredAddendaStatements) {
+        if (-not $backlogAddenda.Contains($requiredStatement, [System.StringComparison]::Ordinal)) {
+            $issues.Add("Backlog remediation addenda is missing required reconciler handoff statement: $requiredStatement")
+        }
+    }
+
+    foreach ($unsafeRule in $unsafeCleanupRules) {
+        if ([regex]::IsMatch($backlogAddenda, $unsafeRule.Pattern)) {
+            $issues.Add("Backlog remediation addenda contains unsafe cleanup instruction: $($unsafeRule.Description)")
+        }
+    }
+}
+
 if ($issues.Count -gt 0) {
     $issues | Sort-Object -Unique | ForEach-Object { Write-Error $_ }
     exit 1
