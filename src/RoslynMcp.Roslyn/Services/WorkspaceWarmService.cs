@@ -1,9 +1,9 @@
 using System.Diagnostics;
+using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
-using Microsoft.CodeAnalysis;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
