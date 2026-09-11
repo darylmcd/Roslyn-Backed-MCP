@@ -16,7 +16,7 @@ The original cross-repo flow had `/mcp-server-stress` (running in audited repo X
 The `changelog.d/` pattern at `.claude/skills/draft-changelog-entry/` + `.claude/skills/bump/` already proves the fragment-then-consolidate flow for in-repo release notes. This schema applies the same idea to cross-repo audit findings:
 
 - **Audit run emits one fragment per actionable finding** into the audited repo's local `backlog.d/`.
-- **`/backlog-intake` walks configured sibling repos**, dedupes fragments against existing rows in `<Roslyn-MCP-root>/ai_docs/backlog.md`, appends new rows, and **deletes consumed fragments at the source**. The deletion *is* the consumption record — no manifest is kept.
+- **`/backlog-intake` walks configured sibling repos**, dedupes fragments against existing rows in `<Roslyn-MCP-root>/ai_docs/backlog.md`, materializes accepted rows through the global transactional writer, and **deletes consumed fragments at the source only after that transaction succeeds**. The deletion *is* the consumption record — no manifest is kept.
 - **Re-running intake on a clean `backlog.d/` is a no-op.**
 
 The prose `*_mcp-server-audit.md` and the scorecard JSON stay where the audit run wrote them (under `<X>/ai_docs/audit-reports/`); fragments are the only artifact intake consumes for new-row creation. The prose report remains available for cross-reference via the fragment's `source_audit` field.
@@ -53,10 +53,18 @@ Each fragment is a markdown file with YAML frontmatter, then a single-paragraph 
 | `id` | string (kebab-case) | Stable hash/slug of the finding. MUST match the filename (sans `.md`). Used for dedup. Should encode the audited repo's id where finding could collide with similar findings in other repos (e.g. `roslyn-mcp-find-references-stale-cache`, `tradewise-find-references-stale-cache`). |
 | `source_audit` | string (relative path) | Filename of the source `*_mcp-server-audit.md` report **within the audited repo's `ai_docs/audit-reports/`**, e.g. `20260507T203015Z_tradewise_mcp-server-audit.md`. Intake uses this to back-reference evidence when the fragment alone is ambiguous. |
 | `source_repo` | string (kebab-case) | Repo id, e.g. `roslyn-backed-mcp`, `tradewise`, `it-chat-bot`. Disambiguates `id` collisions when two repos independently produce the same slug. The `(source_repo, id)` pair is the dedup key. |
-| `severity` | enum | One of `P0` (critical, ship-blocker), `P1` (high), `P2` (medium), `P3` (low). Maps to the priority bands in `ai_docs/backlog.md` so intake can place the row without re-classifying. |
+| `severity` | raw external-source enum | One of `P0` (critical, ship-blocker), `P1` (high), `P2` (medium), `P3` (low). Map only as `P0 -> Critical`, `P1 -> High`, `P2 -> Medium`, `P3 -> Low` when emitting the local v15 row; retain this raw field as source metadata, never as its local `pri`. |
 | `area` | enum | One of `tools`, `resources`, `prompts`, `skills`, `concurrency`, `perf`, `docs`, `security`. Coarse classification used by intake for grouping and by the planner prompt for context-budget sizing. **Note:** `area: security` is a load-bearing pre-disclosure refusal token — both `/mcp-server-surface-test --auto-file` and `/backlog-intake --publish` refuse to file such fragments to public GitHub Issues, regardless of severity. |
 | `server_version` | string (semver) | Roslyn MCP server version captured during the audit run (`server_info.version` at Phase -1). Required as of Row 2 of the move-to-git-issues design. Lets the planner correlate findings to a specific server version when triaging a regression. |
 | `anchors` | list of `file:line` strings | One or more `path/to/file.cs:NNN` entries pointing at the live code or doc the finding cites. Relative to the audited repo's root. May be a single-element list. |
+
+## v15 materialization boundary
+
+`severity` is an upstream observation. The local backlog has only `Critical`, `High`, `Medium`, `Low`, and `Defer` bands; actionable fragment rows use the four mapped bands above, and no raw value maps to `Defer`.
+
+Every mutation of the local backlog row/detail pair, preamble, or `updated_at` stamp uses the global `node ~/.claude/scripts/backlog.mjs` writer. Use `add` for a new pair, `update` for a slim-row change, `note` for additional detail evidence, `preamble-replace` for a verified preamble correction, and `touch` only when no row changed. Do not hand-edit or append the `ai_docs/backlog.md` table. A nonzero writer exit leaves the source fragment in place and stops that mutation.
+
+Deleting a source `backlog.d/` fragment or archiving a staged report is separate artifact bookkeeping. It is safe only after the related writer transaction succeeds (or after an exact duplicate is confirmed without a local mutation). Re-resolve the exact source path beneath the configured repo's `backlog.d/` immediately before deletion; do not make the evidence disappear before the local row is durable.
 
 ## Body
 
@@ -76,21 +84,21 @@ audit run in repo X            /backlog-intake (this repo)
 emit <X>/backlog.d/<id>.md ──> walk siblings + this repo
                                collect fragments
                                dedupe by (source_repo, id)
-                               append new rows to ai_docs/backlog.md
+                               backlog.mjs add/update local v15 rows
                                delete consumed fragments at <X>/backlog.d/<id>.md
 ```
 
-After intake runs, the audited repo's `backlog.d/` contains only fragments that *could not* be consolidated (e.g. dedup match against an existing row, or intake detected they had been superseded). Those are left in place for the next intake pass; intake is idempotent on already-consolidated input.
+After intake runs, the audited repo's `backlog.d/` contains only fragments that could not be consolidated because the writer failed or because evidence still requires operator attention. Exact duplicates and successfully materialized rows are consumed. This preserves idempotency without deleting evidence ahead of a durable local row.
 
 ## Dedup rule
 
-Intake dedupes fragments before appending rows in this order:
+Intake dedupes fragments before materializing local rows through the writer in this order:
 
-1. **Exact `(source_repo, id)` match against existing rows.** If `ai_docs/backlog.md` already has a row whose id equals the fragment's `id` AND its evidence cites the same `source_repo`, the fragment is a duplicate. Drop it; delete the source fragment.
-2. **Anchor-set similarity.** If two fragments from different repos cite a substantial overlap of anchors (≥50 % of paths overlap, intersection on the same shared code), intake folds them into a single row whose `do` cell mentions both source repos. Common case: a Roslyn-MCP server bug observed independently from two different audited repos — same code, two reporters.
+1. **Exact `(source_repo, id)` match against existing rows.** If `ai_docs/backlog.md` already has a row whose id equals the fragment's `id` AND its evidence cites the same `source_repo`, the fragment is a duplicate. Drop it; delete the source fragment after recording the exact match.
+2. **Anchor-set similarity.** If two fragments from different repos cite a substantial overlap of anchors (≥50 % of paths overlap, intersection on the same shared code), intake prepares the merged `do` text and detail note, then uses `backlog.mjs update` / `note` before deleting the source fragment. Common case: a Roslyn-MCP server bug observed independently from two different audited repos — same code, two reporters.
 3. **Anchors map to already-shipped CHANGELOG entries.** Same Phase 2 verify-not-already-shipped logic the intake skill already runs.
 
-Anything not deduped becomes a new row; the source fragment is deleted only after the row is written.
+Anything not deduped becomes a new row through `backlog.mjs add`; the source fragment is deleted only after that transaction succeeds.
 
 ## Disambiguating fragment `.md` from audit-report `.md`
 
@@ -121,14 +129,14 @@ anchors:
 `find_references` returns stale results after a `rename_apply` against the same symbol within ~200ms; the bulk-cache window is not invalidated on rename. Repro: load `TradeWise.slnx`, call `rename_apply` on `OrderService.PlaceOrder`, immediately call `find_references` against the renamed symbol — the response cites the old name's locations. Proposed fix: invalidate `FindReferencesService`'s LRU bucket from `RenameService.Apply` before returning, mirroring the pattern in `MoveTypeService.Apply`.
 ```
 
-After `/backlog-intake` consumes this fragment, a new row appears in `ai_docs/backlog.md` and the file at `tradewise/backlog.d/tradewise-find-references-stale-cache.md` is deleted.
+The raw `P2` in this example maps to local `Medium`. After `/backlog-intake` successfully creates the row through `backlog.mjs add`, the file at `tradewise/backlog.d/tradewise-find-references-stale-cache.md` is deleted.
 
 ## Validation rules (intake side)
 
 Intake refuses a fragment (does not delete it; logs a warning) when any of:
 
 - Missing required frontmatter key (including `server_version` as of Row 2).
-- `severity` not in the documented enum.
+- `severity` not in the documented raw external-source enum.
 - `area` not in the documented enum (note: `security` is now a member of the enum and triggers the public-filing refusal, not validation rejection).
 - `anchors` empty.
 - Filename does not match `id`.
