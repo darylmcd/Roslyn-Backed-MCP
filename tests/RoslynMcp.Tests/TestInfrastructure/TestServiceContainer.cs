@@ -41,6 +41,7 @@ internal sealed class TestServiceContainer : IDisposable
     public required CompletionService CompletionService { get; init; }
     public required CodeActionService CodeActionService { get; init; }
     public required UnusedCodeAnalyzer UnusedCodeAnalyzer { get; init; }
+    public required DuplicateMethodDetectorService DuplicateMethodDetectorService { get; init; }
     public required CodeMetricsService CodeMetricsService { get; init; }
     public required NamespaceDependencyService NamespaceDependencyService { get; init; }
     public required DiRegistrationService DiRegistrationService { get; init; }
@@ -133,6 +134,7 @@ internal sealed class TestServiceContainer : IDisposable
                 CompletionService = ResolveConcrete<ICompletionService, CompletionService>(provider),
                 CodeActionService = ResolveConcrete<ICodeActionService, CodeActionService>(provider),
                 UnusedCodeAnalyzer = ResolveConcrete<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>(provider),
+                DuplicateMethodDetectorService = ResolveConcrete<IDuplicateMethodDetectorService, DuplicateMethodDetectorService>(provider),
                 CodeMetricsService = ResolveConcrete<ICodeMetricsService, CodeMetricsService>(provider),
                 NamespaceDependencyService = ResolveConcrete<INamespaceDependencyService, NamespaceDependencyService>(provider),
                 DiRegistrationService = ResolveConcrete<IDiRegistrationService, DiRegistrationService>(provider),
