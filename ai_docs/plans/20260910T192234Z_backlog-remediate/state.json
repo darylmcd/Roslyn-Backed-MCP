@@ -1,7 +1,7 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-10T19:23:27.615Z",
-  "backlogSnapshot": "2026-09-10T19:21:20Z",
+  "backlogSnapshot": "2026-09-11T19:27:25Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 1,
@@ -12,7 +12,7 @@
     {
       "id": "workspace-warm-cancellation-propagation",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-warm-cancellation-propagation"
       ],
@@ -34,10 +34,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-warm-cancellation-propagation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1504",
+      "mergedAt": "2026-09-11T18:14:27Z",
       "notes": null,
       "fileSetHash": "6ffb036fcc1eec51ffc4a67db80ac9e0ef8158c6593b9a4c6b38f88ed8945af0",
       "stanzaHash": "07bc344b336f754388f62c2ac76fd9bbfef413ba23b96f18af6bb34e58534959",
@@ -46,7 +46,7 @@
     {
       "id": "scaffold-fqn-target-type-disambiguation",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffold-fqn-target-type-disambiguation"
       ],
@@ -69,10 +69,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scaffold-fqn-target-type-disambiguation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1505",
+      "mergedAt": "2026-09-11T18:30:15Z",
       "notes": null,
       "fileSetHash": "e42f1c3701422219f1e9d8a7096b0539776e21e660771b5657c42020b4a9d449",
       "stanzaHash": "9c9de6e9f254db1638879fae2e8dfaa1aa6ece51946636878ed92245b5067b03",
@@ -81,7 +81,7 @@
     {
       "id": "test-service-container-production-di-lifetime",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-service-container-production-di-lifetime",
         "workspace-manager-file-watcher-disposal-ownership"
@@ -105,10 +105,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/test-service-container-production-di-lifetime",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1503",
+      "mergedAt": "2026-09-11T17:57:03Z",
       "notes": null,
       "fileSetHash": "da731186e1a35e2bff37d6356b43890d0a79eefdcc6f71627878934aac68c6a3",
       "stanzaHash": "669443cb72ee2a8ddfc5525c1036485c3ab8a9c385f953ae980e9cb734fdd752",
@@ -117,7 +117,7 @@
     {
       "id": "scripting-supervisor-outer-cancellation-contended-timeout",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scripting-supervisor-outer-cancellation-contended-timeout"
       ],
@@ -139,10 +139,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scripting-supervisor-outer-cancellation-contended-timeout",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1506",
+      "mergedAt": "2026-09-11T18:48:15Z",
       "notes": null,
       "fileSetHash": "0b5131359d35035322d9e425288b403f91ee794081d545cca2b91ab4dc5c401f",
       "stanzaHash": "eda702b5c91793a7ff5f66c5054c85e9fcb95a9ccb99f1613b23765eb9af5594",
@@ -151,7 +151,7 @@
     {
       "id": "pr-reconciler-fail-closed-ship-cleanup",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "pr-reconciler-fail-closed-ship-cleanup"
       ],
@@ -175,10 +175,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/pr-reconciler-fail-closed-ship-cleanup",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1501",
+      "mergedAt": "2026-09-11T17:17:49Z",
       "notes": null,
       "fileSetHash": "c4b6f2880ec17f0df226de5287a96de4c2fbdf55a2939dd5bcfcc21e385e9395",
       "stanzaHash": "e736c9016134a1f5c3af2dc30f3116ece9db2a9ccc035927b4de3fadd5f0d24a",
@@ -187,7 +187,7 @@
     {
       "id": "backlog-intake-v15-writer-contract",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "backlog-intake-v15-writer-contract"
       ],
@@ -214,10 +214,10 @@
       "dependsOn": [
         "pr-reconciler-fail-closed-ship-cleanup"
       ],
-      "branch": null,
+      "branch": "remediation/backlog-intake-v15-writer-contract",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1502",
+      "mergedAt": "2026-09-11T17:33:39Z",
       "notes": null,
       "fileSetHash": "0bdd84f942ebdddc73e9a5cea771643414cffead75a53f773d8bf154a611f770",
       "stanzaHash": "2f14b1bac13c28045272478e9d59798f0a4ac7394e81b8821a62e4a750666b85",
@@ -226,7 +226,7 @@
     {
       "id": "structured-call-tool-filter-pipeline-decomposition",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "structured-call-tool-filter-pipeline-decomposition"
       ],
@@ -251,10 +251,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/structured-call-tool-filter-pipeline-decomposition",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1507",
+      "mergedAt": "2026-09-11T19:04:30Z",
       "notes": null,
       "fileSetHash": "5332c57b7c3c1b53dc2ba0c8d259ea6ad248122d68f6b13f340820cc0a895868",
       "stanzaHash": "6339876970b613a9ecce8c98254aa65bc06a50cf291a8ce31647aa062d8b81b1",
@@ -263,7 +263,7 @@
     {
       "id": "tool-consolidation-deprecated-alias-registry",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-consolidation-deprecated-alias-registry",
         "get-symbol-outline-workspace-id-alias-parity"
@@ -289,10 +289,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/tool-consolidation-deprecated-alias-registry",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1508",
+      "mergedAt": "2026-09-11T19:25:19Z",
       "notes": null,
       "fileSetHash": "2c62ca3a91d12d5dfc8a36635c9a82d50858584ae0e5439cfe2b88eb19eeeaf3",
       "stanzaHash": "5214e81071fedf3376804e538b84664a3c47d011f9c6c6602651aca11aebb463",
@@ -365,5 +365,7 @@
   "planHash": "c150b1776e7a5eb40fed55080033bc5f88a636b65ab34aff9f0295c1624c6cda",
   "backlogSnapshotHash": "f1ced56a7ee37e56e25cb1c9c39b24b738bdb7160706553fce96a4a6dc57381a",
   "reviewedPlanHash": "c150b1776e7a5eb40fed55080033bc5f88a636b65ab34aff9f0295c1624c6cda",
-  "reviewedBacklogSnapshotHash": "f1ced56a7ee37e56e25cb1c9c39b24b738bdb7160706553fce96a4a6dc57381a"
+  "reviewedBacklogSnapshotHash": "f1ced56a7ee37e56e25cb1c9c39b24b738bdb7160706553fce96a4a6dc57381a",
+  "completed": true,
+  "completedAt": "2026-09-11T19:27:37.736Z"
 }
