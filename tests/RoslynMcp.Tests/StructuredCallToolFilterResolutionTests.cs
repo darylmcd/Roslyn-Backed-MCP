@@ -10,7 +10,7 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Coverage for the <c>workspace-id-omitted-single-resolve</c> initiative: the
-/// <see cref="StructuredCallToolFilter"/> pre-dispatch path that resolves an omitted/empty
+/// <see cref="StructuredWorkspaceResolver"/> pre-dispatch path that resolves an omitted/empty
 /// <c>workspaceId</c> on read-only, non-destructive tools before the SDK binder runs. Pins:
 /// <list type="bullet">
 ///   <item><b>eligibility</b> — <see cref="ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor"/>
@@ -171,10 +171,10 @@ public sealed class StructuredCallToolFilterResolutionTests
             ["workspaceId"] = JsonSerializer.SerializeToElement("ws-1"),
         };
 
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             args, new[] { Summary("ws-1"), Summary("ws-2") }, out var resolvedId, out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.Explicit, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.Explicit, result);
         Assert.IsNull(resolvedId);
         Assert.IsNull(failMessage);
     }
@@ -182,10 +182,10 @@ public sealed class StructuredCallToolFilterResolutionTests
     [TestMethod]
     public void ClassifyWorkspaceIdResolution_OmittedWithOneLoaded_ResolvesToSingle()
     {
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             arguments: null, new[] { Summary("ws-only") }, out var resolvedId, out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.SingleWorkspace, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.SingleWorkspace, result);
         Assert.AreEqual("ws-only", resolvedId);
         Assert.IsNull(failMessage);
     }
@@ -199,23 +199,23 @@ public sealed class StructuredCallToolFilterResolutionTests
             ["workspaceId"] = JsonSerializer.SerializeToElement("   "),
         };
 
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             args, new[] { Summary("ws-only") }, out var resolvedId, out _);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.SingleWorkspace, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.SingleWorkspace, result);
         Assert.AreEqual("ws-only", resolvedId);
     }
 
     [TestMethod]
     public void ClassifyWorkspaceIdResolution_OmittedWithTwoLoaded_FastFailsNamingBoth()
     {
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             arguments: null,
             new[] { Summary("ws-alpha"), Summary("ws-beta") },
             out var resolvedId,
             out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.FastFail, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.FastFail, result);
         Assert.IsNull(resolvedId);
         Assert.IsNotNull(failMessage);
         StringAssert.Contains(failMessage, "ws-alpha");
@@ -225,14 +225,14 @@ public sealed class StructuredCallToolFilterResolutionTests
     [TestMethod]
     public void ClassifyWorkspaceIdResolution_UniqueFileOwner_ResolvesOwner()
     {
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             arguments: null,
             new[] { Summary("ws-alpha", "C:/repos/a/A.sln"), Summary("ws-beta", "C:/repos/b/B.sln") },
             new[] { "ws-beta" },
             out var resolvedId,
             out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.FilePathWorkspace, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.FilePathWorkspace, result);
         Assert.AreEqual("ws-beta", resolvedId);
         Assert.IsNull(failMessage);
     }
@@ -240,7 +240,7 @@ public sealed class StructuredCallToolFilterResolutionTests
     [TestMethod]
     public void ClassifyWorkspaceIdResolution_AmbiguousOwners_ListsOnlyOwnersInPathOrder()
     {
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             arguments: null,
             new[]
             {
@@ -252,7 +252,7 @@ public sealed class StructuredCallToolFilterResolutionTests
             out _,
             out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.FastFail, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.FastFail, result);
         Assert.IsNotNull(failMessage);
         Assert.IsFalse(failMessage.Contains("ws-b", StringComparison.Ordinal), failMessage);
         Assert.IsTrue(
@@ -265,10 +265,10 @@ public sealed class StructuredCallToolFilterResolutionTests
     [TestMethod]
     public void ClassifyWorkspaceIdResolution_OmittedWithZeroLoaded_NotApplicable()
     {
-        var result = StructuredCallToolFilter.ClassifyWorkspaceIdResolution(
+        var result = StructuredWorkspaceResolver.ClassifyWorkspaceIdResolution(
             arguments: null, Array.Empty<WorkspaceStatusSummaryDto>(), out var resolvedId, out var failMessage);
 
-        Assert.AreEqual(StructuredCallToolFilter.WorkspaceIdAutoResolution.NotApplicable, result);
+        Assert.AreEqual(StructuredWorkspaceResolver.WorkspaceIdAutoResolution.NotApplicable, result);
         Assert.IsNull(resolvedId);
         Assert.IsNull(failMessage);
     }
