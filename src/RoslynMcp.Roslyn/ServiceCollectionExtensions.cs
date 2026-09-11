@@ -19,7 +19,17 @@ public static class ServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
-        services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
+        // The service provider owns IFileWatcherService. WorkspaceManager instances created by
+        // this composition root must therefore detach from, but not dispose, that singleton.
+        // Direct WorkspaceManager construction intentionally retains its historical ownership
+        // behavior for isolated callers and tests.
+        services.AddSingleton<IWorkspaceManager>(sp => WorkspaceManager.CreateProviderOwned(
+            sp.GetRequiredService<ILogger<WorkspaceManager>>(),
+            sp.GetRequiredService<IPreviewStore>(),
+            sp.GetRequiredService<IFileWatcherService>(),
+            sp.GetService<WorkspaceManagerOptions>(),
+            sp.GetService<IWorkspaceCacheStore>(),
+            sp.GetService<Lazy<IWorkspaceExecutionGate>>()));
         services.AddSingleton<ICompilationCache, CompilationCache>();
         services.AddSingleton<IWorkspaceExecutionGate>(sp =>
         {

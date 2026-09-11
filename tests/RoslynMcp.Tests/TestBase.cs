@@ -79,6 +79,7 @@ public abstract class TestBase
     protected static CompletionService CompletionService => Fixture.Services.CompletionService;
     protected static CodeActionService CodeActionService => Fixture.Services.CodeActionService;
     protected static UnusedCodeAnalyzer UnusedCodeAnalyzer => Fixture.Services.UnusedCodeAnalyzer;
+    protected static DuplicateMethodDetectorService DuplicateMethodDetectorService => Fixture.Services.DuplicateMethodDetectorService;
     protected static CodeMetricsService CodeMetricsService => Fixture.Services.CodeMetricsService;
     protected static NamespaceDependencyService NamespaceDependencyService => Fixture.Services.NamespaceDependencyService;
     protected static DiRegistrationService DiRegistrationService => Fixture.Services.DiRegistrationService;

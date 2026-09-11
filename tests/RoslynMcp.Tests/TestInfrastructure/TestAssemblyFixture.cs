@@ -112,8 +112,8 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
         WorkspaceIdCache.GetOrLoadAsync(Services.WorkspaceManager, solutionPath, ct);
 
     /// <summary>
-    /// Releases everything this fixture owns — the shared <see cref="Services"/>
-    /// <c>WorkspaceManager</c>, the workspace-id cache, and the path-authorized server session.
+    /// Releases everything this fixture owns — the shared <see cref="Services"/> provider, the
+    /// workspace-id cache, and the path-authorized server session.
     /// Idempotent: repeat calls are no-ops, so a double-invoked <c>[AssemblyCleanup]</c> cannot
     /// double-dispose. Every step runs even when an earlier one throws.
     /// </summary>
@@ -136,7 +136,7 @@ internal sealed class TestAssemblyFixture : IAsyncDisposable
         await CleanupFailureCollector.RunAsync(
             "Shared test resource cleanup failed.",
             CleanupFailureCollector.FromAction(WorkspaceIdCache.Clear),
-            CleanupFailureCollector.FromAction(Services.WorkspaceManager.Dispose),
+            CleanupFailureCollector.FromAction(Services.Dispose),
             async () =>
             {
                 if (pathAuthorizedServerTask is not null)

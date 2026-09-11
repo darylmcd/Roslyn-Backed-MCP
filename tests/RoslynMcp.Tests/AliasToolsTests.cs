@@ -1,6 +1,5 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
-using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -74,7 +73,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
     {
         var canonicalJson = await AdvancedAnalysisTools.FindDuplicatedMethods(
             gate: WorkspaceExecutionGate,
-            duplicateMethodDetectorService: ServiceContainer.DuplicateMethodDetectorService,
+            duplicateMethodDetectorService: DuplicateMethodDetectorService,
             workspaceId: WorkspaceId,
             minLines: 10,
             similarityThreshold: 0.85,
@@ -84,7 +83,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
 
         var aliasJson = await AdvancedAnalysisTools.FindDuplicatedCode(
             gate: WorkspaceExecutionGate,
-            duplicateMethodDetectorService: ServiceContainer.DuplicateMethodDetectorService,
+            duplicateMethodDetectorService: DuplicateMethodDetectorService,
             workspaceId: WorkspaceId,
             minLines: 10,
             similarityThreshold: 0.85,
@@ -244,19 +243,4 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
             aliasDep.GetProperty("reason").GetString());
     }
 
-    /// <summary>
-    /// The shared <see cref="TestServiceContainer"/> doesn't currently publish
-    /// <see cref="DuplicateMethodDetectorService"/> (it's only consumed by the
-    /// <see cref="DuplicateMethodDetectorTests"/> set, which builds its own AdhocWorkspace).
-    /// Construct it locally against the existing shared <see cref="TestBase.WorkspaceManager"/>
-    /// so the alias parity test can invoke the canonical tool wrapper without changing the
-    /// shared infrastructure.
-    /// </summary>
-    private static class ServiceContainer
-    {
-        private static readonly Lazy<DuplicateMethodDetectorService> s_dup = new(() =>
-            new DuplicateMethodDetectorService(WorkspaceManager));
-
-        public static DuplicateMethodDetectorService DuplicateMethodDetectorService => s_dup.Value;
-    }
 }
