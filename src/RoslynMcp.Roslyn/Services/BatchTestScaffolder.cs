@@ -150,17 +150,24 @@ internal sealed class BatchTestScaffolder
             return;
         }
 
-        // See PreviewScaffoldTestAsync — accept dotted FQN input, resolve via simple name,
-        // and let the matched symbol supply the authoritative class identifier.
-        var lookupName = TestScaffoldRenderer.StripToSimpleTypeName(target.TargetTypeName);
+        // Keep the requested FQN for candidate filtering. The shared resolver enumerates by its
+        // simple tail and lets the matched symbol supply the generated class identifier.
         var typeInfo = ResolveTargetTypeAndMethodFromCache(
             cachedCompilations,
-            lookupName,
+            target.TargetTypeName,
             target.TargetMethodName,
             context.NSubstituteAvailable);
         if (typeInfo.MatchedType is null)
         {
-            state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
+            if (typeInfo.Warnings is { Count: > 0 })
+            {
+                state.Warnings.AddRange(typeInfo.Warnings);
+            }
+            else
+            {
+                state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
+            }
+
             return;
         }
 
