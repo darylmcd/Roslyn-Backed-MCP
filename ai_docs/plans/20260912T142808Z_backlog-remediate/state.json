@@ -1,6 +1,6 @@
 {
   "schemaVersion": 4,
-  "generatedAt": "2026-09-12T14:28:09.977Z",
+  "generatedAt": "2026-09-12T14:31:13.416Z",
   "backlogSnapshot": "2026-09-12T00:17:15Z",
   "addendaLoaded": true,
   "phase": "skeleton",
@@ -359,37 +359,8 @@
       "notes": null
     },
     {
-      "id": "tool-surface-pagination-or-tool-sets",
-      "order": 13,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "tool-surface-pagination-or-tool-sets"
-      ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
       "id": "apply-composite-preview-destructive-misnomer",
-      "order": 14,
+      "order": 13,
       "status": "pending",
       "backlogRowsClosed": [
         "apply-composite-preview-destructive-misnomer"
@@ -418,10 +389,39 @@
     },
     {
       "id": "change-signature-callsite-summary-stale-row-comments",
-      "order": 15,
+      "order": 14,
       "status": "pending",
       "backlogRowsClosed": [
         "change-signature-callsite-summary-stale-row-comments"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "surface-test-shipped-prompt-local-skill-reference",
+      "order": 15,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "surface-test-shipped-prompt-local-skill-reference"
       ],
       "productionFilesTouched": null,
       "productionFiles": null,
@@ -470,6 +470,10 @@
       },
       {
         "id": "formatter-baseline-contended-nested-process-timeout-investigation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-surface-pagination-or-tool-sets",
         "reason": "execution-blocked"
       }
     ]
