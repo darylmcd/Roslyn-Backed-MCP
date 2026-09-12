@@ -184,8 +184,8 @@ public sealed class WorkspacePathMrtrWireTests
             var text = errorResult.GetProperty("content")[0].GetProperty("text").GetString()!;
             using var envelope = JsonDocument.Parse(text);
             StringAssert.Contains(envelope.RootElement.GetProperty("schemaHint").GetString(), "path");
-            Assert.IsFalse(text.Contains(solution, StringComparison.OrdinalIgnoreCase),
-                "Argument correction guidance must not echo the supplied private workspace path.");
+            Assert.IsFalse(text.Contains(Path.GetFileName(root), StringComparison.Ordinal),
+                "Argument correction guidance must not echo the unique private directory, even with JSON-escaped separators.");
             Assert.IsFalse(AnyServerRequest(harness.RawServerMessages, prior, RequestMethods.ElicitationCreate));
 
             var corrected = await harness.Client.CallToolAsync(
