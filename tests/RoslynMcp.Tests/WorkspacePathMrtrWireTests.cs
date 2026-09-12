@@ -69,6 +69,7 @@ public sealed class WorkspacePathMrtrWireTests
         var prior = harness.RawServerMessages.Count;
         var clientResult = await harness.Client.CallToolAsync(
             _toolName,
+            new Dictionary<string, object?> { ["verbose"] = true },
             cancellationToken: CancellationToken.None);
 
         Assert.AreEqual(1, elicitationsHandled,
@@ -119,6 +120,7 @@ public sealed class WorkspacePathMrtrWireTests
         var prior = harness.RawServerMessages.Count;
         var clientResult = await harness.Client.CallToolAsync(
             _toolName,
+            new Dictionary<string, object?> { ["verbose"] = true },
             cancellationToken: CancellationToken.None);
 
         Assert.IsFalse(clientResult.IsError is true);
@@ -135,6 +137,78 @@ public sealed class WorkspacePathMrtrWireTests
             "ApplyProtocolResultShape strips the July 2026 discriminator for legacy sessions.");
         Assert.IsFalse(final.TryGetProperty("isError", out var isError) && isError.GetBoolean());
         StringAssert.Contains(final.GetProperty("content")[0].GetProperty("text").GetString(), _elicitedPath);
+    }
+
+    [TestMethod]
+    [DataRow("2025-11-25")]
+    [DataRow(null)]
+    [Timeout(30_000, CooperativeCancellation = true)]
+    public async Task MisnamedPath_ReturnsSchemaHintWithoutElicitation_ThenCorrectedCallSucceeds(
+        string? protocolVersion)
+    {
+        var (root, solution, _) = CreateDiscoverableSolution();
+        var elicitationsHandled = 0;
+        SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(
+            failureDetail: null,
+            expectedLoadPath: solution);
+        try
+        {
+            await using var harness = await CreateHarnessAsync(
+                protocolVersion,
+                elicitationHandler: (_, _) =>
+                {
+                    Interlocked.Increment(ref elicitationsHandled);
+                    return ValueTask.FromResult(AcceptedPathResult(solution));
+                });
+            var prior = harness.RawServerMessages.Count;
+            var result = await harness.Client.CallToolAsync(
+                _toolName,
+                new Dictionary<string, object?>
+                {
+                    ["solutionPath"] = solution,
+                    ["verbose"] = true,
+                },
+                cancellationToken: CancellationToken.None);
+
+            Assert.AreEqual(0, elicitationsHandled,
+                "A misnamed argument must return correction guidance to the caller without asking the operator.");
+            Assert.AreEqual(0, SyntheticWorkspaceLoadTools.WorkspaceLoadDispatchCount,
+                "An invalid request must not dispatch workspace_load with an elicited replacement path.");
+            Assert.IsTrue(result.IsError is true);
+
+            var results = FindNewResults(harness.RawServerMessages, prior);
+            Assert.HasCount(1, results,
+                "The invalid call must finish in one result without an input_required round trip.");
+            var errorResult = results[0];
+            AssertSanitizedInvalidArgumentEnvelope(errorResult);
+            var text = errorResult.GetProperty("content")[0].GetProperty("text").GetString()!;
+            using var envelope = JsonDocument.Parse(text);
+            StringAssert.Contains(envelope.RootElement.GetProperty("schemaHint").GetString(), "path");
+            Assert.IsFalse(text.Contains(Path.GetFileName(root), StringComparison.Ordinal),
+                "Argument correction guidance must not echo the unique private directory, even with JSON-escaped separators.");
+            Assert.IsFalse(AnyServerRequest(harness.RawServerMessages, prior, RequestMethods.ElicitationCreate));
+
+            var corrected = await harness.Client.CallToolAsync(
+                _toolName,
+                new Dictionary<string, object?>
+                {
+                    ["path"] = solution,
+                    ["verbose"] = true,
+                },
+                cancellationToken: CancellationToken.None);
+
+            Assert.IsFalse(corrected.IsError is true,
+                "Correcting only the parameter name must allow the supplied existing solution to load.");
+            Assert.AreEqual(0, elicitationsHandled);
+            Assert.AreEqual(1, SyntheticWorkspaceLoadTools.WorkspaceLoadDispatchCount);
+            using var loaded = JsonDocument.Parse(((TextContentBlock)corrected.Content![0]).Text);
+            Assert.AreEqual(solution, loaded.RootElement.GetProperty("loadedPath").GetString());
+        }
+        finally
+        {
+            SyntheticWorkspaceLoadTools.ResetWorkspaceStatusProbe(failureDetail: null);
+            TryDeleteDirectory(root);
+        }
     }
 
     // ── (3) sanitized non-accept outcomes ────────────────────────────────────

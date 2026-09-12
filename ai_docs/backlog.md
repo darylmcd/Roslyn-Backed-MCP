@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-11T19:27:25Z
+**updated_at:** 2026-09-12T00:17:15Z
 
 ## Agent contract
 
@@ -240,6 +240,7 @@
 | `scaffold-syntactic-preflight-candidate-enumeration-decomposition` | Low | scaffold-fqn-target-type-disambiguation | Decompose syntactic scaffold preflight candidate enumeration so qualification-aware lookup and ambiguity policy have focused ownership. [type: maintainability] [source: 2026-09-10 scaffold FQN remediation] | S | items/scaffold-syntactic-preflight-candidate-enumeration-decomposition.md |
 | `structured-call-filter-owner-documentation-drift` | Low | structured-call-tool-filter-pipeline-decomposition | Correct stale structured-call ownership comments after pipeline decomposition. [type: documentation] [source: 2026-09-10 cold review] | M | items/structured-call-filter-owner-documentation-drift.md |
 | `structured-call-pipeline-collaborator-cohesion` | Low | structured-call-tool-filter-pipeline-decomposition | Further decompose structured workspace resolution and dispatch collaborators after the initial filter split. [type: refactor] [source: 2026-09-10 cold review] | M | items/structured-call-pipeline-collaborator-cohesion.md |
+| `workspace-path-wire-json-document-disposal` | Low | — | Dispose five parsed JSON documents in workspace-path wire tests while retaining the root elements only inside their owner lifetime. [type: test-hygiene] [source: cold-review] | S | items/workspace-path-wire-json-document-disposal.md |
 
 ## Defer
 
