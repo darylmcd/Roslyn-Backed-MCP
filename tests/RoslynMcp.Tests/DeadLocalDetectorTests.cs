@@ -441,6 +441,34 @@ public sealed class DeadLocalDetectorTests
     }
 
     [TestMethod]
+    public async Task FindDeadLocals_OuterLocalReadByNestedLocalFunction_IsNotFlagged()
+    {
+        const string source = """
+            namespace Sample;
+            internal static class Service
+            {
+                public static int Entry()
+                {
+                    var observed = 42;
+                    return ReadObserved();
+
+                    int ReadObserved() => observed;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadLocalsAsync(
+            WorkspaceId,
+            new DeadLocalsAnalysisOptions(),
+            default);
+
+        Assert.IsFalse(hits.Any(hit => hit.SymbolName == "observed"),
+            "An outer local read by a nested local function must remain live.");
+    }
+
+    [TestMethod]
     public async Task FindDeadLocals_LimitCapsResults()
     {
         // Verify the Limit option clamps results.
