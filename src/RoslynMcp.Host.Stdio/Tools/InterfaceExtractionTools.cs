@@ -20,7 +20,7 @@ public static class InterfaceExtractionTools
     [McpServerTool(Name = "extract_interface_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
-     Description("Preview extracting an interface from a concrete type. Creates a new interface file with selected member signatures, adds it to the type's base list, and optionally replaces concrete type references with the interface.")]
+     Description("Preview extracting an interface from a concrete type in the same project, with selected members. Optionally replace concrete-type references with the interface.")]
     public static Task<string> PreviewExtractInterface(
         IWorkspaceExecutionGate gate,
         IInterfaceExtractionService interfaceExtractionService,
