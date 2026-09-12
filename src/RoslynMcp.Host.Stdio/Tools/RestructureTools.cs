@@ -19,7 +19,7 @@ public static class RestructureTools
     [McpServerTool(Name = "restructure_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),
-     Description("Preview a syntax-tree pattern-based find-and-replace. Pattern and goal are C# expression or statement fragments; placeholders of the form __name__ capture and splice arbitrary sub-expressions. Returns a preview token redeemable via preview_multi_file_edit_apply.")]
+     Description("Preview a syntax-tree pattern-based C# find-and-replace. __name__ placeholders capture and splice subexpressions; redeem the result through preview_multi_file_edit_apply.")]
     public static Task<string> PreviewRestructure(
         IWorkspaceExecutionGate gate,
         IRestructureService restructureService,
@@ -40,7 +40,7 @@ public static class RestructureTools
     [McpServerTool(Name = "replace_string_literals_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview replacing string literals in argument/initializer position with a constant expression."),
-     Description("Preview replacing string literals in argument or initializer position with a constant/identifier expression. Useful for magic-string centralization. Returns a preview token redeemable via preview_multi_file_edit_apply.")]
+     Description("Preview replacing argument or initializer string literals with constant or identifier expressions for magic-string centralization; redeem via preview_multi_file_edit_apply.")]
     public static Task<string> PreviewReplaceStringLiterals(
         IWorkspaceExecutionGate gate,
         IStringLiteralReplaceService stringLiteralReplaceService,

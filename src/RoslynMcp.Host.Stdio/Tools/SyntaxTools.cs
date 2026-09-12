@@ -14,7 +14,7 @@ public static class SyntaxTools
     [McpServerTool(Name = "get_syntax_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("syntax", "stable", true, false,
         "Return a structured syntax tree for a document or range."),
-     Description("Get the hierarchical syntax tree (AST) for a file or line range, with node kinds and positions. Three budgets cap it (maxOutputChars, maxNodes, maxTotalBytes); output stops at the first cap and emits a TruncationNotice.")]
+     Description("Get a hierarchical syntax tree for a file or range, including node kinds and positions. Response budgets stop at the first cap and emit a TruncationNotice.")]
     public static Task<string> GetSyntaxTree(
         McpServer server,
         IWorkspaceExecutionGate gate,
