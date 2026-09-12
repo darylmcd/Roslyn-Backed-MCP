@@ -165,6 +165,7 @@ For the long-form decision tree, use `domains/tool-usage-guide.md`.
 - If a workspace-scoped tool reports that the workspace is missing, the usual causes are host restart, `workspace_close`, or eviction at the concurrent-workspace cap.
 - Recovery is `workspace_load` on the same path; repeated loads are idempotent.
 - Call `workspace_load` before workspace-scoped tools. An idle server does not load a workspace by itself; poll `server_heartbeat` / `server_info.connection` only to observe a load that another caller has already initiated.
+- The required load argument is `path`: `{"path":"C:/Code-Repo/Roslyn-Backed-MCP/RoslynMcp.slnx"}` for this checkout. Resolve the current worktree path when working elsewhere; do not substitute `solutionPath`. See `bootstrap-read-tool-primer.md` for argument-error and analyzer-readiness recovery.
 
 ## Connection-State Signals
 

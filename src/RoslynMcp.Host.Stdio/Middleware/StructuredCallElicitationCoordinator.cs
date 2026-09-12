@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Elicitation;
 using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 
@@ -49,8 +50,23 @@ internal static class StructuredCallElicitationCoordinator
                 parameters.Name,
                 ElicitationAllowlistPolicy.WorkspaceLoadToolName,
                 StringComparison.Ordinal) ||
-            !IsParameterMissing(parameters.Arguments, ElicitationAllowlistPolicy.PathParameterName) ||
-            !ElicitationAllowlistPolicy.IsElicitationAllowedFor(
+            !IsParameterMissing(parameters.Arguments, ElicitationAllowlistPolicy.PathParameterName))
+        {
+            return null;
+        }
+
+        // A misspelled argument (for example, solutionPath) is a caller correction, not
+        // missing operator knowledge. Reject it before either protocol era opens a form.
+        // Use the advertised parameter index so valid optional arguments stay supported.
+        if (parameters.Arguments?.Keys.Any(name =>
+                ToolParameterIndex.GetParameter(parameters.Name, name) is null) == true)
+        {
+            throw new ArgumentException(
+                "Supply the required path argument using the exact name in the workspace_load schema.",
+                ElicitationAllowlistPolicy.PathParameterName);
+        }
+
+        if (!ElicitationAllowlistPolicy.IsElicitationAllowedFor(
                 ElicitationAllowlistPolicy.WorkspaceLoadToolName,
                 ElicitationAllowlistPolicy.PathParameterName) ||
             !ElicitationChoicePrompt.SupportsElicitation(context))

@@ -4,6 +4,25 @@
      bootstrap self-edit sessions on this repo. Read this at session start before
      reaching for Grep / Bash: dotnet build / Bash: dotnet test. -->
 
+## Bootstrap request contract
+
+1. Inspect the live `workspace_load` schema before calling it. The required argument is
+   **`path`**, not `solutionPath`, `filePath`, or `workspacePath`.
+2. For this checkout, call `workspace_load` with this argument object:
+
+   ```json
+   { "path": "C:/Code-Repo/Roslyn-Backed-MCP/RoslynMcp.slnx" }
+   ```
+
+   In another worktree, resolve that worktree's absolute `RoslynMcp.slnx` path first.
+3. Keep the returned `workspaceId`. `isLoaded=true` confirms the file loaded even when
+   `isReady=false`; inspect readiness diagnostics separately.
+4. For `WORKSPACE_UNRESOLVED_ANALYZER`, build the named analyzer project or use
+   `build_workspace`, then call `workspace_reload` and confirm `isReady=true`.
+5. Correct malformed arguments from the live schema before retrying. Verify an existing
+   repository solution locally before requesting operator input. A generic `FileNotFound`
+   envelope alone does not prove that the original supplied path failed an existence check.
+
 ## The write-side restriction — narrow, not blanket
 
 The `bootstrapCaveat` that appears in this repo's plan `state.json` files and executor
