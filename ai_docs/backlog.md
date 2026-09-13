@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-12T00:17:15Z
+**updated_at:** 2026-09-12T23:55:41Z
 
 ## Agent contract
 
@@ -97,8 +97,6 @@
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `cohesion-multifile-partial-semantic-model` | Medium | — | Fix cohesion analysis across multi-file partial types so suggestions do not fail closed. [type: bug] [source: live-surface-audit] | M | items/cohesion-multifile-partial-semantic-model.md |
-| `unused-code-analyzer-static-lazy-field-read-safety` | Medium | — | Stop dead-field analysis from marking static Lazy-backed reads safely removable. [type: correctness] [source: live-surface-audit] | M | items/unused-code-analyzer-static-lazy-field-read-safety.md |
-| `unused-code-analyzer-captured-local-read-safety` | Medium | — | Treat locals read by nested local functions as live. [type: correctness] [source: live-surface-audit] | S | items/unused-code-analyzer-captured-local-read-safety.md |
 | `diagnostic-details-project-diagnostic-location-contract` | Medium | — | Make diagnostic_details accept the exact locations project_diagnostics emits. [type: bug] [source: live-surface-audit] | M | items/diagnostic-details-project-diagnostic-location-contract.md |
 | `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
 | `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
@@ -241,6 +239,7 @@
 | `structured-call-filter-owner-documentation-drift` | Low | structured-call-tool-filter-pipeline-decomposition | Correct stale structured-call ownership comments after pipeline decomposition. [type: documentation] [source: 2026-09-10 cold review] | M | items/structured-call-filter-owner-documentation-drift.md |
 | `structured-call-pipeline-collaborator-cohesion` | Low | structured-call-tool-filter-pipeline-decomposition | Further decompose structured workspace resolution and dispatch collaborators after the initial filter split. [type: refactor] [source: 2026-09-10 cold review] | M | items/structured-call-pipeline-collaborator-cohesion.md |
 | `workspace-path-wire-json-document-disposal` | Low | — | Dispose five parsed JSON documents in workspace-path wire tests while retaining the root elements only inside their owner lifetime. [type: test-hygiene] [source: cold-review] | S | items/workspace-path-wire-json-document-disposal.md |
+| `unused-code-analyzer-test-harness-wave-1` | Low | — | **Consolidate the first unused-code analyzer test harness pair** — extract a fail-loud AdhocWorkspace/TestWorkspaceManager helper and migrate dead-field/local tests. [type: test-refactor] [source: 2026-09-12 adjacent review] | S | items/unused-code-analyzer-test-harness-wave-1.md |
 
 ## Defer
 

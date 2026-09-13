@@ -270,6 +270,31 @@ public sealed class DeadFieldDetectorTests
         Assert.IsNull(hit.RemovalBlockedBy);
     }
 
+    [TestMethod]
+    public async Task FindDeadFields_StaticLazyFieldReadThroughValue_IsNotFlagged()
+    {
+        const string source = """
+            using System;
+            namespace Sample;
+            internal static class CachedValue
+            {
+                private static readonly Lazy<int> s_value = new(() => 42);
+
+                public static int Get() => s_value.Value;
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions(),
+            default);
+
+        Assert.IsFalse(hits.Any(hit => hit.SymbolName == "s_value"),
+            "A Lazy<T> field read through .Value must not be reported as dead.");
+    }
+
     // Regression coverage for `find-dead-fields-compound-assignment-writes`:
     // every compound-assignment operator + `++`/`--` on both bare and member-access
     // field references must count as a write so the field is never classified as
