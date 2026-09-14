@@ -14,10 +14,10 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.CodeAnalysis.CSharp.Workspaces | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
 | Microsoft.CodeAnalysis.Features | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
 | Microsoft.CodeAnalysis.Workspaces.MSBuild | 5.9.0 | MIT | https://github.com/dotnet/roslyn |
-| Microsoft.Extensions.Hosting | 10.0.11 | MIT | https://github.com/dotnet/runtime |
-| Microsoft.Extensions.Http | 10.0.11 | MIT | https://github.com/dotnet/runtime |
-| Microsoft.Extensions.Logging | 10.0.11 | MIT | https://github.com/dotnet/runtime |
-| Microsoft.Extensions.Logging.Console | 10.0.11 | MIT | https://github.com/dotnet/runtime |
+| Microsoft.Extensions.Hosting | 10.0.12 | MIT | https://github.com/dotnet/runtime |
+| Microsoft.Extensions.Http | 10.0.12 | MIT | https://github.com/dotnet/runtime |
+| Microsoft.Extensions.Logging | 10.0.12 | MIT | https://github.com/dotnet/runtime |
+| Microsoft.Extensions.Logging.Console | 10.0.12 | MIT | https://github.com/dotnet/runtime |
 | ModelContextProtocol | 2.2.0 | Apache-2.0 | https://github.com/modelcontextprotocol/csharp-sdk |
 | Nito.AsyncEx | 5.1.2 | MIT | https://github.com/StephenCleary/AsyncEx |
 | System.Security.Cryptography.Xml | 10.0.12 | MIT | https://github.com/dotnet/runtime |
@@ -43,8 +43,8 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest | 1.1.2 | MIT | https://github.com/dotnet/roslyn-sdk |
 | Microsoft.Extensions.TimeProvider.Testing | 10.10.0 | MIT | https://github.com/dotnet/extensions |
 | Microsoft.NET.Test.Sdk | 18.10.0 | MIT | https://github.com/microsoft/vstest |
-| MSTest.TestAdapter | 4.3.3 | MIT | https://github.com/microsoft/testfx |
-| MSTest.TestFramework | 4.3.3 | MIT | https://github.com/microsoft/testfx |
+| MSTest.TestAdapter | 4.4.0 | MIT | https://github.com/microsoft/testfx |
+| MSTest.TestFramework | 4.4.0 | MIT | https://github.com/microsoft/testfx |
 | NuGet.Frameworks | 6.3.4 | Apache-2.0 | https://github.com/NuGet/NuGet.Client |
 
 ---
