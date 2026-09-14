@@ -1,6 +1,6 @@
 # resource-cache-hint-wire-failure-diagnostics — Diagnose missing resource cache hints
 
-**row:** `resource-cache-hint-wire-failure-diagnostics` · **pri:** `Medium` · **size:** `S`
+**row:** `resource-cache-hint-wire-failure-diagnostics` · **pri:** `Medium` · **size:** `M`
 
 ## Anchors
 
