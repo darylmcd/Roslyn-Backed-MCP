@@ -36,10 +36,10 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `Microsoft.CodeAnalysis.Workspaces.MSBuild` | `5.9.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.CodeAnalysis.CSharp.Scripting` | `5.9.0` | `Directory.Packages.props` | Roslyn API family; move together |
 | `Microsoft.Build.Locator` | `1.11.2` | `Directory.Packages.props` | Review with MSBuild/workspace-loading changes |
-| `Microsoft.Extensions.Hosting` | `10.0.11` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Http` | `10.0.11` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Logging` | `10.0.11` | `Directory.Packages.props` | Extensions family; routine servicing group |
-| `Microsoft.Extensions.Logging.Console` | `10.0.11` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Hosting` | `10.0.12` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Http` | `10.0.12` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Logging` | `10.0.12` | `Directory.Packages.props` | Extensions family; routine servicing group |
+| `Microsoft.Extensions.Logging.Console` | `10.0.12` | `Directory.Packages.props` | Extensions family; routine servicing group |
 | `Microsoft.Extensions.TimeProvider.Testing` | `10.9.0` | `Directory.Packages.props` | Test-only; routine servicing group |
 | `DiffPlex` | `1.9.0` | `Directory.Packages.props` | Independent |
 | `Microsoft.Build.Framework` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
