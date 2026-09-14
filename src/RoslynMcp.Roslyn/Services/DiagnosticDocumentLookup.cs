@@ -108,8 +108,7 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         // Compiler diagnostics take precedence over analyzer diagnostics at the same
         // location, preserving the service's long-standing selection contract.
         var compilerMatch = FindMatch(
-            snapshot.Compilation.GetDiagnostics(ct).Concat(snapshot.GeneratorDiagnostics).Where(diagnostic =>
-                diagnostic.Location.SourceTree == tree),
+            snapshot.Compilation.GetDiagnostics(ct).Concat(snapshot.GeneratorDiagnostics),
             target);
         return compilerMatch ?? await FindAnalyzerMatchAsync(
             workspaceId,
@@ -213,13 +212,19 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         if (!string.Equals(
                 diagnostic.Id,
                 target.DiagnosticId,
-                StringComparison.OrdinalIgnoreCase)
-            || !diagnostic.Location.IsInSource)
+                StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
         var lineSpan = diagnostic.Location.GetLineSpan();
+        // Generator-driver diagnostics can carry an external-file location rather than a
+        // SourceTree. The public list still emits that exact file/line/column tuple.
+        if (!lineSpan.IsValid || string.IsNullOrEmpty(lineSpan.Path))
+        {
+            return false;
+        }
+
         return string.Equals(
                 Path.GetFullPath(lineSpan.Path),
                 Path.GetFullPath(target.FilePath),

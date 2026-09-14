@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T04:57:42Z
+**updated_at:** 2026-09-14T05:09:19Z
 
 ## Agent contract
 
@@ -104,6 +104,7 @@
 | `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `verify-ai-docs-link-gate-false-positives` | Medium | — | **Doc link gate false-positives on code spans** — `eng/verify-ai-docs.ps1` runs its link regex over raw text with no code-span or fence exemption, so quoted code scores as broken links (69 live candidates repo-wide). Strip code before scanning. [type: bug] [source: roslyn-mcp retro 2026-09-13] | S | items/verify-ai-docs-link-gate-false-positives.md |
+| `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 
 ## Low
 

@@ -114,12 +114,14 @@ public sealed class DiagnosticQueryServiceRegressionTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task DiagnosticDetails_ResolvesExactListedGeneratorLocationAsync(bool warmWholeSolutionCache)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task DiagnosticDetails_ResolvesExactListedGeneratorLocationAsync(bool warmWholeSolutionCache, bool externalLocation)
     {
         using var workspace = new AdhocWorkspace();
-        var project = CreateDiagnosticProjectWithReference(workspace, new LocationGeneratorReference(),
+        var project = CreateDiagnosticProjectWithReference(workspace, new LocationGeneratorReference(externalLocation),
             escalateWarningToError: false, diagnosticId: "MCP002");
         var manager = new VersionedWorkspaceManager("generator-lookup", project.Solution, 1);
         using var cache = new CompilationCache(manager);
@@ -155,31 +157,37 @@ public sealed class DiagnosticQueryServiceRegressionTests
         Assert.IsNull(miss.Diagnostic);
         Assert.IsNotNull(miss.FullScanDiagnostics);
         Assert.AreEqual(1, miss.FullScanDiagnostics.Count(item => item.Id == "MCP002"));
+        Assert.AreEqual(!externalLocation, miss.FullScanDiagnostics.Single(item => item.Id == "MCP002").Location.IsInSource);
         var afterMiss = await service.GetDiagnosticDetailsAsync(manager.WorkspaceId, "MCP002", path, line, column, CancellationToken.None);
         Assert.IsNotNull(afterMiss);
         Assert.AreEqual("MCP002", afterMiss.Diagnostic.Id);
     }
 
-    private sealed class LocationGeneratorReference : AnalyzerReference
+    private sealed class LocationGeneratorReference(bool externalLocation) : AnalyzerReference
     {
         public override string FullPath => string.Empty;
         public override object Id => typeof(LocationGeneratorReference);
         public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzers(string language) => [];
         public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() => [];
         public override ImmutableArray<ISourceGenerator> GetGenerators(string language) =>
-            language == LanguageNames.CSharp ? [new LocationDiagnosticGenerator().AsSourceGenerator()] : [];
+            language == LanguageNames.CSharp ? [new LocationDiagnosticGenerator(externalLocation).AsSourceGenerator()] : [];
     }
 
-    private sealed class LocationDiagnosticGenerator : IIncrementalGenerator
+    private sealed class LocationDiagnosticGenerator(bool externalLocation) : IIncrementalGenerator
     {
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            context.RegisterSourceOutput(context.CompilationProvider, static (output, compilation) =>
+            context.RegisterSourceOutput(context.CompilationProvider, (output, compilation) =>
             {
                 var tree = compilation.SyntaxTrees.Single();
+                var location = tree.GetRoot(output.CancellationToken).GetLocation();
+                if (externalLocation)
+                {
+                    location = Location.Create(tree.FilePath, location.SourceSpan, location.GetLineSpan().Span);
+                }
                 output.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor("MCP002",
                     "Generator location probe", "Generator location probe", "Testing",
-                    DiagnosticSeverity.Info, isEnabledByDefault: true), tree.GetRoot(output.CancellationToken).GetLocation()));
+                    DiagnosticSeverity.Info, isEnabledByDefault: true), location));
             });
         }
     }
