@@ -187,8 +187,8 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     // Pre-fix that produced `overallStatus: clean` + `changedFilePaths: []` against a
     // demonstrably dirty tree, indistinguishable from a genuinely clean repo. The
     // verdict must now degrade to `git-status-unknown` while the retryable warning
-    // is preserved. A 1 ms git timeout makes the timeout branch fire deterministically
-    // regardless of real git speed (mirrors the SlowValidationPhase test's approach).
+    // is preserved. Hold the exit wait until its token is cancelled so the timeout
+    // branch is exercised independently of real git speed and timer scheduling.
     // ------------------------------------------------------------------
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_GitStatusTimeout_ReportsGitStatusUnknownNotClean()
@@ -214,6 +214,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         // CS0246-class errors and every verdict would be "compile-error" — which would mask
         // the behavior under test. Pinning the underlying verdict to "clean" isolates the one
         // thing this test is about: whether a git-status timeout downgrades it.
+        var exitWaitCancelled = false;
         var timeoutService = new WorkspaceValidationService(
             new CleanCompileCheckService(),
             new CleanDiagnosticService(),
@@ -221,12 +222,24 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             TestRunnerService,
             WorkspaceManager,
             ChangeTracker,
-            gitStatusTimeout: TimeSpan.FromMilliseconds(1),
-            validationPhaseTimeout: TimeSpan.FromMinutes(2));
+            gitStatusTimeout: TimeSpan.FromMilliseconds(25),
+            validationPhaseTimeout: TimeSpan.FromMinutes(2),
+            waitForGitExitAsync: async (_, token) =>
+            {
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                }
+                finally
+                {
+                    exitWaitCancelled = token.IsCancellationRequested;
+                }
+            });
 
         var result = await timeoutService.ValidateRecentGitChangesAsync(
             workspace.WorkspaceId, runTests: false, CancellationToken.None);
 
+        Assert.IsTrue(exitWaitCancelled, "The injected exit wait must observe the service timeout token.");
         Assert.AreEqual("git-status-unknown", result.OverallStatus,
             "A clean verdict computed over an unobserved git scope must degrade to git-status-unknown; "
             + $"warnings were [{string.Join("; ", result.Warnings)}].");
@@ -262,6 +275,8 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             $"Control run must stay clean; warnings were [{string.Join("; ", control.Warnings)}].");
         Assert.AreEqual(0, control.Warnings.Count,
             $"Control run must not warn; got [{string.Join("; ", control.Warnings)}].");
+        Assert.AreEqual(1, control.ChangedFilePaths.Count, "The real exit wait must preserve the dirty file scope.");
+        Assert.AreEqual(Path.GetFullPath(touchedFile), Path.GetFullPath(control.ChangedFilePaths[0]));
     }
 
     // ------------------------------------------------------------------
