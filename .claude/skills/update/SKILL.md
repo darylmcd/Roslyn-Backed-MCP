@@ -61,12 +61,17 @@ Failed to uninstall tool package 'darylmcd.roslynmcp':
 Access to the path 'C:\Users\<user>\.dotnet\tools\.store\darylmcd.roslynmcp\<old>' is denied.
 ```
 
-This is the common case, not an edge case — anyone who actually uses Layer 1 has one running, and it is very often **this session's own MCP server**: when Claude Code launched the server from the Layer 1 shim rather than the `dnx` pin, the holder's PID equals `server_info`'s `stdioPid` (verified on the v4.1.2 cut).
+This is the common case, not an edge case — anyone who actually uses Layer 1 has one running. **Determine whose server it is from `ParentProcessId`; do not assume it is this session's.** Both cases are observed:
+
+- Parent is Claude Code — the holder's PID equals `server_info`'s `stdioPid`, because the server was launched from the Layer 1 shim rather than the `dnx` pin (v4.1.2 cut). Restarting Claude Code releases it.
+- Parent is another agent, e.g. `codex.exe` — restarting Claude Code releases **nothing**, because its server runs from the Layer 2 `dnx` pin, a different image path that never touches the tool store (v4.2.0 cut: 3 holders, all parented to one `codex.exe`). Ask the operator before stopping another agent's processes.
+
+Expect respawn: an agent relaunches its server within seconds of a stop, so stop the holders and run the update in one scripted pass rather than as separate calls.
 
 `just tool-update` now stops one owned process automatically before mutating anything. It runs `eng/stop-owned-tool-store-process.ps1` as a leading step, which reads `ROSLYNMCP_REINSTALL_PROCESS_ID` and `ROSLYNMCP_REINSTALL_PROCESS_STARTED_AT_UTC` (the same two variables `just tool-install-local` uses), stops that one process only after confirming its image name is `roslynmcp` AND its image path resolves under the tool store root, and then asserts the store is unlocked — failing closed and naming every PID + image path still holding it (never terminating anything it cannot attribute) if one remains. Identify the holder by image path, never by process name alone (the plugin's `dnx`-launched Layer 2 server is also called `roslynmcp.exe`, runs from the NuGet package cache rather than the tool store, does not hold the lock, and killing it drops the MCP connection of whoever is attached):
 
 ```bash
-pwsh -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='roslynmcp.exe'\" | Select-Object ProcessId, ExecutablePath, CreationDate"
+pwsh -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='roslynmcp.exe'\" | Select-Object ProcessId, ExecutablePath, CreationDate, ParentProcessId"
 ```
 
 Set the identity, then run the update:

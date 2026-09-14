@@ -216,12 +216,25 @@ That resolves `Darylmcd.RoslynMcp` from NuGet.org, so it can only run once the `
 
 Two failure modes to expect here, both covered in `/update` Step 3: NuGet indexing lag, and a Windows file lock when a Layer 1 process is running (`Access to the path '...\.store\darylmcd.roslynmcp\<old>' is denied`). For the lock, identify the holder by image path under `~/.dotnet/tools/` — never by the `roslynmcp.exe` image name alone, since the plugin's `dnx`-launched Layer 2 server shares that name.
 
-**Expect the lock holder to be your own MCP server.** When Claude Code launched this session's server from the Layer 1 shim (`~/.dotnet/tools/roslynmcp.exe`) rather than the `dnx` pin, the process holding the store *is* the server you are talking to — confirmed by matching its PID against `server_info`'s `stdioPid`. Verified on the v4.1.2 cut. So the order is **stop-or-restart, then update**, not update-then-restart:
+**Identify the lock holder by parentage, not by assumption.** Enumerate the holders and read each one's parent process before deciding anything:
 
-- Interactive: restart Claude Code first (Step 7 asks for that anyway); the lock releases on exit and `just tool-update` then succeeds with nothing running.
-- Mid-flow: confirm no other session is using the server, stop that PID, and accept losing Roslyn MCP tools for the remainder of the run. Nothing after Step 6b needs them — the rest is `git`, `gh`, and `dotnet`.
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='roslynmcp.exe'" |
+  Select-Object ProcessId, ExecutablePath, ParentProcessId
+```
 
-Check `server_info`'s `stdioPid` before stopping anything, and never stop a PID you have not matched to the tool-store image path.
+The holder is whichever agent launched `roslynmcp` from the Layer 1 shim, and that is **not** necessarily this session. Two observed cases:
+
+| Parent | What it means | Resolution |
+|---|---|---|
+| Claude Code | This session's server came from the shim, not the `dnx` pin (`server_info`'s `stdioPid` matches). Observed on the v4.1.2 cut. | Restart Claude Code (Step 7 asks for that anyway), or stop that PID mid-flow and accept losing Roslyn MCP tools for the rest of the run — nothing after 6b needs them. |
+| `codex.exe` (or any other agent) | Another tool holds the store. Observed on the v4.2.0 cut: 3 holders, all parented to one `codex.exe`. | Restarting Claude Code releases **nothing** — its server runs from the Layer 2 `dnx` pin, a different image path that never touches the tool store. Ask the operator before stopping another agent's processes; they respawn on that agent's next use. |
+
+Never assume the Claude Code case. When the parent is another agent, restarting Claude Code is a no-op that wastes a cycle and leaves Layer 1 stale.
+
+**Respawn is a race.** An agent whose server you stop may relaunch it within seconds. Stop the holders and run `dotnet tool update` in a single scripted pass rather than as separate calls, or the update finds a fresh holder and fails again.
+
+`eng/stop-owned-tool-store-process.ps1` is the sanctioned stop: it verifies image name, tool-store image path, and start time (PID-reuse guard), stops exactly one attributable PID, and fails closed naming any holder it cannot attribute. Dot-source it to stop several in one pass. Never stop a PID you have not matched to the tool-store image path, and never use an image-wide `taskkill`.
 
 **6c — Prove both layers.** This is the step that closes Step 6:
 

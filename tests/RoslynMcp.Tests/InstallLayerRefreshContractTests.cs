@@ -114,6 +114,179 @@ public sealed class InstallLayerRefreshContractTests
         }
     }
 
+    [TestMethod]
+    [DataRow("release-cut")]
+    [DataRow("update")]
+    public void LockHolderGuidance_IdentifiesTheHolderByParentage(string skillName)
+    {
+        // The v4.2.0 cut found all three tool-store holders parented to codex.exe, not to
+        // Claude Code. Guidance that assumes the holder is this session's own server sends
+        // the maintainer to restart Claude Code -- a no-op that leaves Layer 1 stale.
+        var skill = ReadSkill(skillName);
+
+        StringAssert.Contains(
+            skill,
+            "ParentProcessId",
+            "Lock-holder guidance must identify the owning agent by parent process.");
+        StringAssert.Contains(
+            skill,
+            "codex.exe",
+            "Guidance must cover the other-agent case observed on the v4.2.0 cut.");
+        Assert.IsFalse(
+            skill.Contains("Expect the lock holder to be your own MCP server", StringComparison.Ordinal),
+            "The holder must not be documented as presumptively this session's server.");
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyInstallLayers_FailedToolQuery_ReportsUnverifiableRatherThanNotInstalled()
+    {
+        // A failed 'dotnet tool list' proves nothing about what is installed. Reporting
+        // "is not installed" sends the caller to 'just tool-update', which cannot fix a
+        // broken dotnet resolution -- witnessed on the v4.2.0 cut, where a user-local SDK
+        // ahead of the global.json-pinned one made the verifier deny an installed 4.2.0.
+        const string expectedVersion = "4.2.0";
+        var cacheRoot = CreateCacheRootWith(expectedVersion);
+        var stubDirectory = CreateFailingDotnetStub();
+        try
+        {
+            var result = await RunVerifierWithStubbedDotnetAsync(expectedVersion, cacheRoot, stubDirectory);
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(
+                result.AllOutput,
+                "could not be determined",
+                "A failed query must be reported as unverifiable.");
+            Assert.IsFalse(
+                result.AllOutput.Contains("is not installed", StringComparison.Ordinal),
+                $"A failed query must never be reported as absence. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(cacheRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(stubDirectory);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task VerifyInstallLayers_SucceedingToolQueryWithoutPackage_ReportsNotInstalled()
+    {
+        // The genuine-absence path must survive the unverifiable-vs-absent split above.
+        const string expectedVersion = "4.2.0";
+        var cacheRoot = CreateCacheRootWith(expectedVersion);
+        var stubDirectory = CreateEmptyToolListDotnetStub();
+        try
+        {
+            var result = await RunVerifierWithStubbedDotnetAsync(expectedVersion, cacheRoot, stubDirectory);
+
+            Assert.AreEqual(1, result.ExitCode, result.AllOutput);
+            StringAssert.Contains(
+                result.AllOutput,
+                "is not installed",
+                "A successful query that lists no package is genuine absence.");
+            Assert.IsFalse(
+                result.AllOutput.Contains("could not be determined", StringComparison.Ordinal),
+                $"A successful query must not be reported as unverifiable. Output:{Environment.NewLine}{result.AllOutput}");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(cacheRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(stubDirectory);
+        }
+    }
+
+    private static string CreateCacheRootWith(string version)
+    {
+        var cacheRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"roslynmcp-install-layers-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(cacheRoot, version));
+        return cacheRoot;
+    }
+
+    private static string CreateFailingDotnetStub() => CreateDotnetStub(
+        exitCode: 1,
+        "A compatible .NET SDK was not found.");
+
+    private static string CreateEmptyToolListDotnetStub() => CreateDotnetStub(
+        exitCode: 0,
+        "Package Id      Version      Commands",
+        "---------------------------------------",
+        "dotnet-ef       10.0.5       dotnet-ef");
+
+    /// <summary>
+    /// Writes a stub that shadows the real <c>dotnet</c> on PATH. The script must be named
+    /// and marked so the host's own PATH lookup resolves it: a <c>.cmd</c> on Windows, and
+    /// an executable extensionless <c>dotnet</c> on Unix. A Windows-only stub silently lets
+    /// the real dotnet run on Linux, which is a test that proves nothing.
+    /// </summary>
+    private static string CreateDotnetStub(int exitCode, params string[] outputLines)
+    {
+        var stubDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"roslynmcp-dotnet-stub-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(stubDirectory);
+
+        var script = new List<string>();
+        if (OperatingSystem.IsWindows())
+        {
+            script.Add("@echo off");
+            foreach (var line in outputLines)
+            {
+                script.Add($"echo {line}");
+            }
+
+            script.Add($"exit /b {exitCode}");
+            File.WriteAllLines(Path.Combine(stubDirectory, "dotnet.cmd"), script);
+        }
+        else
+        {
+            script.Add("#!/bin/sh");
+            foreach (var line in outputLines)
+            {
+                script.Add($"echo '{line}'");
+            }
+
+            script.Add($"exit {exitCode}");
+
+            var stubPath = Path.Combine(stubDirectory, "dotnet");
+            File.WriteAllLines(stubPath, script);
+            File.SetUnixFileMode(
+                stubPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        return stubDirectory;
+    }
+
+    private static Task<PwshScriptResult> RunVerifierWithStubbedDotnetAsync(
+        string expectedVersion,
+        string pluginCacheRoot,
+        string stubDirectory)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+
+        // Prepend rather than replace: pwsh itself is resolved through PATH.
+        var stubbedPath = stubDirectory + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+
+        return PwshScriptRunner.RunAsync(
+            [
+                "-NoProfile",
+                "-File",
+                Path.Combine(repositoryRoot, "eng", "verify-install-layers.ps1"),
+                "-ExpectedVersion",
+                expectedVersion,
+                "-RepositoryRoot",
+                repositoryRoot,
+                "-PluginCacheRoot",
+                pluginCacheRoot,
+            ],
+            environment: new Dictionary<string, string?> { ["PATH"] = stubbedPath },
+            timeout: TimeSpan.FromSeconds(60),
+            description: "install-layer verifier with stubbed dotnet");
+    }
+
     private static string ReadSkill(string skillName) => File.ReadAllText(
         Path.Combine(
             TestFixtureFileSystem.FindRepositoryRoot(),
