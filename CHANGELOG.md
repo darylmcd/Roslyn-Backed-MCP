@@ -16,6 +16,163 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [4.2.0] - 2026-09-14
+
+### Fixed
+
+- **Fixed:** Report actionlint executable permission failures precisely.
+
+- **Fixed:** The actionlint gate's archive extraction no longer depends on which `tar` implementation is first on `PATH`. GNU tar read the leading drive letter of an absolute Windows archive path as a remote `host:path` spec and mangled backslashes passed to `-C`, so `verify-actionlint` failed extraction outright on any Windows host where Git's `usr/bin` shadows the bundled bsdtar. Extraction now runs from the archive's own directory with a bare file name and a forward-slash destination, the one form GNU tar and bsdtar both accept.
+
+- **Fixed:** Fail closed when the current actionlint OS/architecture pair has no pinned binary.
+
+- **Fixed:** Cohesion analysis resolves partial-type members against their own syntax trees and emits one metric per logical type, restoring refactoring suggestions for multi-file partial classes. Clustering preserves overloaded method and helper identities, including constructed generic calls, while retaining the existing DTO shape and simple-name labels. Closes `cohesion-multifile-partial-semantic-model` and `cohesion-overload-cluster-symbol-identity`.
+
+- **Fixed:** Emit deterministic one-line shard collector diagnostics on stderr.
+
+- **Fixed:** Diagnostic validation now rejects missing compilation snapshots, preserves source-generator diagnostics in detail lookup and fallback caches, and orders summary groups by severity then count. Shared scope constants, deterministic Info-floor coverage, and one workspace-toolchain classifier keep validation and readiness projections consistent. Closes `compile-check-null-compilation-false-success`, `compile-check-scope-vocab-and-untested-branches`, `diagnostic-details-project-diagnostic-location-contract`, `diagnostics-summary-severity-order`, `diagnostic-info-floor-vacuous-regression`, `workspace-status-toolchain-classifier-single-owner`, `workspace-summary-redundant-filename-branch`.
+
+- **Fixed:** Return structured restore-required compile results before collecting misleading diagnostics, while keeping compiler errors visible when analyzer builds are missing.
+
+- **Fixed:** Compile only the projects owning requested files and preserve the files scope in multi-project compile checks.
+
+- **Fixed:** Expose filteredDiagnostics before pagination in both project_diagnostics response modes while retaining unfiltered severity totals.
+
+- **Fixed:** The formatter baseline generator now reports per-phase timings and a `generator-hang` vs `host-contention` classification with the competing processes named, instead of a bare five-minute timeout that discarded the generator's own output.
+
+- **Fixed:** Remove a dead interface-extraction catch and lock unexpected compilation-cache failure propagation. Closes `interface-extraction-catch-chain-dead-rethrow`.
+
+- **Fixed:** Trimmed refactoring, EditorConfig, dead-code, and type-move method descriptions while preserving their discriminating guidance.
+
+- **Fixed:** Trim restructure and interface tool descriptions into focused capability statements.
+
+- **Fixed:** Tightened signature and extraction tool descriptions while preserving their discovery and refusal guidance.
+
+- **Fixed:** Condense symbol and advanced-analysis tool descriptions into client-friendly capability statements.
+
+- **Fixed:** Drive NuGet version-check timeouts with a test-owned virtual clock and derive completion guards from the configured timeout, eliminating hosted pending-versus-timeout races. Closes `nuget-checker-timeout-test-bound-couple-to-httptimeout`.
+
+- **Fixed:** Declared one output-schema generation authority so an advertised fixed DTO schema can no longer drift from the SDK-generated shape unnoticed.
+
+- **Fixed:** Treat a completed cross-process preview-token claim race as a cache miss while preserving fail-closed handling for unrelated storage faults. Closes `persistent-composite-claim-contention`.
+
+- **Fixed:** the release gate's changelog parsing no longer depends on the working tree's line endings. `verify-breaking-version-bump.ps1` anchored both its release-header and `Changed — BREAKING` patterns on `[ \t]*$`, which cannot match a line ending `\r\n`, so on a CRLF checkout every release header vanished (measured: 79 matches on LF, 0 on CRLF) and the gate aborted claiming there was no release section — while the sibling BREAKING pattern failed open, letting a breaking release pass a patch bump. Both now tolerate an optional carriage return, and a zero-match result distinguishes "no release section" from "headers present but off-contract" instead of reporting both as missing. Closes `release-header-regex-crlf-intolerant`.
+
+- **Fixed:** Preserve fully qualified scaffold targets through semantic resolution so duplicate simple type names remain selectable. Closes `scaffold-fqn-target-type-disambiguation`.
+
+- **Fixed:** `scaffold_test_preview` no longer repeats project resolution, compilation and sibling-test discovery when an MRTR sampling exchange replays the tool call.
+
+- **Fixed:** Refuse ambiguous scaffold targets before requesting sampled test names.
+
+- **Fixed:** Surface a redacted warning when sampled sibling-name discovery is incomplete. Closes `sibling-test-name-discovery-warning-signal`.
+
+- **Fixed:** Preserve incomplete sibling-name discovery warnings across sampled scaffold replay. Closes `sibling-test-name-discovery-warning`.
+
+- **Fixed:** Make the service provider the sole owner of DI-created workspace file watchers, and align the shared test container with the production Roslyn composition root. Closes `test-service-container-production-di-lifetime` and `workspace-manager-file-watcher-disposal-ownership`.
+
+- **Fixed:** Give the assembly-owned test execution gate a non-exhausting test policy so unrelated parallel classes cannot consume the production request window. Closes `test-shared-gate-rate-limit-isolation`.
+
+- **Fixed:** `just tool-update` failing with an access-denied error when an owned Layer 1 `roslynmcp` process holds the tool-store lock; the update now stops only an owned process (by PID + start time, matched by image path under the tool store) and fails closed naming the holder when it cannot attribute the lock.
+
+- **Fixed:** Route unused-symbol reference-scan failures through the configured unexpected-exception reporter so operator diagnostics receive the same redacted correlation signal as sibling analyzers. Closes `unused-code-analyzer-exception-reporter-not-wired`.
+
+- **Fixed:** Lock dead-code analysis behavior so Lazy-backed fields and locals read by nested local functions are not reported as removable. Closes `unused-code-analyzer-static-lazy-field-read-safety`. Closes `unused-code-analyzer-captured-local-read-safety`.
+
+- **Fixed:** `find_unused_symbols` and `remove_dead_code_preview` treating a failed reference scan as a confident zero-reference result — a scan failure for a candidate now surfaces as an explicit error instead of a silent false "unused" claim, and the removal guard refuses removal when its own verification scan fails rather than proceeding on an unverifiable answer.
+
+- **Fixed:** Malformed `workspace_load` requests that omit `path` while supplying an unrecognized argument now return `InvalidArgument` with the canonical `path` schema hint before opening a user form. Valid missing-path recovery remains available across both supported protocol eras. Bootstrap guidance now includes the exact load argument and distinguishes loading from analyzer readiness. Closes `workspace-load-misnamed-path-elicitation`.
+
+- **Fixed:** Fail workspace warming on caller cancellation instead of reporting a partial successful result. Closes `workspace-warm-cancellation-propagation`.
+
+### Changed
+
+- **Changed:** The `_meta` gate-metrics block attached to every tool response now omits unset observability fields (`staleAction`, `staleReloadMs`, `retriedAfterReload`, `cacheHit`, `reloadConfirmedNotFound`, `autoResolution`, `autoLoadElapsedMs`, `heartbeatCount`, `gateMode`) instead of serializing them as explicit `null`, trimming response bytes on the common case (#1421).
+
+- **Changed:** `/release-cut` Step 6 now refreshes **both** install layers instead of treating the Layer 1 global tool as optional, and proves it with the new `eng/verify-install-layers.ps1` (Layer 1 read from `dotnet tool list --global`, Layer 2 from the plugin cache and its cached `plugin.json`). The layers drift in both directions — v1.29.0 and v1.34.2 left Layer 2 stale, v4.1.2 left Layer 1 a release behind — so the verifier is the step's completion check and the Step 6 checkpoint probe. The maintainer `/update` skill's global-tool step is likewise required rather than optional, and documents the Windows tool-store lock: identify the holder by image path under `~/.dotnet/tools/`, never by the `roslynmcp.exe` image name, since the plugin's `dnx`-launched Layer 2 server shares it.
+
+### Added
+
+- **Added:** Added a checksum-pinned, repository-owned `actionlint` gate wired into `just ci`, so a malformed GitHub Actions `if:`/`${{ }}` expression is caught locally before push instead of only after.
+
+- **Added:** `eng/collect-hosted-shard-timings.ps1`, an offline per-image hosted-shard timing collector that reports wall-time skew separately from summed TRX case duration and fails closed below `-MinimumSamples` (default 5) runs per image, and recorded the resulting shard-weighting decision durably in `CI_POLICY.md`.
+
+- **Added:** `test_run` gained an opt-in `compact` parameter — when `true`, trims `execution.stdOut`/`stdErr`/`command`/`arguments`/`workingDirectory` (redundant with the count fields once a run demonstrably passed) and the failure-pagination fields when there is nothing to paginate. Default `false` preserves the existing response shape (#1421).
+
+### Maintenance
+
+- **Maintenance:** Replace actionlint cache-hit wall-clock assertions with a fail-fast download-path tripwire that proves cached binaries stay offline under host contention. Closes `actionlint-cache-hit-deterministic-offline-proof`.
+
+- **Maintenance:** Locked the actionlint archive-extraction failure contract with an offline regression.
+
+- **Maintenance:** Locked the actionlint missing-binary refusal with a hermetic successful-extraction regression and a bounded diagnostic.
+
+- **Maintenance:** Lock the unsupported-platform actionlint gate contract.
+
+- **Maintenance:** Align backlog intake artifacts with the v15 transactional writer contract. Closes `backlog-intake-v15-writer-contract`.
+
+- **Maintenance:** Extracted the CI validation-topology decision out of an inline, untestable GitHub Actions script step into `eng/resolve-ci-topology.ps1`, a pure function covered by direct table tests instead of substring sentinels over PowerShell source.
+
+- **Maintenance:** Migrate the second method-description test wave to the shared harness.
+
+- **Maintenance:** Migrated the final method-description test slices to the shared harness.
+
+- **Maintenance:** Consolidated the duplicated method-description-budget test harness shared by `ToolDescriptionDietAnalysisMetricsTests` and `ToolDescriptionDietWorkspaceValidationTests` into a single `ToolDescriptionBudgetHarness`.
+
+- **Maintenance:** Share exact parameter-description budget assertions across tool slices.
+
+- **Maintenance:** Reuse the formatter-baseline determinism test's first successful restore for its second pass, with phase-marker assertions proving the no-restore contract. Closes `formatter-baseline-generator-double-restore-cost`.
+
+- **Maintenance:** Condense fix-all, bulk-refactoring, operation, and scripting tool descriptions into discovery-focused capability statements while retaining operational guidance in XML remarks. Closes `method-diet-fixall-bulk-operations`.
+
+- **Maintenance:** Condensed undo and workspace-lifecycle tool descriptions for discovery.
+
+- **Maintenance:** Make PR reconciliation readiness-only, route all landing through the canonical ship owner, and fail closed when cleanup proof is incomplete. Closes `pr-reconciler-fail-closed-ship-cleanup`.
+
+- **Maintenance:** Decomposed format-range preview validation, formatting, and line-splice assembly into bounded helpers without changing edit semantics.
+
+- **Maintenance:** Retire obsolete root-registration bootstrap documentation.
+
+- **Maintenance:** Retire the redundant root Roslyn MCP configuration. Closes `retire-root-roslyn-mcp-config`.
+
+- **Maintenance:** Align deep-review intake addenda and procedures with `/backlog-remediate`.
+
+- **Maintenance:** Refresh executor-agent remediation guidance.
+
+- **Maintenance:** Refresh intake and workflow remediation guidance.
+
+- **Maintenance:** Refresh reconciliation remediation guidance. Closes `retired-route-reconciliation-guidance`.
+
+- **Maintenance:** Refresh recovery and known-flake remediation guidance. Closes `retired-route-recovery-operations-guidance`.
+
+- **Maintenance:** Make contended scripting cancellation regressions causal instead of timing-sensitive. Closes `scripting-supervisor-outer-cancellation-contended-timeout`.
+
+- **Maintenance:** Split structured tool dispatch into focused workspace-resolution, dispatch, and terminal-projection owners while preserving its wire contract. Closes `structured-call-tool-filter-pipeline-decomposition`.
+
+- **Maintenance:** Reused the standard read dispatch path for structured workspace results.
+
+- **Maintenance:** Adopted an opt-in, finite-retention compatibility posture for the MCP Tasks extension.
+
+- **Maintenance:** Prove test-assembly fixture cleanup completed by asserting its populated workspace-id cache is empty after repeated disposal. Closes `test-assembly-fixture-disposal-observable-postcondition`.
+
+- **Maintenance:** Test-assembly initialization and disposal now have exactly one owner. `tests/RoslynMcp.Tests/TestInfrastructure/TestAssemblyFixture.cs` holds the immutable `TestServiceContainer`, the repository/fixture paths (`TestRepositoryFixtures`), the shared `WorkspaceIdCache`, and the lazy path-authorized MCP server session, and implements `IAsyncDisposable` — absorbing the hand-rolled disposal that previously lived in `TestBase`. `TestBase`'s 67 mutable `protected static … { get; private set; }` service/path properties became get-only forwarders over that fixture, so a new test service is declared once (in `TestServiceContainer`) instead of three times. Property names and types are unchanged, so all 159 derived test files compile untouched. `InitializeServices()` keeps its `_initLock` once-per-assembly gate and the single `WorkspaceIdCache` verbatim; `AssemblyCleanup.cs` needed no edit.
+
+- **Maintenance:** Align the test service container's refactoring-suggestion collaborators with the analysis-service instances it exposes, matching production singleton identity. Closes `test-service-container-duplicate-service-instances`.
+
+- **Maintenance:** Removed order-dependent lazy gate capture from the test service container.
+
+- **Maintenance:** Declare deprecated tool aliases in the catalog and keep `get_symbol_outline` contract-compatible with `document_symbols`. Closes `tool-consolidation-deprecated-alias-registry` and `get-symbol-outline-workspace-id-alias-parity`.
+
+- **Maintenance:** Document risk-bounded tool consolidation and require deprecated aliases to remain callable for a minor-version window before major-version removal. Closes `tool-consolidation-policy-foundation`.
+
+- **Maintenance:** Refresh editor-agent Roslyn MCP configuration guidance. Closes `user-scoped-roslyn-mcp-editor-guidance`.
+
+- **Maintenance:** Refresh runtime Roslyn MCP guidance. Closes `user-scoped-roslyn-mcp-runtime-guidance`.
+
+- **Maintenance:** `WorkspaceLoadDedupTests.FindWorkspaceIdsContainingFile_UsesLoadedDocumentMembership` picked its probe document with `EnumerateFiles(root, "*.cs", AllDirectories).First()`, which has no defined result over an unordered enumeration. The fixture copy excludes only `bin` — it cannot exclude `obj`, since MSBuildWorkspace needs `obj/project.assets.json` to load — so the tree carries generated sources under both `obj/Debug` and `obj/Release`, and only the active configuration's are compilation documents. Landing on the other returned zero owners and failed as "Different number of elements", reliably on the Linux CI shard and never on Windows. The probe now excludes build-output directories and orders the candidates, so it selects a real project source file identically on every filesystem.
+
+- **Maintenance:** Convert direct validation-tool tests with required post-`workspaceId` parameters to fully named arguments, preserving safe future parameter reordering. Closes `workspace-id-named-args-validation`.
+
+- **Maintenance:** Measured real-world `workspaceId` omission adoption and recorded the decision gate for the remaining read-only tool surface.
 ## [4.1.2] - 2026-09-02
 
 ### Fixed
