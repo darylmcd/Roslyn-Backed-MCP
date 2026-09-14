@@ -370,7 +370,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a document's declarations as a hierarchical tree. Accepts filePath or a symbol locator, unlike symbol_info; get_symbol_outline is its deprecated alias.")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a document's declarations as a hierarchical tree. Accepts filePath or a symbol locator, like symbol_info; get_symbol_outline is its deprecated alias.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(

@@ -1,8 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -10,11 +10,16 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class AdvancedAnalysisTools
 {
+    /// <remarks>
+    /// Confidence is high for private/internal symbols, medium for public symbols, and low
+    /// for enum/interface symbols. An unsuccessful reference scan throws instead of returning
+    /// an empty reference count.
+    /// </remarks>
 
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find likely unused symbols."),
-     Description("Find symbols with zero solution-wide references — likely dead code. Results identify confidence by visibility; convention-invoked shapes are skipped by default.")]
+     Description("Find symbols with zero solution-wide references, with confidence levels. Skips convention-invoked shapes by default. Scan failures throw; successful scans may still under-count.")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -351,7 +356,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_dead_locals", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Find method-local variables whose only write is not followed by any read."),
-     Description("Find method-local variables written but never read — the IDE0059 waste class — using per-body data-flow analysis. Discards, pattern locals, `out var`, and consts are excluded.")]
+     Description("Find locals written but never read via data-flow analysis (IDE0059). Excludes discards, foreach/using/catch locals, pattern/tuple designations, out var, and consts.")]
     public static Task<string> FindDeadLocals(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -377,7 +382,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_dead_fields", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Find source-declared fields that are never read, never written, or never either."),
-     Description("Find source fields never read, never written, or neither. Public and protected fields require includePublic=true; each hit reports removalBlockedBy and safelyRemovable.")]
+     Description("Find fields never read, never written, or neither; includePublic=true adds public/protected fields. removalBlockedBy explains refusals; only send safelyRemovable hits to remove_dead_code_preview.")]
     public static Task<string> FindDeadFields(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,

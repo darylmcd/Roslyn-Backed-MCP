@@ -10,7 +10,7 @@ namespace RoslynMcp.Core.Models;
 /// <remarks>
 /// <para>
 /// <strong>Readiness model</strong> (workspace-readiness-contract-bundle, 2026-04-16):
-/// <see cref="IsReady"/> is the conjunction of three conditions:
+/// <see cref="IsReady"/> is the conjunction of the following conditions:
 /// </para>
 /// <list type="bullet">
 ///   <item><description><see cref="IsLoaded"/> — workspace finished loading at least once.</description></item>
@@ -125,7 +125,7 @@ public sealed record WorkspaceStatusSummaryDto(
 
     /// <summary>
     /// Builds an actionable hint string explaining why the workspace is not ready.
-    /// Five cases, in priority order:
+    /// Cases, in priority order:
     /// <list type="number">
     ///   <item><description>VS-MSBuild required (COM references, .NET Core MSBuild limitation) → tell caller this project needs Visual Studio MSBuild on PATH.</description></item>
     ///   <item><description>Build required (missing analyzer build output) → suggest <c>dotnet build</c>, NOT <c>dotnet restore</c>.</description></item>
@@ -158,7 +158,7 @@ public sealed record WorkspaceStatusSummaryDto(
         // get sent into a no-op restore loop.
         if (buildRequired)
         {
-            return "Missing analyzer build output (e.g. an analyzer project's dll has not been produced). Run `dotnet build` on the analyzer project, then `workspace_reload`.";
+            return "Missing analyzer build output (e.g. an analyzer project's dll has not been produced). Call `build_project` for the analyzer project, then `workspace_reload`.";
         }
 
         if (restoreRequired)

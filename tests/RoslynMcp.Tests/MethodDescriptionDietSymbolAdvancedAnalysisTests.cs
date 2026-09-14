@@ -11,19 +11,19 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class MethodDescriptionDietSymbolAdvancedAnalysisTests
 {
-    private const int MaxDescriptionCharacters = 200;
+    private const int _maxDescriptionCharacters = 200;
 
     // Derived from the measured post-diet text, with modest headroom for a useful future edit.
-    private const int MaxAggregateDescriptionCharacters = 6_600;
+    private const int _maxAggregateDescriptionCharacters = 6_600;
 
-    private static readonly Type[] SliceToolTypes =
+    private static readonly Type[] _sliceToolTypes =
     [
         typeof(SymbolTools),
         typeof(AdvancedAnalysisTools),
         typeof(AnalysisTools),
     ];
 
-    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] TriggerExpectations =
+    private static readonly ToolDescriptionBudgetHarness.TriggerExpectation[] _triggerExpectations =
     [
         new("symbol_search", "wildcards and regex metacharacters are matched literally"),
         new("get_symbol_outline", "Alias for document_symbols"),
@@ -35,22 +35,25 @@ public sealed class MethodDescriptionDietSymbolAdvancedAnalysisTests
         new("project_diagnostics", "compile_check, which is CS-only"),
         new("diagnostic_details", "CA-series NetAnalyzers"),
         new("semantic_grep", "not ripgrep"),
+        new("semantic_grep", "splits member access"),
+        new("find_unused_symbols", "under-count"),
+        new("find_dead_fields", "safelyRemovable"),
     ];
 
     [TestMethod]
     public void SliceToolDescriptions_AreCapabilityStatements() =>
-        ToolDescriptionBudgetHarness.AssertPerToolBudget(SliceToolTypes, MaxDescriptionCharacters);
+        ToolDescriptionBudgetHarness.AssertPerToolBudget(_sliceToolTypes, _maxDescriptionCharacters);
 
     [TestMethod]
     public void SliceToolDescriptions_StayUnderAggregateBudget() =>
         ToolDescriptionBudgetHarness.AssertSliceTotalBudget(
-            SliceToolTypes, MaxAggregateDescriptionCharacters);
+            _sliceToolTypes, _maxAggregateDescriptionCharacters);
 
     [TestMethod]
     public void SliceTools_AllHaveNonEmptyDescriptions() =>
-        ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(SliceToolTypes);
+        ToolDescriptionBudgetHarness.AssertAllHaveNonEmptyDescription(_sliceToolTypes);
 
     [TestMethod]
     public void TrimmedDescriptions_KeepTheirDiscriminatingTriggers() =>
-        ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(SliceToolTypes, TriggerExpectations);
+        ToolDescriptionBudgetHarness.AssertDiscriminatingTriggers(_sliceToolTypes, _triggerExpectations);
 }

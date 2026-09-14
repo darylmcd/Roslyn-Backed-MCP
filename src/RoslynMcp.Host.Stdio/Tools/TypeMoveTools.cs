@@ -1,8 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Roslyn.Services;
 

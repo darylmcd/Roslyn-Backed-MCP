@@ -1,6 +1,6 @@
 using System.ComponentModel;
-using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;

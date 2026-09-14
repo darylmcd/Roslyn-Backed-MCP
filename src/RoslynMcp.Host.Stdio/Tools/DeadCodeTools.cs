@@ -1,7 +1,7 @@
 using System.ComponentModel;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -25,7 +25,7 @@ public static class DeadCodeTools
     [McpServerTool(Name = "remove_dead_code_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("dead-code", "stable", true, false,
         "Preview removing unused symbols by handle."),
-     Description("Preview removal of unused symbols by handle, with optional cleanup of files left empty. When removeEmptyFiles is true, only files without real declarations are deleted (UX-005).")]
+     Description("Preview removing unused symbols by handle, preserving exterior trivia. removeEmptyFiles deletes files only when no real declarations remain (UX-005).")]
     public static Task<string> PreviewRemoveDeadCode(
         IWorkspaceExecutionGate gate,
         IDeadCodeService deadCodeService,

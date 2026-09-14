@@ -1,11 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using McpServer = ModelContextProtocol.Server.McpServer;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -19,6 +19,7 @@ public static class AnalysisTools
         Analyzer,
     }
 
+    /// <remarks>Prefer projectName or file on large solutions; a full diagnostic pass can take tens of seconds.</remarks>
     [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics: compiler CS*, analyzers CA*/IDE*, and load issues. Unlike compile_check, which is CS-only, this includes analyzer and workspace results.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Return compiler diagnostics for a workspace.")]
@@ -28,7 +29,7 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by file path")] string? file = null,
-        [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden). Omit for Info floor.")] string? severity = null,
+        [Description("Minimum severity (Error, Warning, Info, Hidden); default Info. total* fields ignore severity/diagnosticId filters; filteredDiagnostics counts matches before pagination.")] string? severity = null,
         [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
@@ -91,6 +92,7 @@ public static class AnalysisTools
                     totalWarnings = results.TotalWarnings,
                     totalInfo = results.TotalInfo,
                     totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
+                    filteredDiagnostics = allDiagnostics.Count,
                     distinctDiagnosticIds = diagnosticGroups.Count,
                     restoreHint = restoreHintText,
                     diagnosticGroups,
@@ -106,6 +108,7 @@ public static class AnalysisTools
                 analyzerErrors = results.AnalyzerErrors,
                 workspaceErrors = results.WorkspaceErrors,
                 totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
+                filteredDiagnostics = allDiagnostics.Count,
                 offset,
                 limit,
                 returnedDiagnostics = pagedDiagnostics.Count,
@@ -410,7 +413,7 @@ public static class AnalysisTools
     /// </summary>
     private const int SemanticGrepHardCap = 500;
 
-    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Run token-aware .NET regex search over the loaded C# workspace, scoped to identifiers, strings, comments, or all. It is not ripgrep and avoids plain-text false positives.")]
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware .NET regex search of C# identifiers, strings, comments, or all, not ripgrep. Identifier scope splits member access, so Task\\.Run cannot match.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]
     public static Task<string> SemanticGrep(

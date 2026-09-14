@@ -21,7 +21,8 @@ public static class CompileCheckTools
     /// <remarks>
     /// <para>The emitValidation option performs a real PE emit (not metadata-only) and is typically 50-100x slower than GetDiagnostics-only on large solutions, BUT only when the workspace has its NuGet packages restored - on a workspace with unresolved metadata references the emit phase short-circuits and the wall-clock cost matches GetDiagnostics. If you observe identical timing between emitValidation=true and emitValidation=false, run dotnet restore on the workspace first.</para>
     /// <para>Use offset/limit to page through large diagnostic sets.</para>
-    /// <para>When file/files resolve to documents owned by one project, compilation is scoped to that project; unresolved or multi-project file filters fall back to the requested project scope or the full solution and surface the fallback in restoreHint. The response also carries structured requestedScope/actualScope fields (one of files, project, or solution) so widening can be detected programmatically - requestedScope != actualScope means the supplied file scope was not honoured - without parsing restoreHint prose.</para>
+    /// <para>A file/files scope compiles only owning projects and returns diagnostics from the requested paths; unresolved paths compile nothing. An explicit projectName takes precedence for project selection. requestedScope/actualScope report files, project, or solution; completedProjects reports actual progress.</para>
+    /// <para>readiness=restore-required means no diagnostics were evaluated; call workspace_reload with autoRestore=true. readiness=analyzer-limited is advisory: compiler diagnostics remain available while analyzer build output is missing.</para>
     /// </remarks>
     [McpServerTool(Name = "compile_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "stable", true, false,
