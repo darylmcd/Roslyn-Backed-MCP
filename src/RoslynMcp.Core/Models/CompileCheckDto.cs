@@ -4,7 +4,8 @@ namespace RoslynMcp.Core.Models;
 /// Represents the result of an in-memory compilation check without invoking dotnet build.
 /// </summary>
 /// <param name="Success">True when there are zero errors, the run was not cancelled, and at least
-/// one project was evaluated (<c>CompletedProjects &gt; 0</c>). A vacuous result (e.g. zero
+/// one project was evaluated and all selected projects completed
+/// (<c>CompletedProjects &gt; 0 &amp;&amp; CompletedProjects == TotalProjects</c>). A vacuous result (e.g. zero
 /// projects after filtering) is <see langword="false"/> even when <see cref="ErrorCount"/> is 0.</param>
 /// <param name="ErrorCount">Total error count across the unfiltered solution (or filtered scope).</param>
 /// <param name="WarningCount">Total warning count across the unfiltered solution (or filtered scope).</param>
@@ -16,12 +17,12 @@ namespace RoslynMcp.Core.Models;
 /// <param name="Diagnostics">The page of diagnostics returned by this call.</param>
 /// <param name="ElapsedMs">Wall-clock time spent in the call, in milliseconds.</param>
 /// <param name="RequestedScope">The compile scope implied by the caller's arguments, one of
-/// <c>"files"</c> (a <c>file</c>/<c>files</c> filter was supplied), <c>"project"</c> (a
+/// <see cref="ScopeFiles"/> (a <c>file</c>/<c>files</c> filter was supplied), <see cref="ScopeProject"/> (a
 /// <c>projectName</c> filter was supplied — takes precedence over a file filter), or
-/// <c>"solution"</c> (no scoping filter). Additive and non-breaking: <see langword="null"/>
+/// <see cref="ScopeSolution"/> (no scoping filter). Additive and non-breaking: <see langword="null"/>
 /// on responses produced by paths that do not compute a scope.</param>
 /// <param name="ActualScope">The compile scope that actually ran, drawn from the same
-/// <c>"files"</c>/<c>"project"</c>/<c>"solution"</c> vocabulary as <see cref="RequestedScope"/>.
+/// vocabulary as <see cref="RequestedScope"/>.
 /// A file scope compiles only its owning projects and filters diagnostics to the requested paths.
 /// Unresolved file scopes compile nothing. Check <see cref="CompletedProjects"/> and
 /// <see cref="Readiness"/> to distinguish unevaluated results.</param>
@@ -43,6 +44,15 @@ public sealed record CompileCheckDto(
     string? RequestedScope = null,
     string? ActualScope = null)
 {
+    /// <summary>Only projects owning requested files are selected.</summary>
+    public const string ScopeFiles = "files";
+
+    /// <summary>An explicit project filter takes precedence over file-based selection.</summary>
+    public const string ScopeProject = "project";
+
+    /// <summary>All loaded projects are selected.</summary>
+    public const string ScopeSolution = "solution";
+
     /// <summary>
     /// Package/analyzer readiness: <c>ready</c>, <c>restore-required</c> (no diagnostics
     /// evaluated), or <c>analyzer-limited</c> (compiler diagnostics remain available).

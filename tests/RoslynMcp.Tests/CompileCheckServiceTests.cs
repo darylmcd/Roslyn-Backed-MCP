@@ -37,7 +37,7 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("ready", result.Readiness);
         Assert.AreEqual(0, result.ErrorCount,
             "The broken unrelated project must not participate in the scoped compile check.");
-        Assert.AreEqual("files", result.RequestedScope);
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope);
         Assert.AreEqual(result.RequestedScope, result.ActualScope,
             "A file filter honoured by its single owning project must not report a widened scope.");
         Assert.IsNull(result.RestoreHint,
@@ -71,7 +71,7 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
             "The zero-resolution arm must not widen to the full project list.");
         Assert.AreEqual(0, result.CompletedProjects);
         StringAssert.Contains(result.RestoreHint, "did not resolve to any loaded workspace document");
-        Assert.AreEqual("files", result.RequestedScope);
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope);
         Assert.AreEqual(result.RequestedScope, result.ActualScope,
             "Nothing was compiled, so no widening to solution scope may be claimed.");
     }
@@ -99,8 +99,8 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.IsNull(result.RestoreHint);
         Assert.IsTrue(result.Success);
         Assert.IsTrue(result.Diagnostics.All(d => d.FilePath == dogPath || d.FilePath == programPath));
-        Assert.AreEqual("files", result.RequestedScope);
-        Assert.AreEqual("files", result.ActualScope);
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope);
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.ActualScope);
     }
 
     [TestMethod]
@@ -121,8 +121,8 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
 
         Assert.AreEqual(2, result.TotalProjects,
             "A whitespace-only projectFilter must be treated as no filter, not as a literal (nonexistent) project name.");
-        Assert.AreEqual("files", result.ActualScope);
-        Assert.AreEqual("files", result.RequestedScope,
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.ActualScope);
+        Assert.AreEqual(CompileCheckDto.ScopeFiles, result.RequestedScope,
             "Whitespace-only projectFilter must not be classified as a project-scoped request.");
         Assert.IsNull(result.RestoreHint);
     }

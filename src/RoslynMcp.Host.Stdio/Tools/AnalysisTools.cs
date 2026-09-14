@@ -81,7 +81,7 @@ public static class AnalysisTools
                         severity = group.First().Diagnostic.Severity,
                         category = group.First().Diagnostic.Category,
                     })
-                    .OrderByDescending(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
+                    .OrderBy(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
                     .ThenByDescending(g => g.count)
                     .ToList();
 

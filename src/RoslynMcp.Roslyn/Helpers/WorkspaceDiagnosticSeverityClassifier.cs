@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Helpers;
 
@@ -58,23 +59,7 @@ public static class WorkspaceDiagnosticSeverityClassifier
         return false;
     }
 
-    /// <summary>
-    /// Returns true if the message indicates a VS-MSBuild-only feature that the .NET Core
-    /// MSBuild cannot resolve. Currently matches COM-reference resolution failures
-    /// (<c>ResolveComReference</c>, <c>type library</c>) and explicit .NET Core MSBuild
-    /// limitation messages (<c>"The .NET Core version of MSBuild..."</c>). Public so the
-    /// hint builder in <see cref="Core.Models.WorkspaceStatusSummaryDto"/> can re-use the
-    /// detection without duplicating the substring list.
-    /// </summary>
-    public static bool IsVsMsbuildRequiredMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message))
-        {
-            return false;
-        }
-
-        return message.Contains("ResolveComReference", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("type library", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("The .NET Core version of MSBuild", StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>Delegates VS-MSBuild detection to the shared Core policy.</summary>
+    public static bool IsVsMsbuildRequiredMessage(string message) =>
+        WorkspaceToolchainClassifier.IsVsMsbuildRequiredMessage(message);
 }

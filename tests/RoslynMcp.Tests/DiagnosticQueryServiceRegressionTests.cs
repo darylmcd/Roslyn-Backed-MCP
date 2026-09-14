@@ -1,12 +1,19 @@
 using System.Collections.Immutable;
+using System.Composition;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 #pragma warning disable RS1036 // Test-only analyzer double; not shipped
 #pragma warning disable RS1038 // Test assembly references Workspaces by design
@@ -22,6 +29,168 @@ public sealed class DiagnosticQueryServiceRegressionTests
     private const string DescriptorFailureDiagnosticId = "RMCPTEST002";
     private const string GeneratorDiagnosticId = "RMCPGEN001";
     private const string ProbeFailureSecret = "C:\\secret\\analyzer-probe.dll?token=do-not-expose";
+
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task CompileCheck_MissingCompilationNeverCountsAsCompletedAsync(bool includeCSharp, bool emitValidation)
+    {
+        var host = MefHostServices.Create(MefHostServices.DefaultAssemblies.Add(typeof(NoCompilationLanguageService).Assembly));
+        using var workspace = new AdhocWorkspace(host);
+        if (includeCSharp) CreateDiagnosticProject(workspace, analyzer: null, escalateWarningToError: false);
+        var project = workspace.AddProject("Unsupported", "NoCompilation");
+        Assert.IsFalse(project.SupportsCompilation, "The fixture must exercise a real null compilation.");
+        Assert.IsNull(await project.GetCompilationAsync(CancellationToken.None));
+        var manager = new VersionedWorkspaceManager("missing-compilation", workspace.CurrentSolution, 1);
+        var service = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+
+        var result = await service.CheckAsync(manager.WorkspaceId,
+            new CompileCheckOptions(EmitValidation: emitValidation), CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.IsFalse(result.Cancelled);
+        Assert.AreEqual(includeCSharp ? 1 : 0, result.CompletedProjects);
+        Assert.AreEqual(includeCSharp ? 2 : 1, result.TotalProjects);
+        Assert.AreEqual(0, result.ErrorCount);
+        StringAssert.Contains(result.RestoreHint, "validation is incomplete");
+        StringAssert.Contains(result.RestoreHint, "workspace_status");
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var cancelledResult = await service.CheckAsync(manager.WorkspaceId, new CompileCheckOptions(), cancelled.Token);
+        Assert.IsTrue(cancelledResult.Cancelled);
+        Assert.IsFalse(cancelledResult.Success);
+        Assert.AreEqual(0, cancelledResult.CompletedProjects);
+    }
+
+    [ExportLanguageService(typeof(ILanguageService), "NoCompilation"), Shared]
+    public sealed class NoCompilationLanguageService : ILanguageService;
+
+    [TestMethod]
+    [DataRow(null, false, CompileCheckDto.ScopeSolution)]
+    [DataRow("DiagnosticQueryProject", false, CompileCheckDto.ScopeProject)]
+    [DataRow("DiagnosticQueryProject", true, CompileCheckDto.ScopeProject)]
+    [DataRow(null, true, CompileCheckDto.ScopeFiles)]
+    public async Task CompileCheck_ScopeAndProjectPrecedenceAreExplicitAsync(string? projectFilter, bool includeFile, string expectedScope)
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProject(workspace, analyzer: null, escalateWarningToError: false);
+        var manager = new VersionedWorkspaceManager("compile-scope", project.Solution, 1);
+        var service = new CompileCheckService(manager, NullLogger<CompileCheckService>.Instance);
+        var result = await service.CheckAsync(manager.WorkspaceId,
+            new CompileCheckOptions(ProjectFilter: projectFilter,
+                FileFilter: includeFile ? project.Documents.Single().FilePath : null), CancellationToken.None);
+        Assert.IsTrue(result.Success);
+        Assert.AreEqual(1, result.CompletedProjects);
+        Assert.AreEqual(expectedScope, result.RequestedScope);
+        Assert.AreEqual(expectedScope, result.ActualScope);
+    }
+
+    [TestMethod]
+    public async Task GetDiagnostics_DefaultSeverityFloorIncludesDeterministicInfoAsync()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProject(workspace, analyzer: null, escalateWarningToError: false);
+        var solution = project.Solution.WithDocumentText(project.DocumentIds.Single(),
+            SourceText.From("internal sealed class Probe { private int unused; }"))
+            .WithProjectCompilationOptions(project.Id, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                .WithSpecificDiagnosticOptions(new Dictionary<string, ReportDiagnostic> { ["CS0169"] = ReportDiagnostic.Info }));
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+        var manager = new VersionedWorkspaceManager("info-floor", workspace.CurrentSolution, 1);
+        using var cache = new CompilationCache(manager);
+        var service = new DiagnosticQueryService(manager, cache);
+        var result = await service.GetDiagnosticsAsync(manager.WorkspaceId,
+            new DiagnosticQueryFilters(null, null, null, null), CancellationToken.None);
+        Assert.AreEqual(1, result.TotalInfo);
+        var info = result.CompilerDiagnostics.Single(diagnostic => diagnostic.Id == "CS0169");
+        Assert.AreEqual("Info", info.Severity);
+        var warningFloor = await service.GetDiagnosticsAsync(manager.WorkspaceId,
+            new DiagnosticQueryFilters(null, null, "Warning", null), CancellationToken.None);
+        Assert.AreEqual(1, warningFloor.TotalInfo);
+        Assert.IsFalse(warningFloor.CompilerDiagnostics.Any(diagnostic => diagnostic.Id == "CS0169"));
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task DiagnosticDetails_ResolvesExactListedGeneratorLocationAsync(bool warmWholeSolutionCache, bool externalLocation)
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProjectWithReference(workspace, new LocationGeneratorReference(externalLocation),
+            escalateWarningToError: false, diagnosticId: "MCP002");
+        var manager = new VersionedWorkspaceManager("generator-lookup", project.Solution, 1);
+        using var cache = new CompilationCache(manager);
+        var service = new DiagnosticService(manager, cache,
+            new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance));
+        var gate = new PassThroughWorkspaceExecutionGate();
+        var json = await AnalysisTools.GetProjectDiagnostics(gate, service, manager.WorkspaceId,
+            projectName: warmWholeSolutionCache ? null : project.Name,
+            diagnosticId: "MCP002", ct: CancellationToken.None);
+        using var listed = JsonDocument.Parse(json);
+        var diagnostic = listed.RootElement.GetProperty("compilerDiagnostics").EnumerateArray().Single();
+        var path = diagnostic.GetProperty("filePath").GetString()!;
+        var line = diagnostic.GetProperty("startLine").GetInt32();
+        var column = diagnostic.GetProperty("startColumn").GetInt32();
+        await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+            Path.GetDirectoryName(path)!, CancellationToken.None);
+        var detailJson = await AnalysisTools.GetDiagnosticDetails(session.Server, gate, service,
+            manager.WorkspaceId, diagnostic.GetProperty("id").GetString()!, path,
+            line: line, column: column, ct: CancellationToken.None);
+        using var details = JsonDocument.Parse(detailJson);
+        Assert.IsTrue(JsonElement.DeepEquals(diagnostic, details.RootElement.GetProperty("diagnostic")));
+
+        var missingJson = await AnalysisTools.GetDiagnosticDetails(session.Server, gate, service,
+            manager.WorkspaceId, "MCP002", path, line: line, column: column + 1, ct: CancellationToken.None);
+        using var missing = JsonDocument.Parse(missingJson);
+        Assert.IsFalse(missing.RootElement.GetProperty("found").GetBoolean());
+
+        // A miss performs a full scan. Its cache must also retain generator diagnostics.
+        var lookup = new DiagnosticDocumentLookup(cache);
+        var miss = await lookup.FindAsync(manager.WorkspaceId, project.Solution,
+            new DiagnosticLookupTarget("MCP002", path, line, column + 1), cachedDiagnostics: null,
+            CancellationToken.None);
+        Assert.IsNull(miss.Diagnostic);
+        Assert.IsNotNull(miss.FullScanDiagnostics);
+        Assert.AreEqual(1, miss.FullScanDiagnostics.Count(item => item.Id == "MCP002"));
+        Assert.AreEqual(!externalLocation, miss.FullScanDiagnostics.Single(item => item.Id == "MCP002").Location.IsInSource);
+        var afterMiss = await service.GetDiagnosticDetailsAsync(manager.WorkspaceId, "MCP002", path, line, column, CancellationToken.None);
+        Assert.IsNotNull(afterMiss);
+        Assert.AreEqual("MCP002", afterMiss.Diagnostic.Id);
+    }
+
+    private sealed class LocationGeneratorReference(bool externalLocation) : AnalyzerReference
+    {
+        public override string FullPath => string.Empty;
+        public override object Id => typeof(LocationGeneratorReference);
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzers(string language) => [];
+        public override ImmutableArray<DiagnosticAnalyzer> GetAnalyzersForAllLanguages() => [];
+        public override ImmutableArray<ISourceGenerator> GetGenerators(string language) =>
+            language == LanguageNames.CSharp ? [new LocationDiagnosticGenerator(externalLocation).AsSourceGenerator()] : [];
+    }
+
+    private sealed class LocationDiagnosticGenerator(bool externalLocation) : IIncrementalGenerator
+    {
+        public void Initialize(IncrementalGeneratorInitializationContext context)
+        {
+            context.RegisterSourceOutput(context.CompilationProvider, (output, compilation) =>
+            {
+                var tree = compilation.SyntaxTrees.Single();
+                var location = tree.GetRoot(output.CancellationToken).GetLocation();
+                if (externalLocation)
+                {
+                    location = Location.Create(tree.FilePath, location.SourceSpan, location.GetLineSpan().Span);
+                }
+                output.ReportDiagnostic(Diagnostic.Create(new DiagnosticDescriptor("MCP002",
+                    "Generator location probe", "Generator location probe", "Testing",
+                    DiagnosticSeverity.Info, isEnabledByDefault: true), location));
+            });
+        }
+    }
 
     [TestMethod]
     public async Task GetDiagnosticsAsync_ErrorOnlyHonorsAnalyzerConfigEscalation()
