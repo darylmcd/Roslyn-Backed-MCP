@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
@@ -14,6 +17,108 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    [DataRow("public class Outer { private class Target {} } public class Sibling {}", "Nested types")]
+    [DataRow("public class Outer { private class Target {} } public class Target {}", "ambiguous")]
+    [DataRow("namespace First { public class Target {} } namespace Second { public class Target {} }", "ambiguous")]
+    [DataRow("namespace First { public enum Target {} } namespace Second { public class Target {} }", "ambiguous")]
+    public async Task MoveType_UnsafeSelection_RefusesWithoutMutation(string source, string reason)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "Selection.cs");
+        await File.WriteAllTextAsync(sourcePath, source);
+        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
+        var originalSolution = WorkspaceManager.GetCurrentSolution(workspaceId);
+
+        var error = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                workspaceId, sourcePath, "Target", null, CancellationToken.None));
+
+        StringAssert.Contains(error.Message, reason);
+        Assert.AreSame(originalSolution, WorkspaceManager.GetCurrentSolution(workspaceId));
+        Assert.AreEqual(source, await File.ReadAllTextAsync(sourcePath));
+        Assert.IsFalse(File.Exists(workspace.GetPath("SampleLib", "Target.cs")));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MoveType_PreservesNamespaceAndImportBinding_AfterApply(bool fileScoped)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "Binding.cs");
+        const string members = """
+            using Imported;
+            using Alias = System.Uri;
+            using static System.Math;
+            public class Moved
+            {
+                public List<int> Custom { get; } = new();
+                public Alias Address { get; } = new("https://example.invalid");
+                public RootAlias Id { get; } = default;
+                public ProjectAlias Duration { get; } = default;
+                public double Magnitude => Abs(-1);
+            }
+            public enum Sibling { Value }
+            """;
+        var scope = fileScoped
+            ? "namespace Outer.Inner;\n" + members
+            : "namespace Outer { using Alias = System.Guid; namespace Inner {\n" + members + "\n} }";
+        await File.WriteAllTextAsync(sourcePath,
+            "global using ProjectAlias = System.TimeSpan;\nusing RootAlias = System.Guid;\n" + scope);
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "Imported.cs"),
+            "namespace Imported { public class List<T> {} }");
+        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
+        var before = await GetMovedTypeAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        var expectedBindings = before.GetMembers().OfType<IPropertySymbol>()
+            .Select(p => p.Name + ":" + p.Type.ToDisplayString()).ToArray();
+
+        var preview = await TypeMoveService.PreviewMoveTypeToFileAsync(
+            workspaceId, sourcePath, "Moved", null, CancellationToken.None);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(apply.Success, apply.Error);
+
+        var after = await GetMovedTypeAsync(WorkspaceManager.GetCurrentSolution(workspaceId));
+        CollectionAssert.AreEqual(expectedBindings, after.GetMembers().OfType<IPropertySymbol>()
+            .Select(p => p.Name + ":" + p.Type.ToDisplayString()).ToArray());
+        Assert.AreEqual(before.DeclaredAccessibility, after.DeclaredAccessibility);
+        Assert.AreEqual("Moved.cs", Path.GetFileName(after.Locations.Single().SourceTree!.FilePath));
+        var movedText = await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "Moved.cs"));
+        Assert.IsFalse(movedText.Contains("System.Collections.Generic", StringComparison.Ordinal));
+        Assert.IsFalse(movedText.Contains("global using", StringComparison.Ordinal));
+    }
+
+    private static async Task<INamedTypeSymbol> GetMovedTypeAsync(Solution solution)
+    {
+        var compilation = await solution.Projects.Single(p => p.Name == "SampleLib").GetCompilationAsync();
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.AreEqual(0, errors.Length, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
+        var type = compilation.GetTypeByMetadataName("Outer.Inner.Moved");
+        Assert.IsNotNull(type);
+        return type;
+    }
+
+    [TestMethod]
+    public async Task MoveType_UsingCleanup_PropagatesCancellationAndCanRetry()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = workspace.AddProject("Cleanup", LanguageNames.CSharp)
+            .WithCompilationOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var document = project.AddDocument("Cleanup.cs", SourceText.From("class C {}"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var error = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            Roslyn.Services.TypeMoveService.RemoveUnusedUsingsAsync(
+                document.Project.Solution, document.Id, cancellation.Token));
+        Assert.AreEqual(cancellation.Token, error.CancellationToken);
+
+        var recovered = await Roslyn.Services.TypeMoveService.RemoveUnusedUsingsAsync(
+            document.Project.Solution, document.Id, CancellationToken.None);
+        Assert.IsNotNull(recovered.GetDocument(document.Id));
+    }
 
     // Direct tool calls use an explicitly configured, connected test server. The separate
     // rejection test supplies a server whose configured boundary does not cover the source path.
