@@ -32,10 +32,14 @@ public static class EditorConfigTools
             c => editorConfigService.GetOptionsAsync(workspaceId, filePath, c),
             ct);
 
+    /// <remarks>
+    /// This is a direct apply without a preview token. It captures the previous .editorconfig
+    /// content for <c>revert_last_apply</c>, deleting a newly created file during revert.
+    /// </remarks>
     [McpServerTool(Name = "set_editorconfig_option", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("configuration", "stable", false, false,
         "Set or update a key in .editorconfig for C# files (creates file if needed)."),
-     Description("Set or update a key/value in the .editorconfig that applies to the given source file (under the [*.{cs,csx,cake}] section). Creates a new .editorconfig next to the file if none exists in the directory chain. Direct-apply (no preview token), but integrated with revert_last_apply: the pre-write .editorconfig content is captured and restored on revert (or the file is deleted on revert if this call created it). Read the existing settings first with get_editorconfig_options so you can confirm the change you intend to make before calling this tool.")]
+     Description("Set a key/value in the applicable .editorconfig for a C# source file, creating one when needed. Read current options first; this direct apply is reversible through revert_last_apply.")]
     public static Task<string> SetEditorConfigOption(
         IWorkspaceExecutionGate gate,
         IEditorConfigService editorConfigService,

@@ -20,10 +20,14 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class TypeMoveTools
 {
+    /// <remarks>
+    /// The source file must contain at least two top-level types. Use <c>move_file_preview</c>
+    /// for single-type rename or move operations.
+    /// </remarks>
     [McpServerTool(Name = "move_type_to_file_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview moving a type declaration into its own file."),
-     Description("Preview moving a type declaration from a multi-type file into its own dedicated file within the same project. Requires the source file to contain at least two top-level types; for single-type rename/move operations use move_file_preview instead.")]
+     Description("Preview moving a declaration from a multi-type source file into its own file in the same project. The source must contain at least two top-level types; use move_file_preview for single-type moves.")]
     public static Task<string> PreviewMoveTypeToFile(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -63,10 +67,14 @@ public static class TypeMoveTools
             expectedKind: PreviewKind.MoveTypeToFile,
             invokedRoute: "move_type_to_file_apply");
 
+    /// <remarks>
+    /// Use <c>get_namespace_dependencies</c> to identify circular namespace dependencies before
+    /// relocating a type.
+    /// </remarks>
     [McpServerTool(Name = "change_type_namespace_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview relocating a type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
-     Description("Preview relocating a type between namespaces inside the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution. Pair with get_namespace_dependencies to break circular namespace dependencies.")]
+     Description("Preview relocating a type between namespaces in one project, optionally moving its file and updating consumer using directives. Use get_namespace_dependencies to identify circular dependencies.")]
     public static Task<string> PreviewChangeTypeNamespace(
         IWorkspaceExecutionGate gate,
         INamespaceRelocationService relocationService,

@@ -17,10 +17,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class DeadCodeTools
 {
 
+    /// <remarks>
+    /// When <c>removeEmptyFiles</c> is true, a file is deleted only when it has no real
+    /// declarations after removal; empty namespace shells, using directives, and trivia count as
+    /// empty while files containing other types or methods remain intact (UX-005).
+    /// </remarks>
     [McpServerTool(Name = "remove_dead_code_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("dead-code", "stable", true, false,
         "Preview removing unused symbols by handle."),
-     Description("Preview removing unused symbols by symbol handle, optionally deleting files left empty by the removal. The removal preserves exterior trivia (XML doc comments, attributes attached to the next member); when removeEmptyFiles is true a file is deleted only if it has no real declarations left after the removal — empty namespace shells, using directives, and trivia all count as 'empty', but a file that still contains other types/methods is preserved (UX-005).")]
+     Description("Preview removal of unused symbols by handle, with optional cleanup of files left empty. When removeEmptyFiles is true, only files without real declarations are deleted (UX-005).")]
     public static Task<string> PreviewRemoveDeadCode(
         IWorkspaceExecutionGate gate,
         IDeadCodeService deadCodeService,

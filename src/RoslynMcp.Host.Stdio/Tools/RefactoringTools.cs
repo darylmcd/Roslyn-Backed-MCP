@@ -18,7 +18,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class RefactoringTools
 {
-    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations). Set summary=true for high-fan-out symbols (>150 refs) to replace per-file unified diffs with one-line summaries and keep the response under the MCP output cap; the apply path rewrites every reference correctly either way.")]
+    /// <remarks>
+    /// Prefer a <c>symbolHandle</c> from <c>enclosing_symbol</c> or <c>document_symbols</c> for
+    /// precise targeting. For high-fan-out symbols, <c>summary=true</c> replaces per-file unified
+    /// diffs with one-line summaries while the apply operation still rewrites every reference.
+    /// </remarks>
+    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a workspace-wide symbol rename and its affected edits. Prefer symbolHandle for precise targeting; set summary=true for high-fan-out symbols (>150 references) to fit the MCP output cap.")]
     [McpToolMetadata("refactoring", "stable", true, false,
         "Preview a rename refactoring.")]
     public static Task<string> PreviewRename(
@@ -209,10 +214,14 @@ public static class RefactoringTools
             expectedKind: PreviewKind.FormatRange,
             invokedRoute: "format_range_apply");
 
+    /// <remarks>
+    /// This is the in-memory analogue of <c>dotnet format --verify-no-changes</c>. Its response
+    /// reports checked documents, violation count, per-file change counts, and elapsed time.
+    /// </remarks>
     [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Report documents that would change under Roslyn's formatter without applying edits (workspace-wide format-verify)."),
-     Description("Report documents in the workspace that would change under Roslyn's formatter without applying any edits. Analogous to `dotnet format --verify-no-changes` but in-memory via Formatter.FormatAsync. Response: { checkedDocuments, violationCount, violations: [{ filePath, changeCount }], elapsedMs }. Optionally scoped to a single project via projectName.")]
+     Description("Report documents that Roslyn would reformat without applying edits. Use projectName to scope the workspace-wide check; results include violations and change counts.")]
     public static Task<string> FormatCheck(
         IWorkspaceExecutionGate gate,
         IFormatVerifyService formatVerifyService,
