@@ -59,21 +59,41 @@ $errors = @()
 
 # --- Layer 1: standalone global .NET tool -----------------------------------
 if (-not $Layer1Version) {
+    $toolList = ''
+    $toolListFailure = ''
     try {
         $toolList = & dotnet tool list --global 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            $toolListFailure = "'dotnet tool list --global' exited with code $LASTEXITCODE"
+        }
     }
     catch {
-        $toolList = ''
+        $toolListFailure = "'dotnet tool list --global' could not be run ($($_.Exception.Message))"
     }
 
-    $toolMatch = [regex]::Match(
-        $toolList,
-        '(?im)^\s*darylmcd\.roslynmcp\s+(?<version>\S+)\s')
-    if ($toolMatch.Success) {
-        $Layer1Version = $toolMatch.Groups['version'].Value
+    if ($toolListFailure) {
+        # A query that failed proves nothing about what is installed. Reporting
+        # "not installed" here would be a wrong answer dressed as a finding, and
+        # it sends the caller to 'just tool-update' -- which cannot fix a broken
+        # dotnet resolution (e.g. a user-local SDK on PATH ahead of the one
+        # global.json pins, which makes every SDK command fail). Fail loudly on
+        # the real cause instead of guessing absence.
+        $trimmedOutput = $toolList.Trim()
+        $errors += (
+            "Layer 1 (global tool) could not be determined: $toolListFailure. " +
+            "Fix the 'dotnet' failure before trusting this gate -- a failed query is not proof of absence. " +
+            "Output: $trimmedOutput")
     }
     else {
-        $errors += "Layer 1 (global tool 'darylmcd.roslynmcp') is not installed. Run 'just tool-update'."
+        $toolMatch = [regex]::Match(
+            $toolList,
+            '(?im)^\s*darylmcd\.roslynmcp\s+(?<version>\S+)\s')
+        if ($toolMatch.Success) {
+            $Layer1Version = $toolMatch.Groups['version'].Value
+        }
+        else {
+            $errors += "Layer 1 (global tool 'darylmcd.roslynmcp') is not installed. Run 'just tool-update'."
+        }
     }
 }
 
