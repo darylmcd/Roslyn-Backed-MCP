@@ -1,4 +1,7 @@
+using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -111,7 +114,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task MoveType_SingleTypeFile_ThrowsInvalidOperation()
+    public async Task MoveType_SingleTypeFile_ToolBoundaryPreservesRecoveryMessage()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -120,9 +123,19 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Dog.cs") == true);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            TypeMoveService.PreviewMoveTypeToFileAsync(
+        var server = await GetPathAuthorizedServerAsync();
+        var json = await ToolExecutionTestHarness.RunAsync("move_type_to_file_preview", () =>
+            TypeMoveTools.PreviewMoveTypeToFile(
+                server, WorkspaceExecutionGate, TypeMoveService,
                 wsId, doc.FilePath!, "Dog", null, CancellationToken.None));
+
+        using var envelope = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(
+            "Source file contains only one top-level type. " +
+            "To move or rename the file, use move_file_preview instead. " +
+            "move_type_to_file_preview is for extracting one type out of a file that contains multiple top-level types.",
+            envelope.RootElement.GetProperty("message").GetString());
     }
 
     [TestMethod]
@@ -138,7 +151,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Dog.cs") == true);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "Dog", null, CancellationToken.None));
 
@@ -158,9 +171,11 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "NonExistentType", null, CancellationToken.None));
+
+        AssertPublicRefusal(ex, "Type was not found in the source document. Use document_symbols to select a declaration from that file.");
     }
 
     [TestMethod]
@@ -179,7 +194,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "IngestionTerminalStatus", null, CancellationToken.None));
 
@@ -204,7 +219,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             .Projects.SelectMany(p => p.Documents)
             .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
 
-        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "NotificationHandler", null, CancellationToken.None));
 
@@ -212,6 +227,44 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             $"Expected structured type-kind error citing Delegate; got: {ex.Message}");
         Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
             $"Delegate should be reported as unsupported kind, not 'not found': {ex.Message}");
+    }
+
+    [TestMethod]
+    public async Task MoveType_MissingDocument_ReturnsSafeRecoveryMessage()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var missingPath = workspace.GetPath("SampleLib", "private-missing-source.cs");
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                workspace.WorkspaceId, missingPath, "Unused", null, CancellationToken.None));
+
+        AssertPublicRefusal(ex, "Source document was not found in the workspace. Use workspace_list and document lookup tools to select a loaded C# source file.");
+    }
+
+    [TestMethod]
+    public async Task MoveType_ExistingTarget_ReturnsSafeRecoveryMessage()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sourcePath = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(sourcePath, "\npublic class TargetCollisionKitten {}\n");
+        var workspaceId = await workspace.LoadAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsExactlyAsync<PublicInvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                workspaceId, sourcePath, "TargetCollisionKitten",
+                workspace.GetPath("SampleLib", "Dog.cs"), CancellationToken.None));
+
+        AssertPublicRefusal(ex, "Target file already exists in the workspace. Choose a different targetFilePath and retry.");
+    }
+
+    private static void AssertPublicRefusal(PublicInvalidOperationException exception, string expectedMessage)
+    {
+        Assert.AreEqual(expectedMessage, exception.Message);
+        using var envelope = JsonDocument.Parse(
+            ToolErrorHandler.ClassifyAndFormat(exception, "move_type_to_file_preview"));
+        Assert.AreEqual("InvalidOperation", envelope.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(expectedMessage, envelope.RootElement.GetProperty("message").GetString());
     }
 
     [TestMethod]

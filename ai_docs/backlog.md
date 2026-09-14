@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T20:24:11Z
+**updated_at:** 2026-09-14T21:11:01Z
 
 ## Agent contract
 
@@ -53,8 +53,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `coverlet-net10-session-end-crash-upgrade` | Medium | — | Adopt the first stable Coverlet teardown fix for Windows .NET 10 and verify coverage exits cleanly. [type: dependency] [source: 2026-08-21 just-ci] | S | items/coverlet-net10-session-end-crash-upgrade.md |
-| `method-diet-restructure-interface` | Medium | desc-budget-harness-method-family | **Method-description diet: restructure and interface slice** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (195 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-restructure-interface.md |
-| `method-diet-ratchet-only-clean-slices` | Medium | desc-budget-harness-method-family | **Method-description diet: ratchet-only slice (already compliant)** — cap method `[Description]`s at ~200-char capability statements across 4 `Tools/*.cs` files (0 excess chars); adopt the shared slice harness. [type: refactor] [source: method-description-diet] | M | items/method-diet-ratchet-only-clean-slices.md |
 | `promotion-scorecard-refresh-toplevel-run` | Medium | — | BLOCKED: needs a top-level `/mcp-server-surface-test --full` session (a subagent cannot spawn the phase runners). **Refresh the promotion scorecard** — regenerate + commit the v1.38.1 snapshot against the current surface. [type: ops] [source: promotion-tier-execution-batch] | S | items/promotion-scorecard-refresh-toplevel-run.md |
 | `promotion-tier-analysis-batch-1` | Medium | promotion-scorecard-refresh-toplevel-run | BLOCKED: gated on `promotion-scorecard-refresh-toplevel-run`. **Promote qualifying Analysis experimental tools** (batch 1/3) — 5 candidates across 3 tool file(s). Catalog hotspot. [type: ops] [source: promotion-tier-execution-batch] | M | items/promotion-tier-analysis-batch-1.md |
 | `promotion-tier-analysis-batch-2` | Medium | promotion-scorecard-refresh-toplevel-run | BLOCKED: gated on `promotion-scorecard-refresh-toplevel-run`. **Promote qualifying Analysis experimental tools** (batch 2/3) — 3 candidates across 3 tool file(s). Catalog hotspot. [type: ops] [source: promotion-tier-execution-batch] | M | items/promotion-tier-analysis-batch-2.md |
@@ -98,7 +96,6 @@
 | `scripting-startup-cancellation-causal-barrier` | Medium | scripting-supervisor-outer-cancellation-contended-timeout | Replace the remaining startup-cancellation timing inference with a causal barrier and deterministic recovery proof. [type: test-reliability] [source: 2026-09-10 scripting supervisor remediation] | S | items/scripting-startup-cancellation-causal-barrier.md |
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
 | `list-tool-response-byte-budget` | Medium | — | **`find_references` serialized-byte ceiling** — stop appending refs once the serialized JSON would cross an env-configured byte budget, then set `hasMore` plus an additive `nextOffset`; row `limit` alone does not bound payload bytes. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | S | items/list-tool-response-byte-budget.md |
-| `preview-refusal-public-reasons` | Medium | — | **Emit reviewed reasons for move_type_to_file refusals** — convert TypeMoveService's six plain `InvalidOperationException` throws to `PublicInvalidOperationException` with caller-safe reasons, so refusals stop collapsing to generic text. [type: bug] [source: roslyn-mcp retro 2026-09-13] | S | items/preview-refusal-public-reasons.md |
 | `server-guidance-callable-tools-autoreload` | Medium | — | **Name callable tools and the auto-reload default in server guidance** — replace `recommend_workflow`'s two non-callable payload names (`discover_capabilities`, `test_run --filter`) with registered tools and state the auto-reload default. [type: docs] [source: roslyn-mcp retro 2026-09-13] | M | items/server-guidance-callable-tools-autoreload.md |
 | `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
@@ -106,6 +103,9 @@
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `workspace-validation-git-process-lifetime` | Medium | — | Extract Git collection ownership and drain its process and output readers on cancellation. [type: lifecycle] [source: Dependabot timeout-test review] | M | items/workspace-validation-git-process-lifetime.md |
+| `type-move-nested-and-ambiguous-selection` | Medium | — | Reject ambiguous or nested type-move targets until relocation can preserve their identity. [type: quality] [source: adjacent-review] | S | items/type-move-nested-and-ambiguous-selection.md |
+| `type-move-namespace-import-preservation` | Medium | — | Preserve namespace and import binding when moving a type to a new file. [type: quality] [source: adjacent-review] | S | items/type-move-namespace-import-preservation.md |
+| `type-move-unused-using-failure-observability` | Medium | — | Preserve cancellation and report unexpected failures in type-move using cleanup. [type: quality] [source: adjacent-review] | S | items/type-move-unused-using-failure-observability.md |
 
 ## Low
 
@@ -252,6 +252,7 @@
 | `cohesion-ranked-limit-after-discovery` | Low | — | Apply the cohesion result limit after severity ranking. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-ranked-limit-after-discovery.md |
 | `suggestion-parameter-object-tool-guidance` | Low | — | Recommend parameter-object tools for high parameter counts. [type: quality] [source: 2026-09-14 cohesion review] | S | items/suggestion-parameter-object-tool-guidance.md |
 | `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
+| `tool-error-classifier-exception-specificity` | Low | — | Make error-handler selection prefer the most specific registered exception type. [type: quality] [source: adjacent-review] | S | items/tool-error-classifier-exception-specificity.md |
 
 ## Defer
 

@@ -25,10 +25,10 @@ public sealed class TypeMoveService : ITypeMoveService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var sourceDocument = SymbolResolver.FindDocument(solution, sourceFilePath)
-            ?? throw new InvalidOperationException($"Document not found: {sourceFilePath}");
+            ?? throw new PublicInvalidOperationException("Source document was not found in the workspace. Use workspace_list and document lookup tools to select a loaded C# source file.");
 
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
-            ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
+            ?? throw new PublicInvalidOperationException("Source document must be a C# compilation unit. Select a C# source file and retry.");
 
         var typeDecl = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
             .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal));
@@ -62,12 +62,12 @@ public sealed class TypeMoveService : ITypeMoveService
                     SyntaxKind.DelegateDeclaration => "Delegate",
                     _ => unsupportedKind.ToString()!,
                 };
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     $"type-kind {typeKindName} not supported for this refactor. " +
                     $"move_type_to_file_preview currently supports class, struct, record, and interface declarations only.");
             }
 
-            throw new InvalidOperationException($"Type '{typeName}' not found in {sourceFilePath}.");
+            throw new PublicInvalidOperationException("Type was not found in the source document. Use document_symbols to select a declaration from that file.");
         }
 
         // Validate source file has more than one type (otherwise move is pointless)
@@ -75,7 +75,7 @@ public sealed class TypeMoveService : ITypeMoveService
             .Count(t => t.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax);
         if (typeCount < 2)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 "Source file contains only one top-level type. " +
                 "To move or rename the file, use move_file_preview instead. " +
                 "move_type_to_file_preview is for extracting one type out of a file that contains multiple top-level types.");
@@ -91,7 +91,7 @@ public sealed class TypeMoveService : ITypeMoveService
             .Any(d => d.FilePath is not null &&
                       string.Equals(Path.GetFullPath(d.FilePath), resolvedTargetPath, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException($"Target file already exists: {resolvedTargetPath}");
+            throw new PublicInvalidOperationException("Target file already exists in the workspace. Choose a different targetFilePath and retry.");
         }
 
         // Strip private/protected modifiers from top-level types (invalid at namespace level)
