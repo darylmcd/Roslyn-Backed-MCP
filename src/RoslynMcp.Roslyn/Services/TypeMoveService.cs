@@ -1,11 +1,9 @@
-using System.Text.RegularExpressions;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -30,8 +28,23 @@ public sealed class TypeMoveService : ITypeMoveService
         var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
             ?? throw new PublicInvalidOperationException("Source document must be a C# compilation unit. Select a C# source file and retry.");
 
-        var typeDecl = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal));
+        var declarations = sourceRoot.DescendantNodes().OfType<MemberDeclarationSyntax>()
+            .Where(t => t switch
+            {
+                BaseTypeDeclarationSyntax type => type.Identifier.ValueText == typeName,
+                DelegateDeclarationSyntax type => type.Identifier.ValueText == typeName,
+                _ => false,
+            })
+            .ToArray();
+
+        if (declarations.Length > 1)
+            throw new PublicInvalidOperationException("Type name is ambiguous in the source document. Use document_symbols to select a file with one matching declaration.");
+
+        var declaration = declarations.SingleOrDefault();
+        if (declaration is not null && declaration.Parent is not (CompilationUnitSyntax or BaseNamespaceDeclarationSyntax))
+            throw new PublicInvalidOperationException("Nested types cannot be moved to a top-level file without changing their identity. Select a top-level declaration with document_symbols.");
+
+        var typeDecl = declaration as TypeDeclarationSyntax;
 
         if (typeDecl is null)
         {
@@ -40,19 +53,7 @@ public sealed class TypeMoveService : ITypeMoveService
             // DelegateDeclarationSyntax is a MemberDeclarationSyntax. Both are addressable by name from
             // symbol_search, so callers reasonably expect the move tool to handle them — surface a
             // structured error that names the resolved kind instead of the misleading "not found" text.
-            var unsupportedKind = sourceRoot.DescendantNodes()
-                .OfType<BaseTypeDeclarationSyntax>()
-                .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal))
-                ?.Kind();
-
-            if (unsupportedKind is null)
-            {
-                var unsupportedDelegate = sourceRoot.DescendantNodes()
-                    .OfType<DelegateDeclarationSyntax>()
-                    .FirstOrDefault(d => string.Equals(d.Identifier.Text, typeName, StringComparison.Ordinal));
-                if (unsupportedDelegate is not null)
-                    unsupportedKind = SyntaxKind.DelegateDeclaration;
-            }
+            var unsupportedKind = declaration?.Kind();
 
             if (unsupportedKind is not null)
             {
@@ -71,7 +72,8 @@ public sealed class TypeMoveService : ITypeMoveService
         }
 
         // Validate source file has more than one type (otherwise move is pointless)
-        var typeCount = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
+        var typeCount = sourceRoot.DescendantNodes()
+            .Where(t => t is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax)
             .Count(t => t.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax);
         if (typeCount < 2)
         {
@@ -82,7 +84,8 @@ public sealed class TypeMoveService : ITypeMoveService
         }
 
         // Determine target file path
-        var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
+        var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath)
+            ?? throw new PublicInvalidOperationException("Source document must have an on-disk path. Select a saved C# source file and retry.");
         var resolvedTargetPath = targetFilePath ?? Path.Combine(sourceDir, $"{typeName}.cs");
         resolvedTargetPath = Path.GetFullPath(resolvedTargetPath);
 
@@ -94,45 +97,7 @@ public sealed class TypeMoveService : ITypeMoveService
             throw new PublicInvalidOperationException("Target file already exists in the workspace. Choose a different targetFilePath and retry.");
         }
 
-        // Strip private/protected modifiers from top-level types (invalid at namespace level)
-        var movedTypeDecl = StripInvalidTopLevelModifiers(typeDecl);
-
-        // Build the new file content
-        var usings = sourceRoot.Usings;
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-
-        CompilationUnitSyntax newFileRoot;
-        if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
-        {
-            // File-scoped namespace: recreate it with just the type
-            var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                .WithNamespaceKeyword(fileScopedNs.NamespaceKeyword)
-                .WithSemicolonToken(fileScopedNs.SemicolonToken)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl));
-
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
-        {
-            var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl));
-
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else
-        {
-            // Top-level type (no namespace)
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl))
-                .NormalizeWhitespace();
-        }
+        var newFileRoot = CreateMovedCompilationUnit(sourceRoot, typeDecl);
 
         // NormalizeWhitespace() can introduce a stray leading blank line and may inflate the
         // separator between the using block and the first member. Canonicalize both before
@@ -141,7 +106,8 @@ public sealed class TypeMoveService : ITypeMoveService
         newFileRoot = TriviaNormalizationHelper.NormalizeUsingToMemberSeparator(newFileRoot);
 
         // Remove the type from the source file
-        var updatedSourceRoot = sourceRoot.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepLeadingTrivia)!;
+        var updatedSourceRoot = sourceRoot.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepLeadingTrivia)
+            ?? throw new InvalidOperationException("Removing a type unexpectedly removed its compilation unit.");
 
         // Apply changes to solution
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
@@ -156,20 +122,18 @@ public sealed class TypeMoveService : ITypeMoveService
         // NetworkDocumentation audit §9.2 repro.
         var targetFileName = Path.GetFileName(resolvedTargetPath);
         var newFileText = newFileRoot.ToFullString();
-        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)
+            ?? throw new InvalidOperationException("The source project disappeared while preparing the type move.");
         var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, resolvedTargetPath);
         var newDocument = targetProject.AddDocument(targetFileName, newFileText, folders: folders, filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
-
-        // BUG-N13: source file may rely on ImplicitUsings for generic collections; new file must carry explicit usings when needed.
-        newSolution = await EnsureCollectionsGenericUsingIfNeededAsync(newSolution, newDocument.Id, movedTypeDecl, ct)
-            .ConfigureAwait(false);
 
         // Remove unnecessary usings from the new file by checking for CS8019 diagnostics
         newSolution = await RemoveUnusedUsingsAsync(newSolution, newDocument.Id, ct).ConfigureAwait(false);
 
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
         var description = $"Move type '{typeName}' to {targetFileName}";
         var token = _previewStore.Store(
             workspaceId,
@@ -182,90 +146,55 @@ public sealed class TypeMoveService : ITypeMoveService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
-    private static async Task<Solution> EnsureCollectionsGenericUsingIfNeededAsync(
-        Solution solution, DocumentId documentId, TypeDeclarationSyntax movedType, CancellationToken ct)
+    private static CompilationUnitSyntax CreateMovedCompilationUnit(
+        CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDecl)
     {
-        ct.ThrowIfCancellationRequested();
-        var typeText = movedType.ToFullString();
-        var needsGeneric = Regex.IsMatch(
-            typeText,
-            @"\b(Dictionary|List|HashSet|IEnumerable|ICollection|IReadOnlyList|IReadOnlyDictionary|IReadOnlySet|Queue|Stack|LinkedList|SortedDictionary|SortedList|ConcurrentDictionary|ConcurrentBag|ObservableCollection)<",
-            RegexOptions.CultureInvariant);
-        if (!needsGeneric)
-            return solution;
+        // Keep each namespace scope intact: flattening names or hoisting imports changes
+        // alias, relative namespace, static import, and extern-alias binding.
+        MemberDeclarationSyntax member = typeDecl;
+        foreach (var scope in typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>())
+            member = scope.WithMembers(SyntaxFactory.SingletonList(member));
 
-        var document = solution.GetDocument(documentId);
-        if (document is null)
-            return solution;
-
-        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
-        if (root is null)
-            return solution;
-
-        var already = root.Usings.Any(u =>
-            u.Name?.ToString().Equals("System.Collections.Generic", StringComparison.Ordinal) == true);
-        if (already)
-            return solution;
-
-        var usingDir = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName("System.Collections.Generic"))
+        // Global (including implicit) usings already cover every document in this project.
+        return SyntaxFactory.CompilationUnit()
+            .WithExterns(sourceRoot.Externs)
+            .WithUsings(SyntaxFactory.List(sourceRoot.Usings.Where(u => !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))))
+            .WithMembers(SyntaxFactory.SingletonList(member))
             .NormalizeWhitespace();
-        var newRoot = root.WithUsings(root.Usings.Add(usingDir));
-        return solution.WithDocumentSyntaxRoot(documentId, newRoot);
     }
 
-    private static async Task<Solution> RemoveUnusedUsingsAsync(Solution solution, DocumentId documentId, CancellationToken ct)
+    internal static async Task<Solution> RemoveUnusedUsingsAsync(Solution solution, DocumentId documentId, CancellationToken ct)
     {
         var document = solution.GetDocument(documentId);
         if (document is null) return solution;
 
-        try
+        var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false);
+        if (compilation is null) return solution;
+
+        var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+        if (tree is null || root is null) return solution;
+
+        var unusedUsings = compilation.GetDiagnostics(ct)
+            .Where(d => d.Id == "CS8019" && d.Location.SourceTree == tree)
+            .Select(d => root.FindNode(d.Location.SourceSpan))
+            .OfType<UsingDirectiveSyntax>()
+            .Distinct()
+            .ToList();
+
+        if (unusedUsings.Count > 0)
         {
-            var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is null) return solution;
-
-            var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
-            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (tree is null || root is null) return solution;
-
-            var unusedUsings = compilation.GetDiagnostics(ct)
-                .Where(d => d.Id == "CS8019" && d.Location.SourceTree == tree)
-                .Select(d => root.FindNode(d.Location.SourceSpan))
-                .OfType<UsingDirectiveSyntax>()
-                .Distinct()
-                .ToList();
-
-            if (unusedUsings.Count > 0)
+            root = root.RemoveNodes(unusedUsings, SyntaxRemoveOptions.KeepNoTrivia) ?? root;
+            if (root is CompilationUnitSyntax cu)
             {
-                root = root.RemoveNodes(unusedUsings, SyntaxRemoveOptions.KeepNoTrivia) ?? root;
-                if (root is CompilationUnitSyntax cu)
-                {
-                    cu = TriviaNormalizationHelper.NormalizeLeadingTrivia(cu);
-                    cu = TriviaNormalizationHelper.CollapseBlankLinesInUsingBlock(cu);
-                    root = cu;
-                }
-                solution = solution.WithDocumentSyntaxRoot(documentId, root);
+                cu = TriviaNormalizationHelper.NormalizeLeadingTrivia(cu);
+                cu = TriviaNormalizationHelper.CollapseBlankLinesInUsingBlock(cu);
+                root = cu;
             }
+            solution = solution.WithDocumentSyntaxRoot(documentId, root);
         }
-        catch
-        {
-            // If unused-using detection fails, keep all usings — safe fallback
-        }
-
+        // Fail before publishing a preview; cancellation and unexpected failures retain
+        // their identity for the host's established error/diagnostic boundary.
         return solution;
-    }
-
-    private static TypeDeclarationSyntax StripInvalidTopLevelModifiers(TypeDeclarationSyntax typeDecl)
-    {
-        var invalidModifiers = new[] { SyntaxKind.PrivateKeyword, SyntaxKind.ProtectedKeyword };
-        var newModifiers = typeDecl.Modifiers.Where(m => !invalidModifiers.Contains(m.Kind()));
-        var modifierList = SyntaxFactory.TokenList(newModifiers);
-
-        // If stripping removed all access modifiers and type had none originally visible, add internal
-        if (!modifierList.Any(m => m.IsKind(SyntaxKind.PublicKeyword) || m.IsKind(SyntaxKind.InternalKeyword)))
-        {
-            modifierList = modifierList.Insert(0, SyntaxFactory.Token(SyntaxKind.InternalKeyword).WithTrailingTrivia(SyntaxFactory.Space));
-        }
-
-        return typeDecl.WithModifiers(modifierList);
     }
 }
