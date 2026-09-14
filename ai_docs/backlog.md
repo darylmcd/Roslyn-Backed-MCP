@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T19:49:02Z
+**updated_at:** 2026-09-14T20:24:11Z
 
 ## Agent contract
 
@@ -105,6 +105,7 @@
 | `verify-ai-docs-link-gate-false-positives` | Medium | — | **Doc link gate false-positives on code spans** — `eng/verify-ai-docs.ps1` runs its link regex over raw text with no code-span or fence exemption, so quoted code scores as broken links (69 live candidates repo-wide). Strip code before scanning. [type: bug] [source: roslyn-mcp retro 2026-09-13] | S | items/verify-ai-docs-link-gate-false-positives.md |
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
+| `workspace-validation-git-process-lifetime` | Medium | — | Extract Git collection ownership and drain its process and output readers on cancellation. [type: lifecycle] [source: Dependabot timeout-test review] | M | items/workspace-validation-git-process-lifetime.md |
 
 ## Low
 

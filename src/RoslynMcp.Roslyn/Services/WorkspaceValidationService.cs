@@ -40,6 +40,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly TimeSpan _validationPhaseTimeout;
     private readonly ILogger<WorkspaceValidationService>? _logger;
     private readonly Action<Process> _killProcessTree;
+    private readonly Func<Process, CancellationToken, Task> _waitForGitExitAsync;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     /// <param name="validationOptions">
@@ -85,7 +86,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         TimeSpan validationPhaseTimeout,
         ILogger<WorkspaceValidationService>? logger = null,
         Action<Process>? killProcessTree = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        Func<Process, CancellationToken, Task>? waitForGitExitAsync = null)
     {
         _compile = compile;
         _diagnostics = diagnostics;
@@ -97,6 +99,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
         _logger = logger;
         _killProcessTree = killProcessTree ?? KillProcessTree;
+        _waitForGitExitAsync = waitForGitExitAsync ?? ((process, token) => process.WaitForExitAsync(token));
         _exceptionReporter = exceptionReporter;
     }
 
@@ -743,7 +746,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             timeoutCts.CancelAfter(timeout);
             var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
             var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            await _waitForGitExitAsync(process, timeoutCts.Token).ConfigureAwait(false);
             stdout = await stdoutTask.ConfigureAwait(false);
             _ = await stderrTask.ConfigureAwait(false);
         }
