@@ -1,10 +1,10 @@
 using System.Diagnostics;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Emit;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -45,11 +45,26 @@ public sealed class CompileCheckService : ICompileCheckService
         var minSeverity = ParseMinimumSeverity(severityFilter);
         var normalizedFileFilters = NormalizeFileFilters(fileFilter, fileFilters);
         var (projectList, fileScopeHint) = ResolveProjectScope(solution, projectFilter, normalizedFileFilters);
-
+        var requestedScope = ComputeRequestedScope(projectFilter, normalizedFileFilters);
         var acc = new CompileCheckAccumulator();
+        var buildRequired = false;
 
         try
         {
+            var status = await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
+            buildRequired = status.BuildRequired;
+            if (status.RestoreRequired)
+            {
+                return new CompileCheckDto(
+                    Success: false, ErrorCount: 0, WarningCount: 0, TotalDiagnostics: 0,
+                    ReturnedDiagnostics: 0, Offset: offset, Limit: limit, HasMore: false,
+                    Diagnostics: [], ElapsedMs: sw.ElapsedMilliseconds,
+                    RestoreHint: "Workspace package restore is required; call workspace_reload with autoRestore=true, then retry compile_check.",
+                    CompletedProjects: 0, TotalProjects: projectList.Count,
+                    RequestedScope: requestedScope, ActualScope: requestedScope)
+                { Readiness = "restore-required" };
+            }
+
             await CollectDiagnosticsAsync(projectList, emitValidation, minSeverity, normalizedFileFilters, acc, ct)
                 .ConfigureAwait(false);
         }
@@ -66,15 +81,11 @@ public sealed class CompileCheckService : ICompileCheckService
 
         var hint = BuildHint(projectFilter, projectList.Count, acc, fileScopeHint);
 
-        // compile-check-multi-project-fallback-structured-scope: surface the requested-vs-actual
-        // compile scope as structured fields so callers can detect the silent file-filter widening
-        // without string-matching restoreHint prose. fileScopeHint (not `hint`) is the fallback
-        // signal.
-        var requestedScope = ComputeRequestedScope(projectFilter, normalizedFileFilters);
-        // projectList.Count > 0 guard: the zero-resolution file-scope arm sets fileScopeHint but
-        // compiles nothing, so reporting ActualScope=="solution" there would claim a widening
-        // that never happened. Only the multi-project fallback actually widens.
-        var actualScope = fileScopeHint is not null && projectList.Count > 0 ? ScopeSolution : requestedScope;
+        if (buildRequired)
+        {
+            const string analyzerHint = "Analyzer build output is missing; compiler diagnostics remain available. Call build_project for the analyzer project, then workspace_reload.";
+            hint = hint is null ? analyzerHint : $"{hint} {analyzerHint}";
+        }
 
         return new CompileCheckDto(
             // A true Success requires that we actually evaluated at least one project.
@@ -96,7 +107,8 @@ public sealed class CompileCheckService : ICompileCheckService
             CompletedProjects: acc.CompletedProjects,
             TotalProjects: projectList.Count,
             RequestedScope: requestedScope,
-            ActualScope: actualScope);
+            ActualScope: requestedScope)
+        { Readiness = buildRequired ? "analyzer-limited" : "ready" };
     }
 
     /// <summary>Scope vocabulary shared by <c>RequestedScope</c>/<c>ActualScope</c>.</summary>
@@ -199,7 +211,7 @@ public sealed class CompileCheckService : ICompileCheckService
     /// <summary>
     /// Returns true when the diagnostic survives the severity + file-scope filter.
     /// Hidden diagnostics never survive; below-<paramref name="minSeverity"/>
-    /// diagnostics are dropped; when <paramref name="normalizedFileFilter"/> is
+    /// diagnostics are dropped; when <paramref name="normalizedFileFilters"/> is
     /// non-null, the diagnostic must have a non-empty path that resolves to the
     /// same full path (case-insensitive).
     /// </summary>
@@ -328,11 +340,6 @@ public sealed class CompileCheckService : ICompileCheckService
         }
 
         var owningProjects = FindOwningProjects(solution, normalizedFileFilters);
-        if (owningProjects.Count == 1)
-        {
-            return ([owningProjects.Single()], null);
-        }
-
         // compile-check-zero-resolution-false-success: a file scope that resolves to NO loaded
         // workspace document must not widen to the full project list. Widening compiled every
         // project and then dropped every returned diagnostic in ShouldReportDiagnostic (none of
@@ -346,10 +353,8 @@ public sealed class CompileCheckService : ICompileCheckService
                 "compile_check file scope did not resolve to any loaded workspace document; no project was compiled and no diagnostics were evaluated. Verify the supplied file paths exist in the loaded workspace (call workspace_status), or omit the file scope to compile the full solution.");
         }
 
-        // owningProjects.Count > 1: the files genuinely span multiple projects, so widening the
-        // compile and filtering the returned diagnostics by path is the correct behaviour.
-        return (filteredProjects,
-            "compile_check file filter fallback: supplied file scope resolved to multiple projects; compiled the full project scope and filtered returned diagnostics by file path.");
+        // Compile only owners; diagnostic filtering still excludes their unrequested files.
+        return (owningProjects.ToList(), null);
     }
 
     private static HashSet<Project> FindOwningProjects(Solution solution, IReadOnlySet<string> normalizedFileFilters)

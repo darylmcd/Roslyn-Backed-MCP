@@ -22,11 +22,9 @@ namespace RoslynMcp.Core.Models;
 /// on responses produced by paths that do not compute a scope.</param>
 /// <param name="ActualScope">The compile scope that actually ran, drawn from the same
 /// <c>"files"</c>/<c>"project"</c>/<c>"solution"</c> vocabulary as <see cref="RequestedScope"/>.
-/// When a <c>files</c> filter spans zero or more than one owning project the check silently widens
-/// to every project in the solution, so <see cref="ActualScope"/> becomes <c>"solution"</c> while
-/// <see cref="RequestedScope"/> stays <c>"files"</c> — comparing the two is the structured
-/// (non-prose) way to detect that fallback, which is otherwise only reported inside
-/// <see cref="RestoreHint"/>. Additive and non-breaking.</param>
+/// A file scope compiles only its owning projects and filters diagnostics to the requested paths.
+/// Unresolved file scopes compile nothing. Check <see cref="CompletedProjects"/> and
+/// <see cref="Readiness"/> to distinguish unevaluated results.</param>
 public sealed record CompileCheckDto(
     bool Success,
     int ErrorCount,
@@ -43,4 +41,12 @@ public sealed record CompileCheckDto(
     int? CompletedProjects = null,
     int? TotalProjects = null,
     string? RequestedScope = null,
-    string? ActualScope = null);
+    string? ActualScope = null)
+{
+    /// <summary>
+    /// Package/analyzer readiness: <c>ready</c>, <c>restore-required</c> (no diagnostics
+    /// evaluated), or <c>analyzer-limited</c> (compiler diagnostics remain available).
+    /// Independent of <see cref="Success"/>; ready results may contain compilation errors.
+    /// </summary>
+    public string Readiness { get; init; } = "ready";
+}

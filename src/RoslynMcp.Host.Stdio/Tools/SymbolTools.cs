@@ -20,7 +20,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SymbolTools
 {
 
-    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search workspace symbols (types, methods, properties, fields) by case-insensitive substring — 'Animal' matches 'AnimalService'. Wildcards and regex metacharacters are matched literally, not interpreted. Use summary=true for broad queries.")]
+    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search workspace symbols by case-insensitive substring; wildcards and regex metacharacters are matched literally. Use summary=true for broad queries.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Search symbols by name across the workspace.")]
     public static Task<string> SearchSymbols(
@@ -153,7 +153,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information about the symbol at a file position. Resolution is strict — a caret on whitespace next to an identifier returns NotFound; pass allowAdjacent=true for the lenient walk to the neighbouring token.")]
+    [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information for a symbol at a file position. Strict resolution returns NotFound on whitespace; use allowAdjacent=true to walk to a neighbouring token.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Inspect the symbol at a source location.")]
     public static Task<string> GetSymbolInfo(
@@ -253,7 +253,7 @@ public static class SymbolTools
         return "No definition found for the symbol at the specified location";
     }
 
-    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find every reference to a symbol across the solution. Use summary=true on high-fan-out symbols to drop preview text, and projectFilter to restrict to named projects; for many symbols at once use find_references_bulk.")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find every reference to one symbol across the solution. Use summary=true for high fan-out and projectFilter for named projects; use find_references_bulk for many symbols.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).")]
     public static Task<string> FindReferences(
@@ -316,7 +316,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find implementations of an interface or abstract member. The column must point at the identifier token (e.g. 'IMyService'), not the line start; prefer metadataName without an exact cursor. Generator partials are deduped by default.")]
+    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find concrete implementations of an interface or abstract member. Use metadataName without an exact cursor; generator partials are deduped by default.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find implementations of an interface or abstract member.")]
     public static Task<string> FindImplementations(
@@ -370,7 +370,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all declarations in a document (types, methods, properties, fields) as a hierarchical tree. Accepts filePath OR a symbol locator (symbolHandle / metadataName), like symbol_info. Alias: get_symbol_outline.")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a document's declarations as a hierarchical tree. Accepts filePath or a symbol locator, like symbol_info; get_symbol_outline is its deprecated alias.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(
@@ -436,7 +436,7 @@ public static class SymbolTools
     // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
     // (Jedi) tool name `get_symbol_outline`. Delegates to the canonical `document_symbols`
     // implementation and surfaces the migration path inline via the `deprecation` envelope.
-    [McpServerTool(Name = "get_symbol_outline", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Alias for document_symbols (cross-MCP-server name compatibility with python-refactor). Returns the canonical document_symbols envelope with deprecation.canonicalName populated. Prefer document_symbols in new code.")]
+    [McpServerTool(Name = "get_symbol_outline", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Alias for document_symbols for cross-MCP-server compatibility. Returns its canonical envelope with deprecation.canonicalName; prefer document_symbols in new code.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Alias for document_symbols (cross-MCP-server name compatibility).")]
     public static Task<string> GetSymbolOutline(
@@ -462,7 +462,7 @@ public static class SymbolTools
             ct);
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual/abstract overrides of a member — only symbols actually marked `override`. Sibling interface implementations are NOT included; use member_hierarchy for those. Auto-promotes to the virtual/interface root before searching.")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual or abstract overrides — only symbols actually marked `override`. Excludes sibling interface implementations; use member_hierarchy for those.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find overrides of a virtual or abstract member.")]
     public static Task<string> FindOverrides(
@@ -531,7 +531,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Summarize a member's base chain, its true `override` members, and its sibling interface implementations (other concrete types fulfilling the same contract) — the superset of find_overrides and find_base_members.")]
+    [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Summarize a member's base chain, true `override` members, and sibling interface implementations — the superset of find_overrides and find_base_members.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Summarize base, override, and sibling interface implementation relationships for a member.")]
     public static Task<string> GetMemberHierarchy(
@@ -558,7 +558,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the display signature, parameters, return type, and documentation for the symbol at a position or locator. A caret on a return-type or property-type token auto-promotes to the enclosing member unless preferDeclaringMember=false.")]
+    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a symbol's display signature, parameters, return type, and documentation from a position or locator. Type-token carets auto-promote unless preferDeclaringMember=false.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Return symbol signature and documentation.")]
     public static Task<string> GetSignatureHelp(
@@ -607,7 +607,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Combined summary of a symbol's definitions, references, implementations, base members, and overrides in one call. A caret on a member's type token auto-promotes to the enclosing member (see preferDeclaringMember).")]
+    [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Summarize one symbol's definitions, references, implementations, base members, and overrides. A member type-token caret auto-promotes to its enclosing member.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Combine definition, reference, base, and implementation relationships.")]
     public static Task<string> GetSymbolRelationships(
@@ -660,7 +660,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for up to 50 symbols in one call. Each element of `symbols` must set exactly one of symbolHandle, metadataName, or filePath+line+column — do not pass symbolHandles or a JSON string array.")]
+    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for up to 50 symbols in one call. Each locator sets exactly one of symbolHandle, metadataName, or filePath+line+column.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Resolve references for multiple symbols in one request.")]
     public static Task<string> FindReferencesBulk(
@@ -732,7 +732,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_type_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("File-granularity rollup of which source files reference a named type, with deduped usage kinds and a per-file site count — the 'which files touch this type' question. Contrast find_type_usages, which classifies individual sites.")]
+    [McpServerTool(Name = "find_type_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("File-granularity rollup of source files referencing a named type, with deduped usage kinds and site counts. Unlike find_type_usages, it does not classify individual sites.")]
     [McpToolMetadata("symbols", "experimental", true, false,
         "Roll up reference sites per file for a named type, classified by usage kind.")]
     public static Task<string> FindTypeConsumers(
@@ -750,7 +750,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find every location where a property is assigned. Each write carries a WriteKind bucket: ObjectInitializer, Assignment, OutRef, or PrimaryConstructorBind (a positional-record slot bound by a `new T(value)` construction).")]
+    [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find every property assignment and classify its WriteKind as ObjectInitializer, Assignment, OutRef, or PrimaryConstructorBind.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find property write sites and classify object-initializer writes.")]
     public static Task<string> FindPropertyWrites(
@@ -797,7 +797,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "probe_position", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return the raw lexical and containing-symbol state at a source position without the lenient adjacent-identifier fallback other resolvers apply — a caret on whitespace reports Whitespace. Intended for test-fixture authoring.")]
+    [McpServerTool(Name = "probe_position", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return raw lexical and containing-symbol state at a source position without adjacent-identifier fallback; a whitespace caret reports Whitespace. Useful for test fixtures.")]
     [McpToolMetadata("symbols", "experimental", true, false,
         "Probe the raw lexical token and containing symbol at a source position.")]
     public static Task<string> ProbePosition(
@@ -864,7 +864,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense completions at a position. Pass the member/token position where completions are expected, not the literal dot column; use probe_position when uncertain. Pass triggerCharacter='.' for instance-member candidates.")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense completions at a member/token position, not the literal dot column. Use probe_position when uncertain; triggerCharacter='.' requests instance-member candidates.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Return IntelliSense-style completion items at the member/token position, not the literal dot column; use probe_position when uncertain.")]
     public static Task<string> GetCompletions(

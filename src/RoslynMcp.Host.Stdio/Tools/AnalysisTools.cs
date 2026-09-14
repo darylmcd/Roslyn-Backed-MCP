@@ -1,11 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using McpServer = ModelContextProtocol.Server.McpServer;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -19,7 +19,8 @@ public static class AnalysisTools
         Analyzer,
     }
 
-    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics — compiler CS*, analyzers CA*/IDE*, and workspace load issues. Contrast compile_check, which is CS-only. Large solutions take tens of seconds, so prefer a projectName or file filter.")]
+    /// <remarks>Prefer projectName or file on large solutions; a full diagnostic pass can take tens of seconds.</remarks>
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics: compiler CS*, analyzers CA*/IDE*, and load issues. Unlike compile_check, which is CS-only, this includes analyzer and workspace results.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Return compiler diagnostics for a workspace.")]
     public static Task<string> GetProjectDiagnostics(
@@ -28,7 +29,7 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by file path")] string? file = null,
-        [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden). Omit for Info floor.")] string? severity = null,
+        [Description("Minimum severity (Error, Warning, Info, Hidden); default Info. total* fields ignore severity/diagnosticId filters; filteredDiagnostics counts matches before pagination.")] string? severity = null,
         [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
@@ -91,6 +92,7 @@ public static class AnalysisTools
                     totalWarnings = results.TotalWarnings,
                     totalInfo = results.TotalInfo,
                     totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
+                    filteredDiagnostics = allDiagnostics.Count,
                     distinctDiagnosticIds = diagnosticGroups.Count,
                     restoreHint = restoreHintText,
                     diagnosticGroups,
@@ -106,6 +108,7 @@ public static class AnalysisTools
                 analyzerErrors = results.AnalyzerErrors,
                 workspaceErrors = results.WorkspaceErrors,
                 totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
+                filteredDiagnostics = allDiagnostics.Count,
                 offset,
                 limit,
                 returnedDiagnostics = pagedDiagnostics.Count,
@@ -130,7 +133,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get details and available code fixes for one diagnostic occurrence. supportedFixes is reliable for CS* and IDE* rules but is always empty for CA-series NetAnalyzers rules — use get_code_actions + preview_code_action there.")]
+    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get details and available code fixes for one diagnostic occurrence. CA-series NetAnalyzers expose fixes through get_code_actions and preview_code_action instead.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Inspect one diagnostic occurrence in detail.")]
     public static Task<string> GetDiagnosticDetails(
@@ -223,7 +226,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol at the exact position or symbolHandle. Resolution uses the token at that position — a caret on a field inside a method resolves the field, so place it on the method name.")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees for the symbol at an exact position or symbolHandle. Position resolution uses its token, so place the caret on the intended member name.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Find direct callers and callees for a method.")]
     public static Task<string> GetCallersCallees(
@@ -267,7 +270,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the blast radius of changing a symbol: references, affected declarations, and affected projects in one call. Pass summary=true on broad-impact symbols to keep only counts (10-100x smaller than the full arrays).")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze a symbol change's blast radius: references, affected declarations, and affected projects in one call. Use summary=true for broad-impact symbols to return counts only.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Estimate the impact of changing a symbol.")]
     public static Task<string> AnalyzeImpact(
@@ -362,7 +365,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, each classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other.")]
+    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all type usages across the solution and classify each role, including return, parameter, property, field, generic argument, inheritance, cast, and construction.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Classify usages of a type across the solution.")]
     public static Task<string> FindTypeUsages(
@@ -410,7 +413,7 @@ public static class AnalysisTools
     /// </summary>
     private const int SemanticGrepHardCap = 500;
 
-    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace, scoped to identifiers / strings / comments / all — no plain-text false positives. Patterns are .NET regex, not ripgrep; identifiers split on member access, so `Task\\.Run` never matches.")]
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware .NET regex search of C# identifiers, strings, comments, or all, not ripgrep. Identifier scope splits member access, so Task\\.Run cannot match.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]
     public static Task<string> SemanticGrep(

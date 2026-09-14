@@ -34,6 +34,7 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(1, result.TotalProjects,
             "A file filter that resolves to one project should compile only that owning project.");
         Assert.AreEqual(1, result.CompletedProjects);
+        Assert.AreEqual("ready", result.Readiness);
         Assert.AreEqual(0, result.ErrorCount,
             "The broken unrelated project must not participate in the scoped compile check.");
         Assert.AreEqual("files", result.RequestedScope);
@@ -76,9 +77,12 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task CheckAsync_FileFiltersAcrossProjects_FallsBackToFullScopeWithHint()
+    public async Task CheckAsync_FileFiltersAcrossProjects_CompilesOnlyOwners()
     {
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(workspace.GetPath("SampleLib.Tests", "UnrelatedError.cs"),
+            "this is not valid csharp", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
         var dogPath = workspace.GetPath("SampleLib", "Dog.cs");
         var programPath = workspace.GetPath("SampleApp", "Program.cs");
@@ -90,15 +94,13 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
                 FileFilters: [dogPath, programPath]),
             CancellationToken.None);
 
-        Assert.IsTrue(result.TotalProjects > 1,
-            "File filters spanning multiple projects should fall back to the full project scope.");
-        Assert.IsFalse(string.IsNullOrEmpty(result.RestoreHint),
-            "Fallback restoreHint must be non-empty when file filters span multiple projects.");
-        StringAssert.Contains(result.RestoreHint, "file filter fallback");
+        Assert.AreEqual(2, result.TotalProjects);
+        Assert.AreEqual(2, result.CompletedProjects);
+        Assert.IsNull(result.RestoreHint);
+        Assert.IsTrue(result.Success);
+        Assert.IsTrue(result.Diagnostics.All(d => d.FilePath == dogPath || d.FilePath == programPath));
         Assert.AreEqual("files", result.RequestedScope);
-        Assert.AreEqual("solution", result.ActualScope);
-        Assert.AreNotEqual(result.RequestedScope, result.ActualScope,
-            "A widened file scope must be detectable structurally, not only by parsing restoreHint.");
+        Assert.AreEqual("files", result.ActualScope);
     }
 
     [TestMethod]
@@ -117,12 +119,82 @@ public sealed class CompileCheckServiceTests : IsolatedWorkspaceTestBase
                 FileFilters: [dogPath, programPath]),
             CancellationToken.None);
 
-        Assert.IsTrue(result.TotalProjects > 1,
+        Assert.AreEqual(2, result.TotalProjects,
             "A whitespace-only projectFilter must be treated as no filter, not as a literal (nonexistent) project name.");
-        Assert.AreEqual("solution", result.ActualScope);
+        Assert.AreEqual("files", result.ActualScope);
         Assert.AreEqual("files", result.RequestedScope,
             "Whitespace-only projectFilter must not be classified as a project-scoped request.");
-        StringAssert.Contains(result.RestoreHint, "file filter fallback");
+        Assert.IsNull(result.RestoreHint);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CheckAsync_RestoreRequired_DoesNotEvaluateDiagnostics(bool missingAnalyzer)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var propsPath = workspace.GetPath("Directory.Packages.props");
+        var props = XDocument.Load(propsPath);
+        var package = props.Descendants("PackageVersion").Single(element =>
+            (string?)element.Attribute("Include") == "Microsoft.NET.Test.Sdk");
+        package.SetAttributeValue("Version", "0.0.0");
+        props.Save(propsPath);
+        if (missingAnalyzer) AddMissingAnalyzer(workspace);
+        await workspace.LoadAsync(CancellationToken.None);
+        var status = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
+        Assert.IsTrue(status.RestoreRequired);
+        if (missingAnalyzer) Assert.IsTrue(status.BuildRequired);
+
+        var result = await CompileCheckService.CheckAsync(workspace.WorkspaceId,
+            new CompileCheckOptions(Offset: 3, Limit: 7), CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual("restore-required", result.Readiness);
+        Assert.AreEqual(0, result.CompletedProjects);
+        Assert.AreEqual(0, result.ErrorCount);
+        Assert.AreEqual(0, result.WarningCount);
+        Assert.AreEqual(0, result.TotalDiagnostics);
+        Assert.AreEqual(0, result.ReturnedDiagnostics);
+        Assert.IsEmpty(result.Diagnostics);
+        Assert.IsFalse(result.HasMore);
+        Assert.AreEqual(3, result.Offset);
+        Assert.AreEqual(7, result.Limit);
+        StringAssert.Contains(result.RestoreHint, "workspace_reload");
+        StringAssert.Contains(result.RestoreHint, "autoRestore=true");
+    }
+
+    [TestMethod]
+    public async Task CheckAsync_BuildRequired_StillReportsCompilerErrors()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddMissingAnalyzer(workspace);
+        await File.AppendAllTextAsync(workspace.GetPath("SampleLib", "Dog.cs"),
+            "\nthis is not valid csharp\n", CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+        var status = await WorkspaceManager.GetStatusAsync(workspace.WorkspaceId);
+        Assert.IsTrue(status.BuildRequired);
+        Assert.IsFalse(status.RestoreRequired);
+
+        var result = await CompileCheckService.CheckAsync(workspace.WorkspaceId,
+            new CompileCheckOptions(ProjectFilter: "SampleLib"), CancellationToken.None);
+
+        Assert.AreEqual("analyzer-limited", result.Readiness);
+        Assert.IsFalse(result.Success);
+        Assert.IsGreaterThan(0, result.ErrorCount);
+        Assert.IsTrue(result.Diagnostics.Any(d => d.Id.StartsWith("CS", StringComparison.Ordinal)));
+        Assert.AreEqual(1, result.CompletedProjects);
+        StringAssert.Contains(result.RestoreHint, "build_project");
+        StringAssert.Contains(WorkspaceStatusSummaryDto.From(status).RestoreHint, "build_project");
+    }
+
+    private static void AddMissingAnalyzer(IsolatedWorkspaceScope workspace)
+    {
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var project = XDocument.Load(projectPath);
+        Assert.IsNotNull(project.Root);
+        project.Root.Add(new XElement("ItemGroup",
+            new XElement("Analyzer", new XAttribute("Include", "MissingAnalyzer.dll"))));
+        project.Save(projectPath);
     }
 
     [TestMethod]

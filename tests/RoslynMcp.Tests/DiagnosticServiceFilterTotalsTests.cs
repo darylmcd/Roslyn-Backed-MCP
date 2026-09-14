@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -18,6 +19,56 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
     {
         InitializeServices();
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProjectDiagnostics_InfoOnlyScopeWithWarningFloor_ReportsZeroFilteredTotal(bool summary)
+    {
+        var json = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate, new InfoOnlyDiagnosticService(), WorkspaceId,
+            severity: "Warning", summary: summary, ct: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual(3, document.RootElement.GetProperty("totalInfo").GetInt32());
+        Assert.AreEqual(3, document.RootElement.GetProperty("totalDiagnostics").GetInt32());
+        Assert.AreEqual(0, document.RootElement.GetProperty("filteredDiagnostics").GetInt32());
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProjectDiagnostics_FilteredTotalMatchesServiceBeforePagination(bool summary)
+    {
+        var expected = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, null, null, "Warning", "CS0414", CancellationToken.None);
+        var expectedCount = expected.WorkspaceDiagnostics.Count + expected.CompilerDiagnostics.Count
+            + expected.AnalyzerDiagnostics.Count;
+        Assert.IsGreaterThan(0, expectedCount, "The sample must exercise a nonempty filtered result.");
+        var json = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate, DiagnosticService, WorkspaceId,
+            severity: "Warning", diagnosticId: "CS0414", offset: expectedCount, limit: 1,
+            summary: summary, ct: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        Assert.AreEqual(expectedCount, document.RootElement.GetProperty("filteredDiagnostics").GetInt32());
+        if (!summary) Assert.AreEqual(0, document.RootElement.GetProperty("returnedDiagnostics").GetInt32());
+    }
+
+    // Exercise the tool's wire projection with a deterministic Info-only service response.
+    // The real-service test above owns filter and pagination integration.
+    private sealed class InfoOnlyDiagnosticService : IDiagnosticService
+    {
+        public Task<DiagnosticsResultDto> GetDiagnosticsAsync(string workspaceId,
+            string? projectFilter, string? fileFilter, string? severityFilter,
+            string? diagnosticIdFilter, CancellationToken ct)
+        {
+            Assert.AreEqual("Warning", severityFilter);
+            return Task.FromResult(new DiagnosticsResultDto([], [], [], 0, 0, 3));
+        }
+
+        public Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(string workspaceId,
+            string diagnosticId, string filePath, int line, int column, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 
     [TestMethod]
