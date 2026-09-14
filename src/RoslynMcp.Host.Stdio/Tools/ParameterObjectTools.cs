@@ -16,10 +16,15 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ParameterObjectTools
 {
+    /// <remarks>
+    /// The preview rewrites every call site to construct the new positional record. Redeem its
+    /// token through <c>apply_with_verify</c>; invalid requests return a refusal rather than a
+    /// partial change.
+    /// </remarks>
     [McpServerTool(Name = "parameter_object_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview grouping N parameters of a method into a positional sealed record DTO with all callsites updated atomically."),
-     Description("Preview grouping N parameters of a method into a positional sealed record and rewriting every call site through `new NewType(...)`. Refuses with a reason rather than partially proceeding; redeem via apply_with_verify.")]
+     Description("Preview grouping method parameters into a record and rewriting every callsite. Refuses with a reason rather than partially proceeding; redeem the preview token through apply_with_verify.")]
     public static Task<string> PreviewParameterObject(
         IWorkspaceExecutionGate gate,
         IParameterObjectService parameterObjectService,

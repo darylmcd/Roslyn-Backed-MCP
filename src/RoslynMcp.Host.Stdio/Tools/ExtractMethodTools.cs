@@ -60,10 +60,16 @@ public static class ExtractMethodTools
             expectedKind: PreviewKind.ExtractMethod,
             invokedRoute: "extract_method_apply");
 
+    /// <remarks>
+    /// The preview is intentionally distinct from <c>extract_method_preview</c>: it replaces
+    /// matching sub-expressions with calls to a synthesized helper. It refuses fewer than two
+    /// occurrences, incompatible free-variable types, and cross-type matches unless explicitly
+    /// allowed.
+    /// </remarks>
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,
         "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope.")]
-    [Description("Preview rewriting an N-function shared sub-expression into static-helper calls, unlike extract_method_preview. Refuses on occurrences < 2, mixed free-variable types, or cross-type hits when allowCrossFile=false.")]
+    [Description("Preview replacing a shared sub-expression with static-helper calls, unlike extract_method_preview. Refuses on occurrences < 2, mixed free-variable types, or cross-type hits when allowCrossFile=false.")]
     public static Task<string> PreviewExtractSharedExpressionToHelper(
         IWorkspaceExecutionGate gate,
         IExtractMethodService extractMethodService,

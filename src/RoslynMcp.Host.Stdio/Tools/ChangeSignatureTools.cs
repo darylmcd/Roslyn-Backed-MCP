@@ -16,10 +16,14 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ChangeSignatureTools
 {
+    /// <remarks>
+    /// The preview changes the declaration and every call site together. Choose <c>op</c> and
+    /// supply the matching operation-specific arguments before redeeming the returned token.
+    /// </remarks>
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically."),
-     Description("Preview adding, removing, renaming, or reordering a method's parameters: the declaration and every callsite are rewritten under one preview token. Supply op plus its name/newName/parameterType/newOrder arguments.")]
+     Description("Preview adding, removing, renaming, or reordering method parameters. Atomically rewrites the declaration and every callsite under one preview token; supply op and its required arguments.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
