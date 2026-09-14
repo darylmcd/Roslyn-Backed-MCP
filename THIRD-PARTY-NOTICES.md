@@ -20,7 +20,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Extensions.Logging.Console | 10.0.11 | MIT | https://github.com/dotnet/runtime |
 | ModelContextProtocol | 2.2.0 | Apache-2.0 | https://github.com/modelcontextprotocol/csharp-sdk |
 | Nito.AsyncEx | 5.1.2 | MIT | https://github.com/StephenCleary/AsyncEx |
-| System.Security.Cryptography.Xml | 10.0.11 | MIT | https://github.com/dotnet/runtime |
+| System.Security.Cryptography.Xml | 10.0.12 | MIT | https://github.com/dotnet/runtime |
 
 ## Build-Time Dependencies
 
@@ -32,8 +32,8 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Build.Utilities.Core | 17.14.28 | MIT | https://github.com/dotnet/msbuild |
 | Microsoft.CodeAnalysis.Analyzers | 5.9.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
 | Microsoft.CodeAnalysis.BannedApiAnalyzers | 5.6.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
-| Microsoft.CodeAnalysis.NetAnalyzers | 10.0.400 | MIT | https://github.com/dotnet/sdk |
-| Microsoft.SourceLink.GitHub | 10.0.400 | MIT | https://github.com/dotnet/sourcelink |
+| Microsoft.CodeAnalysis.NetAnalyzers | 10.0.401 | MIT | https://github.com/dotnet/sdk |
+| Microsoft.SourceLink.GitHub | 10.0.401 | MIT | https://github.com/dotnet/sourcelink |
 
 ## Test Dependencies
 
@@ -41,8 +41,8 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 |---|---:|---|---|
 | coverlet.collector | 10.0.1 | MIT | https://github.com/coverlet-coverage/coverlet |
 | Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest | 1.1.2 | MIT | https://github.com/dotnet/roslyn-sdk |
-| Microsoft.Extensions.TimeProvider.Testing | 10.9.0 | MIT | https://github.com/dotnet/extensions |
-| Microsoft.NET.Test.Sdk | 18.9.0 | MIT | https://github.com/microsoft/vstest |
+| Microsoft.Extensions.TimeProvider.Testing | 10.10.0 | MIT | https://github.com/dotnet/extensions |
+| Microsoft.NET.Test.Sdk | 18.10.0 | MIT | https://github.com/microsoft/vstest |
 | MSTest.TestAdapter | 4.3.3 | MIT | https://github.com/microsoft/testfx |
 | MSTest.TestFramework | 4.3.3 | MIT | https://github.com/microsoft/testfx |
 | NuGet.Frameworks | 6.3.4 | Apache-2.0 | https://github.com/NuGet/NuGet.Client |
