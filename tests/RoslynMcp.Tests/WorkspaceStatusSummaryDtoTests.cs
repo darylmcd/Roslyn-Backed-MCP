@@ -1,4 +1,6 @@
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -22,6 +24,39 @@ public sealed class WorkspaceStatusSummaryDtoTests
             IsLoaded: true,
             IsStale: isStale,
             WorkspaceDiagnostics: diagnostics);
+
+    [TestMethod]
+    [DataRow("ResolveComReference failed", true)]
+    [DataRow("TYPE LIBRARY could not be resolved", true)]
+    [DataRow("The .NET Core version of MSBuild cannot run this task", true)]
+    [DataRow("Could not load a normal assembly", false)]
+    [DataRow("", false)]
+    public void From_ToolchainClassificationMatchesWorkspaceIngress(string message, bool requiresVsMsbuild)
+    {
+        var severity = WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Failure, message);
+        Assert.AreEqual(requiresVsMsbuild ? "Warning" : "Error", severity);
+        var diagnostic = new DiagnosticDto("WORKSPACE_FAILURE", message, severity, "Workspace", null, null, null, null, null);
+        var summary = WorkspaceStatusSummaryDto.From(BaselineStatus([diagnostic]));
+        Assert.AreEqual(!requiresVsMsbuild, summary.AnalyzersReady);
+        Assert.AreEqual(requiresVsMsbuild, summary.RestoreHint?.Contains("Visual Studio MSBuild", StringComparison.Ordinal) == true);
+        Assert.IsFalse(summary.IsReady);
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow(" ")]
+    [DataRow("Sample.sln")]
+    [DataRow("Sample.slnx")]
+    [DataRow("Sample.csproj")]
+    [DataRow("Sample.vbproj")]
+    [DataRow("Sample.custom")]
+    public void From_LoadedPathUsesNativeBasenameForEveryExtension(string? fileName)
+    {
+        var path = string.IsNullOrWhiteSpace(fileName) ? fileName : Path.Combine("parent", fileName);
+        var summary = WorkspaceStatusSummaryDto.From(BaselineStatus([]) with { LoadedPath = path });
+        Assert.AreEqual(string.IsNullOrWhiteSpace(fileName) ? null : fileName, summary.SolutionFileName);
+    }
 
     [TestMethod]
     public void From_NoErrors_NotStale_IsReady()

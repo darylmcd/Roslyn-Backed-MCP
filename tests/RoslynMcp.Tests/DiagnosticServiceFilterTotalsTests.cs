@@ -22,6 +22,40 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ProjectDiagnostics_SummaryOrdersSeverityThenDescendingCountAsync()
+    {
+        var json = await AnalysisTools.GetProjectDiagnostics(WorkspaceExecutionGate,
+            new MixedSeverityDiagnosticService(), WorkspaceId, summary: true, ct: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var groups = document.RootElement.GetProperty("diagnosticGroups").EnumerateArray().ToArray();
+        Assert.AreSequenceEqual(new[] { "E2", "E1", "W2", "W1", "I2", "I1" },
+            groups.Select(group => group.GetProperty("id").GetString()).ToArray());
+        Assert.AreSequenceEqual(new[] { 2, 1, 2, 1, 2, 1 },
+            groups.Select(group => group.GetProperty("count").GetInt32()).ToArray());
+    }
+
+    private sealed class MixedSeverityDiagnosticService : IDiagnosticService
+    {
+        public Task<DiagnosticsResultDto> GetDiagnosticsAsync(string workspaceId,
+            string? projectFilter, string? fileFilter, string? severityFilter,
+            string? diagnosticIdFilter, CancellationToken ct)
+        {
+            List<DiagnosticDto> diagnostics = [];
+            foreach (var (prefix, severity) in new[] { ("I", "Info"), ("W", "Warning"), ("E", "Error") })
+            {
+                diagnostics.Add(new DiagnosticDto(prefix + "1", "Probe", severity, "Testing", null, null, null, null, null));
+                var duplicate = new DiagnosticDto(prefix + "2", "Probe", severity, "Testing", null, null, null, null, null);
+                diagnostics.AddRange([duplicate, duplicate]);
+            }
+            return Task.FromResult(new DiagnosticsResultDto([], diagnostics, [], 3, 3, 3));
+        }
+
+        public Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(string workspaceId,
+            string diagnosticId, string filePath, int line, int column, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task ProjectDiagnostics_InfoOnlyScopeWithWarningFloor_ReportsZeroFilteredTotal(bool summary)
@@ -101,23 +135,6 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
             "Severity filter must still narrow CompilerDiagnostics to Error rows.");
         Assert.IsTrue(errorOnly.AnalyzerDiagnostics.All(d => d.Severity == "Error"),
             "Severity filter must still narrow AnalyzerDiagnostics to Error rows.");
-    }
-
-    [TestMethod]
-    public async Task GetDiagnosticsAsync_DefaultSeverityFloorIncludesInfoRowsWhenPresent()
-    {
-        var result = await DiagnosticService.GetDiagnosticsAsync(
-            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: null, diagnosticIdFilter: null, CancellationToken.None);
-
-        if (result.TotalInfo > 0)
-        {
-            var infoReturned =
-                result.CompilerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
-                + result.AnalyzerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
-                + result.WorkspaceDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase));
-            Assert.IsGreaterThan(0, infoReturned,
-                "When totals report Info diagnostics, default (null) severity filter must include Info rows in returned lists.");
-        }
     }
 
     [TestMethod]

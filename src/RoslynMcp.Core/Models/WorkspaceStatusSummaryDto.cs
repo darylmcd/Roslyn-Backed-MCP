@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Services;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -76,13 +78,8 @@ public sealed record WorkspaceStatusSummaryDto(
                 }
             }
 
-            // VS-MSBuild-only diagnostics arrive with Id="WORKSPACE_FAILURE" and are downgraded
-            // to Warning by WorkspaceDiagnosticSeverityClassifier. Detect them by message content
-            // here (Core can't reference Roslyn for the helper) — mirrors the substring scan in
-            // BuildRestoreHint below. Treated as an analyzers-not-ready condition so callers see
-            // isReady=false and surface the VS-MSBuild remediation hint instead of proceeding
-            // with degraded results.
-            if (IsVsMsbuildRequiredMessage(diagnostic.Message))
+            // Toolchain-limited workspaces remain not ready even after severity normalization.
+            if (WorkspaceToolchainClassifier.IsVsMsbuildRequiredMessage(diagnostic.Message))
             {
                 vsMsbuildRequired = true;
             }
@@ -211,29 +208,6 @@ public sealed record WorkspaceStatusSummaryDto(
     private static string? GetSolutionOrProjectFileName(string? loadedPath)
     {
         if (string.IsNullOrWhiteSpace(loadedPath)) return null;
-        var file = Path.GetFileName(loadedPath);
-        if (file.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
-            file.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
-            file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-            return file;
-        return file;
-    }
-
-    /// <summary>
-    /// VS-MSBuild-only diagnostic detector. Kept local to Core (DTO layer cannot depend on
-    /// the Roslyn layer for the canonical helper) — mirrors
-    /// <c>RoslynMcp.Roslyn.Helpers.WorkspaceDiagnosticSeverityClassifier.IsVsMsbuildRequiredMessage</c>.
-    /// Keep the two substring lists in sync.
-    /// </summary>
-    private static bool IsVsMsbuildRequiredMessage(string? message)
-    {
-        if (string.IsNullOrEmpty(message))
-        {
-            return false;
-        }
-
-        return message.Contains("ResolveComReference", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("type library", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("The .NET Core version of MSBuild", StringComparison.OrdinalIgnoreCase);
+        return Path.GetFileName(loadedPath);
     }
 }

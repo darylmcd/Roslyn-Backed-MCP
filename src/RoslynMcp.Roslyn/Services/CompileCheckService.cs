@@ -30,6 +30,7 @@ public sealed class CompileCheckService : ICompileCheckService
         public int ErrorCount;
         public int WarningCount;
         public int CompletedProjects;
+        public int UnavailableProjects;
         public bool Cancelled;
     }
 
@@ -88,11 +89,10 @@ public sealed class CompileCheckService : ICompileCheckService
         }
 
         return new CompileCheckDto(
-            // A true Success requires that we actually evaluated at least one project.
-            // CompletedProjects==0 with TotalProjects==0 always flips Success false; when
-            // the filter matched no projects (projectList.Count==0), BuildHint synthesizes
-            // an actionable hint instead of a silent green response.
-            Success: acc.ErrorCount == 0 && !acc.Cancelled && acc.CompletedProjects > 0,
+            // Every selected project must have an evaluated compilation; neither an empty
+            // selection nor a partially unavailable solution can prove compilation success.
+            Success: acc.ErrorCount == 0 && !acc.Cancelled && acc.CompletedProjects > 0
+                && acc.CompletedProjects == projectList.Count,
             ErrorCount: acc.ErrorCount,
             WarningCount: acc.WarningCount,
             TotalDiagnostics: acc.Diagnostics.Count,
@@ -111,11 +111,6 @@ public sealed class CompileCheckService : ICompileCheckService
         { Readiness = buildRequired ? "analyzer-limited" : "ready" };
     }
 
-    /// <summary>Scope vocabulary shared by <c>RequestedScope</c>/<c>ActualScope</c>.</summary>
-    private const string ScopeFiles = "files";
-    private const string ScopeProject = "project";
-    private const string ScopeSolution = "solution";
-
     /// <summary>
     /// Classifies the compile scope the caller asked for. Mirrors
     /// <see cref="ResolveProjectScope"/>'s precedence exactly: a project filter short-circuits
@@ -128,9 +123,9 @@ public sealed class CompileCheckService : ICompileCheckService
         string? projectFilter,
         IReadOnlySet<string>? normalizedFileFilters)
     {
-        if (!string.IsNullOrWhiteSpace(projectFilter)) return ScopeProject;
-        if (normalizedFileFilters is not null && normalizedFileFilters.Count > 0) return ScopeFiles;
-        return ScopeSolution;
+        if (!string.IsNullOrWhiteSpace(projectFilter)) return CompileCheckDto.ScopeProject;
+        if (normalizedFileFilters is not null && normalizedFileFilters.Count > 0) return CompileCheckDto.ScopeFiles;
+        return CompileCheckDto.ScopeSolution;
     }
 
     /// <summary>
@@ -153,7 +148,11 @@ public sealed class CompileCheckService : ICompileCheckService
             ct.ThrowIfCancellationRequested();
 
             var snapshot = await SourceGeneratorCompilation.CreateAsync(project, ct).ConfigureAwait(false);
-            if (snapshot is null) { acc.CompletedProjects++; continue; }
+            if (snapshot is null)
+            {
+                acc.UnavailableProjects++;
+                continue;
+            }
             var compilation = snapshot.Compilation;
 
             var diagnostics = emitValidation
@@ -297,7 +296,10 @@ public sealed class CompileCheckService : ICompileCheckService
                 : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
         }
 
-        var joined = string.Join(" ", new[] { zeroProjectsHint, restoreHint, fileScopeHint }
+        var unavailableHint = acc.UnavailableProjects > 0
+            ? $"compile_check could not obtain a compilation for {acc.UnavailableProjects} selected project(s); validation is incomplete. Call workspace_status to inspect project support, then build_workspace for process-level validation."
+            : null;
+        var joined = string.Join(" ", new[] { zeroProjectsHint, unavailableHint, restoreHint, fileScopeHint }
             .Where(static hint => !string.IsNullOrWhiteSpace(hint)));
         return string.IsNullOrEmpty(joined) ? null : joined;
     }

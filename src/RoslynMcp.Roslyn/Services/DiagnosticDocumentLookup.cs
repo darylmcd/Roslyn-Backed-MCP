@@ -97,10 +97,10 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
             return null;
         }
 
-        var compilation = await _compilationCache
-            .GetCompilationAsync(workspaceId, document.Project, ct)
+        var snapshot = await _compilationCache
+            .GetCompilationSnapshotAsync(workspaceId, document.Project, ct)
             .ConfigureAwait(false);
-        if (compilation is null)
+        if (snapshot is null)
         {
             return null;
         }
@@ -108,7 +108,7 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         // Compiler diagnostics take precedence over analyzer diagnostics at the same
         // location, preserving the service's long-standing selection contract.
         var compilerMatch = FindMatch(
-            compilation.GetDiagnostics(ct).Where(diagnostic =>
+            snapshot.Compilation.GetDiagnostics(ct).Concat(snapshot.GeneratorDiagnostics).Where(diagnostic =>
                 diagnostic.Location.SourceTree == tree),
             target);
         return compilerMatch ?? await FindAnalyzerMatchAsync(
@@ -174,16 +174,17 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         Project project,
         CancellationToken ct)
     {
-        var compilation = await _compilationCache
-            .GetCompilationAsync(workspaceId, project, ct)
+        var snapshot = await _compilationCache
+            .GetCompilationSnapshotAsync(workspaceId, project, ct)
             .ConfigureAwait(false);
-        if (compilation is null)
+        if (snapshot is null)
         {
             return [];
         }
 
         var collected = new List<Diagnostic>();
-        collected.AddRange(compilation.GetDiagnostics(ct));
+        collected.AddRange(snapshot.Compilation.GetDiagnostics(ct));
+        collected.AddRange(snapshot.GeneratorDiagnostics);
 
         var compilationWithAnalyzers = await _compilationCache
             .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
@@ -194,7 +195,7 @@ internal sealed class DiagnosticDocumentLookup(ICompilationCache compilationCach
         }
 
         collected.AddRange(await compilationWithAnalyzers
-            .GetAllDiagnosticsAsync(ct)
+            .GetAnalyzerDiagnosticsAsync(ct)
             .ConfigureAwait(false));
         return collected;
     }
