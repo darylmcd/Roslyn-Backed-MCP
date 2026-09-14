@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T13:12:38Z
+**updated_at:** 2026-09-14T19:49:02Z
 
 ## Agent contract
 
@@ -104,6 +104,7 @@
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `verify-ai-docs-link-gate-false-positives` | Medium | — | **Doc link gate false-positives on code spans** — `eng/verify-ai-docs.ps1` runs its link regex over raw text with no code-span or fence exemption, so quoted code scores as broken links (69 live candidates repo-wide). Strip code before scanning. [type: bug] [source: roslyn-mcp retro 2026-09-13] | S | items/verify-ai-docs-link-gate-false-positives.md |
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
+| `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 
 ## Low
 
@@ -249,6 +250,7 @@
 | `shared-members-explicit-generic-call-traversal` | Low | — | Recognize explicit generic calls in shared-member analysis. [type: quality] [source: 2026-09-14 cohesion review] | S | items/shared-members-explicit-generic-call-traversal.md |
 | `cohesion-ranked-limit-after-discovery` | Low | — | Apply the cohesion result limit after severity ranking. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-ranked-limit-after-discovery.md |
 | `suggestion-parameter-object-tool-guidance` | Low | — | Recommend parameter-object tools for high parameter counts. [type: quality] [source: 2026-09-14 cohesion review] | S | items/suggestion-parameter-object-tool-guidance.md |
+| `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
 
 ## Defer
 
