@@ -1,10 +1,10 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -57,6 +57,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<CohesionMetricsDto>();
+        var analyzedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         var failedTypeCount = 0;
 
         IEnumerable<Document> documents;
@@ -92,6 +93,10 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
                 try
                 {
+                    if (semanticModel.GetDeclaredSymbol(typeDecl, ct) is not INamedTypeSymbol typeSymbol
+                        || !analyzedTypes.Add(typeSymbol))
+                        continue;
+
                     var typeMetrics = _typeAnalyzer(typeDecl, semanticModel, minMethods, includeInterfaces, ct);
                     if (typeMetrics is not null)
                         results.Add(typeMetrics);
@@ -131,7 +136,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
         var instanceFields = CollectInstanceFieldsAndProperties(typeSymbol);
 
-        var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
+        var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, semanticModel.Compilation, ct);
         var clusters = ComputeClusters(methodFieldMap, methodCallMap);
 
         var lifecyclePattern = DetectLifecyclePattern(typeSymbol, instanceFields.Count, ct);
@@ -342,11 +347,9 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     /// <summary>
-    /// Builds the softened LCOM4 recommendation text for a detected lifecycle pattern. Returns
-    /// <c>null</c> when no pattern applies, leaving consumers free to emit their default
-    /// "split into cohesive types" guidance.
+    /// Builds pattern-specific LCOM4 guidance, or generic review guidance when no pattern applies.
     /// </summary>
-    private static string? BuildRecommendation(string? lifecyclePattern) => lifecyclePattern switch
+    private static string BuildRecommendation(string? lifecyclePattern) => lifecyclePattern switch
     {
         "action-triad" => "Lifecycle pattern: action-triad — LCOM4 is expected to be high by design because Describe/Validate*/Execute* are orthogonal on fields. Do not split.",
         "facade" => "Lifecycle pattern: facade — Facade/adapter type with zero instance fields delegating to an injected interface. LCOM4 is structurally undefined here. Do not split.",
@@ -356,21 +359,22 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// <summary>
     /// For each method, build two maps:
     /// - <c>methodFieldMap</c>: the field/property names the method accesses (used for SharedFields output).
-    /// - <c>methodCallMap</c>: the private helper method names the method calls (used for cluster connectivity).
+    /// - <c>methodCallMap</c>: the private helper method symbols the method calls (used for cluster connectivity).
     /// Splitting these prevents BUG-N9 where a private helper showed up both as a method node AND
     /// inside the SharedFields list of its caller's cluster.
     /// </summary>
-    private static (Dictionary<string, HashSet<string>> Fields, Dictionary<string, HashSet<string>> Calls) BuildMethodAccessMaps(
+    private static (Dictionary<IMethodSymbol, HashSet<string>> Fields, Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> Calls) BuildMethodAccessMaps(
         List<IMethodSymbol> methods, INamedTypeSymbol containingType,
-        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, CancellationToken ct)
+        Compilation compilation, CancellationToken ct)
     {
-        var fieldMap = new Dictionary<string, HashSet<string>>();
-        var callMap = new Dictionary<string, HashSet<string>>();
+        var fieldMap = new Dictionary<IMethodSymbol, HashSet<string>>(SymbolEqualityComparer.Default);
+        var callMap = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
         foreach (var method in methods)
         {
-            var (fields, calls) = FindAccessedMembers(method, containingType, semanticModel, ct);
-            fieldMap[method.Name] = fields;
-            callMap[method.Name] = calls;
+            ct.ThrowIfCancellationRequested();
+            var (fields, calls) = FindAccessedMembers(method, containingType, compilation, ct);
+            fieldMap[method] = fields;
+            callMap[method] = calls;
         }
         return (fieldMap, callMap);
     }
@@ -414,9 +418,6 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol typeSymbol) return [];
 
-        var typeDecl = await FindTypeDeclarationAsync(typeSymbol, solution, ct).ConfigureAwait(false);
-        if (typeDecl is null) return [];
-
         var semanticModelMap = await BuildSemanticModelMapAsync(typeSymbol, solution, ct).ConfigureAwait(false);
         if (semanticModelMap.Count == 0) return [];
 
@@ -425,7 +426,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var results = new List<SharedMemberDto>();
         foreach (var privateMember in privateMembers)
         {
-            var dto = BuildSharedMemberDtoIfShared(privateMember, publicMethods, typeDecl, semanticModelMap, ct);
+            var dto = BuildSharedMemberDtoIfShared(privateMember, publicMethods, semanticModelMap, ct);
             if (dto is not null) results.Add(dto);
         }
 
@@ -488,12 +489,12 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// </summary>
     private static SharedMemberDto? BuildSharedMemberDtoIfShared(
         ISymbol privateMember, List<IMethodSymbol> publicMethods,
-        TypeDeclarationSyntax typeDecl, Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
+        Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
     {
         var callers = new List<string>();
         foreach (var publicMethod in publicMethods)
         {
-            if (MethodAccessesMember(publicMethod, privateMember, typeDecl, semanticModelMap, ct))
+            if (MethodAccessesMember(publicMethod, privateMember, semanticModelMap, ct))
             {
                 callers.Add(publicMethod.Name);
             }
@@ -519,16 +520,17 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     /// the same set as field names, so the SharedFields output for an LCOM4 cluster ended up
     /// containing helper-method names alongside real fields.
     /// </summary>
-    private static (HashSet<string> Fields, HashSet<string> Calls) FindAccessedMembers(
+    private static (HashSet<string> Fields, HashSet<IMethodSymbol> Calls) FindAccessedMembers(
         IMethodSymbol method, INamedTypeSymbol containingType,
-        SemanticModel semanticModel, CancellationToken ct)
+        Compilation compilation, CancellationToken ct)
     {
         var fields = new HashSet<string>(StringComparer.Ordinal);
-        var calls = new HashSet<string>(StringComparer.Ordinal);
+        var calls = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         var methodNode = FindSourceMethodNode(method, ct);
         if (methodNode is null) return (fields, calls);
 
-        foreach (var identifier in methodNode.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var semanticModel = compilation.GetSemanticModel(methodNode.SyntaxTree);
+        foreach (var identifier in methodNode.DescendantNodes().OfType<SimpleNameSyntax>())
         {
             var referencedSymbol = semanticModel.GetSymbolInfo(identifier, ct).Symbol;
             if (referencedSymbol is null) continue;
@@ -550,7 +552,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
     private static void AddAccessedMember(
         ISymbol referencedSymbol, INamedTypeSymbol containingType,
-        HashSet<string> fields, HashSet<string> calls)
+        HashSet<string> fields, HashSet<IMethodSymbol> calls)
     {
         var sharedMemberName = GetSharedMemberName(referencedSymbol, containingType);
         if (sharedMemberName is not null)
@@ -559,12 +561,12 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             return;
         }
 
-        var helperCallName = GetPrivateHelperCallName(referencedSymbol, containingType);
-        if (helperCallName is not null)
+        var helperCall = GetPrivateHelperCall(referencedSymbol, containingType);
+        if (helperCall is not null)
         {
             // Private method calls create transitive coupling but should NOT appear as
             // SharedFields. They live in the call map, used only for cluster connectivity.
-            calls.Add(helperCallName);
+            calls.Add(helperCall);
         }
     }
 
@@ -576,12 +578,12 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             _ => null,
         };
 
-    private static string? GetPrivateHelperCallName(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
+    private static IMethodSymbol? GetPrivateHelperCall(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
         referencedSymbol is IMethodSymbol calledMethod
         && IsOwnedMember(calledMethod, containingType)
         && calledMethod.DeclaredAccessibility == Accessibility.Private
         && calledMethod.MethodKind == MethodKind.Ordinary
-            ? calledMethod.Name
+            ? calledMethod.OriginalDefinition
             : null;
 
     private static bool IsOwnedMember(ISymbol member, INamedTypeSymbol containingType) =>
@@ -600,7 +602,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
     private static bool MethodAccessesMember(
         IMethodSymbol method, ISymbol member,
-        TypeDeclarationSyntax typeDecl, Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
+        Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
     {
         var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
         if (methodLocation?.SourceTree is null) return false;
@@ -624,21 +626,21 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     private static List<MethodClusterDto> ComputeClusters(
-        Dictionary<string, HashSet<string>> methodFieldMap,
-        Dictionary<string, HashSet<string>> methodCallMap)
+        Dictionary<IMethodSymbol, HashSet<string>> methodFieldMap,
+        Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> methodCallMap)
     {
         // Build adjacency: two methods are connected if they share any field/property access OR
         // any private-helper-method call. The two relationships are kept in separate maps so
         // that cluster connectivity considers both, while SharedFields output only contains
         // real field/property names (BUG-N9).
-        var methodNames = methodFieldMap.Keys.ToList();
-        var parent = new Dictionary<string, string>();
-        foreach (var name in methodNames)
-            parent[name] = name;
+        var methodSymbols = methodFieldMap.Keys.ToList();
+        var parent = new Dictionary<IMethodSymbol, IMethodSymbol>(SymbolEqualityComparer.Default);
+        foreach (var method in methodSymbols)
+            parent[method] = method;
 
-        string Find(string x)
+        IMethodSymbol Find(IMethodSymbol x)
         {
-            while (parent[x] != x)
+            while (!SymbolEqualityComparer.Default.Equals(parent[x], x))
             {
                 parent[x] = parent[parent[x]];
                 x = parent[x];
@@ -646,51 +648,41 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             return x;
         }
 
-        void Union(string a, string b)
+        void Union(IMethodSymbol a, IMethodSymbol b)
         {
             var ra = Find(a);
             var rb = Find(b);
-            if (ra != rb) parent[ra] = rb;
+            if (!SymbolEqualityComparer.Default.Equals(ra, rb)) parent[ra] = rb;
         }
 
         // Union methods that share at least one field/property OR a private-helper call.
-        for (int i = 0; i < methodNames.Count; i++)
+        for (int i = 0; i < methodSymbols.Count; i++)
         {
-            for (int j = i + 1; j < methodNames.Count; j++)
+            for (int j = i + 1; j < methodSymbols.Count; j++)
             {
-                var sharesField = methodFieldMap[methodNames[i]].Overlaps(methodFieldMap[methodNames[j]]);
-                var sharesCall = methodCallMap[methodNames[i]].Overlaps(methodCallMap[methodNames[j]]);
+                var sharesField = methodFieldMap[methodSymbols[i]].Overlaps(methodFieldMap[methodSymbols[j]]);
+                var sharesCall = methodCallMap[methodSymbols[i]].Overlaps(methodCallMap[methodSymbols[j]]);
                 if (sharesField || sharesCall)
                 {
-                    Union(methodNames[i], methodNames[j]);
+                    Union(methodSymbols[i], methodSymbols[j]);
                 }
             }
         }
 
         // Group by root
-        var groups = methodNames.GroupBy(Find).ToList();
+        var groups = methodSymbols.GroupBy(Find, SymbolEqualityComparer.Default).ToList();
 
         return groups.Select(g =>
         {
-            var methods = g.OrderBy(m => m).ToList();
+            var methods = g.OrderBy(m => m.Name, StringComparer.Ordinal).ToList();
             // SharedFields is sourced from the field map only — never from the call map.
             var sharedFields = methods
                 .SelectMany(m => methodFieldMap[m])
                 .Distinct()
                 .OrderBy(f => f)
                 .ToList();
-            return new MethodClusterDto(methods, sharedFields);
+            // Keep the public simple-name labels while retaining each overload as a graph node.
+            return new MethodClusterDto(methods.Select(method => method.Name).ToList(), sharedFields);
         }).ToList();
-    }
-
-    private static async Task<TypeDeclarationSyntax?> FindTypeDeclarationAsync(
-        INamedTypeSymbol typeSymbol, Solution solution, CancellationToken ct)
-    {
-        var location = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-        if (location?.SourceTree is null) return null;
-
-        var root = await location.SourceTree.GetRootAsync(ct).ConfigureAwait(false);
-        var node = root.FindNode(location.SourceSpan);
-        return node as TypeDeclarationSyntax ?? node.FirstAncestorOrSelf<TypeDeclarationSyntax>();
     }
 }

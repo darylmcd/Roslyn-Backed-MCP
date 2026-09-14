@@ -1,5 +1,5 @@
-using RoslynMcp.Core.Models;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -161,10 +161,7 @@ public sealed class CohesionAnalysisTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task GetCohesionMetrics_IgnoresLoggerMessagePartialMethods()
     {
-        // BUG fix (cohesion-metrics-source-gen-aware): a class with one real method plus
-        // several [LoggerMessage] partials previously got Lcom4Score = N+1 because each
-        // partial was counted as its own LCOM4 cluster. After the fix, partials are excluded
-        // from the method enumeration entirely, so the score reflects only the real method.
+        // Two real instance methods share a field. The generated partial must not add a cluster.
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
         var filePath = workspace.GetPath("SampleLib", "QuestionClassifier.cs");
@@ -184,12 +181,14 @@ public partial class QuestionClassifier
 
     public string Classify(string input)
     {
-        LogStarting(_logger, input);
-        return input.Length > 50 ? "long" : "short";
+        LogStarting(input);
+        return _logger.GetType().Name + (input.Length > 50 ? "long" : "short");
     }
 
+    public string Describe() => _logger.GetType().Name;
+
     [LoggerMessage(1, LogLevel.Information, "Classifying {Input}")]
-    private static partial void LogStarting(ILogger logger, string input);
+    private partial void LogStarting(string input);
 }
 """, CancellationToken.None);
 
@@ -206,7 +205,7 @@ internal sealed class LoggerMessageAttribute : System.Attribute
     public LoggerMessageAttribute(int eventId, LogLevel level, string message) { }
 }
 
-internal interface ILogger { }
+public interface ILogger { }
 
 internal enum LogLevel { Information }
 """, CancellationToken.None);
@@ -218,16 +217,11 @@ internal enum LogLevel { Information }
             includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
         var classifier = metrics.FirstOrDefault(m => m.TypeName == "QuestionClassifier");
-        // With minMethods=1 and only Classify counted, the score should be 1 (or 0 if the
-        // class is filtered out for having < 2 instance methods after exclusions). The
-        // bug case was Lcom4Score = 2+ because LogStarting was a separate cluster.
-        if (classifier is not null)
-        {
-            Assert.AreEqual(1, classifier.Lcom4Score,
-                "QuestionClassifier should have Lcom4Score=1 — only the real method counts, not [LoggerMessage] partials.");
-            Assert.AreEqual(1, classifier.MethodCount,
-                "MethodCount should exclude source-gen partials.");
-        }
+        Assert.IsNotNull(classifier, "The two real methods must keep the type in the result.");
+        Assert.AreEqual(2, classifier.MethodCount, "MethodCount must exclude the source-gen partial.");
+        Assert.AreEqual(1, classifier.Lcom4Score, "The two real methods share the logger field.");
+        CollectionAssert.DoesNotContain(classifier.Clusters.SelectMany(cluster => cluster.Methods).ToArray(),
+            "LogStarting", "The generated method must not become a cluster node.");
     }
 
     [TestMethod]
@@ -494,14 +488,9 @@ public class FacadeSubject : IFacadeContract
     }
 
     [TestMethod]
-    public async Task GetCohesionMetrics_StaticUtilityWithZeroFields_DoesNotClassifyAsFacade()
+    public async Task GetCohesionMetrics_ZeroFieldTypeWithoutInterface_DoesNotClassifyAsFacade()
     {
-        // suggest-refactorings-facade-extraction-false-positive: A static utility class also
-        // has zero instance fields by definition. The facade detector must reject it via the
-        // `Interfaces.Length > 0` conjunction — static classes cannot implement interfaces, so
-        // the AND-gate keeps the detector conservative. (CohesionAnalysisService also skips
-        // static types in its instance-method enumeration, but this guard exists belt-and-braces
-        // in case the upstream filter ever changes.)
+        // Zero instance fields alone must not classify a type as a facade.
         await using var workspace = CreateIsolatedWorkspaceCopy();
 
         var filePath = workspace.GetPath("SampleLib", "ZeroFieldHelper.cs");

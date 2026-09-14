@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T05:09:19Z
+**updated_at:** 2026-09-14T13:12:38Z
 
 ## Agent contract
 
@@ -93,7 +93,6 @@
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
-| `cohesion-multifile-partial-semantic-model` | Medium | — | Fix cohesion analysis across multi-file partial types so suggestions do not fail closed. [type: bug] [source: live-surface-audit] | M | items/cohesion-multifile-partial-semantic-model.md |
 | `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
 | `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
 | `scripting-startup-cancellation-causal-barrier` | Medium | scripting-supervisor-outer-cancellation-contended-timeout | Replace the remaining startup-cancellation timing inference with a causal barrier and deterministic recovery proof. [type: test-reliability] [source: 2026-09-10 scripting supervisor remediation] | S | items/scripting-startup-cancellation-causal-barrier.md |
@@ -236,7 +235,6 @@
 | `workspace-warm-repeat-cache-causal-regression` | Low | — | **Make repeat-warm coverage causal** — replace the brittle wall-clock speed ratio with the cold-to-cached state transition. [type: test] [source: adjacent-cold-review] | S | items/workspace-warm-repeat-cache-causal-regression.md |
 | `copilot-self-edit-mutation-policy-consistency` | Low | — | **Make self-edit mutation policy session-aware** — reconcile the blanket apply rule with the documented checkout-under-build boundary. [type: chore] [source: adjacent-cold-review] | M | items/copilot-self-edit-mutation-policy-consistency.md |
 | `retired-root-mcp-doc-index-audit-sync` | Low | — | **Synchronize current documentation after root registration retirement** — repair the document index and generated audit state while preserving dated history. [type: docs] [source: adjacent-cold-review] | M | items/retired-root-mcp-doc-index-audit-sync.md |
-| `cohesion-overload-cluster-symbol-identity` | Low | — | Preserve overload identities during cohesion clustering. [type: correctness] [source: live-surface-audit] | S | items/cohesion-overload-cluster-symbol-identity.md |
 | `tool-consolidation-merge-child-dependency-repair` | Low | — | Repair stale tool-consolidation merge-child dependency metadata. [type: planning] [source: live-backlog-review] | S | items/tool-consolidation-merge-child-dependency-repair.md |
 | `scaffold-syntactic-preflight-candidate-enumeration-decomposition` | Low | scaffold-fqn-target-type-disambiguation | Decompose syntactic scaffold preflight candidate enumeration so qualification-aware lookup and ambiguity policy have focused ownership. [type: maintainability] [source: 2026-09-10 scaffold FQN remediation] | S | items/scaffold-syntactic-preflight-candidate-enumeration-decomposition.md |
 | `structured-call-filter-owner-documentation-drift` | Low | structured-call-tool-filter-pipeline-decomposition | Correct stale structured-call ownership comments after pipeline decomposition. [type: documentation] [source: 2026-09-10 cold review] | M | items/structured-call-filter-owner-documentation-drift.md |
@@ -246,6 +244,11 @@
 | `reports-readme-stale-index` | Low | — | **`ai_docs/reports/README.md` asserts an empty directory that holds six files** — replace the enumerative `## Current files` claim with the supersession-gated retention policy so the index cannot drift again as reports land. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/reports-readme-stale-index.md |
 | `diagnostic-details-descriptor-help-link` | Low | — | Use analyzer descriptor help links in diagnostic details instead of manufacturing compiler-documentation URLs for every diagnostic ID. [type: quality] [source: adjacent-review] | S | items/diagnostic-details-descriptor-help-link.md |
 | `diagnostics-summary-mixed-severity-same-id` | Low | — | Preserve per-severity counts when one diagnostic ID has different configured severities across projects. [type: quality] [source: adjacent-review] | S | items/diagnostics-summary-mixed-severity-same-id.md |
+| `cohesion-handwritten-partial-method-inclusion` | Low | — | Preserve handwritten partial methods in cohesion analysis. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-handwritten-partial-method-inclusion.md |
+| `cohesion-direct-method-call-connectivity` | Low | — | Connect cohesion graph nodes through direct method calls. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-direct-method-call-connectivity.md |
+| `shared-members-explicit-generic-call-traversal` | Low | — | Recognize explicit generic calls in shared-member analysis. [type: quality] [source: 2026-09-14 cohesion review] | S | items/shared-members-explicit-generic-call-traversal.md |
+| `cohesion-ranked-limit-after-discovery` | Low | — | Apply the cohesion result limit after severity ranking. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-ranked-limit-after-discovery.md |
+| `suggestion-parameter-object-tool-guidance` | Low | — | Recommend parameter-object tools for high parameter counts. [type: quality] [source: 2026-09-14 cohesion review] | S | items/suggestion-parameter-object-tool-guidance.md |
 
 ## Defer
 
