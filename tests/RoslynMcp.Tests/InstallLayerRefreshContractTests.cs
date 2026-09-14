@@ -206,24 +206,57 @@ public sealed class InstallLayerRefreshContractTests
     }
 
     private static string CreateFailingDotnetStub() => CreateDotnetStub(
-        "@echo off",
-        "echo A compatible .NET SDK was not found.",
-        "exit /b 1");
+        exitCode: 1,
+        "A compatible .NET SDK was not found.");
 
     private static string CreateEmptyToolListDotnetStub() => CreateDotnetStub(
-        "@echo off",
-        "echo Package Id      Version      Commands",
-        "echo ---------------------------------------",
-        "echo dotnet-ef       10.0.5       dotnet-ef",
-        "exit /b 0");
+        exitCode: 0,
+        "Package Id      Version      Commands",
+        "---------------------------------------",
+        "dotnet-ef       10.0.5       dotnet-ef");
 
-    private static string CreateDotnetStub(params string[] lines)
+    /// <summary>
+    /// Writes a stub that shadows the real <c>dotnet</c> on PATH. The script must be named
+    /// and marked so the host's own PATH lookup resolves it: a <c>.cmd</c> on Windows, and
+    /// an executable extensionless <c>dotnet</c> on Unix. A Windows-only stub silently lets
+    /// the real dotnet run on Linux, which is a test that proves nothing.
+    /// </summary>
+    private static string CreateDotnetStub(int exitCode, params string[] outputLines)
     {
         var stubDirectory = Path.Combine(
             Path.GetTempPath(),
             $"roslynmcp-dotnet-stub-{Guid.NewGuid():N}");
         Directory.CreateDirectory(stubDirectory);
-        File.WriteAllLines(Path.Combine(stubDirectory, "dotnet.cmd"), lines);
+
+        var script = new List<string>();
+        if (OperatingSystem.IsWindows())
+        {
+            script.Add("@echo off");
+            foreach (var line in outputLines)
+            {
+                script.Add($"echo {line}");
+            }
+
+            script.Add($"exit /b {exitCode}");
+            File.WriteAllLines(Path.Combine(stubDirectory, "dotnet.cmd"), script);
+        }
+        else
+        {
+            script.Add("#!/bin/sh");
+            foreach (var line in outputLines)
+            {
+                script.Add($"echo '{line}'");
+            }
+
+            script.Add($"exit {exitCode}");
+
+            var stubPath = Path.Combine(stubDirectory, "dotnet");
+            File.WriteAllLines(stubPath, script);
+            File.SetUnixFileMode(
+                stubPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
         return stubDirectory;
     }
 
