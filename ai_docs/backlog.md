@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T02:33:13Z
+**updated_at:** 2026-09-14T02:45:57Z
 
 ## Agent contract
 
@@ -249,6 +249,7 @@
 | `diagnostics-summary-severity-order` | Low | — | Order diagnostic summary groups with errors before warnings and informational results. [type: quality] [source: 2026-09-14 adjacent review] | S | items/diagnostics-summary-severity-order.md |
 | `workspace-status-toolchain-classifier-single-owner` | Low | — | Move duplicated VS-MSBuild diagnostic classification into one layer-safe shared owner. [type: quality] [source: 2026-09-14 adjacent review] | M | items/workspace-status-toolchain-classifier-single-owner.md |
 | `diagnostic-info-floor-vacuous-regression` | Low | — | Make default Info-floor coverage deterministic and assertion-bearing. [type: quality] [source: 2026-09-14 adjacent review] | S | items/diagnostic-info-floor-vacuous-regression.md |
+| `workspace-summary-redundant-filename-branch` | Low | — | Remove the redundant extension branch from workspace-summary filename projection. [type: quality] [source: 2026-09-14 adjacent review] | S | items/workspace-summary-redundant-filename-branch.md |
 
 ## Defer
 
