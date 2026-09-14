@@ -19,7 +19,7 @@ public static class AnalysisTools
         Analyzer,
     }
 
-    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics — compiler CS*, analyzers CA*/IDE*, and workspace load issues. Contrast compile_check, which is CS-only. Large solutions take tens of seconds, so prefer a projectName or file filter.")]
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get workspace diagnostics: compiler CS*, analyzers CA*/IDE*, and load issues. Unlike compile_check, which is CS-only, this includes analyzer and workspace results.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Return compiler diagnostics for a workspace.")]
     public static Task<string> GetProjectDiagnostics(
@@ -130,7 +130,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get details and available code fixes for one diagnostic occurrence. supportedFixes is reliable for CS* and IDE* rules but is always empty for CA-series NetAnalyzers rules — use get_code_actions + preview_code_action there.")]
+    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get details and available code fixes for one diagnostic occurrence. CA-series NetAnalyzers expose fixes through get_code_actions and preview_code_action instead.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Inspect one diagnostic occurrence in detail.")]
     public static Task<string> GetDiagnosticDetails(
@@ -223,7 +223,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol at the exact position or symbolHandle. Resolution uses the token at that position — a caret on a field inside a method resolves the field, so place it on the method name.")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees for the symbol at an exact position or symbolHandle. Position resolution uses its token, so place the caret on the intended member name.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Find direct callers and callees for a method.")]
     public static Task<string> GetCallersCallees(
@@ -267,7 +267,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the blast radius of changing a symbol: references, affected declarations, and affected projects in one call. Pass summary=true on broad-impact symbols to keep only counts (10-100x smaller than the full arrays).")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze a symbol change's blast radius: references, affected declarations, and affected projects in one call. Use summary=true for broad-impact symbols to return counts only.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Estimate the impact of changing a symbol.")]
     public static Task<string> AnalyzeImpact(
@@ -362,7 +362,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, each classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other.")]
+    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all type usages across the solution and classify each role, including return, parameter, property, field, generic argument, inheritance, cast, and construction.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Classify usages of a type across the solution.")]
     public static Task<string> FindTypeUsages(
@@ -410,7 +410,7 @@ public static class AnalysisTools
     /// </summary>
     private const int SemanticGrepHardCap = 500;
 
-    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace, scoped to identifiers / strings / comments / all — no plain-text false positives. Patterns are .NET regex, not ripgrep; identifiers split on member access, so `Task\\.Run` never matches.")]
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Run token-aware .NET regex search over the loaded C# workspace, scoped to identifiers, strings, comments, or all. It is not ripgrep and avoids plain-text false positives.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]
     public static Task<string> SemanticGrep(

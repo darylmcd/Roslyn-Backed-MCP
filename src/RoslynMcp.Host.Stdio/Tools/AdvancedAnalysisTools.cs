@@ -14,7 +14,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find likely unused symbols."),
-     Description("Find symbols with zero solution-wide references — likely dead code. Confidence: high (private/internal), medium (public), low (enum/interface). Convention-invoked shapes skipped by default. A scan failure throws; success may still under-count.")]
+     Description("Find symbols with zero solution-wide references — likely dead code. Results identify confidence by visibility; convention-invoked shapes are skipped by default.")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -52,7 +52,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect DI registration patterns in source."),
-     Description("Scan the solution for DI registrations (AddSingleton/AddScoped/AddTransient) and return service-to-implementation mappings. isComplete=false means totals are observed lower bounds because documents failed.")]
+     Description("Scan solution DI registrations (AddSingleton/AddScoped/AddTransient) and map services to implementations. isComplete=false means totals are observed lower bounds.")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
@@ -210,7 +210,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_reflection_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find reflection-heavy call sites."),
-     Description("Find reflection API usage across the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.), bucketed by UsageKind. isComplete=false means totalCount is an observed lower bound because one or more documents failed.")]
+     Description("Find solution-wide reflection API usage, including typeof, Type.GetMethod, Activator.CreateInstance, and Assembly.Load, bucketed by UsageKind. isComplete=false means totals are lower bounds.")]
     public static Task<string> FindReflectionUsages(
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,
@@ -351,7 +351,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_dead_locals", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Find method-local variables whose only write is not followed by any read."),
-     Description("Find method-local variables written but never read — the IDE0059 waste class — via per-body data-flow analysis. Discards, foreach/using/catch locals, pattern and tuple designations, `out var`, and consts are not flagged.")]
+     Description("Find method-local variables written but never read — the IDE0059 waste class — using per-body data-flow analysis. Discards, pattern locals, `out var`, and consts are excluded.")]
     public static Task<string> FindDeadLocals(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -377,7 +377,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_dead_fields", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Find source-declared fields that are never read, never written, or never either."),
-     Description("Find source-declared fields never read, never written, or neither. Public/protected fields need includePublic=true. Each hit reports removalBlockedBy and safelyRemovable — skip remove_dead_code_preview when that is false.")]
+     Description("Find source fields never read, never written, or neither. Public and protected fields require includePublic=true; each hit reports removalBlockedBy and safelyRemovable.")]
     public static Task<string> FindDeadFields(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -407,7 +407,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_duplicate_helpers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
-      Description("Find private/internal static helpers whose body just re-wraps a BCL or NuGet method — the reinvented ArgumentNullException.ThrowIfNull pattern. Contrast find_duplicated_methods, which buckets internal-to-internal duplicates.")]
+     Description("Find private or internal static helpers that only re-wrap a BCL or NuGet method. Unlike find_duplicated_methods, this detects reinvented framework helpers.")]
     public static Task<string> FindDuplicateHelpers(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -435,7 +435,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_duplicated_methods", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find clusters of near-duplicate method bodies by AST-normalized hash."),
-     Description("Find clusters of method bodies whose AST-normalized structure matches — internal copy-paste to extract into a shared helper. Bucketing is by body shape, not method name, so identical overloads cluster and differing ones do not.")]
+     Description("Find clusters of method bodies with matching AST-normalized structure: internal copy-paste candidates for a shared helper. Bucketing uses body shape, not method name.")]
     public static Task<string> FindDuplicatedMethods(
         IWorkspaceExecutionGate gate,
         IDuplicateMethodDetectorService duplicateMethodDetectorService,
@@ -516,7 +516,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_duplicated_code", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Alias for find_duplicated_methods (cross-MCP-server name compatibility)."),
-     Description("Alias for find_duplicated_methods (cross-MCP-server name compatibility with python-refactor). For BCL/NuGet re-wraps use find_duplicate_helpers instead; call the canonicals directly when you need the targeted shape.")]
+     Description("Alias for find_duplicated_methods for cross-MCP-server compatibility. Use find_duplicate_helpers for BCL or NuGet re-wraps; prefer the canonical tools in new code.")]
     public static Task<string> FindDuplicatedCode(
         IWorkspaceExecutionGate gate,
         IDuplicateMethodDetectorService duplicateMethodDetectorService,
@@ -546,7 +546,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Run semantic search over symbols and declarations."),
-     Description("Search symbols by structured Roslyn predicates parsed from natural language ('async methods returning Task<bool>', 'classes implementing IDisposable') — not embeddings or vector search. 'async' requires the literal async modifier.")]
+     Description("Search symbols with structured Roslyn predicates parsed from natural language, not embeddings or vector search. The async predicate requires the literal async modifier.")]
     public static Task<string> SemanticSearch(
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,
