@@ -160,11 +160,25 @@ function Expand-ActionlintArchive {
 
     if ($FailForTest) {
         & (Get-Process -Id $PID).Path -NoProfile -NonInteractive -Command 'exit 23'
+        $tarExitCode = $LASTEXITCODE
     }
     else {
-        & tar -xzf $ArchivePath -C $DestinationPath
+        # GNU tar reads the leading drive letter of an absolute Windows path as a
+        # remote 'host:path' spec, and mangles backslashes passed to -C. Extract
+        # from the archive's own directory using a bare file name and a
+        # forward-slash destination - the single form GNU tar and bsdtar both
+        # accept - so extraction no longer depends on which tar wins PATH.
+        $archiveItem = Get-Item -LiteralPath $ArchivePath
+        $destinationArgument = if ($IsWindows) { $DestinationPath -replace '\\', '/' } else { $DestinationPath }
+        Push-Location -LiteralPath $archiveItem.DirectoryName
+        try {
+            & tar -xzf $archiveItem.Name -C $destinationArgument
+            $tarExitCode = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
     }
-    $tarExitCode = $LASTEXITCODE
     if ($tarExitCode -ne 0) {
         Stop-WithDiagnostic -ExitCode $tarExitCode -Diagnostic (
             "verify-actionlint: 'tar' extraction of '$ArchivePath' failed with exit code $tarExitCode.")
