@@ -23,6 +23,18 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     [DataRow("public class Outer { private class Target {} } public class Target {}", "ambiguous")]
     [DataRow("namespace First { public class Target {} } namespace Second { public class Target {} }", "ambiguous")]
     [DataRow("namespace First { public enum Target {} } namespace Second { public class Target {} }", "ambiguous")]
+    [DataRow("file class Target {} class Sibling {}", "File-local types")]
+    [DataRow("file class Local {} class Target { public object Create() => new Local(); }", "file-local symbol")]
+    [DataRow("file class Local { public static int Value => 1; } class Target { public int Read() => Local.Value; }", "file-local symbol")]
+    [DataRow("using Alias = Local; file class Local {} class Target { public object Create() => new Alias(); }", "file-local symbol")]
+    [DataRow("using static Local; file class Local { public static int Value => 1; } class Target { public int Read() => Value; }", "file-local symbol")]
+    [DataRow("using Alias = Local; file class Local {} class Target {}", "file-local symbol")]
+    [DataRow("namespace Scope { using static Local; file class Local {} class Target {} }", "file-local symbol")]
+    [DataRow("#nullable enable\nclass Sibling {}\nclass Target { string? Value; }", "compiler directives")]
+    [DataRow("#if true\nclass Sibling {}\nclass Target {}\n#endif", "compiler directives")]
+    [DataRow("class Sibling {}\n#if true\nclass Target {}\n#endif", "compiler directives")]
+    [DataRow("#pragma warning disable CS0169\nclass Sibling {}\nclass Target { int value; }", "compiler directives")]
+    [DataRow("#region Types\nclass Sibling {}\nclass Target {}\n#endregion", "compiler directives")]
     public async Task MoveType_UnsafeSelection_RefusesWithoutMutation(string source, string reason)
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
@@ -61,6 +73,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
                 public double Magnitude => Abs(-1);
             }
             public enum Sibling { Value }
+            file class UnrelatedLocalSibling {}
             """;
         var scope = fileScoped
             ? "namespace Outer.Inner;\n" + members
