@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T12:46:12Z
+**updated_at:** 2026-09-15T12:52:21Z
 
 ## Agent contract
 
@@ -103,6 +103,7 @@
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `workspace-validation-git-process-lifetime` | Medium | — | Extract Git collection ownership and drain its process and output readers on cancellation. [type: lifecycle] [source: Dependabot timeout-test review] | M | items/workspace-validation-git-process-lifetime.md |
 | `test-runner-results-cleanup-failure-precedence` | Medium | — | Preserve primary test-run results and cancellation when temporary results-directory cleanup fails. [type: lifecycle] [source: direct-error-contract-review] | S | items/test-runner-results-cleanup-failure-precedence.md |
+| `changed-format-gate-endofline-coverage` | Medium | — | Reject ENDOFLINE formatter findings in the changed-file gate so CRLF drift cannot pass the early check. [type: validation] [source: full-ci-error-contract-review] | M | items/changed-format-gate-endofline-coverage.md |
 
 ## Low
 
