@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -22,7 +21,7 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
 {
     private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _staticProviders;
-    private readonly Func<string, FeatureProviderLoadResult<CodeFixProvider>> _analyzerProviderLoader;
+    private readonly Func<AnalyzerFileReference, FeatureProviderLoadResult<CodeFixProvider>> _analyzerProviderLoader;
 
     /// <summary>
     /// Cache of providers loaded from individual analyzer assembly paths. Many projects share
@@ -38,17 +37,18 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
         : this(
             logger,
             () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(logger, exceptionReporter),
-            analyzerPath => CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
-                () => Assembly.LoadFrom(analyzerPath),
+            reference => CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
+                reference.GetAssembly,
                 logger,
-                exceptionReporter))
+                exceptionReporter,
+                exportAttributeFullName: typeof(ExportCodeFixProviderAttribute).FullName))
     {
     }
 
     internal CodeFixProviderRegistry(
         ILogger<CodeFixProviderRegistry> logger,
         Func<FeatureProviderLoadResult<CodeFixProvider>> staticProviderLoader,
-        Func<string, FeatureProviderLoadResult<CodeFixProvider>> analyzerProviderLoader)
+        Func<AnalyzerFileReference, FeatureProviderLoadResult<CodeFixProvider>> analyzerProviderLoader)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(staticProviderLoader);
@@ -122,15 +122,13 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
             foreach (var reference in project.AnalyzerReferences)
             {
                 if (reference is not AnalyzerFileReference fileRef) continue;
-                var path = fileRef.Display;
+                var path = fileRef.FullPath;
                 if (string.IsNullOrWhiteSpace(path) || !seenPaths.Add(path)) continue;
 
-                var providers = _byAssemblyPath.GetOrAdd(path, LoadProvidersFromAssembly);
+                // Preserve the reference's dependency resolver and isolated load context.
+                var providers = _byAssemblyPath.GetOrAdd(path, _ => _analyzerProviderLoader(fileRef));
                 yield return providers;
             }
         }
     }
-
-    private FeatureProviderLoadResult<CodeFixProvider> LoadProvidersFromAssembly(string analyzerPath) =>
-        _analyzerProviderLoader(analyzerPath);
 }

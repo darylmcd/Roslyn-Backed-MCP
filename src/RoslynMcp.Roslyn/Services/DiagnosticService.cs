@@ -112,7 +112,7 @@ public sealed class DiagnosticService : IDiagnosticService
         return new DiagnosticDetailsDto(
             Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
             Description: BuildDiagnosticDescription(diagnostic),
-            HelpLinkUri: BuildHelpLink(diagnostic.Id),
+            HelpLinkUri: BuildHelpLink(diagnostic),
             SupportedFixes: fixEnumeration.Fixes,
             GuidanceMessage: SupportedFixEnumerationService.GetGuidance(
                 diagnostic.Id,
@@ -135,6 +135,17 @@ public sealed class DiagnosticService : IDiagnosticService
             : fromFormat;
     }
 
-    private static string BuildHelpLink(string diagnosticId) =>
-        $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
+    internal static string? BuildHelpLink(Diagnostic diagnostic)
+    {
+        if (!string.IsNullOrWhiteSpace(diagnostic.Descriptor.HelpLinkUri))
+        {
+            return diagnostic.Descriptor.HelpLinkUri;
+        }
+
+        var id = diagnostic.Id;
+        return id.Length > 2 && id.StartsWith("CS", StringComparison.Ordinal)
+            && id.AsSpan(2).IndexOfAnyExceptInRange('0', '9') < 0
+            ? $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{id.ToLowerInvariant()}"
+            : null;
+    }
 }
