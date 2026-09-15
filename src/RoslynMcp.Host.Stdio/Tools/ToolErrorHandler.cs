@@ -92,8 +92,7 @@ internal static class ToolErrorHandler
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
     {
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
-        // an auto-reload transition. Registered BEFORE the generic Exception handlers so the
-        // structured category wins over the dictionary walk's InvalidOperation fallback.
+        // an auto-reload transition. The nearest registered base type owns classification.
         [typeof(StaleWorkspaceTransitionException)] = (_, _) => new(ErrorCategories.StaleWorkspaceTransition,
             "Workspace is transitioning between snapshots. Retry the request against the refreshed workspace."),
         // mcp-error-category-workspace-evicted-on-host-recycle: a workspace lookup miss that
@@ -101,7 +100,7 @@ internal static class ToolErrorHandler
         // The public envelope intentionally omits timestamps and the prior path; clients retain
         // their own load input and use the stable recovery action. WorkspaceEvictedException
         // derives from KeyNotFoundException so existing catch-sites still observe it as a lookup
-        // miss; register it BEFORE the base entry so the more-specific category wins.
+        // miss; hierarchy lookup selects this handler before its base type.
         [typeof(WorkspaceEvictedException)] = (ex, _) =>
         {
             return new(ErrorCategories.WorkspaceEvicted,
@@ -131,12 +130,7 @@ internal static class ToolErrorHandler
         // invalidated by an auto-reload version bump (InvalidateOnVersionBump) or TTL
         // expiry surfaces as PreviewTokenStaleException instead of the legacy bare
         // KeyNotFoundException. PreviewTokenStaleException derives from
-        // InvalidOperationException so this entry MUST register BEFORE the generic
-        // InvalidOperationException handler below — the dictionary walk's
-        // Type.IsAssignableFrom check uses insertion order, so a later InvalidOperation
-        // entry would otherwise win and surface the less-specific category. Recovery hint
-        // mirrors WorkspaceEvicted: structured, copy-pasteable signal that the workspace
-        // is intact and the client just needs to re-issue the paired *_preview call.
+        // InvalidOperationException; hierarchy lookup preserves the specific recovery hint.
         [typeof(PreviewTokenStaleException)] = (ex, _) =>
         {
             return new(ErrorCategories.PreviewTokenStale,
@@ -145,15 +139,8 @@ internal static class ToolErrorHandler
         },
         // compile-check-not-connected-raw-transport-error-envelope: a disconnected stdio
         // pipe surfaces as InvalidOperationException("Not connected") from PipeStream when
-        // the SDK attempts a write on an already-closed transport. Registered BEFORE the
-        // generic InvalidOperationException entry so the Disconnected category wins over
-        // the fallback InvalidOperation envelope. Recovery hint mirrors WorkspaceEvicted:
-        // the workspace itself is intact — the client needs to reconnect and reload.
-        // tunit-boundary-domain-refusal-message-preserved: registered as part of the generic
-        // InvalidOperationException entry (not a separate dictionary slot) because
-        // PublicInvalidOperationException IS-A InvalidOperationException — the insertion-order
-        // walk would reach this same entry either way. See the type's doc comment for why the
-        // generic fallback below exists and why this one bypasses it.
+        // the SDK attempts a write on an already-closed transport. Message-specific variants
+        // share this handler; PublicInvalidOperationException supplies an explicitly safe message.
         [typeof(InvalidOperationException)] = (ex, _) =>
         {
             if (ex is PublicInvalidOperationException publicInvalidOperation)
@@ -177,12 +164,7 @@ internal static class ToolErrorHandler
         },
     };
 
-    // mcp-parameter-validation-error-messages: the five known parameter-binding exception
-    // shapes, dispatched by an insertion-order IsAssignableFrom walk (mirrors _errorHandlers).
-    // Order MUST stay JsonException, ArgumentNullException, ArgumentOutOfRangeException,
-    // ArgumentException, FormatException so the two ArgumentException-derived types match
-    // before their base — exactly reproducing the former switch-arm precedence. Each lambda
-    // casts to the typed exception internally to preserve ParamName extraction.
+    // Binding-like exceptions use the same nearest-base lookup as execution failures.
     private static readonly Dictionary<Type, Func<Exception, ErrorInfo>> _bindingLikeHandlers = new()
     {
         [typeof(System.Text.Json.JsonException)] = _ => new(ErrorCategories.InvalidArgument,
@@ -420,25 +402,32 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
-    /// Walks the <see cref="_errorHandlers"/> dictionary in insertion order and returns the
-    /// first entry whose registered type is assignable from <paramref name="ex"/>'s runtime
-    /// type. Insertion order encodes precedence (more-specific types registered first), so this
-    /// must stay a linear walk rather than an exact-type lookup. Returns <see langword="false"/>
-    /// when no registered handler matches.
+    /// Selects the nearest registered exception handler independently of registration order.
     /// </summary>
     private static bool TryClassifyRegisteredHandler(Exception ex, string toolName, out ErrorInfo info)
     {
-        foreach (var (type, handler) in _errorHandlers)
+        var handler = FindNearestHandler(ex, _errorHandlers);
+        if (handler is not null)
         {
-            if (type.IsAssignableFrom(ex.GetType()))
-            {
-                info = handler(ex, toolName);
-                return true;
-            }
+            info = handler(ex, toolName);
+            return true;
         }
 
         info = default;
         return false;
+    }
+
+    internal static THandler? FindNearestHandler<THandler>(
+        Exception exception, IReadOnlyDictionary<Type, THandler> handlers)
+        where THandler : class
+    {
+        for (Type? type = exception.GetType(); type is not null; type = type.BaseType)
+        {
+            if (handlers.TryGetValue(type, out var handler))
+                return handler;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -470,13 +459,11 @@ internal static class ToolErrorHandler
     /// </summary>
     private static bool TryClassifyBindingLike(Exception ex, out ErrorInfo info)
     {
-        foreach (var (type, handler) in _bindingLikeHandlers)
+        var handler = FindNearestHandler(ex, _bindingLikeHandlers);
+        if (handler is not null)
         {
-            if (type.IsAssignableFrom(ex.GetType()))
-            {
-                info = handler(ex);
-                return true;
-            }
+            info = handler(ex);
+            return true;
         }
 
         info = default;

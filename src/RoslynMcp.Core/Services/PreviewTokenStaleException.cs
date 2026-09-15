@@ -43,12 +43,8 @@ namespace RoslynMcp.Core.Services;
 /// </para>
 ///
 /// <para>
-/// <b>Registration order:</b> because the type derives from
-/// <see cref="System.InvalidOperationException"/>, <c>ToolErrorHandler</c>'s handler
-/// dictionary MUST register this type BEFORE the generic
-/// <see cref="System.InvalidOperationException"/> entry so the more-specific
-/// <c>PreviewTokenStale</c> category wins on the dispatch walk
-/// (<c>Type.IsAssignableFrom</c> matches in insertion order). The classifier's
+/// <b>Classification:</b> the nearest registered exception base type selects the
+/// <c>PreviewTokenStale</c> category regardless of dictionary order. The classifier's
 /// <c>IsInvocationWrapper</c> short-circuit operates earlier in the pipeline, so
 /// stale-token throws (which are NOT invocation wrappers — no inner exception, no
 /// "invocation" in the type name) fall through to the dictionary walk normally.
@@ -88,8 +84,7 @@ public sealed class PreviewTokenStaleException : System.InvalidOperationExceptio
     /// <summary>
     /// The opaque preview token that was rejected. Carried separately from
     /// <see cref="System.Exception.Message"/> so consumers can branch without
-    /// parsing the message string — and so <c>ToolErrorHandler</c> can include it
-    /// as a structured field in the error envelope.
+    /// parsing the message string. Public error envelopes omit the token.
     /// </summary>
     public string PreviewToken { get; }
 

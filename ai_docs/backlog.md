@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T04:25:16Z
+**updated_at:** 2026-09-15T12:52:21Z
 
 ## Agent contract
 
@@ -91,7 +91,6 @@
 | `test-assembly-donotparallelize-audit` | Medium | — | **Re-audit the 122 `[DoNotParallelize]` opt-outs** — their stated cause (TestBase mutable statics) was retired by PR #1431; split by opt-out cause before selecting. [type: test-infrastructure] [source: 2026-09-03 PR #1431] | L | items/test-assembly-donotparallelize-audit.md |
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
-| `test-run-full-suite-timeout-envelope` | Medium | — | Return a structured test_run timeout envelope instead of an unclassified tool error. [type: bug] [source: live-surface-audit] | M | items/test-run-full-suite-timeout-envelope.md |
 | `reconcile-plan-force-worktree-removal-safety` | Medium | — | Make normal reconciliation refuse dirty worktrees instead of force-removing them. [type: safety] [source: adjacent-cold-review] | S | items/reconcile-plan-force-worktree-removal-safety.md |
 | `scripting-startup-cancellation-causal-barrier` | Medium | scripting-supervisor-outer-cancellation-contended-timeout | Replace the remaining startup-cancellation timing inference with a causal barrier and deterministic recovery proof. [type: test-reliability] [source: 2026-09-10 scripting supervisor remediation] | S | items/scripting-startup-cancellation-causal-barrier.md |
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
@@ -103,6 +102,8 @@
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `workspace-validation-git-process-lifetime` | Medium | — | Extract Git collection ownership and drain its process and output readers on cancellation. [type: lifecycle] [source: Dependabot timeout-test review] | M | items/workspace-validation-git-process-lifetime.md |
+| `test-runner-results-cleanup-failure-precedence` | Medium | — | Preserve primary test-run results and cancellation when temporary results-directory cleanup fails. [type: lifecycle] [source: direct-error-contract-review] | S | items/test-runner-results-cleanup-failure-precedence.md |
+| `changed-format-gate-endofline-coverage` | Medium | — | Reject ENDOFLINE formatter findings in the changed-file gate so CRLF drift cannot pass the early check. [type: validation] [source: full-ci-error-contract-review] | M | items/changed-format-gate-endofline-coverage.md |
 
 ## Low
 
@@ -249,7 +250,6 @@
 | `cohesion-ranked-limit-after-discovery` | Low | — | Apply the cohesion result limit after severity ranking. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-ranked-limit-after-discovery.md |
 | `suggestion-parameter-object-tool-guidance` | Low | — | Recommend parameter-object tools for high parameter counts. [type: quality] [source: 2026-09-14 cohesion review] | S | items/suggestion-parameter-object-tool-guidance.md |
 | `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
-| `tool-error-classifier-exception-specificity` | Low | — | Make error-handler selection prefer the most specific registered exception type. [type: quality] [source: adjacent-review] | S | items/tool-error-classifier-exception-specificity.md |
 | `type-move-preview-orchestration-decomposition` | Low | — | Decompose type-move declaration selection and target-document planning while preserving preview and refusal contracts. [type: quality] [source: adjacent-review] | S | items/type-move-preview-orchestration-decomposition.md |
 
 ## Defer
