@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Skills;
 
@@ -95,16 +96,16 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_NoChangedCSharpFiles_PassesWithAnExplicitNoOp()
+    public async Task Gate_NoChangedCSharpFiles_PassesWithAnExplicitNoOpAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         // A commit that touches no C# file at all. The gate must say so explicitly rather than
         // silently reporting success, so a misconfigured base ref cannot look like a green run.
         WriteRepositoryFile("README.md", "# probe\n");
-        CommitAll("docs only");
+        await CommitAllAsync("docs only");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(0, result.ExitCode, Describe("A change with no C# files must pass", result));
         StringAssert.Contains(
@@ -114,30 +115,30 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_ChangedFileIsClean_Passes()
+    public async Task Gate_ChangedFileIsClean_PassesAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         WriteRepositoryFile("Clean.cs", "namespace Probe;\n\npublic sealed class Clean\n{\n    public int Value => 42;\n}\n");
-        CommitAll("clean edit");
+        await CommitAllAsync("clean edit");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(0, result.ExitCode, Describe("A formatter-clean changed file must pass", result));
         StringAssert.Contains(result.StdOut, "0 new finding(s)", Describe("The pass summary must report zero new findings", result));
     }
 
     [TestMethod]
-    public void Gate_TrackedStagedAndUntrackedLocalCSharpChanges_AreAllGated()
+    public async Task Gate_TrackedStagedAndUntrackedLocalCSharpChanges_AreAllGatedAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
         WriteRepositoryFile("Staged.cs", CleanFile.Replace("class Clean", "class Staged", StringComparison.Ordinal));
-        RunGit("add", "Staged.cs");
+        await RunGitAsync("add", "Staged.cs");
         WriteRepositoryFile("Untracked.cs", CleanFile.Replace("class Clean", "class Untracked", StringComparison.Ordinal));
 
-        var result = RunGateWithFakeDotnet(
+        var result = await RunGateWithFakeDotnetAsync(
             string.Join(
                 "\n",
                 $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): warning IDE1006: tracked local change [Probe.csproj]",
@@ -152,18 +153,18 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_ChangedFileIntroducesUnsortedUsings_FailsWithAnImportsFinding()
+    public async Task Gate_ChangedFileIntroducesUnsortedUsings_FailsWithAnImportsFindingAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         // `System.Text` before `System` violates dotnet_sort_system_directives_first -> IMPORTS.
         WriteRepositoryFile(
             "Clean.cs",
             "using System.Text;\nusing System;\n\nnamespace Probe;\n\npublic sealed class Clean\n{\n" +
             "    public int Value => new StringBuilder().Length + Console.In.GetHashCode();\n}\n");
-        CommitAll("unsorted usings");
+        await CommitAllAsync("unsorted usings");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(1, result.ExitCode, Describe("A newly introduced IMPORTS finding must fail the gate", result));
         StringAssert.Contains(result.StdErr, "Clean.cs", Describe("The failure must name the offending file", result));
@@ -171,18 +172,18 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_ChangedFileIntroducesNamingViolation_FailsWithAnIde1006Finding()
+    public async Task Gate_ChangedFileIntroducesNamingViolation_FailsWithAnIde1006FindingAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         // A private field without the required `_` prefix -> IDE1006.
         WriteRepositoryFile(
             "Clean.cs",
             "namespace Probe;\n\npublic sealed class Clean\n{\n    private int newlyBadField;\n\n" +
             "    public int Value => newlyBadField;\n}\n");
-        CommitAll("naming violation");
+        await CommitAllAsync("naming violation");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(1, result.ExitCode, Describe("A newly introduced IDE1006 finding must fail the gate", result));
         StringAssert.Contains(result.StdErr, "Clean.cs", Describe("The failure must name the offending file", result));
@@ -190,9 +191,9 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_PascalCaseConstantsAndStaticReadonlyFields_Pass()
+    public async Task Gate_PascalCaseConstantsAndStaticReadonlyFields_PassAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         WriteRepositoryFile(
             "Clean.cs",
@@ -200,23 +201,23 @@ public sealed class ChangedFormatGateScriptTests
             "    private const int MaxItems = 2;\n" +
             "    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(1);\n\n" +
             "    public int Value => MaxItems + DefaultTimeout.Seconds;\n}\n");
-        CommitAll("use repository constant naming convention");
+        await CommitAllAsync("use repository constant naming convention");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(0, result.ExitCode, Describe("PascalCase constants and static readonly fields are exempt", result));
         StringAssert.Contains(result.StdOut, "0 new finding(s)", Describe("The exemption must not produce IDE1006", result));
     }
 
     [TestMethod]
-    public void Gate_ChangedFileIsMissingItsFinalNewline_FailsWithAFinalNewlineFinding()
+    public async Task Gate_ChangedFileIsMissingItsFinalNewline_FailsWithAFinalNewlineFindingAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
 
         WriteRepositoryFile("Clean.cs", "namespace Probe;\n\npublic sealed class Clean\n{\n    public int Value => 7;\n}");
-        CommitAll("missing final newline");
+        await CommitAllAsync("missing final newline");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(1, result.ExitCode, Describe("A missing final newline must fail the gate", result));
         StringAssert.Contains(result.StdErr, "Clean.cs", Describe("The failure must name the offending file", result));
@@ -224,9 +225,9 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_ChangedFileCarriesOnlyInventoriedDebt_PassesAndReportsItAsTrackedRatherThanSuppressed()
+    public async Task Gate_ChangedFileCarriesOnlyInventoriedDebt_PassesAndReportsItAsTrackedRatherThanSuppressedAsync()
     {
-        SeedBaseCommit(
+        await SeedBaseCommitAsync(
             BaselineWithOneDirtyIde1006,
             ("Dirty.cs", DirtyFileWithOneNamingViolation),
             ("Clean.cs", CleanFile));
@@ -237,9 +238,9 @@ public sealed class ChangedFormatGateScriptTests
             "Dirty.cs",
             "namespace Probe;\n\npublic sealed class Dirty\n{\n    private int badField;\n\n" +
             "    public int Value => badField;\n\n    public int Doubled => Value * 2;\n}\n");
-        CommitAll("edit an inventoried file without adding debt");
+        await CommitAllAsync("edit an inventoried file without adding debt");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(0, result.ExitCode, Describe("Inventoried debt on a changed file must not fail the gate", result));
         StringAssert.Contains(
@@ -250,13 +251,13 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_ChangedFileCarriesBaselineDebtPlusOneNewViolation_StillFails()
+    public async Task Gate_ChangedFileCarriesBaselineDebtPlusOneNewViolation_StillFailsAsync()
     {
         // The concealment case. `Dirty.cs` is in the inventory with ONE IDE1006. If the gate
         // classified findings by mere presence in the baseline, a second, freshly introduced
         // IDE1006 in the same file would be masked by the first and ship silently. The gate
         // compares COUNTS, so observed(2) > baseline(1) is a failure.
-        SeedBaseCommit(
+        await SeedBaseCommitAsync(
             BaselineWithOneDirtyIde1006,
             ("Dirty.cs", DirtyFileWithOneNamingViolation),
             ("Clean.cs", CleanFile));
@@ -265,9 +266,9 @@ public sealed class ChangedFormatGateScriptTests
             "Dirty.cs",
             "namespace Probe;\n\npublic sealed class Dirty\n{\n    private int badField;\n    private int smuggledField;\n\n" +
             "    public int Value => badField + smuggledField;\n}\n");
-        CommitAll("smuggle a second naming violation into an inventoried file");
+        await CommitAllAsync("smuggle a second naming violation into an inventoried file");
 
-        var result = RunGate();
+        var result = await RunGateAsync();
 
         Assert.AreEqual(
             1,
@@ -282,14 +283,14 @@ public sealed class ChangedFormatGateScriptTests
     [TestMethod]
     [DataRow(0, 1)]
     [DataRow(1, 0)]
-    public void Gate_EndOfLineDiagnostic_UsesBaselineAllowance(int baselineCount, int expectedExitCode)
+    public async Task Gate_EndOfLineDiagnostic_UsesBaselineAllowanceAsync(int baselineCount, int expectedExitCode)
     {
         var baseline = "{\"files\":[{\"path\":\"Clean.cs\",\"countsByDiagnosticId\":{\"ENDOFLINE\":" + baselineCount + "}}]}";
-        SeedBaseCommit(baseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(baseline, ("Clean.cs", CleanFile));
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
-        CommitAll("edit a file with a controlled line-ending diagnostic");
+        await CommitAllAsync("edit a file with a controlled line-ending diagnostic");
 
-        var result = RunGateWithFakeDotnet(
+        var result = await RunGateWithFakeDotnetAsync(
             $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): error ENDOFLINE: Fix end of line marker. [Probe.csproj]",
             exitCode: 2);
 
@@ -301,13 +302,13 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_NonFormatterDiagnosticOnChangedFile_IsIgnored()
+    public async Task Gate_NonFormatterDiagnosticOnChangedFile_IsIgnoredAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
-        CommitAll("clean edit with unrelated diagnostic output");
+        await CommitAllAsync("clean edit with unrelated diagnostic output");
 
-        var result = RunGateWithFakeDotnet(
+        var result = await RunGateWithFakeDotnetAsync(
             $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): error CS9999: compiler diagnostic [Probe.csproj]",
             exitCode: 2);
 
@@ -316,42 +317,81 @@ public sealed class ChangedFormatGateScriptTests
     }
 
     [TestMethod]
-    public void Gate_MissingBaseRef_FailsWithFetchGuidance()
+    public async Task Gate_MissingBaseRef_FailsWithFetchGuidanceAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
-        CommitAll("clean edit");
+        await CommitAllAsync("clean edit");
 
-        var result = RunGate(baseRef: "missing-base-ref");
+        var result = await RunGateAsync(baseRef: "missing-base-ref");
 
         Assert.AreNotEqual(0, result.ExitCode, Describe("An unresolvable base ref must fail closed", result));
         StringAssert.Contains(result.StdErr, "Fetch the base ref", Describe("The failure must carry corrective guidance", result));
     }
 
     [TestMethod]
-    public void Gate_TruncatedFormatterReport_FailsClosed()
+    public async Task Gate_TruncatedFormatterReport_FailsClosedAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
-        CommitAll("clean edit");
+        await CommitAllAsync("clean edit");
 
-        var result = RunGateWithFakeDotnet("Required references did not load for Probe.csproj", exitCode: 0);
+        var result = await RunGateWithFakeDotnetAsync("Required references did not load for Probe.csproj", exitCode: 0);
 
         Assert.AreNotEqual(0, result.ExitCode, Describe("A truncated formatter report must fail closed", result));
         StringAssert.Contains(result.StdErr, "truncated report", Describe("The failure must identify report truncation", result));
     }
 
     [TestMethod]
-    public void Gate_UnexpectedFormatterExitCode_FailsClosed()
+    public async Task Gate_UnexpectedFormatterExitCode_FailsClosedAsync()
     {
-        SeedBaseCommit(EmptyBaseline, ("Clean.cs", CleanFile));
+        await SeedBaseCommitAsync(EmptyBaseline, ("Clean.cs", CleanFile));
         WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
-        CommitAll("clean edit");
+        await CommitAllAsync("clean edit");
 
-        var result = RunGateWithFakeDotnet("formatter process failed", exitCode: 7);
+        var result = await RunGateWithFakeDotnetAsync("formatter process failed", exitCode: 7);
 
         Assert.AreNotEqual(0, result.ExitCode, Describe("An unexpected formatter exit must fail closed", result));
         StringAssert.Contains(result.StdErr, "unexpected code 7", Describe("The failure must preserve the exit code", result));
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task RunProcessAsync_TimeoutDrainsOutputAndExitsBeforeFixtureDeletion()
+    {
+        var scriptPath = Path.Combine(_repositoryDirectory, "blocked.ps1");
+        var lockPath = Path.Combine(_repositoryDirectory, "owned.txt");
+        await File.WriteAllTextAsync(scriptPath,
+            "param([string]$LockPath)\n" +
+            "$held = [IO.File]::Open($LockPath, 'Create', 'ReadWrite', 'None')\n" +
+            "[Console]::Out.WriteLine('fixture-pid=' + $PID)\n" +
+            "[Console]::Error.WriteLine('stderr-ready')\n" +
+            "Start-Sleep -Seconds 60\n$held.Dispose()\n");
+
+        var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => RunProcessAsync(
+            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh", _repositoryDirectory,
+            ["-NoProfile", "-NonInteractive", "-File", scriptPath, lockPath], TimeSpan.FromSeconds(10)));
+
+        StringAssert.Contains(exception.Message, "stderr-ready", "The stderr reader must be drained before return.");
+        var match = System.Text.RegularExpressions.Regex.Match(exception.Message, @"fixture-pid=(\d+)");
+        Assert.IsTrue(match.Success, "The blocked child must have started and its stdout must be drained.");
+        var processId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        try
+        {
+            using var child = Process.GetProcessById(processId);
+            Assert.IsTrue(child.HasExited, "The owned process must already be exited when the timeout returns.");
+        }
+        catch (ArgumentException)
+        {
+            // The OS has already removed the exited process.
+        }
+
+        using (File.Open(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            // The child's exclusive file handle must be released before fixture teardown.
+        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(_repositoryDirectory);
+        Assert.IsFalse(Directory.Exists(_repositoryDirectory));
     }
 
     private static string ResolveScriptPath()
@@ -364,7 +404,7 @@ public sealed class ChangedFormatGateScriptTests
     /// Builds the synthetic repository (project, editorconfig, baseline, seed sources), commits it,
     /// and parks <see cref="BaseBranchName"/> on that commit so later commits are the "changed set".
     /// </summary>
-    private void SeedBaseCommit(string baselineJson, params (string Name, string Content)[] sourceFiles)
+    private async Task SeedBaseCommitAsync(string baselineJson, params (string Name, string Content)[] sourceFiles)
     {
         WriteRepositoryFile(
             ProjectFileName,
@@ -409,9 +449,9 @@ public sealed class ChangedFormatGateScriptTests
             WriteRepositoryFile(name, content);
         }
 
-        RunGit("init", "--quiet", "--initial-branch=main", ".");
-        CommitAll("base");
-        RunGit("branch", BaseBranchName);
+        await RunGitAsync("init", "--quiet", "--initial-branch=main", ".");
+        await CommitAllAsync("base");
+        await RunGitAsync("branch", BaseBranchName);
     }
 
     private void WriteRepositoryFile(string relativePath, string content)
@@ -421,22 +461,22 @@ public sealed class ChangedFormatGateScriptTests
         File.WriteAllText(fullPath, content);
     }
 
-    private void CommitAll(string message)
+    private async Task CommitAllAsync(string message)
     {
-        RunGit("add", "--all");
-        RunGit("-c", "user.email=gate@test.invalid", "-c", "user.name=gate-test", "commit", "--quiet", "--message", message);
+        await RunGitAsync("add", "--all");
+        await RunGitAsync("-c", "user.email=gate@test.invalid", "-c", "user.name=gate-test", "commit", "--quiet", "--message", message);
     }
 
-    private void RunGit(params string[] arguments)
+    private async Task RunGitAsync(params string[] arguments)
     {
-        var result = RunProcess("git", _repositoryDirectory, arguments);
+        var result = await RunProcessAsync("git", _repositoryDirectory, arguments);
         Assert.AreEqual(
             0,
             result.ExitCode,
             $"git {string.Join(' ', arguments)} failed in the fixture repository. stdout={result.StdOut} stderr={result.StdErr}");
     }
 
-    private ProcessResult RunGate(string? baseRef = null, string? dotnetCommand = null)
+    private async Task<PwshScriptResult> RunGateAsync(string? baseRef = null, string? dotnetCommand = null)
     {
         var scriptPath = ResolveScriptPath();
         Assert.IsTrue(File.Exists(scriptPath), $"verify-changed-format.ps1 was not found at '{scriptPath}'.");
@@ -459,13 +499,13 @@ public sealed class ChangedFormatGateScriptTests
             arguments.Add(dotnetCommand);
         }
 
-        return RunProcess(
+        return await RunProcessAsync(
             OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
             _repositoryDirectory,
             [.. arguments]);
     }
 
-    private ProcessResult RunGateWithFakeDotnet(string output, int exitCode)
+    private async Task<PwshScriptResult> RunGateWithFakeDotnetAsync(string output, int exitCode)
     {
         var fakeDotnetPath = Path.Combine(_repositoryDirectory, "fake-dotnet.ps1");
         var outputCommands = string.Join(
@@ -474,47 +514,18 @@ public sealed class ChangedFormatGateScriptTests
         WriteRepositoryFile(
             "fake-dotnet.ps1",
             $"param([Parameter(ValueFromRemainingArguments = $true)][string[]] $RemainingArguments)\n{outputCommands}\nexit {exitCode}\n");
-        return RunGate(dotnetCommand: fakeDotnetPath);
+        return await RunGateAsync(dotnetCommand: fakeDotnetPath);
     }
 
-    private static ProcessResult RunProcess(string fileName, string workingDirectory, params string[] arguments)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+    private static Task<PwshScriptResult> RunProcessAsync(
+        string fileName, string workingDirectory, string[] arguments, TimeSpan? timeout = null) =>
+        PwshScriptRunner.RunExecutableAsync(
+            fileName, arguments, workingDirectory, timeout ?? TimeSpan.FromMinutes(5),
+            description: "changed-format fixture process");
 
-        foreach (var argument in arguments)
-        {
-            psi.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Failed to start '{fileName}'.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(milliseconds: 300_000))
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException(
-                $"'{fileName} {string.Join(' ', arguments)}' timed out after 300s.");
-        }
-
-        return new ProcessResult(
-            process.ExitCode,
-            stdoutTask.GetAwaiter().GetResult(),
-            stderrTask.GetAwaiter().GetResult());
-    }
-
-    private static string Describe(string expectation, ProcessResult result) =>
+    private static string Describe(string expectation, PwshScriptResult result) =>
         string.Create(
             CultureInfo.InvariantCulture,
             $"{expectation}. exit={result.ExitCode}\n--- stdout ---\n{result.StdOut}\n--- stderr ---\n{result.StdErr}");
 
-    private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 }

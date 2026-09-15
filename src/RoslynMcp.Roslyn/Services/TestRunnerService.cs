@@ -31,6 +31,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
     private readonly ValidationServiceOptions _options;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
     private readonly ITestDiscoveryService _testDiscoveryService;
+    private readonly Action<string> _deleteResultsDirectory;
 
     public TestRunnerService(
         IWorkspaceManager workspaceManager,
@@ -39,6 +40,19 @@ public sealed partial class TestRunnerService : ITestRunnerService
         ITestDiscoveryService testDiscoveryService,
         ValidationServiceOptions? options = null,
         IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspaceManager, executor, logger, testDiscoveryService, options, exceptionReporter,
+            static path => Directory.Delete(path, recursive: true))
+    {
+    }
+
+    internal TestRunnerService(
+        IWorkspaceManager workspaceManager,
+        IGatedCommandExecutor executor,
+        ILogger<TestRunnerService> logger,
+        ITestDiscoveryService testDiscoveryService,
+        ValidationServiceOptions? options,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Action<string> deleteResultsDirectory)
     {
         _workspaceManager = workspaceManager;
         _executor = executor;
@@ -46,6 +60,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
         _options = options ?? new ValidationServiceOptions();
         _exceptionReporter = exceptionReporter;
         _testDiscoveryService = testDiscoveryService ?? throw new ArgumentNullException(nameof(testDiscoveryService));
+        _deleteResultsDirectory = deleteResultsDirectory ?? throw new ArgumentNullException(nameof(deleteResultsDirectory));
     }
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
@@ -183,9 +198,19 @@ public sealed partial class TestRunnerService : ITestRunnerService
         }
         finally
         {
-            if (Directory.Exists(resultsDirectory))
+            try
             {
-                Directory.Delete(resultsDirectory, recursive: true);
+                _deleteResultsDirectory(resultsDirectory);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // A test host may already have removed its results directory.
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Cleanup is secondary to the parsed result or the exception already in flight.
+                UnexpectedExceptionReporting.Report(
+                    _exceptionReporter, exception, UnexpectedExceptionCategory.TestRun);
             }
         }
     }
