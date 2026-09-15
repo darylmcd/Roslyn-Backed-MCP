@@ -98,8 +98,10 @@ internal static class PwshScriptRunner
         // These verifier processes are non-interactive. Some execute native grandchildren
         // (notably Git), which must see EOF instead of inheriting a test host's open stdin pipe.
         process.StandardInput.Close();
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var readerCancellation = new CancellationTokenSource();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(readerCancellation.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(readerCancellation.Token);
+        var outputTask = Task.WhenAll(stdoutTask, stderrTask);
         using var timeoutCancellation = timeout is null
             ? null
             : new CancellationTokenSource(timeout.Value);
@@ -110,15 +112,14 @@ internal static class PwshScriptRunner
         try
         {
             await process.WaitForExitAsync(waitCancellation.Token).ConfigureAwait(false);
-            var output = await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            var output = await outputTask.WaitAsync(waitCancellation.Token).ConfigureAwait(false);
             return new PwshScriptResult(process.ExitCode, output[0], output[1]);
         }
         catch (OperationCanceledException exception)
         {
             var output = await RequestTerminationAndDrainAsync(
                 process,
-                stdoutTask,
-                stderrTask,
+                outputTask,
                 description).ConfigureAwait(false);
             if (timeoutCancellation?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
             {
@@ -130,12 +131,25 @@ internal static class PwshScriptRunner
 
             throw;
         }
+        finally
+        {
+            // A descendant can keep a pipe open after its parent exits. Cancel and observe
+            // both owned reads before Process.Dispose closes their streams.
+            await readerCancellation.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await outputTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (readerCancellation.IsCancellationRequested)
+            {
+                // Expected when cleanup exhausted its drain budget before EOF.
+            }
+        }
     }
 
     private static async Task<string> RequestTerminationAndDrainAsync(
         Process process,
-        Task<string> stdoutTask,
-        Task<string> stderrTask,
+        Task<string[]> outputTask,
         string description)
     {
         if (!process.HasExited)
@@ -154,17 +168,16 @@ internal static class PwshScriptRunner
         try
         {
             await process.WaitForExitAsync(cleanupCancellation.Token).ConfigureAwait(false);
-            var output = await Task.WhenAll(stdoutTask, stderrTask)
-                .WaitAsync(cleanupCancellation.Token)
+            var output = await outputTask.WaitAsync(cleanupCancellation.Token)
                 .ConfigureAwait(false);
             return string.Join(Environment.NewLine, output);
         }
-        catch (OperationCanceledException exception) when (cleanupCancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (cleanupCancellation.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                $"{description} did not terminate and drain redirected output within " +
-                $"{CleanupTimeout.TotalSeconds:g} seconds after process-tree termination was requested.",
-                exception);
+            // Preserve the caller's cancellation or configured-timeout classification.
+            // The outer finally cancels and observes both readers even without EOF.
+            return $"{description} did not terminate and drain redirected output within " +
+                $"{CleanupTimeout.TotalSeconds:g} seconds after process-tree termination was requested.";
         }
     }
 }

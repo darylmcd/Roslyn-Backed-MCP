@@ -99,6 +99,44 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ValidateRecentGitChangesAsync_NestedSolution_UsesRepositoryRelativePaths()
+    {
+        if (!IsGitAvailable())
+            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var nestedDirectory = workspace.GetPath("nested");
+        Directory.CreateDirectory(nestedDirectory);
+        var nestedSolution = Path.Combine(nestedDirectory, "Nested.slnx");
+        await File.WriteAllTextAsync(nestedSolution,
+            "<Solution><Project Path=\"../SampleLib/SampleLib.csproj\" /></Solution>");
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.RunGit(workspace.RootPath, "add", "--", "nested/Nested.slnx");
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+
+        var inside = Path.Combine(nestedDirectory, "Inside.cs");
+        var outside = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.WriteAllTextAsync(inside, "// nested untracked source\n");
+        await File.AppendAllTextAsync(outside, "\n// changed outside the solution directory\n");
+        var status = await WorkspaceManager.LoadAsync(nestedSolution, CancellationToken.None);
+        try
+        {
+            var result = await _validationService.ValidateRecentGitChangesAsync(
+                status.WorkspaceId, runTests: false, CancellationToken.None);
+
+            Assert.IsEmpty(result.Warnings, string.Join("; ", result.Warnings));
+            CollectionAssert.AreEquivalent(new[] { outside }, result.ChangedFilePaths.ToArray());
+            CollectionAssert.AreEquivalent(new[] { inside }, result.UnknownFilePaths.ToArray());
+            Assert.IsTrue(result.ChangedFilePaths.Concat(result.UnknownFilePaths).All(File.Exists),
+                "Both known and unknown Git paths must identify actual files.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(status.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
     public async Task ValidateRecentGitChangesAsync_AmbientRepositoryOverrides_DoNotEscapeSolutionScope()
     {
         if (!IsGitAvailable())

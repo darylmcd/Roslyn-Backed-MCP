@@ -58,16 +58,21 @@ public sealed class PwshScriptRunnerTests
     public async Task RunAsync_CancellationTerminatesChildProcessTree(bool callerCancellation)
     {
         var fixtureRoot = CreateFixtureRoot();
+        var childPidPath = Path.Combine(fixtureRoot, "child.pid");
         try
         {
-            var childPidPath = Path.Combine(fixtureRoot, "child.pid");
             var scriptPath = Path.Combine(fixtureRoot, "spawn-child.ps1");
             await File.WriteAllTextAsync(
                 scriptPath,
                 "param([string]$ChildPidPath)\n" +
                 "$pwsh = (Get-Process -Id $PID).Path\n" +
-                "$child = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru\n" +
-                "$child.Id | Set-Content -LiteralPath $ChildPidPath\n" +
+                "$info = [Diagnostics.ProcessStartInfo]::new($pwsh)\n" +
+                "$info.UseShellExecute = $false; $info.CreateNoWindow = $true\n" +
+                "foreach ($argument in @('-NoProfile', '-Command', 'Start-Sleep -Seconds 30')) { $info.ArgumentList.Add($argument) }\n" +
+                "$child = [Diagnostics.Process]::Start($info)\n" +
+                "[IO.File]::WriteAllText($ChildPidPath + '.tmp', [string]$child.Id)\n" +
+                "[IO.File]::Move($ChildPidPath + '.tmp', $ChildPidPath)\n" +
+                "$child.Dispose()\n" +
                 "Start-Sleep -Seconds 30\n");
 
             using var cancellation = new CancellationTokenSource();
@@ -101,7 +106,106 @@ public sealed class PwshScriptRunnerTests
         }
         finally
         {
+            await StopFixtureChildAsync(childPidPath);
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RunAsync_ExitedParentWithInheritedPipes_StillHonorsCancellation(bool callerCancellation)
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        var childPidPath = Path.Combine(fixtureRoot, "child.pid");
+        var parentPidPath = Path.Combine(fixtureRoot, "parent.pid");
+        var releasePath = Path.Combine(fixtureRoot, "release");
+        using var cancellation = new CancellationTokenSource();
+        Task<PwshScriptResult>? runTask = null;
+        try
+        {
+            var childScript = Path.Combine(fixtureRoot, "retain-pipes.ps1");
+            await File.WriteAllTextAsync(childScript, """
+                param([string]$ReleasePath, [string]$ChildPidPath)
+                [IO.File]::WriteAllText($ChildPidPath + '.tmp', [string]$PID)
+                [IO.File]::Move($ChildPidPath + '.tmp', $ChildPidPath)
+                [Console]::Out.WriteLine('stdout-held')
+                [Console]::Error.WriteLine('stderr-held')
+                $deadline = [DateTime]::UtcNow.AddMinutes(2)
+                while (!(Test-Path -LiteralPath $ReleasePath) -and [DateTime]::UtcNow -lt $deadline) {
+                    Start-Sleep -Milliseconds 50
+                }
+                """);
+            var parentScript = Path.Combine(fixtureRoot, "exit-with-child.ps1");
+            await File.WriteAllTextAsync(parentScript, """
+                param([string]$ChildScript, [string]$ReleasePath, [string]$ChildPidPath, [string]$ParentPidPath)
+                [IO.File]::WriteAllText($ParentPidPath, [string]$PID)
+                $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+                $info.UseShellExecute = $false
+                $info.CreateNoWindow = $true
+                foreach ($argument in @('-NoProfile', '-File', $ChildScript, $ReleasePath, $ChildPidPath)) {
+                    $info.ArgumentList.Add($argument)
+                }
+                $child = [Diagnostics.Process]::Start($info)
+                $child.Dispose()
+                """);
+
+            runTask = PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-File", parentScript, childScript, releasePath, childPidPath, parentPidPath],
+                timeout: callerCancellation ? null : TimeSpan.FromSeconds(15),
+                cancellationToken: cancellation.Token,
+                description: "inherited-pipe fixture");
+            Assert.IsTrue(await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(30)), "Descendant must start.");
+            var parentPid = int.Parse(await File.ReadAllTextAsync(parentPidPath), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsTrue(await WaitForProcessExitAsync(parentPid), "Parent must exit before cancellation.");
+            Assert.IsFalse(runTask.IsCompleted, "The descendant must retain its parent's redirected pipes.");
+
+            if (callerCancellation)
+            {
+                cancellation.Cancel();
+                await Assert.ThrowsAsync<OperationCanceledException>(() => runTask.WaitAsync(TimeSpan.FromSeconds(30)));
+                Assert.IsTrue(runTask.IsCanceled, "The runner must preserve caller cancellation after its drain budget.");
+            }
+            else
+            {
+                var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => runTask.WaitAsync(TimeSpan.FromSeconds(45)));
+                Assert.IsTrue(runTask.IsCompleted, "The runner itself must finish before the test's safety timeout.");
+                StringAssert.Contains(exception.Message, "inherited-pipe fixture timed out");
+            }
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(releasePath, string.Empty);
+            cancellation.Cancel();
+            await StopFixtureChildAsync(childPidPath);
+            if (runTask is not null)
+            {
+                try { await runTask.WaitAsync(TimeSpan.FromSeconds(30)); }
+                catch (OperationCanceledException) { /* Expected runner cancellation. */ }
+                catch (TimeoutException) when (runTask.IsCompleted) { /* Expected runner timeout. */ }
+            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    private static async Task StopFixtureChildAsync(string childPidPath)
+    {
+        if (!File.Exists(childPidPath))
+            return;
+        var childPid = int.Parse(await File.ReadAllTextAsync(childPidPath), System.Globalization.CultureInfo.InvariantCulture);
+        Process child;
+        try { child = Process.GetProcessById(childPid); }
+        catch (ArgumentException) { return; } // The owned fixture already exited.
+        using (child)
+        {
+            try
+            {
+                if (!child.HasExited)
+                    child.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) when (child.HasExited) { /* Exit raced with cleanup. */ }
+            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 

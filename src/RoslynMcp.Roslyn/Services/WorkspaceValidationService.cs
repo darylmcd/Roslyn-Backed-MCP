@@ -661,9 +661,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings, bool TimedOut)> CollectGitChangedFilesAsync(
         string solutionDirectory, TimeSpan timeout, CancellationToken ct)
     {
-        var (stdout, warnings, timedOut) = await _gitCollector.CollectAsync(solutionDirectory, timeout, ct)
+        var (stdout, warnings, timedOut, repositoryRoot) = await _gitCollector.CollectAsync(solutionDirectory, timeout, ct)
             .ConfigureAwait(false);
-        return (ParseGitPorcelainZ(stdout, solutionDirectory), warnings, timedOut);
+        return (repositoryRoot is null ? Array.Empty<string>() : ParseGitPorcelainZ(stdout, repositoryRoot), warnings, timedOut);
     }
 
     internal WorkspaceValidationFailureDetail CreateUnexpectedFailure(
@@ -700,7 +700,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// new path (the current location on disk). Filtering is strict to extensions that can
     /// affect Roslyn workspace validation.
     /// </summary>
-    private static IReadOnlyList<string> ParseGitPorcelainZ(string stdout, string solutionDirectory)
+    private static IReadOnlyList<string> ParseGitPorcelainZ(string stdout, string repositoryRoot)
     {
         if (string.IsNullOrEmpty(stdout))
             return Array.Empty<string>();
@@ -738,7 +738,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             if (IsBuildOutputPath(pathPart))
                 continue;
 
-            var absolute = Path.GetFullPath(Path.Combine(solutionDirectory, pathPart));
+            var absolute = Path.GetFullPath(Path.Combine(repositoryRoot, pathPart));
             results.Add(absolute);
         }
 
