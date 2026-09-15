@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-14T21:38:31Z
+**updated_at:** 2026-09-15T04:25:16Z
 
 ## Agent contract
 
@@ -103,8 +103,6 @@
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `workspace-validation-git-process-lifetime` | Medium | — | Extract Git collection ownership and drain its process and output readers on cancellation. [type: lifecycle] [source: Dependabot timeout-test review] | M | items/workspace-validation-git-process-lifetime.md |
-| `type-move-file-local-binding-safety` | Medium | — | Reject or preserve file-local dependencies during type moves. [type: quality] [source: adjacent-review] | S | items/type-move-file-local-binding-safety.md |
-| `type-move-directive-context-preservation` | Medium | — | Preserve effective compiler directive context when moving types. [type: quality] [source: adjacent-review] | S | items/type-move-directive-context-preservation.md |
 
 ## Low
 
@@ -252,7 +250,7 @@
 | `suggestion-parameter-object-tool-guidance` | Low | — | Recommend parameter-object tools for high parameter counts. [type: quality] [source: 2026-09-14 cohesion review] | S | items/suggestion-parameter-object-tool-guidance.md |
 | `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
 | `tool-error-classifier-exception-specificity` | Low | — | Make error-handler selection prefer the most specific registered exception type. [type: quality] [source: adjacent-review] | S | items/tool-error-classifier-exception-specificity.md |
-| `type-move-tool-owner-comment-refresh` | Low | — | Replace retired type-move dispatch migration commentary with current ownership. [type: quality] [source: adjacent-review] | S | items/type-move-tool-owner-comment-refresh.md |
+| `type-move-preview-orchestration-decomposition` | Low | — | Decompose type-move declaration selection and target-document planning while preserving preview and refusal contracts. [type: quality] [source: adjacent-review] | S | items/type-move-preview-orchestration-decomposition.md |
 
 ## Defer
 

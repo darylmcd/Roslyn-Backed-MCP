@@ -83,6 +83,8 @@ public sealed class TypeMoveService : ITypeMoveService
                 "move_type_to_file_preview is for extracting one type out of a file that contains multiple top-level types.");
         }
 
+        await ValidateMoveContextAsync(sourceDocument, sourceRoot, typeDecl, ct).ConfigureAwait(false);
+
         // Determine target file path
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath)
             ?? throw new PublicInvalidOperationException("Source document must have an on-disk path. Select a saved C# source file and retry.");
@@ -112,14 +114,7 @@ public sealed class TypeMoveService : ITypeMoveService
         // Apply changes to solution
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add the new document.
-        // Item #1 — severity-critical-fail-preview-diff-does-not-match-t: pass `folders`
-        // so MSBuildWorkspace.TryApplyChanges computes the disk path consistently with
-        // our explicit write in RefactoringService.PersistDocumentSetChangesAsync.
-        // Without folders, Roslyn resolved the AddedDocument to {projectDir}/{fileName}
-        // while our explicit write used the full resolvedTargetPath — producing two files
-        // on disk (the intended deep path plus a rogue project-root copy) per the
-        // NetworkDocumentation audit §9.2 repro.
+        // Keep MSBuildWorkspace's document path consistent with the explicit disk write.
         var targetFileName = Path.GetFileName(resolvedTargetPath);
         var newFileText = newFileRoot.ToFullString();
         var targetProject = newSolution.GetProject(sourceDocument.Project.Id)
@@ -145,6 +140,47 @@ public sealed class TypeMoveService : ITypeMoveService
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
+
+    private static async Task ValidateMoveContextAsync(
+        Document document, CompilationUnitSyntax root, TypeDeclarationSyntax declaration, CancellationToken ct)
+    {
+        // Directive trivia can belong to siblings or namespace braces. Copying/removing
+        // a declaration cannot safely reconstruct that context or paired directives.
+        if (root.ContainsDirectives)
+            throw new PublicInvalidOperationException("Source contains compiler directives whose context cannot be preserved by this type move. Move the whole file with move_file_preview or isolate the declaration's directive context first.");
+
+        var model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw new PublicInvalidOperationException("Source semantic information is unavailable. Reload the workspace and retry the type move.");
+
+        if (ContainsFileLocalType(model.GetDeclaredSymbol(declaration, ct)))
+            throw new PublicInvalidOperationException("File-local types cannot move to another file without changing their identity. Use move_file_preview to move the whole file.");
+
+        // Imports are copied with the declaration, even when their names are unused.
+        // A file-local alias or static import cannot bind in the destination tree.
+        var imports = root.Usings.Where(u => !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword))
+            .Concat(declaration.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(n => n.Usings));
+        var expressions = declaration.DescendantNodes().OfType<ExpressionSyntax>()
+            .Concat(imports.SelectMany(u => u.DescendantNodes().OfType<ExpressionSyntax>()));
+        foreach (var expression in expressions)
+        {
+            ct.ThrowIfCancellationRequested();
+            var symbol = model.GetSymbolInfo(expression, ct).Symbol;
+            var type = symbol as ITypeSymbol ?? symbol?.ContainingType;
+            if (ContainsFileLocalType(type) || ContainsFileLocalType(model.GetTypeInfo(expression, ct).Type))
+                throw new PublicInvalidOperationException("Type depends on a file-local symbol that would be inaccessible after the move. Keep these declarations in the same file or remove the file-local dependency first.");
+        }
+    }
+
+    private static bool ContainsFileLocalType(ITypeSymbol? type) => type switch
+    {
+        INamedTypeSymbol named => named.IsFileLocal || ContainsFileLocalType(named.ContainingType)
+            || named.TypeArguments.Any(ContainsFileLocalType),
+        IArrayTypeSymbol array => ContainsFileLocalType(array.ElementType),
+        IPointerTypeSymbol pointer => ContainsFileLocalType(pointer.PointedAtType),
+        IFunctionPointerTypeSymbol pointer => ContainsFileLocalType(pointer.Signature.ReturnType)
+            || pointer.Signature.Parameters.Any(p => ContainsFileLocalType(p.Type)),
+        _ => false,
+    };
 
     private static CompilationUnitSyntax CreateMovedCompilationUnit(
         CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax typeDecl)
