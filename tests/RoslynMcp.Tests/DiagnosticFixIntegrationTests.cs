@@ -29,6 +29,25 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    [DataRow("MCP002", "https://example.test/analyzer/MCP002", "https://example.test/analyzer/MCP002")]
+    [DataRow("GEN001", "https://example.test/generator/GEN001", "https://example.test/generator/GEN001")]
+    [DataRow("CS0414", "https://example.test/override", "https://example.test/override")]
+    [DataRow("CS0414", "", "https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/cs0414")]
+    [DataRow("MCP002", "", null)]
+    [DataRow("CA1822", " ", null)]
+    [DataRow("IDE0005", "", null)]
+    [DataRow("CSCustom", "", null)]
+    public void DiagnosticHelpLink_PreservesDescriptorOrUsesCompilerOnlyFallback(
+        string id, string helpLink, string? expected)
+    {
+        var descriptor = new DiagnosticDescriptor(id, "Test", "Test", "Testing",
+            DiagnosticSeverity.Warning, isEnabledByDefault: true, helpLinkUri: helpLink);
+        var diagnostic = Diagnostic.Create(descriptor, Location.None);
+
+        Assert.AreEqual(expected, Roslyn.Services.DiagnosticService.BuildHelpLink(diagnostic));
+    }
+
+    [TestMethod]
     public async Task Diagnostic_Details_For_CS8019_Honors_Docs_Match_Reality()
     {
         // diagnostic-details-supported-fixes-empty: SupportedFixes is sourced from
@@ -55,6 +74,10 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
         Assert.IsNotNull(details);
         Assert.AreEqual("CS8019", details.Diagnostic.Id);
+        var compilation = await animalServiceFile.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var descriptor = compilation.GetDiagnostics().First(diagnostic => diagnostic.Id == "CS8019").Descriptor;
+        Assert.AreEqual(descriptor.HelpLinkUri, details.HelpLinkUri);
 
         if (details.SupportedFixes.Count == 0)
         {

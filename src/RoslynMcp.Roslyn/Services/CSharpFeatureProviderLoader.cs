@@ -50,7 +50,8 @@ internal static class CSharpFeatureProviderLoader
     internal static FeatureProviderLoadResult<TProvider> LoadFromAssemblyFactory<TProvider>(
         Func<Assembly> assemblyFactory,
         ILogger logger,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        string? exportAttributeFullName = null)
         where TProvider : class
     {
         ArgumentNullException.ThrowIfNull(assemblyFactory);
@@ -59,7 +60,13 @@ internal static class CSharpFeatureProviderLoader
         try
         {
             return LoadFromTypeSource<TProvider>(
-                () => assemblyFactory().GetTypes(),
+                () =>
+                {
+                    var assembly = assemblyFactory();
+                    return exportAttributeFullName is null
+                        ? assembly.GetTypes()
+                        : ExportedFeatureProviderTypes.Read(assembly, exportAttributeFullName);
+                },
                 logger,
                 exceptionReporter);
         }

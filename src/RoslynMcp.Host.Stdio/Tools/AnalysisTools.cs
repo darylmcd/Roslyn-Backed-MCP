@@ -33,7 +33,7 @@ public static class AnalysisTools
         [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
-        [Description("When true, return only per-project summary counts (no individual diagnostics). 10-100x smaller payload.")] bool summary = false,
+        [Description("When true, return counts grouped by diagnostic ID, severity, and category (no individual diagnostics). 10-100x smaller payload.")] bool summary = false,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -68,18 +68,18 @@ public static class AnalysisTools
                 ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
                 : (string?)null;
 
-            // Summary mode: counts by diagnostic ID, no individual diagnostic rows.
+            // A diagnostic ID can have different configured severities across projects.
             // 10-100x smaller payload for large solutions.
             if (summary)
             {
                 var diagnosticGroups = allDiagnostics
-                    .GroupBy(entry => entry.Diagnostic.Id)
+                    .GroupBy(entry => new { entry.Diagnostic.Id, entry.Diagnostic.Severity, entry.Diagnostic.Category })
                     .Select(group => new
                     {
-                        id = group.Key,
+                        id = group.Key.Id,
                         count = group.Count(),
-                        severity = group.First().Diagnostic.Severity,
-                        category = group.First().Diagnostic.Category,
+                        severity = group.Key.Severity,
+                        category = group.Key.Category,
                     })
                     .OrderBy(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
                     .ThenByDescending(g => g.count)
@@ -93,7 +93,7 @@ public static class AnalysisTools
                     totalInfo = results.TotalInfo,
                     totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
                     filteredDiagnostics = allDiagnostics.Count,
-                    distinctDiagnosticIds = diagnosticGroups.Count,
+                    distinctDiagnosticIds = allDiagnostics.Select(entry => entry.Diagnostic.Id).Distinct().Count(),
                     restoreHint = restoreHintText,
                     diagnosticGroups,
                 }, JsonDefaults.Indented);

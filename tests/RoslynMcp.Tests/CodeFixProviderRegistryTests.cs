@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Roslyn.Services;
 
@@ -17,12 +18,6 @@ public sealed class CodeFixProviderRegistryTests
     [TestMethod]
     public void Registry_LoadsAtLeastOneStaticProvider()
     {
-        // Force the IDE Features assembly to be loaded before the registry probes for it. In
-        // unit-test isolation the assembly isn't loaded into the AppDomain until something
-        // (the test or production code) touches it; the registry uses Assembly.Load by name
-        // which only succeeds if the assembly is already loaded.
-        _ = typeof(Microsoft.CodeAnalysis.CSharp.Formatting.CSharpFormattingOptions);
-
         var registry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
 
         // Sanity: probe a handful of well-known diagnostic ids — at least one should resolve.
@@ -35,6 +30,34 @@ public sealed class CodeFixProviderRegistryTests
             "Registry must expose at least one provider across well-known diagnostic ids " +
             $"({string.Join(", ", knownIds)}). The static loader likely failed to load " +
             "Microsoft.CodeAnalysis.CSharp.Features.");
+    }
+
+    [TestMethod]
+    public void Registry_AnalyzerReferences_UseFullPathAndShareCachedLoad()
+    {
+        var assemblyPath = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var loader = new TestAnalyzerAssemblyLoader();
+        var reference = new AnalyzerFileReference(assemblyPath, loader);
+        Assert.AreNotEqual(reference.FullPath, reference.Display,
+            "The fixture must distinguish the display label from the assembly path.");
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+        foreach (var name in new[] { "First", "Second" })
+        {
+            var projectId = ProjectId.CreateNewId();
+            solution = solution.AddProject(projectId, name, name, LanguageNames.CSharp)
+                .AddAnalyzerReference(projectId, reference);
+        }
+        var registry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
+
+        var first = registry.GetProvidersForDetailed("TEST0001", solution);
+        var second = registry.GetProvidersForDetailed("TEST0001", solution);
+
+        Assert.IsEmpty(first.Providers);
+        Assert.IsTrue(first.IsComplete);
+        Assert.AreEqual(0, first.FailedProviderCount);
+        Assert.IsEmpty(second.Providers);
+        Assert.AreSequenceEqual(new[] { assemblyPath }, loader.LoadedPaths);
     }
 
     [TestMethod]
@@ -91,36 +114,21 @@ public sealed class CodeFixProviderRegistryTests
     }
 
     /// <summary>
-    /// Validates the documented limitation: CA-series rules from Microsoft.CodeAnalysis.NetAnalyzers
-    /// (e.g. CA1826, CA1848) return empty <c>supportedFixes</c> from the static-reflection registry
-    /// because their fix providers require Roslyn workspace services injected via constructor — they
-    /// have no parameterless constructor and cannot be instantiated by <see cref="Activator.CreateInstance"/>.
-    ///
-    /// This test pins the documented behavior so callers know to use get_code_actions +
-    /// preview_code_action for CA rules instead of relying on <c>supportedFixes</c>.
-    /// See: diagnostic-details-empty-supportedfixes-ca-rules, gh #620.
+    /// Pins the static CSharp.Features provider set for representative CA rules.
+    /// This does not inspect project analyzer assemblies or establish why an external
+    /// provider is unavailable; callers can query IDE actions with get_code_actions.
     /// </summary>
     [TestMethod]
     public void Registry_CaSeriesRules_ReturnEmptySupportedFixes_DocumentedLimitation()
     {
-        // The registry's static-reflection path cannot instantiate CA fix providers because they
-        // require Roslyn workspace services. This test validates that the registry correctly
-        // returns empty for CA-series ids — confirming the documented behavior rather than a bug
-        // being silently ignored.
         var registry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
 
-        // Representative CA rules that ship with fix providers in NetAnalyzers but whose
-        // providers require constructor injection. The static-reflection path must return empty
-        // for all of them — this is the documented limitation.
         string[] caRuleIds = ["CA1826", "CA1848", "CA1822", "CA2201", "CA1416"];
         foreach (var caId in caRuleIds)
         {
             var providers = registry.GetProvidersFor(caId);
             Assert.AreEqual(0, providers.Count,
-                $"CA-series rule '{caId}' must return empty supportedFixes from the static-reflection " +
-                "registry. CA fix providers require Roslyn workspace services (no parameterless ctor) " +
-                "and are not enumerable via static reflection. Callers must use get_code_actions + " +
-                "preview_code_action to apply CA fixes at a specific document location.");
+                $"The static CSharp.Features provider set should not expose '{caId}'.");
         }
     }
 
@@ -131,5 +139,20 @@ public sealed class CodeFixProviderRegistryTests
         public override FixAllProvider? GetFixAllProvider() => null;
 
         public override Task RegisterCodeFixesAsync(CodeFixContext context) => Task.CompletedTask;
+    }
+
+    private sealed class TestAnalyzerAssemblyLoader : IAnalyzerAssemblyLoader
+    {
+        public List<string> LoadedPaths { get; } = [];
+
+        public void AddDependencyLocation(string fullPath) => Assert.IsTrue(File.Exists(fullPath));
+
+        public System.Reflection.Assembly LoadFromPath(string fullPath)
+        {
+            LoadedPaths.Add(fullPath);
+            // Return a real assembly with no providers. The callback proves the registry
+            // honors the reference's loader instead of loading the test assembly directly.
+            return typeof(CodeFixProviderRegistry).Assembly;
+        }
     }
 }

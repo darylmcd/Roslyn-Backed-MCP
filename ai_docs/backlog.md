@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T19:34:19Z
+**updated_at:** 2026-09-15T20:36:26Z
 
 ## Agent contract
 
@@ -95,7 +95,6 @@
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
 | `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
-| `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 
 ## Low
@@ -232,8 +231,6 @@
 | `workspace-path-wire-json-document-disposal` | Low | — | Dispose five parsed JSON documents in workspace-path wire tests while retaining the root elements only inside their owner lifetime. [type: test-hygiene] [source: cold-review] | S | items/workspace-path-wire-json-document-disposal.md |
 | `unused-code-analyzer-test-harness-wave-1` | Low | — | **Consolidate the first unused-code analyzer test harness pair** — extract a fail-loud AdhocWorkspace/TestWorkspaceManager helper and migrate dead-field/local tests. [type: test-refactor] [source: 2026-09-12 adjacent review] | S | items/unused-code-analyzer-test-harness-wave-1.md |
 | `reports-readme-stale-index` | Low | — | **`ai_docs/reports/README.md` asserts an empty directory that holds six files** — replace the enumerative `## Current files` claim with the supersession-gated retention policy so the index cannot drift again as reports land. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/reports-readme-stale-index.md |
-| `diagnostic-details-descriptor-help-link` | Low | — | Use analyzer descriptor help links in diagnostic details instead of manufacturing compiler-documentation URLs for every diagnostic ID. [type: quality] [source: adjacent-review] | S | items/diagnostic-details-descriptor-help-link.md |
-| `diagnostics-summary-mixed-severity-same-id` | Low | — | Preserve per-severity counts when one diagnostic ID has different configured severities across projects. [type: quality] [source: adjacent-review] | S | items/diagnostics-summary-mixed-severity-same-id.md |
 | `cohesion-handwritten-partial-method-inclusion` | Low | — | Preserve handwritten partial methods in cohesion analysis. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-handwritten-partial-method-inclusion.md |
 | `cohesion-direct-method-call-connectivity` | Low | — | Connect cohesion graph nodes through direct method calls. [type: quality] [source: 2026-09-14 cohesion review] | S | items/cohesion-direct-method-call-connectivity.md |
 | `shared-members-explicit-generic-call-traversal` | Low | — | Recognize explicit generic calls in shared-member analysis. [type: quality] [source: 2026-09-14 cohesion review] | S | items/shared-members-explicit-generic-call-traversal.md |
@@ -248,6 +245,8 @@
 | `symbol-search-response-byte-budget` | Low | — | Bound symbol-search result pages by serialized bytes with lossless continuation. [type: quality] [source: adjacent-review] | M | items/symbol-search-response-byte-budget.md |
 | `symbol-search-pagination-integer-overflow` | Low | — | Reject or safely handle symbol-search pagination sums beyond Int32.MaxValue. [type: quality] [source: adjacent-review] | S | items/symbol-search-pagination-integer-overflow.md |
 | `symbol-disambiguation-response-byte-budget` | Low | — | Bound multi-candidate symbol disambiguation responses without dropping candidates. [type: quality] [source: adjacent-review] | S | items/symbol-disambiguation-response-byte-budget.md |
+| `code-fix-provider-cache-reference-lifetime` | Low | — | Scope code-fix provider caching to analyzer reference lifetime and platform-correct paths. [type: quality] [source: diagnostic-provider-review] | S | items/code-fix-provider-cache-reference-lifetime.md |
+| `feature-provider-constructor-cancellation-unwrapping` | Low | — | Preserve cancellation thrown by reflected feature-provider constructors. [type: quality] [source: diagnostic-provider-review] | S | items/feature-provider-constructor-cancellation-unwrapping.md |
 
 ## Defer
 

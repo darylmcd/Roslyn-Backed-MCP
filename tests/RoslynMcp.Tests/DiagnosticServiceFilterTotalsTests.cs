@@ -34,7 +34,29 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
             groups.Select(group => group.GetProperty("count").GetInt32()).ToArray());
     }
 
-    private sealed class MixedSeverityDiagnosticService : IDiagnosticService
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ProjectDiagnostics_SameIdAcrossSeverities_PreservesCountsAsync(bool reverse)
+    {
+        var json = await AnalysisTools.GetProjectDiagnostics(WorkspaceExecutionGate,
+            new MixedSeverityDiagnosticService(sameId: true, reverse), WorkspaceId,
+            summary: true, offset: 8, limit: 1, ct: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var groups = root.GetProperty("diagnosticGroups").EnumerateArray().ToArray();
+
+        Assert.AreEqual(1, root.GetProperty("distinctDiagnosticIds").GetInt32());
+        Assert.AreEqual(9, root.GetProperty("filteredDiagnostics").GetInt32());
+        Assert.AreSequenceEqual(new[] { "Error", "Warning", "Info" },
+            groups.Select(group => group.GetProperty("severity").GetString()).ToArray());
+        Assert.IsTrue(groups.All(group => group.GetProperty("id").GetString() == "TEST001"));
+        Assert.IsTrue(groups.All(group => group.GetProperty("count").GetInt32() == 3));
+        Assert.IsTrue(groups.All(group => group.GetProperty("category").GetString() == "Testing"));
+        AssertTotalDiagnosticsMatchesSumOfSeverityTotals(root, "mixed severity for one ID");
+    }
+
+    private sealed class MixedSeverityDiagnosticService(bool sameId = false, bool reverse = false) : IDiagnosticService
     {
         public Task<DiagnosticsResultDto> GetDiagnosticsAsync(string workspaceId,
             string? projectFilter, string? fileFilter, string? severityFilter,
@@ -43,10 +65,11 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
             List<DiagnosticDto> diagnostics = [];
             foreach (var (prefix, severity) in new[] { ("I", "Info"), ("W", "Warning"), ("E", "Error") })
             {
-                diagnostics.Add(new DiagnosticDto(prefix + "1", "Probe", severity, "Testing", null, null, null, null, null));
-                var duplicate = new DiagnosticDto(prefix + "2", "Probe", severity, "Testing", null, null, null, null, null);
+                diagnostics.Add(new DiagnosticDto(sameId ? "TEST001" : prefix + "1", "Probe", severity, "Testing", null, null, null, null, null));
+                var duplicate = new DiagnosticDto(sameId ? "TEST001" : prefix + "2", "Probe", severity, "Testing", null, null, null, null, null);
                 diagnostics.AddRange([duplicate, duplicate]);
             }
+            if (reverse) diagnostics.Reverse();
             return Task.FromResult(new DiagnosticsResultDto([], diagnostics, [], 3, 3, 3));
         }
 
