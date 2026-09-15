@@ -108,6 +108,107 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
             ValidateAsync(cancellingService, workspace.WorkspaceId, path, gitScope, ct: cancellation.Token));
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Timeout_PreservesKnownAndUnknownPaths(bool gitScope)
+    {
+        if (!GitFixtureRunner.IsAvailable(out var reason))
+            Assert.Inconclusive($"Git unavailable: {reason}");
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var unknown = workspace.GetPath("NotInWorkspace.cs");
+        await File.AppendAllTextAsync(path, "\n// timeout known scope\n");
+        await File.WriteAllTextAsync(unknown, "// unknown scope");
+        var compile = new BlockingCompile();
+        var service = CreateService(Compile(), compileService: compile, phaseTimeout: TimeSpan.FromMilliseconds(50));
+
+        var result = gitScope
+            ? await service.ValidateRecentGitChangesAsync(workspace.WorkspaceId, runTests: false, CancellationToken.None)
+            : await service.ValidateAsync(workspace.WorkspaceId, [path, unknown, path], runTests: false, CancellationToken.None);
+
+        Assert.IsTrue(compile.Entered);
+        Assert.AreEqual("timeout", result.OverallStatus);
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
+        CollectionAssert.AreEqual(new[] { unknown }, result.UnknownFilePaths.ToArray());
+        Assert.IsTrue(result.Warnings.Any(w => w.Contains("'compile_check'", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public async Task Timeout_PreservesTrackerScope(bool gitFallback, bool reconcile)
+    {
+        if (!GitFixtureRunner.IsAvailable(out var reason))
+            Assert.Inconclusive($"Git unavailable: {reason}");
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var reverted = workspace.GetPath("SampleLib", "IAnimal.cs");
+        if (reconcile)
+        {
+            GitFixtureRunner.InitializeRepository(workspace.RootPath);
+            GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+            await File.AppendAllTextAsync(path, "\n// retained tracker scope\n");
+        }
+
+        using var tracker = new ChangeTracker(WorkspaceManager);
+        tracker.RecordChange(workspace.WorkspaceId, "tracked edit", reconcile ? [path, reverted] : [path], "test");
+        var compile = new BlockingCompile();
+        var service = CreateService(Compile(), tracker: tracker, compileService: compile,
+            phaseTimeout: TimeSpan.FromMilliseconds(50));
+        var result = gitFallback
+            ? await service.ValidateRecentGitChangesAsync(workspace.WorkspaceId, runTests: false, CancellationToken.None)
+            : await service.ValidateAsync(workspace.WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None);
+
+        Assert.IsTrue(compile.Entered);
+        Assert.AreEqual("timeout", result.OverallStatus);
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
+        Assert.HasCount(0, result.UnknownFilePaths);
+        if (gitFallback)
+            Assert.IsTrue(result.Warnings.Count > 1, "Preserve the Git fallback warning alongside the timeout warning.");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ZeroRunWarning_OnlyAccompaniesZeroRunVerdict(bool gitScope)
+    {
+        if (!GitFixtureRunner.IsAvailable(out var reason))
+            Assert.Inconclusive($"Git unavailable: {reason}");
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(path, "\n// warning scope\n");
+        var empty = PassingTests() with { Total = 0, Passed = 0 };
+        var cases = new (ITestRunnerService Runner, string Status)[]
+        {
+            (new DelegateRunner(_ => Task.FromResult(empty)), "test-zero-run"),
+            (new DelegateRunner(_ => Task.FromResult(empty with { Failed = 1 })), "test-failure"),
+            (new DelegateRunner(_ => throw new InvalidOperationException("runner failed")), "test-failure"),
+            (new DelegateRunner(_ => Task.FromResult(PassingTests())), "clean"),
+        };
+        foreach (var sample in cases)
+        {
+            var service = CreateService(Compile(), sample.Runner);
+            var result = await ValidateAsync(service, workspace.WorkspaceId, path, gitScope);
+            Assert.AreEqual(sample.Status, result.OverallStatus);
+            Assert.AreEqual(sample.Status == "test-zero-run" ? 1 : 0, result.Warnings.Count);
+            if (sample.Status == "test-zero-run")
+            {
+                StringAssert.Contains(result.Warnings[0], "FullyQualifiedName=VerdictProbe");
+                StringAssert.Contains(result.Warnings[0], "no tests were reported");
+                Assert.IsFalse(result.Warnings[0].Contains("timing", StringComparison.Ordinal));
+            }
+        }
+    }
+
     private static Task<WorkspaceValidationDto> ValidateAsync(
         WorkspaceValidationService service, string workspaceId, string path,
         bool gitScope, bool summary = false, CancellationToken ct = default) =>
@@ -117,10 +218,11 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
 
     private static WorkspaceValidationService CreateService(
         CompileCheckDto compile, ITestRunnerService? runner = null,
-        IDiagnosticService? diagnostics = null, TimeSpan? phaseTimeout = null) =>
-        new(new FixedCompile(compile), diagnostics ?? new FixedDiagnostics(), new FixedDiscovery(),
+        IDiagnosticService? diagnostics = null, TimeSpan? phaseTimeout = null,
+        IChangeTracker? tracker = null, ICompileCheckService? compileService = null) =>
+        new(compileService ?? new FixedCompile(compile), diagnostics ?? new FixedDiagnostics(), new FixedDiscovery(),
             runner ?? new DelegateRunner(_ => Task.FromResult(PassingTests())), WorkspaceManager,
-            changeTracker: null, gitStatusTimeout: TimeSpan.FromSeconds(5),
+            changeTracker: tracker, gitStatusTimeout: TimeSpan.FromSeconds(5),
             validationPhaseTimeout: phaseTimeout ?? TimeSpan.FromSeconds(5));
 
     private static CompileCheckDto Compile(bool cancelled = false, int completed = 1, int total = 1) =>
@@ -136,6 +238,18 @@ public sealed class WorkspaceValidationVerdictTests : IsolatedWorkspaceTestBase
     {
         public Task<CompileCheckDto> CheckAsync(string workspaceId, CompileCheckOptions options, CancellationToken ct) =>
             Task.FromResult(result);
+    }
+
+    private sealed class BlockingCompile : ICompileCheckService
+    {
+        public bool Entered { get; private set; }
+
+        public async Task<CompileCheckDto> CheckAsync(string workspaceId, CompileCheckOptions options, CancellationToken ct)
+        {
+            Entered = true;
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("Cancellation must end compilation.");
+        }
     }
 
     private sealed class FixedDiagnostics(params DiagnosticDto[] errors) : IDiagnosticService

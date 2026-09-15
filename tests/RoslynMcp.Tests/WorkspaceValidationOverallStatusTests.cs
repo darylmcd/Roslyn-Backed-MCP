@@ -197,8 +197,8 @@ public sealed class WorkspaceValidationOverallStatusTests
 
     /// <summary>
     /// validate-workspace-runtests-total-zero: when runTests=true and the discovered filter
-    /// produced a non-empty expression, but dotnet test reported Total=0, the symptom is almost
-    /// always a filter-resolution failure (working-directory or IChangeTracker timing). Pre-fix
+    /// produced a non-empty expression, but dotnet test reported Total=0, no tests were reported.
+    /// The result alone does not establish why. Pre-fix
     /// this branch hit the final fall-through and returned "clean" — making the bundle silently
     /// claim success on a non-pass. The new "test-zero-run" verdict surfaces the symptom.
     /// </summary>
@@ -235,7 +235,7 @@ public sealed class WorkspaceValidationOverallStatusTests
         Assert.AreEqual(
             "test-zero-run",
             status,
-            "runTests=true with Total=0 must surface 'test-zero-run' — not 'clean' — so callers don't silently treat a filter-resolution failure as a pass.");
+            "runTests=true with Total=0 must surface 'test-zero-run' — not 'clean' — so callers don't silently treat an empty test run as a pass.");
     }
 
     /// <summary>

@@ -9,7 +9,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Item 5 implementation. Composes the four primitives an agent typically runs after an edit:
 /// <list type="number">
-///   <item><description><see cref="ICompileCheckService.CheckAsync"/> for the changed scope.</description></item>
+///   <item><description><see cref="ICompileCheckService.CheckAsync"/> across the whole workspace.</description></item>
 ///   <item><description>Filtering of compiler/analyzer diagnostics down to severity <c>Error</c>.</description></item>
 ///   <item><description><see cref="ITestDiscoveryService.FindRelatedTestsForFilesAsync"/> over the changed file set.</description></item>
 ///   <item><description>Optional <see cref="ITestRunnerService.RunTestsAsync"/> with the discovered filter when <c>runTests=true</c>.</description></item>
@@ -93,37 +93,21 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _exceptionReporter = exceptionReporter;
     }
 
-    public async Task<WorkspaceValidationDto> ValidateAsync(
+    public Task<WorkspaceValidationDto> ValidateAsync(
         string workspaceId,
         IReadOnlyList<string>? changedFilePaths,
         bool runTests,
         CancellationToken ct,
-        bool summary = false)
-    {
-        // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
-        // a validation phase that exceeds the 25-second internal timeout throws the private
-        // InternalValidationTimeoutException. Pre-fix the exception escaped here as an unhandled
-        // throw and surfaced as a bare SDK error string at the MCP transport. Mirror the catch
-        // already present in ValidateRecentGitChangesAsync so both entry points return the
-        // structured timeout DTO. OperationCanceledException is intentionally NOT caught — that
-        // is the cooperative-cancellation signal and must propagate to the caller.
-        try
-        {
-            return await ValidateInternalAsync(
-                new ValidationRequestContext(workspaceId, changedFilePaths, runTests, summary, Array.Empty<string>()),
-                ct).ConfigureAwait(false);
-        }
-        catch (InternalValidationTimeoutException ex)
-        {
-            return CreateTimeoutResult(ex, changedFilePaths ?? Array.Empty<string>(), Array.Empty<string>());
-        }
-    }
+        bool summary = false) =>
+        ValidateInternalAsync(
+            new ValidationRequestContext(workspaceId, changedFilePaths, runTests, summary, Array.Empty<string>()),
+            ct);
 
     /// <summary>
     /// post-edit-validate-workspace-scoped-to-touched-files: auto-derives the changed-file set
     /// from <c>git status --porcelain</c> in the solution directory, then forwards to the
     /// scope-taking <see cref="ValidateAsync"/> path. On git-unavailable / non-git-repo
-    /// conditions we fall back to full-workspace scope and surface the reason in
+    /// conditions test discovery falls back to the change tracker and surfaces the reason in
     /// <see cref="WorkspaceValidationDto.Warnings"/>.
     /// </summary>
     public async Task<WorkspaceValidationDto> ValidateRecentGitChangesAsync(
@@ -136,51 +120,20 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var (gitFiles, gitWarnings, gitTimedOut) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
             .ConfigureAwait(false);
 
-        // No-fallback path: git produced a (possibly empty) list of touched files. Forward
-        // that list verbatim. An empty list is a meaningful signal (clean tree) — we do NOT
-        // silently widen to full-workspace scope because that would mask a clean tree as a
-        // heavy full-workspace verify.
-        if (gitWarnings.Count == 0)
-        {
-            try
-            {
-                return await ValidateInternalAsync(
-                    new ValidationRequestContext(workspaceId, gitFiles, runTests, summary, Array.Empty<string>()),
-                    ct).ConfigureAwait(false);
-            }
-            catch (InternalValidationTimeoutException ex)
-            {
-                return CreateTimeoutResult(ex, gitFiles, Array.Empty<string>());
-            }
-        }
-
-        // Fallback: git was unavailable / repo not found / git exited with error / git status
-        // timed out. Widen to full-workspace scope (changedFilePaths=null → change-tracker
-        // fallback → tool behaves like validate_workspace did before this feature) and surface
-        // the warning so the caller can tell why the scope is full instead of narrow.
-        try
-        {
-            var fallback = await ValidateInternalAsync(
-                new ValidationRequestContext(workspaceId, ChangedFilePaths: null, runTests, summary, gitWarnings),
-                ct).ConfigureAwait(false);
-            return DegradeStatusWhenGitStatusUnknown(fallback, gitTimedOut);
-        }
-        catch (InternalValidationTimeoutException ex)
-        {
-            // workspace-validation-dead-path-and-duplicated-default: no DegradeStatusWhenGitStatusUnknown
-            // wrapper here. CreateTimeoutResult always reports OverallStatus "timeout", and the degrade
-            // only rewrites "clean", so the wrapper was a structural no-op on this branch. Mirrors the
-            // bare-return shape ValidateAsync's own timeout catch already uses.
-            return CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings);
-        }
+        // Git provides an explicit test-discovery scope; on failure, use the tracker fallback.
+        var result = await ValidateInternalAsync(
+            new ValidationRequestContext(
+                workspaceId, gitWarnings.Count == 0 ? gitFiles : null, runTests, summary, gitWarnings),
+            ct).ConfigureAwait(false);
+        return DegradeStatusWhenGitStatusUnknown(result, gitTimedOut);
     }
 
     /// <summary>
     /// validate-recent-git-changes-status-timeout-false-clean: when the dedicated
     /// <c>git status</c> collection timed out, the change-tracker fallback scope is
     /// unknowable — for edits made outside this MCP session the tracker is empty, so the
-    /// bundle validated (effectively) nothing and still computed <c>clean</c> from a
-    /// zero-error compile pass. That is indistinguishable from a genuinely clean tree, so a
+    /// bundle discovered no related tests and still computed <c>clean</c> from a
+    /// whole-workspace zero-error compile pass. That is indistinguishable from a genuinely clean tree, so a
     /// <c>clean</c> verdict is downgraded to <c>git-status-unknown</c>. The
     /// <c>retryable=true</c> marker already present in the warning text is thereby promoted
     /// into the structured status callers actually branch on.
@@ -224,6 +177,24 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 .ConfigureAwait(false);
         }
 
+        // Resolve and reconcile once, then retain that exact scope on every phase timeout.
+        // Caller cancellation remains an exception and is never converted to a timeout DTO.
+        try
+        {
+            return await ValidateResolvedScopeAsync(request, changedFiles, unknownFiles, ct).ConfigureAwait(false);
+        }
+        catch (InternalValidationTimeoutException ex)
+        {
+            return CreateTimeoutResult(ex, changedFiles, unknownFiles, request.Warnings);
+        }
+    }
+
+    private async Task<WorkspaceValidationDto> ValidateResolvedScopeAsync(
+        ValidationRequestContext request,
+        IReadOnlyList<string> changedFiles,
+        IReadOnlyList<string> unknownFiles,
+        CancellationToken ct)
+    {
         // Stage 1: in-memory compile check across the whole workspace.
         var compile = await RunValidationPhaseAsync(
             "compile_check",
@@ -250,7 +221,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var status = ComputeOverallStatus(compile, allErrors, testRunResult, request.RunTests);
 
         var emittedWarnings = AppendTestZeroRunWarning(
-            request.Warnings, testRunResult, request.RunTests, related.DotnetTestFilter);
+            request.Warnings, status, related.DotnetTestFilter);
 
         // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
         // when caller asked for a summary. Counts + status still surface the verdict; the
@@ -423,28 +394,20 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return (related, testRunResult);
     }
 
-    /// <summary>
-    /// validate-workspace-runtests-total-zero: when the "test-zero-run" verdict fires, append a
-    /// diagnostic warning that names the discovered filter and points at the most likely cause.
-    /// Helps the caller decide whether to re-run test_run standalone (which tends to succeed
-    /// because it does not race with the workspace's IChangeTracker refresh / dotnet test
-    /// working-directory resolution). Returns <paramref name="warnings"/> unchanged when the
-    /// verdict does not apply.
-    /// </summary>
+    /// <summary>Report an observed empty test run only when it determines the verdict.</summary>
     private static IReadOnlyList<string> AppendTestZeroRunWarning(
         IReadOnlyList<string> warnings,
-        TestRunResultDto? testRunResult,
-        bool runTests,
+        string status,
         string? filter)
     {
-        if (runTests && testRunResult is not null && testRunResult.Total == 0 && !string.IsNullOrWhiteSpace(filter))
+        if (status == "test-zero-run" && !string.IsNullOrWhiteSpace(filter))
         {
             return warnings
                 .Concat(new[]
                 {
                     $"validate_workspace: runTests=true produced testRunResult.total=0 with filter '{filter}'; "
-                    + "this likely indicates filter resolution failure (working-directory or IChangeTracker timing). "
-                    + "Run test_run with the same filter to confirm."
+                    + "no tests were reported for the discovered filter. "
+                    + "Run test_run with the same filter to investigate."
                 })
                 .ToArray();
         }
@@ -564,14 +527,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // overallStatus: compile-error with zero error diagnostics. Use ErrorCount and the
     // merged error-severity rows instead.
     //
-    // validate-workspace-runtests-total-zero: when runTests=true and the test-run reports
-    // Total=0, dotnet test matched no tests for the discovered filter — almost always a
-    // filter-resolution failure (working-directory mismatch or IChangeTracker timing race),
-    // not a real pass. Pre-fix this branch returned "clean" because Failed==0 fired the
-    // final fall-through. The new "test-zero-run" verdict surfaces the symptom explicitly
-    // so a caller exact-matching "clean" doesn't treat a zero-run as success. This is a
-    // BREAKING change for callers that exact-match "clean" as the only passing value; the
-    // CHANGELOG flags it as such.
+    // A requested test run with no failures and no reported tests is not a passing run.
+    // The verdict records that observation without assuming why no tests were found.
     //
     // MergeErrorDiagnostics owns compiler-harvest corroboration. A remaining Error-severity
     // row without authoritative compiler errors receives the broader analyzer-error verdict.
@@ -795,16 +752,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private static WorkspaceValidationDto CreateTimeoutResult(
         InternalValidationTimeoutException timeout,
         IReadOnlyList<string> changedFiles,
+        IReadOnlyList<string> unknownFiles,
         IReadOnlyList<string> priorWarnings)
     {
-        // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
-        // shared by both ValidateAsync and ValidateRecentGitChangesAsync. The original warning
-        // text referenced "git-derived scope", which is misleading when ValidateAsync supplies
-        // an explicit changedFilePaths list (or when the change-tracker fallback path supplied
-        // it). Use neutral phrasing — the changedFiles list is whatever scope the caller
-        // landed on at the time of the timeout.
         var warning = $"validation phase '{timeout.Phase}' exceeded the internal timeout of "
-            + $"{timeout.Timeout.TotalSeconds:F0} second(s); retryable=true; changedFilePaths reflects the scope that was being validated.";
+            + $"{timeout.Timeout.TotalSeconds:F0} second(s); retryable=true; changedFilePaths reflects the resolved related-test discovery scope; compilation covers the whole workspace.";
         var warnings = priorWarnings.Concat(new[] { warning }).ToArray();
         var command = new CommandExecutionDto(
             Command: "validate_workspace",
@@ -833,7 +785,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return new WorkspaceValidationDto(
             OverallStatus: "timeout",
             ChangedFilePaths: changedFiles,
-            UnknownFilePaths: Array.Empty<string>(),
+            UnknownFilePaths: unknownFiles,
             CompileResult: new CompileCheckDto(
                 Success: false,
                 ErrorCount: 0,
@@ -855,11 +807,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             Warnings: warnings);
     }
 
-    // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
-    // both ValidateAsync and ValidateRecentGitChangesAsync catch this and convert it to a
-    // structured timeout DTO. Neutral phrasing in the exception message — pre-fix it
-    // hard-coded "validate_recent_git_changes" which was inaccurate for the validate_workspace
-    // call path.
+    // ValidateInternalAsync converts phase timeouts after resolving the test-discovery scope.
     private sealed class InternalValidationTimeoutException(string phase, TimeSpan timeout) : Exception(
         $"validation phase '{phase}' exceeded the internal timeout of {timeout.TotalSeconds:F0} second(s).")
     {
