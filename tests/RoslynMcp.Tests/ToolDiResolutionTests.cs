@@ -30,6 +30,19 @@ namespace RoslynMcp.Tests;
 public sealed class ToolDiResolutionTests
 {
     [TestMethod]
+    public void ReferenceResponsePager_IsInjectedWithoutChangingToolInputSchema()
+    {
+        using var provider = BuildHostServiceProvider(includeMcpTools: true);
+        Assert.IsNotNull(provider.GetRequiredService<ReferenceResponsePager>());
+        var tool = provider.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "find_references");
+        var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.IsFalse(properties.TryGetProperty("responsePager", out _));
+        CollectionAssert.AreEquivalent(
+            new[] { "workspaceId", "filePath", "line", "column", "symbolHandle", "metadataName", "limit", "offset", "summary", "projectFilter", "allowElicitation" },
+            properties.EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    [TestMethod]
     public void EveryToolMethod_InterfaceParameter_ResolvesFromHostServiceProvider()
     {
         using var provider = BuildHostServiceProvider();

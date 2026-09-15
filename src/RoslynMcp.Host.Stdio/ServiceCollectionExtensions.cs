@@ -5,6 +5,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
@@ -42,6 +43,7 @@ public static class ServiceCollectionExtensions
     /// <param name="executionGateOptions">Pre-bound execution-gate options.</param>
     /// <param name="securityOptions">Pre-bound security options.</param>
     /// <param name="scriptingServiceOptions">Pre-bound scripting-service options.</param>
+    /// <param name="referenceResponsePager">Pre-bound reference response byte budget; defaults when omitted.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     /// <remarks>
     /// The dual <see cref="NuGetVersionChecker"/> / <see cref="ILatestVersionProvider"/>
@@ -61,7 +63,8 @@ public static class ServiceCollectionExtensions
         PreviewStoreOptions previewStoreOptions,
         ExecutionGateOptions executionGateOptions,
         SecurityOptions securityOptions,
-        ScriptingServiceOptions scriptingServiceOptions)
+        ScriptingServiceOptions scriptingServiceOptions,
+        ReferenceResponsePager? referenceResponsePager = null)
     {
         services.AddSingleton(workspaceManagerOptions);
         services.AddSingleton(validationServiceOptions);
@@ -69,6 +72,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(executionGateOptions);
         services.AddSingleton(securityOptions);
         services.AddSingleton(scriptingServiceOptions);
+        services.AddSingleton(referenceResponsePager ?? ReferenceResponsePager.Default);
 
         // Tool methods inject the interface directly. Defaults keep non-production composition
         // roots secret-safe and output-free; Program replaces the sink registration after it

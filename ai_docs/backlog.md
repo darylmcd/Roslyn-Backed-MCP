@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T18:57:01Z
+**updated_at:** 2026-09-15T19:34:19Z
 
 ## Agent contract
 
@@ -93,8 +93,6 @@
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `scripting-startup-cancellation-causal-barrier` | Medium | scripting-supervisor-outer-cancellation-contended-timeout | Replace the remaining startup-cancellation timing inference with a causal barrier and deterministic recovery proof. [type: test-reliability] [source: 2026-09-10 scripting supervisor remediation] | S | items/scripting-startup-cancellation-causal-barrier.md |
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
-| `list-tool-response-byte-budget` | Medium | — | **`find_references` serialized-byte ceiling** — stop appending refs once the serialized JSON would cross an env-configured byte budget, then set `hasMore` plus an additive `nextOffset`; row `limit` alone does not bound payload bytes. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | S | items/list-tool-response-byte-budget.md |
-| `server-guidance-callable-tools-autoreload` | Medium | — | **Name callable tools and the auto-reload default in server guidance** — replace `recommend_workflow`'s two non-callable payload names (`discover_capabilities`, `test_run --filter`) with registered tools and state the auto-reload default. [type: docs] [source: roslyn-mcp retro 2026-09-13] | M | items/server-guidance-callable-tools-autoreload.md |
 | `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
@@ -247,6 +245,9 @@
 | `pwsh-script-runner-launch-configuration-deduplication` | Low | — | Share duplicated launch configuration across the PowerShell and generic executable test-runner entry points. [type: test-refactor] [source: adjacent-review] | S | items/pwsh-script-runner-launch-configuration-deduplication.md |
 | `workspace-validation-explicit-empty-tracker-fallback` | Low | — | Preserve explicit empty path lists without consulting the change tracker; reserve tracker fallback for omitted scope. [type: bug] [source: adjacent-review] | M | items/workspace-validation-explicit-empty-tracker-fallback.md |
 | `change-tracker-subscriber-failure-isolation` | Low | — | Invoke change-recorded subscribers independently so one failure cannot suppress later undo or state subscribers. [type: bug] [source: adjacent-review] | S | items/change-tracker-subscriber-failure-isolation.md |
+| `symbol-search-response-byte-budget` | Low | — | Bound symbol-search result pages by serialized bytes with lossless continuation. [type: quality] [source: adjacent-review] | M | items/symbol-search-response-byte-budget.md |
+| `symbol-search-pagination-integer-overflow` | Low | — | Reject or safely handle symbol-search pagination sums beyond Int32.MaxValue. [type: quality] [source: adjacent-review] | S | items/symbol-search-pagination-integer-overflow.md |
+| `symbol-disambiguation-response-byte-budget` | Low | — | Bound multi-candidate symbol disambiguation responses without dropping candidates. [type: quality] [source: adjacent-review] | S | items/symbol-disambiguation-response-byte-budget.md |
 
 ## Defer
 

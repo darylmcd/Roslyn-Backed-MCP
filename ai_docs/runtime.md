@@ -65,6 +65,7 @@ Optional overrides are read at startup from `src/RoslynMcp.Host.Stdio/Program.cs
 | `ROSLYNMCP_APPLY_REVERT_TIMEOUT_SECONDS` | `ValidationServiceOptions.ApplyRevertTimeout` | 30 seconds |
 | `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` | `ValidationServiceOptions.GitStatusTimeout` — bounds the `git status` subprocess at both `validate_recent_git_changes`'s scope-collection (on timeout, reports `overallStatus: git-status-unknown` instead of `clean`) and `validate_workspace`'s change-tracker reconcile fallback when `changedFilePaths` is omitted (on timeout, silently falls back to the unfiltered tracker list, no verdict change) | 10 seconds |
 | `ROSLYNMCP_MAX_RELATED_FILES` | `ValidationServiceOptions.MaxRelatedFiles` | 25 |
+| `ROSLYNMCP_REFERENCE_RESPONSE_MAX_BYTES` | Complete UTF-8 JSON byte ceiling for successful `find_references` reference pages; minimum 1024, invalid values use the default. Follow additive `nextOffset` while `hasMore=true`; terminal pages return null. An individual reference that cannot fit returns an error: retry with `summary=true` or raise the operator budget. | 32000 |
 | `ROSLYNMCP_FAST_FAIL_FILE_LOCK` | Early terminate `dotnet test` on MSB3027/MSB3021 file-lock failures | `true` |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `PreviewStoreOptions.MaxEntries` | 20 |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `PreviewStoreOptions.TtlMinutes` | 5 minutes |

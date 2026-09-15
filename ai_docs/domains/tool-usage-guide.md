@@ -3,7 +3,7 @@
 <!-- purpose: Help agents pick Roslyn MCP tools and preview/apply workflows. -->
 
 This document helps AI agents choose the right tools and workflows for common tasks.
-Call `discover_capabilities` with a category to get contextual guidance, or use `server_info` for a full capability overview.
+Call `recommend_workflow` with the task for focused tool guidance. For category guidance, use `get_prompt_text` with `promptName: "discover_capabilities"` and `parametersJson` containing `taskCategory`, or retrieve that prompt through `prompts/get`. Use `server_info` for the server overview. Workspace-scoped calls auto-reload stale state by default; pre-emptive `workspace_reload` calls are unnecessary.
 
 **Policy:** Use the Roslyn MCP server for C# **refactoring** as well as discovery—see [`runtime.md`](../runtime.md) (*Roslyn MCP client policy*).
 
@@ -81,7 +81,7 @@ for an arbitrary filter):
 1. `compile_check` — structured diagnostics on the loaded workspace. Sub-second on a
    warm workspace; identical diagnostic coverage to `dotnet build` modulo analyzer
    packages (which are the same set this repo's MSBuild targets pull in).
-2. `test_related_files` → `test_run --filter "<filter>"` — derive the test filter from
+2. `test_related_files` → `test_run(workspaceId, filter: "<filter>")` — derive the test filter from
    the touched-file set, then run only the relevant subset. Returns in seconds instead
    of the minutes a full `dotnet test` takes.
 3. `format_check` — confirm `dotnet format`-equivalent whitespace / using-ordering is
@@ -90,7 +90,7 @@ for an arbitrary filter):
 Example (after editing `src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs`):
 
 ```text
-compile_check(workspaceId, projectFilter: "RoslynMcp.Roslyn")
+compile_check(workspaceId, projectName: "RoslynMcp.Roslyn")
 test_related_files(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
   → returns filter "FullyQualifiedName~SymbolSearch"
 test_run(workspaceId, filter: "FullyQualifiedName~SymbolSearch")

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -6,6 +7,38 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkflowRecommendationToolsTests
 {
+    [TestMethod]
+    [DataRow("find callers")]
+    [DataRow("file outline")]
+    [DataRow("compile sanity")]
+    [DataRow("run related tests")]
+    [DataRow("rename symbol")]
+    [DataRow("pattern search")]
+    [DataRow("unclassified task")]
+    public async Task RecommendWorkflow_EveryRecommendedHopResolves(string task)
+    {
+        using var document = JsonDocument.Parse(await WorkflowRecommendationTools.RecommendWorkflow(task));
+        foreach (var property in new[] { "primaryTools", "followUpTools" })
+        {
+            foreach (var entry in document.RootElement.GetProperty(property).EnumerateArray())
+            {
+                var name = entry.GetString();
+                Assert.IsNotNull(name);
+                Assert.IsTrue(name == "roslyn://server/catalog" || ServerSurfaceCatalog.TryGetTool(name, out _),
+                    $"'{name}' from '{task}' must be a registered tool or the pinned catalog resource.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task RecommendWorkflow_FallbackNamesPromptShimAndItsArguments()
+    {
+        using var document = JsonDocument.Parse(await WorkflowRecommendationTools.RecommendWorkflow("unclassified task"));
+        Assert.AreEqual("get_prompt_text", document.RootElement.GetProperty("primaryTools")[0].GetString());
+        StringAssert.Contains(document.RootElement.GetProperty("why").GetString(), "promptName=discover_capabilities");
+        Assert.AreEqual("server_idle_or_ready", document.RootElement.GetProperty("requiredWorkspaceState").GetString());
+    }
+
     [TestMethod]
     [DataRow("find callers of AnimalService.CountAnimals", "find_references", "rg")]
     [DataRow("show a file outline", "document_symbols", "reading the entire file")]
