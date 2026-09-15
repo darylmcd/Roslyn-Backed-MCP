@@ -178,6 +178,10 @@ internal sealed class InMemoryMcpClientServerHarness : IAsyncDisposable
                     // handshake. Protocol revisions through 2025-11-25 expose capabilities there;
                     // modern request-scoped behavior is covered separately through tools/call.
                     ProtocolVersion = options.ProtocolVersion,
+                    // This harness owns a discovery-capable server. A short probe timeout
+                    // can misclassify scheduler contention as a legacy peer and change eras.
+                    // Keep initialization bounded by the SDK's overall connect timeout.
+                    DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
                     Capabilities = options.ClientCapabilities,
                     Handlers = options.ClientHandlers,
                 },

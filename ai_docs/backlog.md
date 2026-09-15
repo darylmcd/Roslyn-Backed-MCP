@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T16:12:37Z
+**updated_at:** 2026-09-15T16:44:28Z
 
 ## Agent contract
 
@@ -167,7 +167,6 @@
 | `root-expansion-grant-registry-host-ownership` | Low | — | Inject root-expansion grant ownership — replace process-static authorization state with a host singleton and lifecycle-owned subscription. [type: refactor] [source: 2026-08-21 lifecycle remediation adjacent review] | M | items/root-expansion-grant-registry-host-ownership.md |
 | `workspace-manager-load-finalization-collaborator-extraction` | Low | — | **Extract workspace-load finalization** — move path validation, indexing, readiness projection, and session-state assembly out of WorkspaceManager without changing load/reload semantics. [type: refactor] [source: 2026-08-21 adjacent review] | M | items/workspace-manager-load-finalization-collaborator-extraction.md |
 | `type-extraction-same-file-rewriter-decomposition` | Low | — | Isolate type-extraction same-file semantic rewriting behind one internal collaborator while preserving symbol-identity and refusal semantics. [type: refactor] [source: 2026-08-22 adjacent review] | M | items/type-extraction-same-file-rewriter-decomposition.md |
-| `prompt-wire-protocol-negotiation-parallel-isolation` | Low | — | Isolate intermittent legacy/latest protocol negotiation state across parallel in-memory MCP wire tests and add a repeated concurrency regression. | S | items/prompt-wire-protocol-negotiation-parallel-isolation.md |
 | `mutation-analysis-property-write-orchestrator-decomposition` | Low | analysis-services-dedup-reference-classifiers | **Decompose property-write analysis orchestration** — extract reference traversal and positional-record projection from the 95-line hotspot while preserving write classifications. [type: refactor] [source: 2026-08-23 LocationDto Stage 1 adjacent review] | S | items/mutation-analysis-property-write-orchestrator-decomposition.md |
 | `wire-contract-minimal-workspace-fixture` | Low | — | **Use a minimal workspace for protocol-only wire tests** — retain both protocol eras and every payload/notification assertion without repeatedly loading the full sample solution. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/wire-contract-minimal-workspace-fixture.md |
 | `edit-integration-fixture-load-amortization-wave-1` | Low | — | **Amortize isolated workspace loads in the first edit-test wave** — reuse one class-private fixture only with deterministic byte and preview/undo-state restoration before every case. [type: test performance] [source: 2026-08-24 TRX hotspot audit] | S | items/edit-integration-fixture-load-amortization-wave-1.md |

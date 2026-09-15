@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.ProtocolCompatibility;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests.Helpers;
@@ -11,6 +12,61 @@ namespace RoslynMcp.Tests.Helpers;
 [TestClass]
 public sealed class InMemoryMcpClientServerHarnessTests
 {
+    [TestMethod]
+    [Timeout(60_000, CooperativeCancellation = true)]
+    public async Task CreateAsync_DelayedDiscovery_DoesNotDowngradeToLegacyHandshake()
+    {
+        var discoveryCount = 0;
+        var serverOptions = new McpServerOptions
+        {
+            Filters = new McpServerFilters
+            {
+                Message = new McpMessageFilters
+                {
+                    IncomingFilters = [next => async (context, cancellationToken) =>
+                    {
+                        if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ServerDiscover })
+                        {
+                            Interlocked.Increment(ref discoveryCount);
+                            // Cross the SDK's automatic fallback threshold, rather than
+                            // relying on incidental machine load to delay discovery.
+                            await Task.Delay(new McpClientOptions().DiscoverProbeTimeout + TimeSpan.FromSeconds(1),
+                                cancellationToken);
+                        }
+                        await next(context, cancellationToken);
+                    }],
+                },
+            },
+        };
+        async Task AssertProtocolAsync(string? requested, string expected)
+        {
+            await using var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+                transportName: "delayed-discovery-" + expected,
+                clientCapabilities: new ClientCapabilities { Elicitation = new ElicitationCapability() },
+                clientHandlers: new McpClientHandlers(),
+                disposalFailureContext: "delayed-discovery-" + expected,
+                cancellationToken: CancellationToken.None,
+                protocolVersion: requested,
+                serverOptions: requested is null ? serverOptions : null);
+
+            Assert.AreEqual(expected, harness.Client.NegotiatedProtocolVersion);
+            if (requested is null)
+                Assert.IsNull(harness.Server.ClientCapabilities,
+                    "A delayed discovery response must retain modern request-scoped capabilities.");
+            else
+                Assert.IsNotNull(harness.Server.ClientCapabilities,
+                    "The concurrent legacy peer must retain its own capability snapshot.");
+        }
+
+        for (var iteration = 0; iteration < 3; iteration++)
+        {
+            await Task.WhenAll(
+                AssertProtocolAsync(null, RequestProtocolFeatureGate.July2026ProtocolVersion),
+                AssertProtocolAsync("2025-11-25", "2025-11-25"));
+        }
+        Assert.AreEqual(3, discoveryCount);
+    }
+
     [TestMethod]
     [Timeout(10_000, CooperativeCancellation = true)]
     public async Task CreateAsync_WhenClientInitializationIsCancelled_DisposesServerServices()
