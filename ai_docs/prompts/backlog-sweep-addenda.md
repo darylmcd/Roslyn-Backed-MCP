@@ -30,6 +30,19 @@ skipCiToken: ""   # NONE — see CI gate note below
 
 `ci_equivalent` mirrors the five scripts the PR leg of `.github/workflows/ci.yml` runs, in order. `verify-release.ps1` alone is **not** the gate: `verify-changed-format` (changed-file formatter findings) and `verify-nuget-audit` fail PRs that a release build passes, and `verify-ai-docs` / `verify-changelog-fragments` run *before* the SDK is even set up. CI shards `verify-release.ps1` across matrix legs (`-TestShardOnly`, `-ExcludeNetworkTests`); locally, run it unsharded. Skip steps only when context-tight; `fallback_compile` + targeted `mcp__roslyn__test_run` is the documented minimum substitute.
 
+**Topology split — `ci_equivalent` is the code-PR shape.** The `route` job runs `eng/resolve-ci-topology.ps1`, which classifies a PR as **docs-only** when every changed path matches `^(.*\.md|ai_docs/.*\.json)$` *and* none matches the behavior-bearing carve-out (`CHANGELOG.md`, or anything under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, `.github/prompts/`). A partial or over-capped files-API enumeration fails closed to the full matrix.
+
+| | Code PR | Docs-only PR |
+|---|---|---|
+| Matrix | 4 hosted Windows + 2 Linux shards | 2 Linux shards (`docs-linux-{1,2}-of-2`) |
+| `verify-changelog-fragments`, `verify-ai-docs` | run | run |
+| `verify-release.ps1` | runs; artifact-owner leg packages | **runs**, but every leg is forced `-TestShardOnly` — tests shard, no packaging/coverage/artifacts |
+| `verify-changed-format` | runs on the artifact-owner leg | skipped |
+| `verify-nuget-audit` | runs on the artifact-owner leg | skipped |
+| `sdk-floor (10.0.400)` | runs | skipped |
+
+So a docs-only initiative running `ci_equivalent` verbatim executes two scripts CI will skip. That is the safe direction — over-validating locally never lets a red PR through — so run the full list by default and drop those two only when you have confirmed the PR is docs-only by the rule above. Never assume the reverse: a row that touches a skill, agent, prompt, or `CHANGELOG.md` is a **code** PR no matter how markdown-shaped it looks.
+
 **Required check + no skip token.** Branch protection requires the aggregate `validate` check (`ci.yml` job `validate`, which fans in `route` + every `validate-leg`). A `[skip ci]` token in a commit subject leaves that check never-reported, so the PR is permanently BLOCKED — including on no-code state-flip/reconcile commits. `skipCiToken` is therefore **empty**: never put a skip token in any commit on a PR branch here.
 
 `dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. The parent `/ship` owner invokes it when its canonical cleanup needs it; this addendum must never prescribe branch or worktree deletion. Its informational stdout is not an error, so cleanup checks must use its exit status rather than treat output as failure.
