@@ -197,6 +197,59 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    [DataRow("ordinary")]
+    [DataRow("case-distinct")]
+    [DataRow("literal-backslash")]
+    public async Task GitScope_BuildOutputFilter_UsesPlatformPathIdentity(string shape)
+    {
+        if (!IsGitAvailable())
+            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+        if (shape == "literal-backslash" && OperatingSystem.IsWindows())
+            Assert.Inconclusive("Windows does not support literal backslashes in file names.");
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        string[] excluded = ["bin/Generated.cs", "obj/Generated.cs", "nested/bin/Generated.cs", "nested/obj/Generated.cs"];
+        string[] retained = shape switch
+        {
+            "case-distinct" => ["Bin/Source.cs", "Obj/Source.cs", "nested/Bin/Source.cs", "nested/Obj/Source.cs"],
+            "literal-backslash" => ["bin\\Source.cs", "obj\\Source.cs", "nested\\bin/Source.cs", "nested\\obj/Source.cs"],
+            _ => ["binary/Source.cs", "objects/Source.cs", "nested/bin.cs", "nested/obj.cs"],
+        };
+        foreach (var relative in excluded)
+        {
+            var absolute = workspace.GetPath(relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+            await File.WriteAllTextAsync(absolute, "// generated output\n");
+        }
+        if (shape == "case-distinct" && Directory.Exists(workspace.GetPath("Bin")))
+            Assert.Inconclusive("This fixture filesystem does not support case-distinct directories.");
+
+        foreach (var relative in retained)
+        {
+            var absolute = workspace.GetPath(relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+            await File.WriteAllTextAsync(absolute, "// source outside the loaded projects\n");
+        }
+        // Force-stage outputs so the filter is exercised even with the fixture's .gitignore.
+        foreach (var relative in excluded.Concat(retained))
+            GitFixtureRunner.RunGit(workspace.RootPath, "add", "-f", "--", relative);
+        var known = workspace.GetPath("SampleLib", "Dog.cs");
+        await File.AppendAllTextAsync(known, "\n// known dirty source\n");
+
+        var result = await _validationService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { known }, result.ChangedFilePaths.ToArray());
+        CollectionAssert.AreEquivalent(retained.Select(relative => Path.GetFullPath(workspace.GetPath(relative))).ToArray(),
+            result.UnknownFilePaths.ToArray(), "Legitimate source paths must survive Git scope filtering.");
+        Assert.IsEmpty(result.Warnings);
+    }
+
+    [TestMethod]
     public async Task ValidateRecentGitChangesAsync_NestedSolution_UsesRepositoryRelativePaths()
     {
         if (!IsGitAvailable())

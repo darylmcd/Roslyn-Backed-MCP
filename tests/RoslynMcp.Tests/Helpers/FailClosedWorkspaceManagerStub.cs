@@ -5,13 +5,16 @@ using RoslynMcp.Roslyn.Contracts;
 namespace RoslynMcp.Tests.Helpers;
 
 /// <summary>
-/// Minimal workspace-manager test double. Only the explicitly configured workspace list is
+/// Minimal workspace-manager test double. Only the explicitly configured list and handlers are
 /// supported; every unrelated operation fails loudly so interface growth cannot create a
 /// permissive test path by accident.
 /// </summary>
 internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[] workspaces) : IWorkspaceManager
 {
     private WorkspaceStatusDto[] _workspaces = workspaces;
+
+    public Func<string, WorkspaceStatusDto>? GetStatusHandler { get; init; }
+    public Func<string, Solution>? GetCurrentSolutionHandler { get; init; }
 
     // Consumers may establish passive cache-invalidation subscriptions during construction.
     // Accept add/remove without publishing events; operational members still fail closed.
@@ -32,7 +35,8 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
     public bool ContainsWorkspace(string workspaceId) => throw Unsupported();
     public bool IsStale(string workspaceId) => throw Unsupported();
     public bool Close(string workspaceId) => throw Unsupported();
-    public WorkspaceStatusDto GetStatus(string workspaceId) => throw Unsupported();
+    public WorkspaceStatusDto GetStatus(string workspaceId) =>
+        GetStatusHandler is { } handler ? handler(workspaceId) : throw Unsupported();
 
     public Task<WorkspaceStatusDto> GetStatusAsync(
         string workspaceId,
@@ -51,11 +55,12 @@ internal sealed class FailClosedWorkspaceManagerStub(params WorkspaceStatusDto[]
         CancellationToken ct) => throw Unsupported();
 
     public int GetCurrentVersion(string workspaceId) => throw Unsupported();
-    public Solution GetCurrentSolution(string workspaceId) => throw Unsupported();
+    public Solution GetCurrentSolution(string workspaceId) =>
+        GetCurrentSolutionHandler is { } handler ? handler(workspaceId) : throw Unsupported();
     public Project? GetProject(string workspaceId, string projectNameOrPath) => throw Unsupported();
     public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw Unsupported();
     public void RestoreVersion(string workspaceId, int version) => throw Unsupported();
 
     private static NotSupportedException Unsupported() =>
-        new("This fail-closed workspace-manager test double only supports ListWorkspaces and ReplaceWith.");
+        new("This fail-closed workspace-manager test double only supports its workspace list and explicitly configured handlers.");
 }
