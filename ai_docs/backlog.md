@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T20:36:26Z
+**updated_at:** 2026-09-15T21:29:36Z
 
 ## Agent contract
 
@@ -96,6 +96,7 @@
 | `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
+| `verify-ai-docs-link-anchor-fragments` | Medium | — | **Validate `#anchor` fragments in ai_docs relative links** — teach `eng/verify-ai-docs.ps1` to check the fragment half against the target file headings, not just file existence. [type: chore] [source: 2026-09-15 addenda retrospective] | S | items/verify-ai-docs-link-anchor-fragments.md |
 
 ## Low
 
@@ -152,7 +153,6 @@
 | `suppression-service-pragma-collaborator-decomposition` | Low | — | **Extract the SuppressionService pragma collaborator** — move pragma parsing and mutation into one internal collaborator while preserving the public facade and pinned-write invariants. [type: refactor] [source: 2026-08-16 remediation review] | M | items/suppression-service-pragma-collaborator-decomposition.md |
 | `namespace-in-scope-shared-helper` | Low | — | **Share one namespace-in-scope test across rewrite services** — the BulkRefactoringService copy is strictly weaker (compilation-unit usings only, no alias/static filter). [type: bug] [source: PR #1271 cq review] | M | items/namespace-in-scope-shared-helper.md |
 | `parameter-object-dto-folder-validation-consolidation` | Low | — | **Consolidate dtoFolders entry validation** — one owner for the split/validate pre-checks, refuse on null compilation instead of failing open, and unify the case policy across the document and on-disk collision guards. [type: bug] [source: PR #1273 cq review] | M | items/parameter-object-dto-folder-validation-consolidation.md |
-| `addenda-reconcile-pr-no-skip-ci` | Low | — | **Record the no-`[skip ci]` rule in the addenda** — branch protection requires the `validate` check, so a skip token leaves a reconcile PR permanently BLOCKED. [type: docs] [source: 2026-08-19 sweep reconcile PR #1285] | S | items/addenda-reconcile-pr-no-skip-ci.md |
 | `flow-analysis-remediation-per-operation` | Low | — | **Give each flow-analysis operation accurate remediation text** — the shared const now tells `extract_method_preview` callers to widen to an expression-bodied member, which is not a valid extract selection. [type: bug] [source: 2026-08-19 PR #1297 review] | M | items/flow-analysis-remediation-per-operation.md |
 | `semantic-grep-sentinel-compile-tracked-coupling` | Low | — | **Bind the regex-guidance arm to `SemanticGrepService.InvalidRegexSentinel`** — the const was introduced as the cross-assembly contract but has zero consumers; the handler re-spells its text. [type: refactor] [source: 2026-08-20 PR #1300 review] | M | items/semantic-grep-sentinel-compile-tracked-coupling.md |
 | `test-run-failure-envelope-test-concern-split` | Low | — | **Split the test-run failure-envelope suite by concern** — separate classification and paging contracts from the 980-line mixed suite. [type: refactor] [source: 2026-08-20 adjacent review] | S | items/test-run-failure-envelope-test-concern-split.md |
@@ -247,6 +247,7 @@
 | `symbol-disambiguation-response-byte-budget` | Low | — | Bound multi-candidate symbol disambiguation responses without dropping candidates. [type: quality] [source: adjacent-review] | S | items/symbol-disambiguation-response-byte-budget.md |
 | `code-fix-provider-cache-reference-lifetime` | Low | — | Scope code-fix provider caching to analyzer reference lifetime and platform-correct paths. [type: quality] [source: diagnostic-provider-review] | S | items/code-fix-provider-cache-reference-lifetime.md |
 | `feature-provider-constructor-cancellation-unwrapping` | Low | — | Preserve cancellation thrown by reflected feature-provider constructors. [type: quality] [source: diagnostic-provider-review] | S | items/feature-provider-constructor-cancellation-unwrapping.md |
+| `items-gate-forced-companion-prose-dedupe` | Low | — | **Drop the duplicated gate-forced-companion paragraph from 34 items files** — the addenda now expresses the README surface-count companion once, machine-readably; replace the per-row prose with a pointer. [type: docs] [source: 2026-09-15 addenda retrospective] | M | items/items-gate-forced-companion-prose-dedupe.md |
 
 ## Defer
 
