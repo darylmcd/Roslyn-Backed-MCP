@@ -467,6 +467,100 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             throw new InvalidOperationException("injected validation failure");
     }
 
+    [TestMethod]
+    [DataRow("cancelled")]
+    [DataRow("timeout")]
+    [DataRow("failure")]
+    public async Task GitCollection_InterruptedProcessExitsAndBothReadersCompleteAsync(string interruption)
+    {
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, "git-owned-process", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(fixtureRoot, ".git"));
+        var scriptPath = Path.Combine(fixtureRoot, "blocked.ps1");
+        await File.WriteAllTextAsync(scriptPath,
+            "[Console]::Out.WriteLine('stdout-ready')\n" +
+            "[Console]::Error.WriteLine('stderr-ready')\nStart-Sleep -Seconds 60\n");
+        using var cancellation = new CancellationTokenSource();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readers = new List<Task<string>>();
+        var readyCount = 0;
+        Process? observedProcess = null;
+        var reported = new List<Exception>();
+        var primaryFailure = new IOException("primary-failure-sentinel");
+        var collector = new GitChangedFilesCollector(
+            (exception, _) =>
+            {
+                reported.Add(exception);
+                return new WorkspaceValidationFailureDetail("Internal", "sanitized failure");
+            },
+            waitForGitExitAsync: async (process, token) =>
+            {
+                observedProcess = Process.GetProcessById(process.Id);
+                // Timeout/cancellation cannot run until the real child has opened both pipes.
+                await ready.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                if (interruption == "failure")
+                    throw primaryFailure;
+                if (interruption == "cancelled")
+                    cancellation.Cancel();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            },
+            configureStartInfo: startInfo =>
+            {
+                startInfo.FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
+                startInfo.ArgumentList.Clear();
+                foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-File", scriptPath })
+                    startInfo.ArgumentList.Add(argument);
+            },
+            readOutputAsync: (reader, token) =>
+            {
+                async Task<string> ReadAsync()
+                {
+                    var first = await reader.ReadLineAsync(token);
+                    Assert.IsTrue(first is "stdout-ready" or "stderr-ready");
+                    if (Interlocked.Increment(ref readyCount) == 2)
+                        ready.TrySetResult();
+                    return first + await reader.ReadToEndAsync(token);
+                }
+                var task = ReadAsync();
+                readers.Add(task);
+                return task;
+            });
+        try
+        {
+            var run = collector.CollectAsync(fixtureRoot,
+                interruption == "timeout" ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(30), cancellation.Token);
+            if (interruption == "cancelled")
+            {
+                await Assert.ThrowsAsync<OperationCanceledException>(() => run);
+            }
+            else
+            {
+                var result = await run;
+                Assert.AreEqual(interruption == "timeout", result.TimedOut);
+                Assert.AreEqual(string.Empty, result.StdOut);
+                Assert.HasCount(1, result.Warnings);
+                if (interruption == "failure")
+                    CollectionAssert.Contains(reported, primaryFailure);
+            }
+            Assert.IsNotNull(observedProcess);
+            Assert.IsTrue(observedProcess.HasExited, "Cleanup must await process exit before returning.");
+            Assert.HasCount(2, readers);
+            Assert.IsTrue(readers.All(task => task.IsCompletedSuccessfully), "Both pipes must reach EOF before returning.");
+        }
+        finally
+        {
+            if (observedProcess is not null)
+            {
+                if (!observedProcess.HasExited)
+                {
+                    observedProcess.Kill(entireProcessTree: true);
+                    await observedProcess.WaitForExitAsync();
+                }
+                observedProcess.Dispose();
+            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Observability: a git process-tree kill failure during the
     // git-status timeout/failure cleanup must be logged at Warning (with the
@@ -478,7 +572,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     public void TryKillProcessTree_KillThrows_LogsWarningWithProcessId()
     {
         var logger = new ListLogger<WorkspaceValidationService>();
-        var killException = new InvalidOperationException("simulated kill failure");
+        var killException = new System.ComponentModel.Win32Exception("private-path-sentinel");
 
         var service = new WorkspaceValidationService(
             CompileCheckService,
@@ -489,8 +583,9 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             ChangeTracker,
             gitStatusTimeout: TimeSpan.FromSeconds(5),
             validationPhaseTimeout: TimeSpan.FromSeconds(5),
-            logger: logger,
-            killProcessTree: _ => throw killException);
+            logger: logger);
+        var collector = new GitChangedFilesCollector(
+            service.CreateUnexpectedFailure, logger, killProcessTree: _ => throw killException);
 
         using var process = Process.Start(new ProcessStartInfo
         {
@@ -500,16 +595,17 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
             CreateNoWindow = true,
         });
         Assert.IsNotNull(process, "Could not start a host process for the test.");
-        process.WaitForExit(5_000);
+        Assert.IsTrue(process.WaitForExit(5_000), "The probe process must exit.");
 
         // Must not throw — the kill failure is best-effort and swallowed for the caller.
-        service.TryKillProcessTree(process, "timeout");
+        collector.TryKillProcessTree(process);
 
         var entry = logger.Entries.SingleOrDefault(candidate =>
             candidate.Level == LogLevel.Warning &&
             candidate.Message.Contains("Failed to kill git process tree", StringComparison.Ordinal) &&
             candidate.Message.Contains(process.Id.ToString(), StringComparison.Ordinal) &&
-            ReferenceEquals(candidate.Exception, killException));
+            candidate.Exception is null &&
+            !candidate.Message.Contains("private-path-sentinel", StringComparison.Ordinal));
 
         Assert.AreNotEqual(default, entry,
             "A git kill failure must be observable at Warning level with the process id; "

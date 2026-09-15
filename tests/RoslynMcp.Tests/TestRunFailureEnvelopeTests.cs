@@ -235,7 +235,7 @@ public sealed class TestRunFailureEnvelopeTests
         var sink = new CapturingObservabilitySink();
         var service = new TestRunnerService(
             new SingleTestProjectWorkspaceManager(),
-            new TimeoutThrowingExecutor(timeout),
+            new ThrowingExecutionExecutor(timeout),
             NullLogger<TestRunnerService>.Instance,
             new ThrowingTestDiscoveryService(
                 new InvalidOperationException("Test discovery is not expected for this non-MTP timeout path.")),
@@ -298,6 +298,85 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.IsFalse(serialized.Contains(secretSentinel, StringComparison.Ordinal), serialized);
         Assert.IsFalse(serialized.Contains(secretToken, StringComparison.Ordinal), serialized);
         Assert.IsFalse(serialized.Contains("private/secrets.csproj", StringComparison.Ordinal), serialized);
+    }
+
+    [TestMethod]
+    [DataRow("passed", false)]
+    [DataRow("failed", false)]
+    [DataRow("timeout", false)]
+    [DataRow("cancelled", false)]
+    [DataRow("passed", true)]
+    [DataRow("failed", true)]
+    [DataRow("timeout", true)]
+    [DataRow("cancelled", true)]
+    public async Task RunTests_CleanupFails_PreservesPrimaryOutcomeAsync(string outcome, bool accessDenied)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var primaryCancellation = new OperationCanceledException(cancellation.Token);
+        var sink = new CapturingObservabilitySink();
+        var trxPath = WritePassedTrxFixture();
+        string? resultsPath = null;
+        try
+        {
+            IGatedCommandExecutor executor = outcome switch
+            {
+                "timeout" => new ThrowingExecutionExecutor(new TimeoutException("primary timeout")),
+                "cancelled" => new ThrowingExecutionExecutor(primaryCancellation),
+                _ => new CannedExecutionExecutor(FakeExecution(
+                    outcome == "passed" ? 0 : 1, $"Results File: {trxPath}", "Build FAILED.")),
+            };
+            var service = new TestRunnerService(
+                new SingleTestProjectWorkspaceManager(), executor,
+                NullLogger<TestRunnerService>.Instance,
+                new ThrowingTestDiscoveryService(new InvalidOperationException("Unexpected discovery.")),
+                options: null, exceptionReporter: new ServerObservabilityReporter(sink),
+                deleteResultsDirectory: path =>
+                {
+                    resultsPath = path;
+                    throw accessDenied
+                        ? new UnauthorizedAccessException($"cleanup-path-sentinel {path}")
+                        : new IOException($"cleanup-path-sentinel {path}");
+                });
+
+            if (outcome == "cancelled")
+            {
+                cancellation.Cancel();
+                var exception = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+                    service.RunTestsAsync("ws-cleanup", null, null, cancellation.Token));
+                Assert.AreSame(primaryCancellation, exception);
+                Assert.AreEqual(cancellation.Token, exception.CancellationToken);
+            }
+            else
+            {
+                var result = await service.RunTestsAsync("ws-cleanup", null, null, CancellationToken.None);
+                if (outcome == "timeout")
+                {
+                    Assert.AreEqual("Timeout", result.FailureEnvelope?.ErrorKind);
+                }
+                else
+                {
+                    Assert.AreEqual(1, result.Total);
+                    Assert.AreEqual(1, result.Passed);
+                    Assert.AreEqual(outcome == "passed" ? 0 : 1, result.Execution.ExitCode);
+                    Assert.AreEqual(outcome == "passed" ? null : "BuildFailure", result.FailureEnvelope?.ErrorKind);
+                }
+            }
+
+            Assert.IsNotNull(resultsPath, "The injected cleanup must actually run.");
+            var cleanupEvent = sink.Events.Last();
+            Assert.AreEqual("TestRun", cleanupEvent.Category);
+            CollectionAssert.Contains(cleanupEvent.Exception.ExceptionTypes.ToArray(),
+                accessDenied ? typeof(UnauthorizedAccessException).FullName : typeof(IOException).FullName);
+            var diagnostic = JsonSerializer.Serialize(cleanupEvent);
+            Assert.IsFalse(diagnostic.Contains("cleanup-path-sentinel", StringComparison.Ordinal), diagnostic);
+            Assert.IsFalse(diagnostic.Contains("RoslynMcpTestResults", StringComparison.Ordinal), diagnostic);
+        }
+        finally
+        {
+            File.Delete(trxPath);
+            if (resultsPath is not null)
+                Directory.Delete(resultsPath, recursive: true);
+        }
     }
 
     [TestMethod]
@@ -822,11 +901,9 @@ public sealed class TestRunFailureEnvelopeTests
 
     /// <summary>
     /// Stub <see cref="IGatedCommandExecutor"/> whose <c>ExecuteAsync</c> throws the supplied
-    /// <see cref="TimeoutException"/> — the shape <c>GatedCommandExecutor</c> produces when the
-    /// total timeout budget elapses without caller cancellation (mirrors
-    /// <c>CannedBuildOutputExecutor</c> in CompilationCacheAdoptionTests).
+    /// exception, preserving its identity for timeout and cancellation precedence assertions.
     /// </summary>
-    private sealed class TimeoutThrowingExecutor(TimeoutException exception) : IGatedCommandExecutor
+    private sealed class ThrowingExecutionExecutor(Exception exception) : IGatedCommandExecutor
     {
         public Task<CommandExecutionDto> ExecuteAsync(
             string workspaceId,

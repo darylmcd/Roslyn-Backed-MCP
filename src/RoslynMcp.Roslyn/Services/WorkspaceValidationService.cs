@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -24,12 +23,6 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private static readonly TimeSpan DefaultGitStatusTimeout = new ValidationServiceOptions().GitStatusTimeout;
     private static readonly TimeSpan DefaultValidationPhaseTimeout = TimeSpan.FromSeconds(25);
 
-    private static readonly Action<ILogger, int, string, Exception?> LogProcessKillFailed =
-        LoggerMessage.Define<int, string>(
-            LogLevel.Warning,
-            new EventId(1, nameof(LogProcessKillFailed)),
-            "Failed to kill git process tree for process {ProcessId} after {KillReason} while collecting git-changed files.");
-
     private readonly ICompileCheckService _compile;
     private readonly IDiagnosticService _diagnostics;
     private readonly ITestDiscoveryService _testDiscovery;
@@ -38,9 +31,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly IChangeTracker? _changeTracker;
     private readonly TimeSpan _gitStatusTimeout;
     private readonly TimeSpan _validationPhaseTimeout;
-    private readonly ILogger<WorkspaceValidationService>? _logger;
-    private readonly Action<Process> _killProcessTree;
-    private readonly Func<Process, CancellationToken, Task> _waitForGitExitAsync;
+    private readonly GitChangedFilesCollector _gitCollector;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
 
     /// <param name="validationOptions">
@@ -97,13 +88,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _changeTracker = changeTracker;
         _gitStatusTimeout = gitStatusTimeout > TimeSpan.Zero ? gitStatusTimeout : DefaultGitStatusTimeout;
         _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
-        _logger = logger;
-        _killProcessTree = killProcessTree ?? KillProcessTree;
-        _waitForGitExitAsync = waitForGitExitAsync ?? ((process, token) => process.WaitForExitAsync(token));
+        _gitCollector = new GitChangedFilesCollector(CreateUnexpectedFailure, logger, killProcessTree, waitForGitExitAsync);
         _exceptionReporter = exceptionReporter;
     }
-
-    private static void KillProcessTree(Process process) => process.Kill(entireProcessTree: true);
 
     public async Task<WorkspaceValidationDto> ValidateAsync(
         string workspaceId,
@@ -672,129 +659,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// </list>
     /// </summary>
     private async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings, bool TimedOut)> CollectGitChangedFilesAsync(
-        string solutionDirectory,
-        TimeSpan timeout,
-        CancellationToken ct)
+        string solutionDirectory, TimeSpan timeout, CancellationToken ct)
     {
-        // Fast pre-check: a `.git` directory / file (submodule, worktree) must exist somewhere
-        // at or above the solution directory. If none, we're demonstrably outside a repo and
-        // can skip the git invocation entirely — saves ~20 ms and gives a precise warning
-        // instead of the noisier "git exited 128" message.
-        if (!IsInsideGitRepository(solutionDirectory))
-        {
-            return (Array.Empty<string>(), new[]
-            {
-                "git repository not found at or above the loaded workspace; validated full workspace."
-            }, false);
-        }
-
-        ProcessStartInfo startInfo;
-        try
-        {
-            startInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-            };
-            RemoveAmbientGitRepositoryOverrides(startInfo);
-            startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
-            startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-            startInfo.ArgumentList.Add("-C");
-            startInfo.ArgumentList.Add(solutionDirectory);
-            startInfo.ArgumentList.Add("status");
-            startInfo.ArgumentList.Add("--porcelain=v1");
-            startInfo.ArgumentList.Add("-z");
-            startInfo.ArgumentList.Add("-uall");
-        }
-        catch (Exception ex)
-        {
-            return (Array.Empty<string>(), new[]
-            {
-                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitConfiguration).Summary
-            }, false);
-        }
-
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            if (!process.Start())
-            {
-                return (Array.Empty<string>(), new[]
-                {
-                    "git failed to start; validated full workspace."
-                }, false);
-            }
-        }
-        catch (Exception ex)
-        {
-            // File-not-found (git not on PATH), Win32Exception, etc.
-            return (Array.Empty<string>(), new[]
-            {
-                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStart).Summary
-            }, false);
-        }
-
-        string stdout;
-        try
-        {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(timeout);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
-            var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await _waitForGitExitAsync(process, timeoutCts.Token).ConfigureAwait(false);
-            stdout = await stdoutTask.ConfigureAwait(false);
-            _ = await stderrTask.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            TryKillProcessTree(process, "timeout");
-            return (Array.Empty<string>(), new[]
-            {
-                $"git status exceeded the timeout of {timeout.TotalSeconds:F0} second(s); retryable=true; validated full workspace."
-            }, true);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            TryKillProcessTree(process, "failure");
-            return (Array.Empty<string>(), new[]
-            {
-                CreateUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStatus).Summary
-            }, false);
-        }
-
-        if (process.ExitCode != 0)
-        {
-            return (Array.Empty<string>(), new[]
-            {
-                $"git status exited non-zero (exit {process.ExitCode}); validated full workspace."
-            }, false);
-        }
-
-        return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>(), false);
-    }
-
-    private static void RemoveAmbientGitRepositoryOverrides(ProcessStartInfo startInfo)
-    {
-        string[] repositoryOverrides =
-        [
-            "GIT_DIR",
-            "GIT_WORK_TREE",
-            "GIT_COMMON_DIR",
-            "GIT_INDEX_FILE",
-            "GIT_OBJECT_DIRECTORY",
-            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        ];
-
-        foreach (var variable in repositoryOverrides)
-        {
-            startInfo.Environment.Remove(variable);
-        }
+        var (stdout, warnings, timedOut) = await _gitCollector.CollectAsync(solutionDirectory, timeout, ct)
+            .ConfigureAwait(false);
+        return (ParseGitPorcelainZ(stdout, solutionDirectory), warnings, timedOut);
     }
 
     internal WorkspaceValidationFailureDetail CreateUnexpectedFailure(
@@ -821,58 +690,6 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return new WorkspaceValidationFailureDetail(
             detail.Category,
             $"{operationSummary} correlationId={detail.CorrelationId}");
-    }
-
-    /// <summary>
-    /// Best-effort termination of the git process tree. A kill failure is logged at
-    /// <see cref="LogLevel.Warning"/> (with the process id and reason) when a logger is present,
-    /// mirroring <c>DotnetCommandRunner.TryKillProcessTree</c>; it is never surfaced to the caller.
-    /// </summary>
-    internal void TryKillProcessTree(Process process, string killReason)
-    {
-        try
-        {
-            _killProcessTree(process);
-        }
-        catch (Exception ex)
-        {
-            if (_logger is not null)
-            {
-                LogProcessKillFailed(_logger, process.Id, killReason, ex);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Walks from <paramref name="startDirectory"/> upward looking for a <c>.git</c> entry (a
-    /// directory for a normal clone, a file for a submodule / linked worktree). Returns false
-    /// when we hit the filesystem root without finding one.
-    /// </summary>
-    private static bool IsInsideGitRepository(string startDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(startDirectory))
-            return false;
-
-        DirectoryInfo? current;
-        try
-        {
-            current = new DirectoryInfo(startDirectory);
-        }
-        catch
-        {
-            return false;
-        }
-
-        while (current is not null)
-        {
-            var gitEntry = Path.Combine(current.FullName, ".git");
-            if (Directory.Exists(gitEntry) || File.Exists(gitEntry))
-            {
-                return true;
-            }
-            current = current.Parent;
-        }
-        return false;
     }
 
     /// <summary>

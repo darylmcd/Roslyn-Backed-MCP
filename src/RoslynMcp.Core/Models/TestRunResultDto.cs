@@ -2,7 +2,7 @@ namespace RoslynMcp.Core.Models;
 
 /// <summary>
 /// Represents the result of executing a test run. When <paramref name="FailureEnvelope"/>
-/// is non-null, the run terminated without producing structured TRX output and the
+/// is non-null, execution failed (even if TRX results were produced) and the
 /// envelope carries a typed classification (file lock, build failure, timeout, unknown)
 /// plus the tail of StdOut/StdErr so callers can decide whether to retry.
 /// </summary>
@@ -25,8 +25,8 @@ public sealed record TestFailureDto(
     string? StackTrace);
 
 /// <summary>
-/// Structured failure envelope populated when <c>dotnet test</c> exits without producing
-/// TRX output (e.g., MSBuild file locks, build failures, timeouts). Carries an
+/// Structured failure envelope populated when <c>dotnet test</c> fails, including failures
+/// after producing TRX output (e.g., MSBuild file locks, build failures, timeouts). Carries an
 /// <see cref="ErrorKind"/> classification, a retry hint, and the tail of the captured
 /// StdOut/StdErr streams so callers do not need to re-run just to see what happened.
 /// </summary>
