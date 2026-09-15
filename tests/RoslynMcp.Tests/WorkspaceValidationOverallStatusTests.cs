@@ -130,7 +130,7 @@ public sealed class WorkspaceValidationOverallStatusTests
     }
 
     [TestMethod]
-    public void ComputeOverallStatus_TotalProjectsNonZero_ButNoProjectsCompleted_ZeroErrorCount_YieldsClean()
+    public void ComputeOverallStatus_TotalProjectsNonZero_ButNoProjectsCompleted_ZeroErrorCount_YieldsCompileIncomplete()
     {
         var compile = VacuousCompile(completedProjects: 0, totalProjects: 3);
 
@@ -140,7 +140,7 @@ public sealed class WorkspaceValidationOverallStatusTests
             null,
             runTests: false);
 
-        Assert.AreEqual("clean", status, "incomplete / vacuous compile_check must not be compile-error with zero errors");
+        Assert.AreEqual("compile-incomplete", status, "Unexamined projects cannot establish a clean verdict.");
     }
 
     /// <summary>
