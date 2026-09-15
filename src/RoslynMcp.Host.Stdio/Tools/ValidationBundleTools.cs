@@ -14,7 +14,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ValidationBundleTools
 {
     /// <remarks>
-    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | timeout.</para>
+    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | compile-incomplete | timeout.</para>
     /// <para>test-zero-run indicates runTests=true but the discovered filter matched zero tests - re-run test_run standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass.</para>
     /// <para>timeout indicates a validation phase exceeded the 25-second internal cap; the response carries compileResult.cancelled=true plus a warnings entry naming the phase and is safe to retry.</para>
     /// <para>Pass summary=true on multi-project solutions where the default response (per-diagnostic detail plus per-test rows) exceeds the MCP cap. Pass responseFormat="markdown" for a compact summary table; the verdict is preserved across both shapes.</para>
@@ -42,7 +42,7 @@ public static class ValidationBundleTools
 
     /// <remarks>
     /// <para>Falls back to full-workspace scope and surfaces the fallback via the Warnings field when git is unavailable (not on PATH, solution outside a git repo, git exited non-zero).</para>
-    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | git-status-unknown | timeout.</para>
+    /// <para>overallStatus is one of clean | compile-error | analyzer-error | test-failure | test-zero-run | compile-incomplete | git-status-unknown | timeout.</para>
     /// <para>git-status-unknown is unique to this tool: it fires when the git status scope-collection itself timed out, so a would-be clean verdict was computed over an untrustworthy fallback scope rather than the real working tree - retry, or raise ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS if git status is slow on this repo.</para>
     /// </remarks>
     [McpServerTool(Name = "validate_recent_git_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

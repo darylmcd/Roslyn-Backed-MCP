@@ -28,6 +28,8 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `decisions/0006-modelcontextprotocol-2-2-servicing.md` | ADR: ModelContextProtocol 2.1.0→2.2.0 servicing, stdio-only scope, and non-breaking compatibility disposition |
 | `decisions/0007-tasks-extension-compatibility.md` | ADR: exact Tasks/core 2.2.0 adoption posture, per-request opt-in, synchronous fallback, finite retention, and process-lifetime handles |
 | `decisions/0008-workspace-id-optional-adoption.md` | ADR: measured optional `workspaceId` adoption, NO-GO expansion decision, retired flip batches, and concrete recheck trigger |
+| `decisions/0009-tool-surface-policy.md` | ADR: tool consolidation risk buckets and compatibility aliases |
+| `decisions/0010-validation-verdict-completeness.md` | ADR: incomplete compilation verdicts and retryable test-phase timeouts |
 
 ## Claude Code Plugin
 

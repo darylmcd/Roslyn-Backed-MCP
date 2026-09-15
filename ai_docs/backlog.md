@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T17:19:09Z
+**updated_at:** 2026-09-15T18:20:40Z
 
 ## Agent contract
 
@@ -99,8 +99,7 @@
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
-| `workspace-validation-incomplete-compile-verdict` | Medium | — | Prevent incomplete compilation from reporting a clean validation verdict. [type: bug] [source: 2026-09-15 adjacent review] | M | items/workspace-validation-incomplete-compile-verdict.md |
-| `workspace-validation-test-phase-timeout-classification` | Medium | — | Preserve related-test phase timeout classification in validation bundles. [type: bug] [source: 2026-09-15 adjacent review] | M | items/workspace-validation-test-phase-timeout-classification.md |
+| `workspace-validation-timeout-resolved-scope` | Medium | — | **Preserve resolved scope at the timeout boundary** — Carry the resolved changed and unknown file sets into timeout results for explicit, tracker, and Git-fallback validation. [type: quality] [source: adjacent-review] | S | items/workspace-validation-timeout-resolved-scope.md |
 
 ## Low
 
@@ -247,6 +246,8 @@
 | `type-move-preview-orchestration-decomposition` | Low | — | Decompose type-move declaration selection and target-document planning while preserving preview and refusal contracts. [type: quality] [source: adjacent-review] | S | items/type-move-preview-orchestration-decomposition.md |
 | `markdown-link-destination-parser` | Low | — | Parse real Markdown link destinations without truncating balanced parentheses in valid filenames. [type: validation] [source: 2026-09-15 adjacent probe] | S | items/markdown-link-destination-parser.md |
 | `pwsh-script-runner-launch-configuration-deduplication` | Low | — | Share duplicated launch configuration across the PowerShell and generic executable test-runner entry points. [type: test-refactor] [source: adjacent-review] | S | items/pwsh-script-runner-launch-configuration-deduplication.md |
+| `workspace-validation-zero-run-warning-accuracy` | Low | — | **Restrict zero-run warnings to successful empty test runs** — Keep runner failures from also emitting speculative zero-test filter-resolution warnings. [type: quality] [source: adjacent-review] | S | items/workspace-validation-zero-run-warning-accuracy.md |
+| `workspace-validation-scope-description-contract` | Low | — | **Describe compilation and test scope accurately** — Align validation DTO and service documentation with full-workspace compilation and changed-file test discovery. [type: quality] [source: adjacent-review] | S | items/workspace-validation-scope-description-contract.md |
 
 ## Defer
 
