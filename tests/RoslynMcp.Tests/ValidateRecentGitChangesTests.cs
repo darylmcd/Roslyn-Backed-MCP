@@ -99,28 +99,59 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    [DataRow("git")]
-    [DataRow("explicit")]
-    [DataRow("tracker")]
-    public async Task Validation_CaseDistinctPaths_PreservesExactScope(string source)
+    [DataRow("git", true)]
+    [DataRow("explicit", true)]
+    [DataRow("tracker", true)]
+    [DataRow("git", false)]
+    [DataRow("explicit", false)]
+    [DataRow("tracker", false)]
+    public async Task Validation_PathIdentity_PreservesExactScope(string source, bool caseDistinct)
     {
         if (!IsGitAvailable())
             Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
-        var upper = workspace.GetPath("SampleLib", "CaseProbe.cs");
-        var lower = workspace.GetPath("SampleLib", "caseprobe.cs");
+        var upper = workspace.GetPath("CaseProbe.cs");
+        var lowerName = caseDistinct ? "caseprobe.cs" : "OtherProbe.cs";
+        var lower = workspace.GetPath(lowerName);
         await File.WriteAllTextAsync(upper, "// upper baseline\n");
         if (File.Exists(lower))
             Assert.Inconclusive("This fixture filesystem does not support case-distinct paths.");
         await File.WriteAllTextAsync(lower, "// lower baseline\n");
+        // MSBuild collapses case-only duplicate Compile items within one project. Use two
+        // explicit projects so the workspace contains both distinct document identities.
+        foreach (var (projectName, fileName) in new[] { ("Upper", "CaseProbe.cs"), ("Lower", lowerName) })
+        {
+            var projectDirectory = workspace.GetPath(projectName);
+            Directory.CreateDirectory(projectDirectory);
+            await File.WriteAllTextAsync(Path.Combine(projectDirectory, projectName + ".csproj"), $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+                  </PropertyGroup>
+                  <ItemGroup><Compile Include="../{fileName}" /></ItemGroup>
+                </Project>
+                """);
+        }
+        await File.WriteAllTextAsync(workspace.SolutionPath, """
+            <Solution>
+              <Project Path="Upper/Upper.csproj" />
+              <Project Path="Lower/Lower.csproj" />
+            </Solution>
+            """);
         GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.RunGit(workspace.RootPath, "add", "--", "CaseProbe.cs", lowerName, "Upper", "Lower");
         GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
         await workspace.LoadAsync(CancellationToken.None);
+        var documentPaths = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId)
+            .Projects.SelectMany(project => project.Documents).Select(document => document.FilePath).ToArray();
+        CollectionAssert.Contains(documentPaths, upper, "The fixture must load the upper-case document.");
+        CollectionAssert.Contains(documentPaths, lower, "The fixture must load the lower-case document.");
         await File.AppendAllTextAsync(upper, "// upper changed\n");
         await File.AppendAllTextAsync(lower, "// lower changed\n");
 
-        var wrongCase = workspace.GetPath("SampleLib", "CASEPROBE.cs");
+        var wrongCase = workspace.GetPath(caseDistinct ? "CASEPROBE.cs" : "MissingProbe.cs");
         ChangeTracker.RecordChange(workspace.WorkspaceId, "case-distinct edits",
             [upper, lower], "test");
         var result = source switch
