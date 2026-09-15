@@ -47,51 +47,16 @@ foreach ($pattern in $stalePatterns) {
     }
 }
 
-foreach ($file in $markdownFiles) {
-    $content = Get-Content -LiteralPath $file.FullName -Raw
-    $matches = [regex]::Matches($content, '\[[^\]]+\]\(([^)]+)\)')
+. (Join-Path $PSScriptRoot 'markdown-link-validation.ps1')
+$issues.AddRange([string[]]@(Get-MarkdownLinkIssue -Files $markdownFiles))
 
-    foreach ($match in $matches) {
-        $target = $match.Groups[1].Value.Trim()
-
-        if ($target -match '^(https?:|mailto:|#)') {
-            continue
-        }
-
-        # Skip template placeholder links like ([#{prNumber}]({prUrl})) — doc authors
-        # use these in example blocks; they are not resolvable filesystem paths.
-        if ($target -match '\{[^}]+\}') {
-            continue
-        }
-
-        $pathPart = $target.Split('#')[0].Split('?')[0] -replace '%20', ' '
-        if ([string]::IsNullOrWhiteSpace($pathPart)) {
-            continue
-        }
-
-        # All-dot targets like `(...)` are ellipsis placeholders, never real paths. Windows
-        # path normalization makes Test-Path resolve them (so the self-hosted PR runs passed)
-        # while Linux treats them as a plain missing filename (so every hosted-ubuntu run
-        # failed) — flag them on every platform so PR CI catches what the weekly run would.
-        # Intentional placeholder links must use the {braces} convention skipped above.
-        if ($pathPart -match '^\.{3,}[/\\]?$') {
-            $issues.Add("Broken relative link (all-dot placeholder; use {braces} instead): $($file.FullName) -> $target")
-            continue
-        }
-
-        if ($pathPart -match '^[a-zA-Z]:\\') {
-            if (-not (Test-Path -LiteralPath $pathPart)) {
-                $issues.Add("Broken absolute link: $($file.FullName) -> $target")
-            }
-
-            continue
-        }
-
-        $resolved = Join-Path -Path $file.DirectoryName -ChildPath $pathPart
-        if (-not (Test-Path -LiteralPath $resolved)) {
-            $issues.Add("Broken relative link: $($file.FullName) -> $target")
-        }
-    }
+. (Join-Path $PSScriptRoot 'reconciliation-cleanup-contract.ps1')
+$planReconcilerPath = Join-Path $RepoRoot '.claude/skills/reconcile-backlog-sweep-plan/SKILL.md'
+if (-not [System.IO.File]::Exists($planReconcilerPath)) {
+    $issues.Add('Missing remediation-plan reconciliation guidance.')
+}
+else {
+    $issues.AddRange([string[]]@(Get-ReconciliationCleanupIssue -Content ([System.IO.File]::ReadAllText($planReconcilerPath))))
 }
 
 try {

@@ -14,7 +14,7 @@ Algorithm:
      unstaged changes, and untracked `*.cs` files. Filter it to files that still exist on disk.
      An empty set exits 0 immediately.
   2. Run `dotnet format <solution> --verify-no-changes --no-restore` scoped to that set and
-     parse the formatter diagnostics FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE. Compiler
+     parse the formatter diagnostics ENDOFLINE, FINALNEWLINE, IDE1006, IMPORTS, and WHITESPACE. Compiler
      and analyzer diagnostics remain owned by the build/analyzer gates.
   3. Bucket the findings per (file, diagnostic id) and compare the observed count against the
      count the tracked baseline records for that same pair.
@@ -83,7 +83,7 @@ $ErrorActionPreference = "Stop"
 # PowerShell-side filter alone scopes the result. Keeps the gate correct on rename-heavy or
 # very wide pull requests instead of failing on a command line the OS refuses to launch.
 $includeArgumentBudget = 20000
-$gatedDiagnosticIds = @("FINALNEWLINE", "IDE1006", "IMPORTS", "WHITESPACE")
+$gatedDiagnosticIds = @("ENDOFLINE", "FINALNEWLINE", "IDE1006", "IMPORTS", "WHITESPACE")
 $gatedDiagnosticIdSet = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]$gatedDiagnosticIds,
     [System.StringComparer]::Ordinal)
