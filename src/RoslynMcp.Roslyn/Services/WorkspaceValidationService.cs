@@ -295,16 +295,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         IReadOnlyList<string> changedFiles,
         CancellationToken ct)
     {
-        string? solutionDir;
-        try
-        {
-            solutionDir = ResolveSolutionDirectory(workspaceId);
-        }
-        catch
-        {
-            solutionDir = null;
-        }
-
+        var solutionDir = TryResolveReconcileDirectory(workspaceId);
         if (solutionDir is null)
             return changedFiles;
 
@@ -329,6 +320,33 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return changedFiles
             .Where(p => dirty.Contains(NormalizePathForReconcile(p)))
             .ToArray();
+    }
+
+    private string? TryResolveReconcileDirectory(string workspaceId)
+    {
+        WorkspaceStatusDto status;
+        try
+        {
+            status = _workspace.GetStatus(workspaceId);
+        }
+        catch (KeyNotFoundException)
+        {
+            // A session can disappear before this optional precision improvement.
+            return null;
+        }
+
+        if (status.LoadedPath is null)
+            return null;
+
+        try
+        {
+            return Path.GetDirectoryName(Path.GetFullPath(status.LoadedPath));
+        }
+        catch (Exception ex) when (IsMalformedPathException(ex))
+        {
+            return null;
+        }
+        // Unexpected failures and cancellation reach the structured tool boundary.
     }
 
     /// <summary>
@@ -478,9 +496,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 {
                     normalized = Path.GetFullPath(path);
                 }
-                catch (Exception) when (path is not null)
+                catch (Exception ex) when (IsMalformedPathException(ex))
                 {
-                    // An unrooted / malformed path is definitively unknown.
+                    // Malformed input is unknown; unexpected failures must remain observable.
                     unknown.Add(path);
                     continue;
                 }
@@ -741,13 +759,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// </summary>
     private static bool IsBuildOutputPath(string repoRelativePath)
     {
-        var normalized = repoRelativePath.Replace('\\', '/');
+        var normalized = repoRelativePath.Replace(Path.DirectorySeparatorChar, '/');
         // Check for `obj/` or `bin/` at any path segment — we don't anchor to the start
         // because the solution may live under a subdirectory (e.g. `samples/Foo/...`).
-        return normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase)
-            || normalized.StartsWith("obj/", StringComparison.OrdinalIgnoreCase)
-            || normalized.StartsWith("bin/", StringComparison.OrdinalIgnoreCase);
+        return normalized.Contains("/obj/", FileSystemPath.Comparison)
+            || normalized.Contains("/bin/", FileSystemPath.Comparison)
+            || normalized.StartsWith("obj/", FileSystemPath.Comparison)
+            || normalized.StartsWith("bin/", FileSystemPath.Comparison);
     }
 
     /// <summary>
@@ -768,11 +786,14 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             return Path.GetFullPath(path).Replace(Path.DirectorySeparatorChar, '/');
         }
-        catch
+        catch (Exception ex) when (IsMalformedPathException(ex))
         {
             return path.Replace(Path.DirectorySeparatorChar, '/');
         }
     }
+
+    private static bool IsMalformedPathException(Exception exception) =>
+        exception is ArgumentException or NotSupportedException or PathTooLongException;
 
     private static bool HasValidationRelevantExtension(string path)
     {

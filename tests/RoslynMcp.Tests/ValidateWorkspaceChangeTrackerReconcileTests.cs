@@ -1,6 +1,16 @@
+using System.Diagnostics;
+using System.Text.Json;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.Support;
+using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
 
@@ -96,11 +106,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
             wsId, changedFilePaths: null, runTests: false, CancellationToken.None);
 
         var normalizedScope = result.ChangedFilePaths
-            .Select(p => Path.GetFullPath(p).Replace('\\', '/').ToLowerInvariant())
-            .ToList();
-        var normalizedDog = Path.GetFullPath(dogPath).Replace('\\', '/').ToLowerInvariant();
+            .Select(Path.GetFullPath)
+            .ToHashSet(FileSystemPath.Comparer);
+        var normalizedDog = Path.GetFullPath(dogPath);
 
-        CollectionAssert.DoesNotContain(normalizedScope, normalizedDog,
+        Assert.IsFalse(normalizedScope.Contains(normalizedDog),
             $"Reverted file must be excluded from validation scope; got [{string.Join("; ", result.ChangedFilePaths)}].");
     }
 
@@ -147,11 +157,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
             wsId, changedFilePaths: null, runTests: false, CancellationToken.None);
 
         var normalizedScope = result.ChangedFilePaths
-            .Select(p => Path.GetFullPath(p).Replace('\\', '/').ToLowerInvariant())
-            .ToList();
-        var normalizedDog = Path.GetFullPath(dogPath).Replace('\\', '/').ToLowerInvariant();
+            .Select(Path.GetFullPath)
+            .ToHashSet(FileSystemPath.Comparer);
+        var normalizedDog = Path.GetFullPath(dogPath);
 
-        CollectionAssert.Contains(normalizedScope, normalizedDog,
+        Assert.IsTrue(normalizedScope.Contains(normalizedDog),
             $"A still-dirty file must remain in validation scope; got [{string.Join("; ", result.ChangedFilePaths)}].");
     }
 
@@ -186,11 +196,11 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         // Without git, the reconcile branch is bypassed and the unfiltered tracker
         // list is used. The edited file must surface in ChangedFilePaths.
         var normalizedScope = result.ChangedFilePaths
-            .Select(p => Path.GetFullPath(p).Replace('\\', '/').ToLowerInvariant())
-            .ToList();
-        var normalizedDog = Path.GetFullPath(dogPath).Replace('\\', '/').ToLowerInvariant();
+            .Select(Path.GetFullPath)
+            .ToHashSet(FileSystemPath.Comparer);
+        var normalizedDog = Path.GetFullPath(dogPath);
 
-        CollectionAssert.Contains(normalizedScope, normalizedDog,
+        Assert.IsTrue(normalizedScope.Contains(normalizedDog),
             "Without git the tracker list is unfiltered; the edited file must appear in scope. "
             + $"Got [{string.Join("; ", result.ChangedFilePaths)}].");
     }
@@ -230,13 +240,136 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
         // The caller-supplied path lands in ChangedFilePaths via the standard
         // workspace-membership partition; reconcile is bypassed.
         var normalizedScope = result.ChangedFilePaths
-            .Select(p => Path.GetFullPath(p).Replace('\\', '/').ToLowerInvariant())
-            .ToList();
-        var normalizedDog = Path.GetFullPath(dogPath).Replace('\\', '/').ToLowerInvariant();
+            .Select(Path.GetFullPath)
+            .ToHashSet(FileSystemPath.Comparer);
+        var normalizedDog = Path.GetFullPath(dogPath);
 
-        CollectionAssert.Contains(normalizedScope, normalizedDog,
+        Assert.IsTrue(normalizedScope.Contains(normalizedDog),
             "Caller-supplied scope must not be filtered by the reconcile path. "
             + $"Got [{string.Join("; ", result.ChangedFilePaths)}].");
+    }
+
+    [TestMethod]
+    [DataRow("tracker", "unexpected")]
+    [DataRow("explicit", "unexpected")]
+    [DataRow("tracker", "invalid-operation")]
+    [DataRow("explicit", "invalid-operation")]
+    [DataRow("tracker", "cancelled")]
+    [DataRow("explicit", "cancelled")]
+    public async Task ScopeFailures_ReachStructuredBoundaryWithoutLosingClassification(
+        string source, string failureKind)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test");
+        const string sentinel = "private-scope-failure-sentinel";
+        using var cancellation = new CancellationTokenSource();
+        Exception failure = failureKind switch
+        {
+            "cancelled" => new OperationCanceledException(sentinel, cancellation.Token),
+            "invalid-operation" => new InvalidOperationException(sentinel),
+            _ => new NullReferenceException(sentinel),
+        };
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetStatusHandler = _ => throw failure,
+            GetCurrentSolutionHandler = _ => throw failure,
+        };
+        var service = new WorkspaceValidationService(
+            CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService,
+            manager, ChangeTracker);
+        var sink = new CapturingServerObservabilitySink();
+        var reporter = new ServerObservabilityReporter(sink);
+        await using var harness = await InMemoryMcpClientServerHarness.CreateAsync(
+            transportName: "validation-scope-failure",
+            clientCapabilities: new ClientCapabilities(),
+            clientHandlers: new McpClientHandlers(),
+            disposalFailureContext: "validation-scope-failure",
+            cancellationToken: CancellationToken.None);
+        var context = new RequestContext<CallToolRequestParams>(
+            harness.Server,
+            new JsonRpcRequest { Method = RequestMethods.ToolsCall },
+            new CallToolRequestParams { Name = "validate_workspace" });
+        var dispatchCount = 0;
+        async ValueTask<StructuredDispatchPipeline.DispatchOutcome> DispatchAsync()
+        {
+            dispatchCount++;
+            await service.ValidateAsync(workspace.WorkspaceId,
+                source == "explicit" ? [path] : null, runTests: false, CancellationToken.None);
+            return new(new CallToolResult { Content = [] }, IsEarlyTerminal: false);
+        }
+
+        var call = StructuredResultProjector.ExecuteAsync(context, "validate_workspace",
+            logger: null, reporter, Stopwatch.StartNew(), DispatchAsync).AsTask();
+        if (failureKind == "cancelled")
+        {
+            var actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => call);
+            Assert.AreSame(failure, actual);
+            Assert.AreEqual(cancellation.Token, actual.CancellationToken);
+        }
+        else
+        {
+            var result = await call;
+            Assert.IsTrue(result.IsError);
+            var text = ((TextContentBlock)result.Content[0]).Text;
+            using var document = JsonDocument.Parse(text);
+            Assert.AreEqual(failureKind == "unexpected" ? "InternalError" : "InvalidOperation",
+                document.RootElement.GetProperty("category").GetString());
+            Assert.IsFalse(text.Contains(sentinel, StringComparison.Ordinal));
+        }
+        Assert.AreEqual(1, dispatchCount);
+        Assert.HasCount(failureKind == "unexpected" ? 1 : 0, sink.Events);
+        Assert.IsFalse(JsonSerializer.Serialize(sink.Events).Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("missing")]
+    [DataRow("null")]
+    [DataRow("malformed")]
+    [DataRow("root")]
+    public async Task Reconcile_ExpectedUnavailableDirectory_PreservesTracker(string unavailable)
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        ChangeTracker.RecordChange(workspace.WorkspaceId, "scope probe", [path], "test");
+        var status = WorkspaceManager.GetStatus(workspace.WorkspaceId);
+        var manager = new FailClosedWorkspaceManagerStub
+        {
+            GetStatusHandler = _ => unavailable == "missing"
+                ? throw new KeyNotFoundException("missing workspace")
+                : status with
+                {
+                    LoadedPath = unavailable switch
+                    {
+                        "null" => null,
+                        "root" => Path.GetPathRoot(path),
+                        _ => "malformed\0path",
+                    },
+                },
+        };
+        var service = new WorkspaceValidationService(
+            CompileCheckService, DiagnosticService, TestDiscoveryService, TestRunnerService,
+            manager, ChangeTracker);
+
+        var result = await service.ValidateAsync(workspace.WorkspaceId,
+            changedFilePaths: null, runTests: false, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
+        Assert.IsEmpty(result.UnknownFilePaths);
+    }
+
+    [TestMethod]
+    public async Task ExplicitScope_MalformedPath_RemainsUnknown()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var path = workspace.GetPath("SampleLib", "Dog.cs");
+        const string malformed = "malformed\0path";
+
+        var result = await _validationService.ValidateAsync(workspace.WorkspaceId,
+            [path, malformed], runTests: false, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { path }, result.ChangedFilePaths.ToArray());
+        CollectionAssert.AreEqual(new[] { malformed }, result.UnknownFilePaths.ToArray());
     }
 
     // ------------------------------------------------------------------
