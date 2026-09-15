@@ -31,7 +31,7 @@ internal sealed class GitChangedFilesCollector
         _readOutputAsync = readOutputAsync ?? (static (reader, token) => reader.ReadToEndAsync(token));
     }
 
-    internal async Task<(string StdOut, IReadOnlyList<string> Warnings, bool TimedOut)> CollectAsync(
+    internal async Task<(string StdOut, IReadOnlyList<string> Warnings, bool TimedOut, string? RepositoryRoot)> CollectAsync(
         string solutionDirectory,
         TimeSpan timeout,
         CancellationToken ct)
@@ -40,12 +40,13 @@ internal sealed class GitChangedFilesCollector
         // at or above the solution directory. If none, we're demonstrably outside a repo and
         // can skip the git invocation entirely — saves ~20 ms and gives a precise warning
         // instead of the noisier "git exited 128" message.
-        if (!IsInsideGitRepository(solutionDirectory))
+        var repositoryRoot = FindRepositoryRoot(solutionDirectory);
+        if (repositoryRoot is null)
         {
             return (string.Empty, new[]
             {
                 "git repository not found at or above the loaded workspace; validated full workspace."
-            }, false);
+            }, false, null);
         }
 
         ct.ThrowIfCancellationRequested();
@@ -67,7 +68,7 @@ internal sealed class GitChangedFilesCollector
             startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
             startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
             startInfo.ArgumentList.Add("-C");
-            startInfo.ArgumentList.Add(solutionDirectory);
+            startInfo.ArgumentList.Add(repositoryRoot);
             startInfo.ArgumentList.Add("status");
             startInfo.ArgumentList.Add("--porcelain=v1");
             startInfo.ArgumentList.Add("-z");
@@ -79,7 +80,7 @@ internal sealed class GitChangedFilesCollector
             return (string.Empty, new[]
             {
                 _createUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitConfiguration).Summary
-            }, false);
+            }, false, null);
         }
 
         using var process = new Process { StartInfo = startInfo };
@@ -90,7 +91,7 @@ internal sealed class GitChangedFilesCollector
                 return (string.Empty, new[]
                 {
                     "git failed to start; validated full workspace."
-                }, false);
+                }, false, null);
             }
         }
         catch (Exception ex)
@@ -99,7 +100,7 @@ internal sealed class GitChangedFilesCollector
             return (string.Empty, new[]
             {
                 _createUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStart).Summary
-            }, false);
+            }, false, null);
         }
 
         using var readerCancellation = new CancellationTokenSource();
@@ -124,7 +125,7 @@ internal sealed class GitChangedFilesCollector
             return (string.Empty, new[]
             {
                 $"git status exceeded the timeout of {timeout.TotalSeconds:F0} second(s); retryable=true; validated full workspace."
-            }, true);
+            }, true, null);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -132,7 +133,7 @@ internal sealed class GitChangedFilesCollector
             return (string.Empty, new[]
             {
                 _createUnexpectedFailure(ex, WorkspaceValidationFailureOperation.GitStatus).Summary
-            }, false);
+            }, false, null);
         }
         finally
         {
@@ -145,10 +146,10 @@ internal sealed class GitChangedFilesCollector
             return (string.Empty, new[]
             {
                 $"git status exited non-zero (exit {process.ExitCode}); validated full workspace."
-            }, false);
+            }, false, null);
         }
 
-        return (stdout, Array.Empty<string>(), false);
+        return (stdout, Array.Empty<string>(), false, repositoryRoot);
     }
 
     private static void RemoveAmbientGitRepositoryOverrides(ProcessStartInfo startInfo)
@@ -225,22 +226,22 @@ internal sealed class GitChangedFilesCollector
 
     /// <summary>
     /// Walks from <paramref name="startDirectory"/> upward looking for a <c>.git</c> entry (a
-    /// directory for a normal clone, a file for a submodule / linked worktree). Returns false
-    /// when we hit the filesystem root without finding one.
+    /// directory for a normal clone, a file for a submodule / linked worktree). Returns its
+    /// containing directory, or null when no repository is found.
     /// </summary>
-    private static bool IsInsideGitRepository(string startDirectory)
+    private static string? FindRepositoryRoot(string startDirectory)
     {
         if (string.IsNullOrWhiteSpace(startDirectory))
-            return false;
+            return null;
 
         DirectoryInfo? current;
         try
         {
             current = new DirectoryInfo(startDirectory);
         }
-        catch
+        catch (ArgumentException)
         {
-            return false;
+            return null;
         }
 
         while (current is not null)
@@ -248,11 +249,11 @@ internal sealed class GitChangedFilesCollector
             var gitEntry = Path.Combine(current.FullName, ".git");
             if (Directory.Exists(gitEntry) || File.Exists(gitEntry))
             {
-                return true;
+                return current.FullName;
             }
             current = current.Parent;
         }
-        return false;
+        return null;
     }
 
 }

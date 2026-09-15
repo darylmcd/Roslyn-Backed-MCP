@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T14:36:58Z
+**updated_at:** 2026-09-15T15:22:58Z
 
 ## Agent contract
 
@@ -99,8 +99,8 @@
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `diagnostic-details-repo-provider-load-failures` | Medium | — | Investigate 18 provider-load failures in the standalone repository MCP002 detail lookup and pin the demonstrated loader or environment cause. [type: diagnostics] [source: live-verification] | M | items/diagnostic-details-repo-provider-load-failures.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
-| `workspace-validation-git-root-relative-paths` | Medium | — | Resolve Git porcelain paths against the repository root for nested solutions. | M | items/workspace-validation-git-root-relative-paths.md |
-| `pwsh-script-runner-post-exit-drain-budget` | Medium | — | Bound post-exit pipe draining and observe readers when shared script-runner cleanup times out. | S | items/pwsh-script-runner-post-exit-drain-budget.md |
+| `workspace-validation-platform-path-comparison` | Medium | — | Preserve case-distinct changed paths and exact document membership on case-sensitive filesystems. [type: bug] [source: adjacent-review] | S | items/workspace-validation-platform-path-comparison.md |
+| `git-fixture-runner-output-drain-budget` | Medium | — | Bound Git fixture output draining and observe owned readers on timeout, preserving the fixture API. [type: test-reliability] [source: adjacent-review] | S | items/git-fixture-runner-output-drain-budget.md |
 
 ## Low
 
@@ -249,6 +249,7 @@
 | `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
 | `type-move-preview-orchestration-decomposition` | Low | — | Decompose type-move declaration selection and target-document planning while preserving preview and refusal contracts. [type: quality] [source: adjacent-review] | S | items/type-move-preview-orchestration-decomposition.md |
 | `markdown-link-destination-parser` | Low | — | Parse real Markdown link destinations without truncating balanced parentheses in valid filenames. [type: validation] [source: 2026-09-15 adjacent probe] | S | items/markdown-link-destination-parser.md |
+| `pwsh-script-runner-launch-configuration-deduplication` | Low | — | Share duplicated launch configuration across the PowerShell and generic executable test-runner entry points. [type: test-refactor] [source: adjacent-review] | S | items/pwsh-script-runner-launch-configuration-deduplication.md |
 
 ## Defer
 
