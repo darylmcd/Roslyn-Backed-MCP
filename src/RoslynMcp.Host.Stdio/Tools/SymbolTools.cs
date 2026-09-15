@@ -272,8 +272,7 @@ public static class SymbolTools
         [Description("Optional: case-sensitive Project.Name filter to scope the result; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
         [Description("Default false (agent-first). When false, a metadataName resolving to more than one candidate returns the structured candidate list to the calling agent. When true AND the client supports form elicitation, a multi-candidate resolve instead asks for a request-scoped operator choice; unsupported clients still receive the candidate list.")] bool allowElicitation = false,
         CancellationToken ct = default,
-        ICompilationCache? compilationCache = null,
-        ReferenceResponsePager? responsePager = null)
+        ICompilationCache? compilationCache = null)
     {
         ParameterValidation.ValidatePagination(offset, limit);
         workspaceId = ToolDispatch.RequireResolvedWorkspaceId(workspaceId);
@@ -301,7 +300,18 @@ public static class SymbolTools
 
             var filterSet = ParseProjectFilter(projectFilter);
             var results = await referenceService.FindReferencesAsync(workspaceId, locator, c, summary, filterSet);
-            return (responsePager ?? ReferenceResponsePager.Default).Serialize(results, offset, limit, summary, c);
+            var paged = results.Skip(offset).Take(limit).ToList();
+            var hasMore = offset + paged.Count < results.Count;
+            return JsonSerializer.Serialize(new
+            {
+                count = paged.Count,
+                totalCount = results.Count,
+                hasMore,
+                offset,
+                limit,
+                summary,
+                items = paged
+            }, JsonDefaults.Indented);
         }, ct);
     }
 

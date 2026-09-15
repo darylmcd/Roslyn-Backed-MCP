@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using RoslynMcp.Core.Models;
+using System.Text.Json.Nodes;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
-/// <summary>Bounds successful reference pages by their complete serialized UTF-8 payload.</summary>
+/// <summary>Bounds decorated reference pages by their complete serialized UTF-8 payload.</summary>
 public sealed class ReferenceResponsePager
 {
     public const string EnvironmentVariableName = "ROSLYNMCP_REFERENCE_RESPONSE_MAX_BYTES";
@@ -28,59 +28,54 @@ public sealed class ReferenceResponsePager
             ? new(maxBytes)
             : Default;
 
-    internal string Serialize(
-        IReadOnlyList<LocationDto> results,
-        int offset,
-        int limit,
-        bool summary,
-        CancellationToken ct = default)
+    internal string Apply(string json)
     {
-        ParameterValidation.ValidatePagination(offset, limit);
-        var page = new List<LocationDto>();
+        // Ambiguous-symbol candidate envelopes have their own recovery shape and no reference items.
+        if (JsonNode.Parse(json) is not JsonObject root || root["items"] is not JsonArray items)
+            return json;
+
+        var offset = root["offset"]?.GetValue<int>()
+            ?? throw new InvalidOperationException("Reference page has no offset.");
+        var totalCount = root["totalCount"]?.GetValue<int>()
+            ?? throw new InvalidOperationException("Reference page has no total count.");
+        var page = new JsonArray();
+        root["items"] = new JsonArray();
         long itemBytes = 0;
-        var available = Math.Min(limit, Math.Max(0, results.Count - offset));
-        for (var i = 0; i < available; i++)
+        foreach (var item in items)
         {
-            ct.ThrowIfCancellationRequested();
-            var item = results[offset + i];
-            var candidateBytes = itemBytes + JsonSerializer.SerializeToUtf8Bytes(item, Compact).Length;
+            var candidateBytes = itemBytes + Encoding.UTF8.GetByteCount(item?.ToJsonString(Compact) ?? "null");
             var count = page.Count + 1;
-            // Empty-array metadata plus the serialized items and their separating commas is
-            // the exact compact JSON size. Each item is measured once, avoiding prefix reserialization.
-            var metadata = SerializePage([], count, results.Count, offset, limit, summary);
-            if (Encoding.UTF8.GetByteCount(metadata) + candidateBytes + count - 1 > _maxBytes)
+            SetContinuation(root, count, offset, totalCount);
+            // The empty-array envelope includes the final metadata. Add item bytes and commas
+            // to measure the exact output without repeatedly serializing accepted prefixes.
+            if (Encoding.UTF8.GetByteCount(root.ToJsonString(Compact)) + candidateBytes + count - 1 > _maxBytes)
             {
                 if (page.Count == 0)
-                {
-                    throw new ArgumentException(
-                        "A single reference exceeds the response byte budget. Retry with summary=true " +
-                        $"or ask the operator to increase {EnvironmentVariableName}.");
-                }
-
+                    throw OversizedReference();
                 break;
             }
 
-            page.Add(item);
+            page.Add(item?.DeepClone());
             itemBytes = candidateBytes;
         }
 
-        return SerializePage(page, page.Count, results.Count, offset, limit, summary);
+        SetContinuation(root, page.Count, offset, totalCount);
+        root["items"] = page;
+        var bounded = root.ToJsonString(Compact);
+        if (Encoding.UTF8.GetByteCount(bounded) > _maxBytes)
+            throw OversizedReference();
+        return bounded;
     }
 
-    private static string SerializePage(
-        IReadOnlyList<LocationDto> items, int count, int totalCount, int offset, int limit, bool summary)
+    private static void SetContinuation(JsonObject root, int count, int offset, int totalCount)
     {
-        var hasMore = offset + count < totalCount;
-        return JsonSerializer.Serialize(new
-        {
-            count,
-            totalCount,
-            hasMore,
-            offset,
-            limit,
-            summary,
-            nextOffset = hasMore ? (int?)(offset + count) : null,
-            items,
-        }, Compact);
+        var hasMore = (long)offset + count < totalCount;
+        root["count"] = count;
+        root["hasMore"] = hasMore;
+        root["nextOffset"] = hasMore ? (int?)(offset + count) : null;
     }
+
+    private static PublicArgumentException OversizedReference() => new(
+        "A reference page cannot fit within the response byte budget. Retry with summary=true " +
+        $"or ask the operator to increase {EnvironmentVariableName}.", "summary");
 }
