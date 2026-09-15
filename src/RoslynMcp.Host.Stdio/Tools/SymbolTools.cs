@@ -71,9 +71,8 @@ public static class SymbolTools
 
             // symbol-search-broad-query-response-cap-overflow: project paged results to a
             // summary shape (drops Documentation, Parameters, BaseTypes, Interfaces, Modifiers,
-            // ReturnType) BEFORE serialization so the aggregate JSON stays under the MCP
-            // inline transport cap. Mirrors the pattern in find_references but at the tool
-            // wrapper (SymbolDto / ISymbolSearchService stay untouched).
+            // ReturnType) before serialization to reduce payload size. This is not a byte cap;
+            // symbol-search-response-byte-budget tracks that separate contract.
             object ProjectSymbol(Core.Models.SymbolDto s) => summary
                 ? (object)new
                 {

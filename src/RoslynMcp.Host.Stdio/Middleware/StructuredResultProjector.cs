@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -108,8 +109,19 @@ internal static class StructuredResultProjector
     internal static CallToolResult InjectMetaIntoContent(
         CallToolResult result,
         string toolName,
-        IUnexpectedExceptionReporter? exceptionReporter = null) =>
-        StructuredCallContentProjector.InjectMetaIntoContent(result, toolName, exceptionReporter);
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        ReferenceResponsePager? responsePager = null)
+    {
+        var projected = StructuredCallContentProjector.InjectMetaIntoContent(result, toolName, exceptionReporter);
+        if (toolName == "find_references" && projected.IsError != true &&
+            projected.Content is { Count: > 0 } && projected.Content[0] is TextContentBlock text)
+        {
+            // Apply the budget after metadata decoration, which can expand/reformat the producer JSON.
+            text.Text = (responsePager ?? ReferenceResponsePager.Default).Apply(text.Text);
+        }
+
+        return projected;
+    }
 
     internal static CallToolResult ProjectRecoveredResult(
         RequestContext<CallToolRequestParams> context,
@@ -122,7 +134,8 @@ internal static class StructuredResultProjector
         return InjectMetaIntoContent(
             ApplyProtocolResultShape(context, result),
             toolName,
-            exceptionReporter);
+            exceptionReporter,
+            context.Services?.GetService<ReferenceResponsePager>());
     }
 
     internal static CallToolResult ProjectEarlyExceptionResult(
@@ -174,7 +187,8 @@ internal static class StructuredResultProjector
         return InjectMetaIntoContent(
             ApplyProtocolResultShape(context, result),
             toolName,
-            exceptionReporter);
+            exceptionReporter,
+            context.Services?.GetService<ReferenceResponsePager>());
     }
 
     private static long StopAndRecordElapsed(Stopwatch stopwatch)

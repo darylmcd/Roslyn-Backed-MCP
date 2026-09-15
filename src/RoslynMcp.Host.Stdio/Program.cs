@@ -60,7 +60,8 @@ builder.Services.AddRoslynMcpHostServices(
     BindPreviewStoreOptions(),
     BindExecutionGateOptions(),
     BindSecurityOptions(),
-    BindScriptingServiceOptions());
+    BindScriptingServiceOptions(),
+    ReferenceResponsePager.FromEnvironment(ReadEnv(ReferenceResponsePager.EnvironmentVariableName)));
 builder.Services.AddSingleton(observabilityOptions);
 builder.Services.AddSingleton<IServerObservabilitySink>(_ => observabilityOptions.Sink switch
 {

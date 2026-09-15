@@ -76,7 +76,7 @@ public static class WorkflowRecommendationTools
         {
             return new(
                 PrimaryTools: ["test_related_files"],
-                FollowUpTools: ["test_run --filter", "test_related", "validate_recent_git_changes"],
+                FollowUpTools: ["test_run", "test_related", "validate_recent_git_changes"],
                 Avoid: ["full dotnet test", "Bash dotnet test"],
                 Why: "Find the smallest impacted test slice first, then pass its filter to test_run.",
                 RequiredWorkspaceState: "workspace_loaded");
@@ -103,10 +103,10 @@ public static class WorkflowRecommendationTools
         }
 
         return new(
-            PrimaryTools: ["discover_capabilities"],
+            PrimaryTools: ["get_prompt_text"],
             FollowUpTools: ["server_info", "roslyn://server/catalog"],
             Avoid: ["dumping the full tool catalog before intent is known"],
-            Why: "The task does not match a high-confidence first-hop rule; ask for a category-specific capability view before selecting tools.",
+            Why: "The task does not match a high-confidence first-hop rule; call get_prompt_text with promptName=discover_capabilities and parametersJson containing taskCategory for focused guidance before selecting tools.",
             RequiredWorkspaceState: "server_idle_or_ready");
     }
 

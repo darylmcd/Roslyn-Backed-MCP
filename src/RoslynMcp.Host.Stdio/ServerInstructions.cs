@@ -10,9 +10,10 @@ internal static class ServerInstructions
     public const string Text = """
         Roslyn MCP provides compiler-aware C#/.NET analysis, validation, and preview-first edits.
         Bootstrap: call workspace_load with the solution or project path before workspace-scoped tools. Keep its workspaceId for later calls; workspace_list and workspace_status inspect active sessions.
+        Workspace-scoped calls auto-reload stale workspaces by default; no pre-emptive workspace_reload is needed.
         Discovery: call recommend_workflow when you know the task but not the tool sequence. Use the client's MCP tool search when a deferred tool is not visible; search by capability or these categories:
         - workspace lifecycle: workspace_load, workspace_list, workspace_status, workspace_reload, workspace_close
-        - navigation and analysis: symbols, definitions, references, diagnostics, flow, dependencies, metrics
+        - navigation and analysis: symbols, definitions, references, semantic_grep, diagnostics, flow, dependencies, metrics
         - refactoring and editing: prefer *_preview, inspect the diff, then use the documented *_apply route
         - validation: compile_check for fast in-memory checks; build_workspace/test_run for process-level parity; validate_recent_git_changes for an auto-scoped bundle
         Read-only tools may omit workspaceId only when exactly one workspace is loaded. Mutating tools require an explicit workspaceId. Prefer semantic tools over text search for C# symbols and references.
