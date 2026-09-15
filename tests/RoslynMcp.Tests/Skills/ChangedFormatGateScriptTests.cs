@@ -17,9 +17,8 @@ namespace RoslynMcp.Tests.Skills;
 /// baseline inventory, then shells the REAL script against it. Nothing here reads or mutates the
 /// production repository. Pattern mirrors <c>AggregatePromotionScorecardsScriptTests.cs</c>.
 ///
-/// The tests deliberately drive real <c>dotnet format</c> rather than a stubbed parser: the whole
-/// value of the gate is that the diagnostic ids it classifies are the ids the formatter actually
-/// emits, which a stub would silently stop proving the moment the SDK changed its wording.
+/// Real formatter cases verify SDK diagnostic grammar; controlled process-output cases cover
+/// individual diagnostic classification, baseline accounting, and process failures.
 /// </summary>
 [TestClass]
 public sealed class ChangedFormatGateScriptTests
@@ -278,6 +277,27 @@ public sealed class ChangedFormatGateScriptTests
             result.StdErr,
             "NEW: Dirty.cs - IDE1006 x1 (observed 2, baseline 1)",
             Describe("The failure must show the observed-vs-baseline count that proves concealment", result));
+    }
+
+    [TestMethod]
+    [DataRow(0, 1)]
+    [DataRow(1, 0)]
+    public void Gate_EndOfLineDiagnostic_UsesBaselineAllowance(int baselineCount, int expectedExitCode)
+    {
+        var baseline = "{\"files\":[{\"path\":\"Clean.cs\",\"countsByDiagnosticId\":{\"ENDOFLINE\":" + baselineCount + "}}]}";
+        SeedBaseCommit(baseline, ("Clean.cs", CleanFile));
+        WriteRepositoryFile("Clean.cs", CleanFile.Replace("=> 1", "=> 2", StringComparison.Ordinal));
+        CommitAll("edit a file with a controlled line-ending diagnostic");
+
+        var result = RunGateWithFakeDotnet(
+            $"{Path.Combine(_repositoryDirectory, "Clean.cs")}(1,1): error ENDOFLINE: Fix end of line marker. [Probe.csproj]",
+            exitCode: 2);
+
+        Assert.AreEqual(expectedExitCode, result.ExitCode, Describe("Line-ending drift must use the baseline count", result));
+        StringAssert.Contains(
+            expectedExitCode == 0 ? result.StdOut : result.StdErr,
+            "Clean.cs - ENDOFLINE x1",
+            Describe("The diagnostic must identify the affected file", result));
     }
 
     [TestMethod]

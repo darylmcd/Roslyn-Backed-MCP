@@ -192,7 +192,14 @@ Reconciliation complete.
 
 If all initiatives are now terminal (`merged` / `obsolete` / `deferred`), additionally note: `"Plan fully shipped — run /backlog-remediate completion (marks completed: true + adds Refs entry) or prompt the user."` — do NOT do that completion step yourself; that is the executor's job.
 
-**Worktree teardown discipline (Windows).** After this skill completes, the orchestrator typically removes worktrees for merged initiatives via `git worktree remove --force .worktrees/<id>`. On Windows, `VBCSCompiler.exe` and `MSBuild.exe` build-server processes hold file-system locks on the worktree's bin/obj directories — `git worktree remove` will fail with `Permission denied` until those locks are released. The fix: call `workspace_close(workspaceId: <id>, drainProcesses: true)` for each loaded workspace BEFORE calling `git worktree remove`. The `drainProcesses: true` flag runs `dotnet build-server shutdown` after session disposal, which releases all out-of-process build-server locks. This step is a no-op when no build-server is running, so it is always safe to prepend.
+### Worktree cleanup handoff
+
+- Normal initiative worktrees: delegate teardown to canonical `/ship --land=<pr>` after verifying the PR is merged. Reconciliation never removes worktrees itself.
+- Refuse dirty worktrees: preserve modified, untracked, and ignored residue. Report the exact retained path and reason for operator review; do not force removal or discard files to obtain a clean result.
+- Windows locks: close only the matching Roslyn workspace before shipping cleanup. Use `workspace_close(workspaceId: <id>, drainProcesses: true)` when that session owns the build processes; do not terminate unrelated sessions or assume a process-wide build-server shutdown is harmless.
+- A cleanup failure remains incomplete. Preserve `SHIP_STATUS=landed-cleanup-failed` after a confirmed merge until canonical shipping proves cleanup succeeded.
+
+**Disposable audit exception.** An audit may explicitly create a throwaway worktree whose mutations are authorized to be discarded under that audit's own lifecycle policy. That exception belongs to the audit workflow; it never applies to normal initiative worktrees or authorizes this reconciler to remove them.
 
 ## Refusal cases (explicit)
 
