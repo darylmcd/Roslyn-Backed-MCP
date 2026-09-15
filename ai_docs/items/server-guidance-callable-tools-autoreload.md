@@ -27,3 +27,4 @@
 ## Context
 
 Related-but-distinct live rows, verified non-overlapping: `tool-surface-pagination-or-tool-sets` (Low) adds catalog RESOURCES, not guidance text; `initiative-executor-roslyn-tool-discovery-experiment` (Low) is a client-side agent-brief measurement; `param-dedupe-deadcode-fixall-workflow-editorconfig` and `param-dedupe-workspace-validation-scaffolding` touch the same two files but only their PARAMETER `[Description]`s, not the payload constants or method descriptions. `promotion-tier-analysis-batch-1` (Medium, blocked) can flip the tier assumption in acceptance criterion 3 — check tier before writing `StableOnlyText`.
+2026-09-15 adjacent review: ai_docs/domains/tool-usage-guide.md also directs callers to discover_capabilities as a tool and uses compile_check(projectFilter: ...) instead of projectName. Include this reference in the callable-guidance correction.

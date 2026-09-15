@@ -13,9 +13,9 @@ namespace RoslynMcp.Tests;
 public sealed class WorkspaceValidationOverallStatusTests
 {
     // ---- CompileCheckDto builders ----
-    // CompileCheckDto is a 16-slot positional record, but only four slots drive the code under
-    // test: Success, ErrorCount, Cancelled, and CompletedProjects-vs-TotalProjects. Restating the
-    // full literal per test buried those four in boilerplate, so each named helper below fixes one
+    // The compile inputs driving these tests are Success, ErrorCount, Cancelled,
+    // CompletedProjects-vs-TotalProjects, and Diagnostics. Restating the
+    // full literal per test buried those inputs in boilerplate, so each named helper below fixes one
     // compile shape and every test names the shape it is exercising.
 
     private static CompileCheckDto Compile(

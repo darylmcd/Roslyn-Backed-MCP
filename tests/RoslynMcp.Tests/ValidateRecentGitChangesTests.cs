@@ -99,6 +99,73 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    [DataRow("git")]
+    [DataRow("explicit")]
+    [DataRow("tracker")]
+    public async Task Validation_CaseDistinctPaths_PreservesExactScope(string source)
+    {
+        if (!IsGitAvailable())
+            Assert.Inconclusive($"git unavailable: {_gitUnavailableReason}");
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var upper = workspace.GetPath("SampleLib", "CaseProbe.cs");
+        var lower = workspace.GetPath("SampleLib", "caseprobe.cs");
+        await File.WriteAllTextAsync(upper, "// upper baseline\n");
+        if (File.Exists(lower))
+            Assert.Inconclusive("This fixture filesystem does not support case-distinct paths.");
+        await File.WriteAllTextAsync(lower, "// lower baseline\n");
+        GitFixtureRunner.InitializeRepository(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
+        await workspace.LoadAsync(CancellationToken.None);
+        await File.AppendAllTextAsync(upper, "// upper changed\n");
+        await File.AppendAllTextAsync(lower, "// lower changed\n");
+
+        var wrongCase = workspace.GetPath("SampleLib", "CASEPROBE.cs");
+        ChangeTracker.RecordChange(workspace.WorkspaceId, "case-distinct edits",
+            [upper, lower], "test");
+        var result = source switch
+        {
+            "git" => await _validationService.ValidateRecentGitChangesAsync(
+                workspace.WorkspaceId, runTests: false, CancellationToken.None),
+            "explicit" => await _validationService.ValidateAsync(
+                workspace.WorkspaceId, [upper, lower, upper, wrongCase], runTests: false, CancellationToken.None),
+            _ => await _validationService.ValidateAsync(
+                workspace.WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None),
+        };
+
+        CollectionAssert.AreEquivalent(new[] { upper, lower }, result.ChangedFilePaths.ToArray());
+        CollectionAssert.AreEquivalent(source == "explicit" ? new[] { wrongCase } : Array.Empty<string>(),
+            result.UnknownFilePaths.ToArray());
+        Assert.IsEmpty(result.Warnings, string.Join("; ", result.Warnings));
+
+        if (source == "tracker")
+        {
+            await File.WriteAllTextAsync(upper, "// upper baseline\n");
+            var reconciled = await _validationService.ValidateAsync(
+                workspace.WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None);
+            CollectionAssert.AreEqual(new[] { lower }, reconciled.ChangedFilePaths.ToArray(),
+                "A dirty case-distinct sibling must not retain the reverted tracker path.");
+        }
+    }
+
+    [TestMethod]
+    public async Task ValidateAsync_WindowsCaseAliases_PreserveExistingDeduplication()
+    {
+        if (!OperatingSystem.IsWindows())
+            Assert.Inconclusive("Windows path-comparison control.");
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await workspace.LoadAsync(CancellationToken.None);
+        var path = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var alias = workspace.GetPath("SampleLib", "ANIMALSERVICE.CS");
+        var result = await _validationService.ValidateAsync(
+            workspace.WorkspaceId, [alias, path], runTests: false, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { alias }, result.ChangedFilePaths.ToArray());
+        Assert.IsEmpty(result.UnknownFilePaths);
+    }
+
+    [TestMethod]
     public async Task ValidateRecentGitChangesAsync_NestedSolution_UsesRepositoryRelativePaths()
     {
         if (!IsGitAvailable())
