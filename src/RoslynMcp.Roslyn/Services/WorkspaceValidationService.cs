@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -321,11 +322,10 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         if (gitWarnings.Count != 0)
             return changedFiles;
 
-        // Build the dirty set with case-insensitive normalized paths so the intersection
-        // survives platform path-separator + casing differences.
+        // Compare normalized paths using the same platform policy as document membership.
         var dirty = new HashSet<string>(
             gitFiles.Select(NormalizePathForReconcile),
-            StringComparer.OrdinalIgnoreCase);
+            FileSystemPath.Comparer);
         return changedFiles
             .Where(p => dirty.Contains(NormalizePathForReconcile(p)))
             .ToArray();
@@ -450,14 +450,14 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             var deduped = caller
                 .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Distinct(FileSystemPath.Comparer)
                 .ToArray();
 
             if (deduped.Length == 0)
                 return (Array.Empty<string>(), Array.Empty<string>());
 
             var solution = _workspace.GetCurrentSolution(workspaceId);
-            var workspacePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var workspacePaths = new HashSet<string>(FileSystemPath.Comparer);
             foreach (var project in solution.Projects)
             {
                 foreach (var document in project.Documents)
@@ -502,7 +502,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var tracked = _changeTracker
             .GetChanges(workspaceId)
             .SelectMany(c => c.AffectedFiles ?? Array.Empty<string>())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(FileSystemPath.Comparer)
             .ToArray();
         return (tracked, Array.Empty<string>());
     }
@@ -527,6 +527,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // materialize) merges unconditionally, exactly like AnalyzerDiagnostics does two lines below —
     // those are the CA*/IDE* rows this stage exists to contribute, and WORKSPACE001 is a genuine
     // "failed to load this project's compilation" signal, not a phantom this gate was built to catch.
+    // The separate WorkspaceDiagnostics collection remains excluded from this error merge.
     // The gate is applied BEFORE the concat so the Severity filter and DistinctBy dedup semantics are
     // untouched.
     //
@@ -590,26 +591,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // BREAKING change for callers that exact-match "clean" as the only passing value; the
     // CHANGELOG flags it as such.
     //
-    // validate-workspace-compiler-category-status-mismatch: the merged `errors` list is built
-    // from TWO independent diagnostic harvests — compile_check (CompileCheckService, which
-    // fetches compilations directly and computes an unbounded ErrorCount) and
-    // project_diagnostics (DiagnosticService, which goes through its own version-keyed
-    // compilation cache). When the two disagree, the second harvest can surface a
-    // Category=="Compiler" row that the authoritative compile pass never saw, producing the
-    // observed "overallStatus: compile-error / Compile errors: 0" contradiction. compile.ErrorCount
-    // is now the SOLE compile-error signal; an uncorroborated Compiler-category row from the
-    // second harvest falls through to "analyzer-error" (branch 2 widened from a
-    // Category!="Compiler" predicate to a plain non-empty check) so it is downgraded, never
-    // silently dropped from the verdict. Note compile.Diagnostics is paged (Limit=200) while
-    // ErrorCount is the true total, so identity-matching against the paged list would be
-    // strictly less reliable than trusting ErrorCount.
-    //
-    // validate-workspace-diagnostic-harvest-reconcile: MergeErrorDiagnostics now applies that same
-    // corroboration rule UPSTREAM, so on the live path an uncorroborated Compiler-category row from
-    // a complete, green compile pass never reaches `errors` at all — it is filtered out of the count
-    // and the list, not merely downgraded here. This branch is therefore defense-in-depth only for
-    // callers that assemble `errors` by some other route (e.g. the unit tests below); do not read it
-    // as the live behavior for that shape.
+    // MergeErrorDiagnostics owns compiler-harvest corroboration. A remaining Error-severity
+    // row without authoritative compiler errors receives the broader analyzer-error verdict.
+    /// <summary>Computes the verdict from compile authority, merged errors, and optional tests.</summary>
+    /// <param name="compile">The authoritative compile-check result.</param>
+    /// <param name="errors">Merged diagnostics pre-filtered to severity <c>Error</c>.</param>
+    /// <param name="testRunResult">The optional related-test execution result.</param>
+    /// <param name="runTests">Whether related-test execution was requested.</param>
     internal static string ComputeOverallStatus(
         CompileCheckDto compile,
         IReadOnlyList<DiagnosticDto> errors,
@@ -771,18 +759,18 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// <c>Path.GetFullPath(Path.Combine(...))</c> into absolute form. On Windows the
     /// resulting strings can disagree on (1) path separator style and (2) intermediate
     /// dot-segments. Normalize via <c>GetFullPath</c> so segments collapse, then replace
-    /// backslashes with forward slashes; case is handled by the caller's
-    /// <see cref="StringComparer.OrdinalIgnoreCase"/> HashSet.
+    /// platform directory separators with forward slashes; case is handled by the caller's
+    /// <see cref="FileSystemPath.Comparer"/> HashSet.
     /// </summary>
     private static string NormalizePathForReconcile(string path)
     {
         try
         {
-            return Path.GetFullPath(path).Replace('\\', '/');
+            return Path.GetFullPath(path).Replace(Path.DirectorySeparatorChar, '/');
         }
         catch
         {
-            return path.Replace('\\', '/');
+            return path.Replace(Path.DirectorySeparatorChar, '/');
         }
     }
 

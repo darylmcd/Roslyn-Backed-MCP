@@ -115,10 +115,10 @@ strings). Treat **only** `clean` as passing; every other value is non-passing.
 |---|---|---|
 | `clean` | both | Proceed. Compile, Error-severity diagnostics, and (when `runTests=true`) the discovered tests all passed. |
 | `compile-error` | both | Stop. Read `errorDiagnostics` for the compiler errors and fix before re-running. |
-| `analyzer-error` | both | Stop. Read `errorDiagnostics` for the Error-severity analyzer hits and fix before re-running. |
+| `analyzer-error` | both | Stop. Read `errorDiagnostics` for retained Error-severity diagnostics beyond the authoritative compiler count: analyzer/workspace errors or uncorroborated compiler-category errors when compilation is incomplete. Fix before re-running. |
 | `test-failure` | both | Stop. Read `testRunResult.failures` and fix before re-running. |
 | `test-zero-run` | both | `runTests=true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass. |
-| `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase; safe to retry. |
+| `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase and a synthetic `testRunResult.failureEnvelope` with `errorKind: "Timeout"`, even with `runTests=false`; safe to retry. |
 | `git-status-unknown` | `validate_recent_git_changes` only | The `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope instead of the real working tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see [`runtime.md`](../runtime.md)) if `git status` is slow on this repo. |
 
 "both" = reachable from `validate_workspace` **and** `validate_recent_git_changes`.

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests.Support;
 
@@ -108,50 +108,20 @@ internal static class GitFixtureRunner
 
     public static string RunGitCapture(string workingDirectory, params string[] arguments)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start git {string.Join(' ', arguments)}.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(30_000))
-        {
-            Exception? terminationFailure = null;
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                if (!process.WaitForExit(1_000))
-                {
-                    terminationFailure = new TimeoutException(
-                        "The git process did not exit within one second after termination.");
-                }
-            }
-            catch (Exception ex)
-            {
-                terminationFailure = ex;
-            }
-
-            throw new TimeoutException(
-                $"git {string.Join(' ', arguments)} did not exit within 30 seconds.",
-                terminationFailure);
-        }
-        var stderr = stderrTask.GetAwaiter().GetResult();
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        if (process.ExitCode != 0)
+        // Keep the synchronous fixture API; the shared runner owns the combined exit/drain
+        // deadline and cancels and observes both readers before disposing their streams.
+        var result = PwshScriptRunner.RunExecutableAsync(
+            "git",
+            arguments,
+            workingDirectory,
+            timeout: TimeSpan.FromSeconds(30),
+            description: $"git {string.Join(' ', arguments)}").GetAwaiter().GetResult();
+        if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"git {string.Join(' ', arguments)} exited {process.ExitCode}. stdout=[{stdout}] stderr=[{stderr}]");
+                $"git {string.Join(' ', arguments)} exited {result.ExitCode}. stdout=[{result.StdOut}] stderr=[{result.StdErr}]");
         }
 
-        return stdout;
+        return result.StdOut;
     }
 }

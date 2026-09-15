@@ -17,3 +17,4 @@
 
 - The matrix claims its current values reflect 2026-08-24 even as centrally checked package rows change in subsequent PRs.
 - The recipe comment says six version files while the canonical workflow and verifier enumerate seven version sources.
+2026-09-15 adjacent review: justfile verify-version-drift comment still says six version files; workflow.md and the current verifier enumerate seven. Include the runner comment in the existing stale-count cleanup.

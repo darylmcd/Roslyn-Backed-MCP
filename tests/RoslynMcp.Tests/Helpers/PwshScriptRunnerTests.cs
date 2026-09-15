@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests.Helpers;
 
@@ -113,16 +114,17 @@ public sealed class PwshScriptRunnerTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task RunAsync_ExitedParentWithInheritedPipes_StillHonorsCancellation(bool callerCancellation)
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public async Task RunAsync_ExitedParentWithInheritedPipes_StillHonorsCancellation(bool callerCancellation, bool useGitFixture)
     {
         var fixtureRoot = CreateFixtureRoot();
         var childPidPath = Path.Combine(fixtureRoot, "child.pid");
         var parentPidPath = Path.Combine(fixtureRoot, "parent.pid");
         var releasePath = Path.Combine(fixtureRoot, "release");
         using var cancellation = new CancellationTokenSource();
-        Task<PwshScriptResult>? runTask = null;
+        Task? runTask = null;
         try
         {
             var childScript = Path.Combine(fixtureRoot, "retain-pipes.ps1");
@@ -151,11 +153,23 @@ public sealed class PwshScriptRunnerTests
                 $child.Dispose()
                 """);
 
-            runTask = PwshScriptRunner.RunAsync(
-                ["-NoProfile", "-File", parentScript, childScript, releasePath, childPidPath, parentPidPath],
-                timeout: callerCancellation ? null : TimeSpan.FromSeconds(15),
-                cancellationToken: cancellation.Token,
-                description: "inherited-pipe fixture");
+            var arguments = new[] { "-NoProfile", "-File", parentScript, childScript, releasePath, childPidPath, parentPidPath };
+            if (useGitFixture)
+            {
+                // Git aliases execute through a shell; quote each fixture path independently.
+                var alias = "!pwsh " + string.Join(" ", arguments.Select(argument =>
+                    "'" + argument.Replace("'", "'\"'\"'", StringComparison.Ordinal) + "'"));
+                runTask = Task.Run(() => GitFixtureRunner.RunGitCapture(fixtureRoot,
+                    "-c", "alias.retain-pipes=" + alias, "retain-pipes"));
+            }
+            else
+            {
+                runTask = PwshScriptRunner.RunAsync(
+                    arguments,
+                    timeout: callerCancellation ? null : TimeSpan.FromSeconds(15),
+                    cancellationToken: cancellation.Token,
+                    description: "inherited-pipe fixture");
+            }
             Assert.IsTrue(await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(30)), "Descendant must start.");
             var parentPid = int.Parse(await File.ReadAllTextAsync(parentPidPath), System.Globalization.CultureInfo.InvariantCulture);
             Assert.IsTrue(await WaitForProcessExitAsync(parentPid), "Parent must exit before cancellation.");
@@ -171,7 +185,7 @@ public sealed class PwshScriptRunnerTests
             {
                 var exception = await Assert.ThrowsExactlyAsync<TimeoutException>(() => runTask.WaitAsync(TimeSpan.FromSeconds(45)));
                 Assert.IsTrue(runTask.IsCompleted, "The runner itself must finish before the test's safety timeout.");
-                StringAssert.Contains(exception.Message, "inherited-pipe fixture timed out");
+                StringAssert.Contains(exception.Message, useGitFixture ? "timed out after 30 seconds" : "inherited-pipe fixture timed out");
             }
         }
         finally
@@ -185,6 +199,28 @@ public sealed class PwshScriptRunnerTests
                 catch (OperationCanceledException) { /* Expected runner cancellation. */ }
                 catch (TimeoutException) when (runTask.IsCompleted) { /* Expected runner timeout. */ }
             }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public void GitFixture_PreservesArgumentsAndReportsNonzeroExit()
+    {
+        var fixtureRoot = CreateFixtureRoot();
+        try
+        {
+            var value = "alpha beta; semi'quote";
+            var output = GitFixtureRunner.RunGitCapture(fixtureRoot,
+                "-c", "fixture.value=" + value, "config", "--get", "fixture.value");
+            Assert.AreEqual(value, output.TrimEnd('\r', '\n'));
+            var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
+                GitFixtureRunner.RunGitCapture(fixtureRoot, "--not-a-git-option"));
+            StringAssert.Contains(exception.Message, "exited 129");
+            StringAssert.Contains(exception.Message, "stderr=[unknown option");
+        }
+        finally
+        {
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
     }
