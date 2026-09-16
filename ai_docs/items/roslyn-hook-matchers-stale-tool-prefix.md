@@ -7,11 +7,14 @@
 - `hooks/hooks.json`
 - `eng/verify-skills-on-edit.ps1:7`
 - `.claude/settings.json`
+- `ai_docs/bootstrap-read-tool-primer.md:146`
 
 ## Acceptance
 
 - [ ] `hooks/hooks.json` matchers fire under the plugin-loaded tool prefix `mcp__plugin_roslyn-mcp_roslyn__*` as well as the bare `mcp__roslyn__*` form (or the file documents why bare-only is intended for shipped consumers).
+- [ ] `.claude/settings.json`'s allowlist is consistent across both prefixes (today: 15 bare entries, 6 plugin entries).
 - [ ] `eng/verify-skills-on-edit.ps1`'s header comment names its real wiring (`.claude/settings.json` PostToolUse), not `hooks/hooks.json`.
+- [ ] `ai_docs/bootstrap-read-tool-primer.md:146,152` stops hardcoding `mcp__roslyn__*` and tells the reader to resolve the live prefix.
 - [ ] A test asserts the matcher covers both prefixes, so a future prefix change fails loudly.
 
 ## Evidence
