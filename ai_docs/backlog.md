@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-15T21:29:36Z
+**updated_at:** 2026-09-16T12:45:21Z
 
 ## Agent contract
 
@@ -97,6 +97,10 @@
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `verify-ai-docs-link-anchor-fragments` | Medium | — | **Validate `#anchor` fragments in ai_docs relative links** — teach `eng/verify-ai-docs.ps1` to check the fragment half against the target file headings, not just file existence. [type: chore] [source: 2026-09-15 addenda retrospective] | S | items/verify-ai-docs-link-anchor-fragments.md |
+| `readme-stable-callable-count-ungated` | Medium | — | **Gate the stable-only callable count at `README.md:186`.** Assert the ungated prose "currently N callable tools" claim in `ReadmeSurfaceCountTests`, and correct the false "gated" boilerplate in ~34 `ai_docs/items/*.md`. [type: test-gap] [source: addenda retrospective 2026-09-15] | S | items/readme-stable-callable-count-ungated.md |
+| `roslyn-hook-matchers-stale-tool-prefix` | Medium | — | **`hooks/hooks.json` matchers never fire under the plugin tool prefix.** Both PostToolUse matchers hardcode `mcp__roslyn__*`; the live plugin surface is `mcp__plugin_roslyn-mcp_roslyn__*`. [type: bug] [source: addenda retrospective 2026-09-15] | M | items/roslyn-hook-matchers-stale-tool-prefix.md |
+| `agents-md-missing-validation-runtime` | Medium | — | **`AGENTS.md` lacks the doc-audit v24 required `## Validation runtime` section.** Add it after Breaking-change posture with the canonical 9-column header and measured data; point `runtime.md` and the addenda at it instead of duplicating. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/agents-md-missing-validation-runtime.md |
+| `actionlint-local-only-no-ci-gate` | Medium | — | **`just ci` runs actionlint but no CI workflow does.** Either gate `.github/workflows/**` edits with `eng/verify-actionlint.ps1` in `ci.yml`, or stop calling `just ci` the local PR-pipeline equivalent. [type: ci-gap] [source: addenda retrospective 2026-09-15] | M | items/actionlint-local-only-no-ci-gate.md |
 
 ## Low
 
@@ -248,6 +252,7 @@
 | `code-fix-provider-cache-reference-lifetime` | Low | — | Scope code-fix provider caching to analyzer reference lifetime and platform-correct paths. [type: quality] [source: diagnostic-provider-review] | S | items/code-fix-provider-cache-reference-lifetime.md |
 | `feature-provider-constructor-cancellation-unwrapping` | Low | — | Preserve cancellation thrown by reflected feature-provider constructors. [type: quality] [source: diagnostic-provider-review] | S | items/feature-provider-constructor-cancellation-unwrapping.md |
 | `items-gate-forced-companion-prose-dedupe` | Low | — | **Drop the duplicated gate-forced-companion paragraph from 34 items files** — the addenda now expresses the README surface-count companion once, machine-readably; replace the per-row prose with a pointer. [type: docs] [source: 2026-09-15 addenda retrospective] | M | items/items-gate-forced-companion-prose-dedupe.md |
+| `promotion-tier-extensionless-tool-anchors` | Low | — | **Add `.cs` to 32 extension-less `Tools/<Name>` anchors across 13 `promotion-tier-*` items.** They resolve today but miss literal-path consumers and the companion `*Tools.cs` glob. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/promotion-tier-extensionless-tool-anchors.md |
 
 ## Defer
 
