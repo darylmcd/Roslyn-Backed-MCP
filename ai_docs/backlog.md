@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-16T12:45:21Z
+**updated_at:** 2026-09-17T04:07:11Z
 
 ## Agent contract
 
@@ -253,6 +253,7 @@
 | `feature-provider-constructor-cancellation-unwrapping` | Low | — | Preserve cancellation thrown by reflected feature-provider constructors. [type: quality] [source: diagnostic-provider-review] | S | items/feature-provider-constructor-cancellation-unwrapping.md |
 | `items-gate-forced-companion-prose-dedupe` | Low | — | **Drop the duplicated gate-forced-companion paragraph from 34 items files** — the addenda now expresses the README surface-count companion once, machine-readably; replace the per-row prose with a pointer. [type: docs] [source: 2026-09-15 addenda retrospective] | M | items/items-gate-forced-companion-prose-dedupe.md |
 | `promotion-tier-extensionless-tool-anchors` | Low | — | **Add `.cs` to 32 extension-less `Tools/<Name>` anchors across 13 `promotion-tier-*` items.** They resolve today but miss literal-path consumers and the companion `*Tools.cs` glob. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/promotion-tier-extensionless-tool-anchors.md |
+| `workspace-load-unsupported-project-as-error` | Low | — | **Report unsupported project types as skipped, not workspace errors** — classify a solution project Roslyn cannot open (e.g. .wixproj) as an Info-level skipped project so workspaceErrorCount reflects real load failures. [type: bug] [source: SnipCue /backlog-remediate 20260916T160820Z retro] | S | items/workspace-load-unsupported-project-as-error.md |
 
 ## Defer
 
