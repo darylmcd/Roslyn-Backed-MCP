@@ -188,7 +188,7 @@ public sealed class SurfaceCatalogTests
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
         // The full changed-tool set: get_completions, bulk_replace_type_apply, and
-        // replace_invocation_preview changed summary; server_info changed outputSchema; the three
+        // replace_invocation_preview changed summary (apply_composite_preview too: name-retention rationale); server_info changed outputSchema; the three
         // retained aliases gained additive catalog deprecation metadata. The three
         // workspace-status-family tools below changed outputSchema because
         // restore-required-vs-build-conflation added `buildRequired` to
@@ -199,6 +199,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
                 "find_duplicated_code",
@@ -214,6 +215,7 @@ public sealed class SurfaceCatalogTests
                      "get_completions",
                      "bulk_replace_type_apply",
                      "replace_invocation_preview",
+                     "apply_composite_preview",
                  })
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
@@ -246,7 +248,7 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(4, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(10, diff.Summary.Changed);
+        Assert.AreEqual(11, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -267,6 +269,7 @@ public sealed class SurfaceCatalogTests
                 "get_completions",
                 "bulk_replace_type_apply",
                 "replace_invocation_preview",
+                "apply_composite_preview",
                 "server_info",
                 "get_symbol_outline",
                 "find_duplicated_code",
