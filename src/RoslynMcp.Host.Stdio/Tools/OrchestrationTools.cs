@@ -93,8 +93,8 @@ public static class OrchestrationTools
 
     [McpServerTool(Name = "apply_composite_preview", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("orchestration", "experimental", false, true,
-        "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session."),
-     Description("DESTRUCTIVE — applies a previously-previewed orchestration operation to disk using its preview token. Pair with an orchestration *_preview call in the same session before invoking.")]
+        "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. The _preview suffix names the redeemed preview token; name kept for API stability. Pair with a *_preview call in the same session."),
+     Description("DESTRUCTIVE — applies a previously-previewed orchestration operation to disk (_preview names the redeemed token; kept for API stability). Run a *_preview in the same session before invoking.")]
     public static Task<string> ApplyCompositePreview(
         IWorkspaceExecutionGate gate,
         ICompositeApplyOrchestrator compositeApplyOrchestrator,
