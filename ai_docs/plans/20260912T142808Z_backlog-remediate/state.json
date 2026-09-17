@@ -471,7 +471,7 @@
     {
       "id": "change-signature-callsite-summary-stale-row-comments",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "change-signature-callsite-summary-stale-row-comments"
       ],
@@ -493,10 +493,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/change-signature-callsite-summary-stale-row-comments",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1541",
+      "mergedAt": "2026-09-17T13:05:34Z",
       "notes": null,
       "fileSetHash": "d1535099db5232e0b484eb6de70d832ad5d155985a46d65c98c0793e44d3ad8c",
       "stanzaHash": "75cc96e8aae7bdaa3d73e71dd309e4b6fb5631b2c373c5f43fecde149c924a32",
