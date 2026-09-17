@@ -165,7 +165,7 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Regression for `change-signature-preview-callsite-summary` (P3): firewall-analyzer
+    /// Regression for the change_signature_preview callsite-summary gap (shipped fix): firewall-analyzer
     /// 2026-04-15 reproduced `change_signature_preview op=remove` on `IPanosClient.GetRegisteredIpsAsync`
     /// returning a preview with only the interface-owner file's diff, while the apply
     /// rewrote 4 callsite files (concrete impl + tests) invisibly. Agent abandoned the
@@ -448,8 +448,8 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
         // Callsite Compute(1) remains valid post-rewrite because both `b` and the new
         // CancellationToken parameter have defaults — the file still compiles. The
         // backlog row's contract is "preview succeeds + declaration shows the change",
-        // not "every callsite is rewritten" (that's a separate concern tracked by
-        // change-signature-preview-callsite-summary).
+        // not "every callsite is rewritten" (callsite enumeration is pinned separately by
+        // ChangeSignaturePreview_AddOp_OnInterfaceMethod_EnumeratesAllImplementerCallsiteFiles).
     }
 
     /// <summary>
