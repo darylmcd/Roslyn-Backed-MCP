@@ -13,7 +13,7 @@
     {
       "id": "method-diet-refactoring-editorconfig",
       "order": 1,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "method-diet-refactoring-editorconfig"
       ],
@@ -42,7 +42,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1514 (554c1f85) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "6f2ad9c8dadf9feb1092436e7d691836493372f407ba7e731ae098f96e39a129",
       "stanzaHash": "c36277565d259a49a061b851cf10fb3d9e1b0be150e5e7fd005199532cef9ec3",
       "reviewedStanzaHash": "c36277565d259a49a061b851cf10fb3d9e1b0be150e5e7fd005199532cef9ec3"
@@ -50,7 +50,7 @@
     {
       "id": "method-diet-symbol-advanced-analysis",
       "order": 2,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "method-diet-symbol-advanced-analysis"
       ],
@@ -78,7 +78,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1514 (554c1f85) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "ee1ad6bb2f0185590473a9fd8756d8ff492eda5a694bc9df34d855583e415fba",
       "stanzaHash": "e4ad1fda05638fb28a9ccfc1eac49ce0200a3b791c11c84aa60ae5e4ec2c23b8",
       "reviewedStanzaHash": "e4ad1fda05638fb28a9ccfc1eac49ce0200a3b791c11c84aa60ae5e4ec2c23b8"
@@ -86,7 +86,7 @@
     {
       "id": "method-diet-restructure-interface",
       "order": 3,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "method-diet-restructure-interface"
       ],
@@ -115,7 +115,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1522 (0da6adab) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "7c8da36c94f5c262ac421e5701700d70da1b155a6ba41e8842dacaaec3bfb541",
       "stanzaHash": "f906527fcb78ab5d3ad289682a8b501c61c164ff6fe97d5f6fcb53ba62e07a5d",
       "reviewedStanzaHash": "f906527fcb78ab5d3ad289682a8b501c61c164ff6fe97d5f6fcb53ba62e07a5d"
@@ -123,7 +123,7 @@
     {
       "id": "method-diet-signature-extraction",
       "order": 4,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "method-diet-signature-extraction"
       ],
@@ -151,7 +151,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1514 (554c1f85) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "5326ee025d62648c1e9f0fefeb08c44968ea4965ef6595895add2ec4be9448de",
       "stanzaHash": "c3a50395384871cf6b798ed08bd98c87abb9a4598b44baf1f64e3c46ba9935b9",
       "reviewedStanzaHash": "c3a50395384871cf6b798ed08bd98c87abb9a4598b44baf1f64e3c46ba9935b9"
@@ -159,7 +159,7 @@
     {
       "id": "method-diet-ratchet-only-clean-slices",
       "order": 5,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "method-diet-ratchet-only-clean-slices"
       ],
@@ -188,7 +188,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1522 (0da6adab) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "eda3ea403b52a4414e9f85658a374c1ae63e689b3ee99a61daa4e415f78e9b80",
       "stanzaHash": "32cdf9de7756158b83d0e6a84aed9d3e053326db88a5a107bc8284ced5a9b5c3",
       "reviewedStanzaHash": "32cdf9de7756158b83d0e6a84aed9d3e053326db88a5a107bc8284ced5a9b5c3"
@@ -196,7 +196,7 @@
     {
       "id": "cohesion-multifile-partial-semantic-model",
       "order": 6,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "cohesion-multifile-partial-semantic-model"
       ],
@@ -223,7 +223,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1516 (6bbb2069) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "3916bc0ef6b3da2d66f20aa434074049d1ec3d765af6a8c92a44facb9aaa22ab",
       "stanzaHash": "c8df9d19cbd71cfdd0d846f469c5d55b81f5b41fc0e335cdc17fcb1f57dbac46",
       "reviewedStanzaHash": "c8df9d19cbd71cfdd0d846f469c5d55b81f5b41fc0e335cdc17fcb1f57dbac46"
@@ -231,7 +231,7 @@
     {
       "id": "unused-code-analyzer-static-lazy-field-read-safety",
       "order": 7,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "unused-code-analyzer-static-lazy-field-read-safety"
       ],
@@ -258,7 +258,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1513 (985da64c) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "c42be5e35780a3af8c4eb10c7dc9da45176a8d7cbc405c83aea036e1d6c780f9",
       "stanzaHash": "e3653f89d15c5e5e8ba069c036b7562e94310ff9d429f2167e299807285735fc",
       "reviewedStanzaHash": "e3653f89d15c5e5e8ba069c036b7562e94310ff9d429f2167e299807285735fc"
@@ -266,7 +266,7 @@
     {
       "id": "unused-code-analyzer-captured-local-read-safety",
       "order": 8,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "unused-code-analyzer-captured-local-read-safety"
       ],
@@ -292,7 +292,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1513 (985da64c) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "09ffafb2e4ceec396c81e77692554b607d4adf2a7a92cc6a5c0ddfa7c41ff528",
       "stanzaHash": "38772ac7c1f3a3bda2dc3fc88bc485ee846f19e03e69cec882ebf36d81786aeb",
       "reviewedStanzaHash": "38772ac7c1f3a3bda2dc3fc88bc485ee846f19e03e69cec882ebf36d81786aeb"
@@ -300,7 +300,7 @@
     {
       "id": "diagnostic-details-project-diagnostic-location-contract",
       "order": 9,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "diagnostic-details-project-diagnostic-location-contract"
       ],
@@ -327,7 +327,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1515 (65eaa9cb) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "c66e82f4f86eacdf5b504fa65e1bf0b97259c2e06e2c9c4aa2954c254b382e7a",
       "stanzaHash": "7f819087d891d633bd22b04f3546c2ee361390f0fff4afa3920541f6e89361d9",
       "reviewedStanzaHash": "7f819087d891d633bd22b04f3546c2ee361390f0fff4afa3920541f6e89361d9"
@@ -335,7 +335,7 @@
     {
       "id": "test-run-full-suite-timeout-envelope",
       "order": 10,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "test-run-full-suite-timeout-envelope"
       ],
@@ -362,7 +362,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1525 (5327f05e) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "d70a1fd196a2ed79263bd43235555c415a580a3c0c235136a6cffab342d8ecec",
       "stanzaHash": "8efe8257a0f31019b854c42f5dfec86024fb695fc46f65cf0a9c5ec6dcdda77e",
       "reviewedStanzaHash": "8efe8257a0f31019b854c42f5dfec86024fb695fc46f65cf0a9c5ec6dcdda77e"
@@ -370,7 +370,7 @@
     {
       "id": "reconcile-plan-force-worktree-removal-safety",
       "order": 11,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "reconcile-plan-force-worktree-removal-safety"
       ],
@@ -396,7 +396,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "shipped outside plan tracking by PR #1526 (10bb928a) (row + items file deleted in that merge); re-derived 2026-09-16 against origin/main",
       "fileSetHash": "baf72f6909a3c4d3c71683a5744bd7acfce473fb63769ad0677d0ad7ee9444db",
       "stanzaHash": "0dcbe2c55e553583c7aa82064c8d958d93beeca1cc2f8dcf42922a8681dc20ee",
       "reviewedStanzaHash": "0dcbe2c55e553583c7aa82064c8d958d93beeca1cc2f8dcf42922a8681dc20ee"
@@ -412,7 +412,7 @@
       "productionFiles": [],
       "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 25000,
+      "estimatedContextTokens": 20000,
       "toolPolicy": "edit-only",
       "scheduleHint": "parallel",
       "fanoutEstimate": 1,
@@ -430,8 +430,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "c939ddfe26b651ad09306805926a4f0c55516388fbbf3b1b71bb64879c259ffc",
-      "reviewedStanzaHash": "c939ddfe26b651ad09306805926a4f0c55516388fbbf3b1b71bb64879c259ffc"
+      "stanzaHash": "673fb5ca61ce9dab2911d3146f837e536644c47b98d543e90f5c7abee1e1c0fb",
+      "reviewedStanzaHash": "673fb5ca61ce9dab2911d3146f837e536644c47b98d543e90f5c7abee1e1c0fb"
     },
     {
       "id": "apply-composite-preview-destructive-misnomer",
@@ -447,7 +447,7 @@
       ],
       "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 35000,
+      "estimatedContextTokens": 25000,
       "toolPolicy": "edit-only",
       "scheduleHint": "parallel",
       "fanoutEstimate": 3,
@@ -465,8 +465,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "2a05ee65113e6de421db19c3c77ee4639374eb015cc0a3a705d4d73d1329569c",
-      "stanzaHash": "76b73c168fdeaf125fab17e851490136ef099bc77462523a9960aca0237367cb",
-      "reviewedStanzaHash": "76b73c168fdeaf125fab17e851490136ef099bc77462523a9960aca0237367cb"
+      "stanzaHash": "0c05bbdb62fcfe42b5d5b84c588fbc8368318ecbe144552581b8aaaf84c03d5b",
+      "reviewedStanzaHash": "0c05bbdb62fcfe42b5d5b84c588fbc8368318ecbe144552581b8aaaf84c03d5b"
     },
     {
       "id": "change-signature-callsite-summary-stale-row-comments",
@@ -479,7 +479,7 @@
       "productionFiles": [
         "skills/mcp-server-surface-test/prompts/phases/apply-and-test.md"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 25000,
       "toolPolicy": "edit-only",
@@ -499,8 +499,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "d1535099db5232e0b484eb6de70d832ad5d155985a46d65c98c0793e44d3ad8c",
-      "stanzaHash": "1ce8c68b7ad173eaa6042b2dc1a9bab3540e63311ae09bc4451c8ef316bf30d6",
-      "reviewedStanzaHash": "1ce8c68b7ad173eaa6042b2dc1a9bab3540e63311ae09bc4451c8ef316bf30d6"
+      "stanzaHash": "75cc96e8aae7bdaa3d73e71dd309e4b6fb5631b2c373c5f43fecde149c924a32",
+      "reviewedStanzaHash": "75cc96e8aae7bdaa3d73e71dd309e4b6fb5631b2c373c5f43fecde149c924a32"
     },
     {
       "id": "surface-test-shipped-prompt-local-skill-reference",
@@ -509,11 +509,13 @@
       "backlogRowsClosed": [
         "surface-test-shipped-prompt-local-skill-reference"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 3,
       "productionFiles": [
-        "eng/verify-skills-are-generic.ps1"
+        "eng/banned-skill-markers.json",
+        "skills/update/SKILL.md",
+        "skills/mcp-server-surface-test/prompts/full.md"
       ],
-      "testFilesAdded": 0,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 25000,
       "toolPolicy": "edit-only",
@@ -532,16 +534,26 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "62de36dca5cfee4b5ed3fb2e5ad07851bcdc1788b52d194f44d32b80a0e37ba1",
-      "stanzaHash": "ad35fa25ca924671e3f90c23b7968e01516e0969d1a045bffa2f59b593eeef05",
-      "reviewedStanzaHash": "ad35fa25ca924671e3f90c23b7968e01516e0969d1a045bffa2f59b593eeef05"
+      "fileSetHash": "4d6ba7c0a813037cdc17924b255c84a0f5475d9587cfb4929ba68e95a119dde4",
+      "stanzaHash": "921ee152ca6c7ecffee7f1e5f97d15f03d682e3a54576828ca12daa762864091",
+      "reviewedStanzaHash": "921ee152ca6c7ecffee7f1e5f97d15f03d682e3a54576828ca12daa762864091"
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "degrees": {
+      "12": 0,
+      "13": 0,
+      "14": 0,
+      "15": 0
+    },
+    "zeroDegreeInitiatives": [
+      12,
+      13,
+      14,
+      15
+    ]
   },
   "selection": {
     "requestedCount": 15,
@@ -569,9 +581,9 @@
       }
     ]
   },
-  "conflictGraphInputHash": "52d5499405d470768998e4449adc19ba4bd026c6c7488a9883978fd56a72ec0f",
-  "planHash": "95eacd695c4e34a4b46546e9400d4d8dece0ce76715bfd73d1e5ea0e6b43cb72",
-  "backlogSnapshotHash": "b4a3e42d0cadf7c4c7f847e65d910ad1125114a489b693c97a71c209885faf32",
-  "reviewedPlanHash": "95eacd695c4e34a4b46546e9400d4d8dece0ce76715bfd73d1e5ea0e6b43cb72",
-  "reviewedBacklogSnapshotHash": "b4a3e42d0cadf7c4c7f847e65d910ad1125114a489b693c97a71c209885faf32"
+  "conflictGraphInputHash": "9fd91abc9e377b34906085f241dd2bb88935f790042d32764dabdfd2d13b2b76",
+  "planHash": "9c9d8e29eb3b88565bf263d1d842aa017b83075192cf308b5e881adeb6527a47",
+  "backlogSnapshotHash": "73f1727cf10034b014a86bf83c2b785c8f38ece596bad16b0e5913ecf6c51f87",
+  "reviewedPlanHash": "9c9d8e29eb3b88565bf263d1d842aa017b83075192cf308b5e881adeb6527a47",
+  "reviewedBacklogSnapshotHash": "73f1727cf10034b014a86bf83c2b785c8f38ece596bad16b0e5913ecf6c51f87"
 }
