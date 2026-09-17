@@ -11,6 +11,64 @@ namespace RoslynMcp.Tests;
 public sealed class CatalogDestructiveWarningTests
 {
     private const string DestructiveMarker = "DESTRUCTIVE";
+    private const string PreviewSuffix = "_preview";
+    private const string NameRetentionRationale = "kept for API stability";
+
+    // apply-composite-preview-destructive-misnomer: a `_preview` suffix tells agents the tool is a
+    // safe read. apply_composite_preview is the one deliberate exception — the suffix names the
+    // composite preview token it redeems, and the published name is retained for contract stability.
+    // Any other `_preview` tool that writes must be renamed, not added to this allowlist silently.
+    private static readonly HashSet<string> MutatingPreviewSuffixAllowlist = new(StringComparer.Ordinal)
+    {
+        "apply_composite_preview",
+    };
+
+    [TestMethod]
+    public void Catalog_PreviewSuffixedTools_AreReadOnlyAndNonDestructive_ExceptAllowlist()
+    {
+        var violations = ServerSurfaceCatalog.Tools
+            .Where(t => t.Name.EndsWith(PreviewSuffix, StringComparison.Ordinal))
+            .Where(t => !MutatingPreviewSuffixAllowlist.Contains(t.Name))
+            .Where(t => !t.ReadOnly || t.Destructive)
+            .Select(t => $"{t.Name} (readOnly={t.ReadOnly}, destructive={t.Destructive})")
+            .ToArray();
+
+        Assert.AreEqual(
+            0,
+            violations.Length,
+            "Tools suffixed '_preview' must be read-only and non-destructive; rename mutating tools instead. Violations: "
+            + string.Join(", ", violations));
+    }
+
+    [TestMethod]
+    public void Allowlisted_MutatingPreviewTools_AreDestructiveAndStateNameRetentionRationale()
+    {
+        foreach (var name in MutatingPreviewSuffixAllowlist)
+        {
+            var entry = ServerSurfaceCatalog.Tools.SingleOrDefault(t => t.Name == name);
+            Assert.IsNotNull(entry, $"Allowlisted tool '{name}' must be present in the catalog; drop stale allowlist entries.");
+            Assert.IsFalse(entry.ReadOnly, $"Allowlisted tool '{name}' is only allowlisted because it mutates; catalog must say readOnly=false.");
+            Assert.IsTrue(entry.Destructive, $"Allowlisted tool '{name}' must be classified destructive in the catalog.");
+            StringAssert.Contains(entry.Summary, NameRetentionRationale,
+                $"Catalog summary for '{name}' must state why the '_preview' suffix is retained. Actual: '{entry.Summary}'");
+        }
+
+        var method = typeof(OrchestrationTools).GetMethod(
+            nameof(OrchestrationTools.ApplyCompositePreview),
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, "OrchestrationTools.ApplyCompositePreview must exist.");
+
+        var tool = method.GetCustomAttribute<McpServerToolAttribute>();
+        Assert.IsNotNull(tool, "ApplyCompositePreview must carry [McpServerTool].");
+        Assert.AreEqual("apply_composite_preview", tool.Name);
+        Assert.IsFalse(tool.ReadOnly, "[McpServerTool] must declare ReadOnly=false for apply_composite_preview.");
+        Assert.IsTrue(tool.Destructive, "[McpServerTool] must declare Destructive=true for apply_composite_preview.");
+
+        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
+        Assert.IsNotNull(description, "ApplyCompositePreview must carry a [Description] attribute.");
+        StringAssert.Contains(description.Description, NameRetentionRationale,
+            $"Tool [Description] must state why the '_preview' suffix is retained. Actual: '{description.Description}'");
+    }
 
     [TestMethod]
     public void Catalog_ApplyCompositePreview_SummaryLeadsWithDestructiveMarker()
