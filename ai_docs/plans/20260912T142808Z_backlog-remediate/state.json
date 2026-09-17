@@ -404,7 +404,7 @@
     {
       "id": "scripting-startup-cancellation-causal-barrier",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scripting-startup-cancellation-causal-barrier"
       ],
@@ -424,10 +424,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/scripting-startup-cancellation-causal-barrier",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1542",
+      "mergedAt": "2026-09-17T13:19:43Z",
       "notes": null,
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stanzaHash": "673fb5ca61ce9dab2911d3146f837e536644c47b98d543e90f5c7abee1e1c0fb",
