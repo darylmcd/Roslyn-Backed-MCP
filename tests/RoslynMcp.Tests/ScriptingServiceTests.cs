@@ -65,6 +65,7 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
+    [Timeout(25_000)]
     public async Task EvaluateAsync_OuterCancellationDuringWorkerStartup_ReleasesCapacity()
     {
         var worker = new CancellableStartWorkerProcess();
@@ -72,30 +73,44 @@ public sealed class ScriptingServiceTests
             NullLogger<ScriptingService>.Instance,
             new ScriptingServiceOptions { MaxConcurrentEvaluations = 1 },
             worker);
-        using var cancellation = new CancellationTokenSource();
 
-        var firstEvaluation = service.EvaluateAsync(
-            "0",
-            imports: null,
-            cancellation.Token,
-            onProgress: null,
-            timeoutSecondsOverride: 30);
-        await worker.FirstStartEntered.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-        cancellation.Cancel();
+        for (var iteration = 0; iteration < ControlledCancellationRepetitions; iteration++)
+        {
+            // Causal barrier: the armed StartAsync signals entry, then blocks until cancelled.
+            // The method-level [Timeout] is the deadlock guard; there is no per-await wall-clock budget.
+            var startEntered = worker.ArmBlockingStart();
+            using var cancellation = new CancellationTokenSource();
 
-        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
-            await firstEvaluation.ConfigureAwait(false)).ConfigureAwait(false);
-        Assert.AreEqual(0, service.ActiveEvaluationCount);
+            var cancelledEvaluation = service.EvaluateAsync(
+                "0",
+                imports: null,
+                cancellation.Token,
+                onProgress: null,
+                timeoutSecondsOverride: 30);
+            await startEntered.ConfigureAwait(false);
+            cancellation.Cancel();
 
-        var recovered = await service.EvaluateAsync(
-            "0",
-            imports: null,
-            CancellationToken.None,
-            onProgress: null,
-            timeoutSecondsOverride: 30).ConfigureAwait(false);
-        Assert.IsTrue(recovered.Success, recovered.Error);
-        Assert.AreEqual("42", recovered.ResultValue);
-        Assert.AreEqual(0, service.ActiveEvaluationCount);
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+                await cancelledEvaluation.ConfigureAwait(false)).ConfigureAwait(false);
+            Assert.AreEqual(0, service.ActiveEvaluationCount, "Startup cancellation should release the capacity slot.");
+
+            // MaxConcurrentEvaluations = 1: a succeeding evaluation proves the startup's slot was
+            // released; a leaked slot would block here until the method-level [Timeout] fires.
+            var recovered = await service.EvaluateAsync(
+                "0",
+                imports: null,
+                CancellationToken.None,
+                onProgress: null,
+                timeoutSecondsOverride: 30).ConfigureAwait(false);
+            Assert.IsTrue(recovered.Success, recovered.Error);
+            Assert.AreEqual("42", recovered.ResultValue);
+            Assert.AreEqual(0, service.ActiveEvaluationCount);
+        }
+
+        Assert.AreEqual(
+            ControlledCancellationRepetitions,
+            worker.BlockedStartCount,
+            "Every repetition should exercise a blocked startup.");
     }
 
     /// <summary>
@@ -758,19 +773,35 @@ public sealed class ScriptingServiceTests
 
     private sealed class CancellableStartWorkerProcess : IScriptWorkerProcess
     {
-        private int _startCount;
-        private readonly TaskCompletionSource<bool> _firstStartEntered =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource<bool>? _armedStart;
+        private int _blockedStartCount;
 
-        public Task FirstStartEntered => _firstStartEntered.Task;
+        public int BlockedStartCount => Volatile.Read(ref _blockedStartCount);
+
+        /// <summary>
+        /// Arms a fresh barrier for the next <see cref="StartAsync"/> call only, so each repetition
+        /// observes its own startup rather than a barrier an earlier repetition already completed.
+        /// </summary>
+        public Task ArmBlockingStart()
+        {
+            var barrier = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (Interlocked.CompareExchange(ref _armedStart, barrier, null) is not null)
+            {
+                throw new InvalidOperationException("A blocking startup is already armed.");
+            }
+
+            return barrier.Task;
+        }
 
         public async Task<IScriptWorkerSession> StartAsync(
             ScriptWorkerRequest request,
             CancellationToken cancellationToken)
         {
-            if (Interlocked.Increment(ref _startCount) == 1)
+            var barrier = Interlocked.Exchange(ref _armedStart, null);
+            if (barrier is not null)
             {
-                _firstStartEntered.TrySetResult(true);
+                Interlocked.Increment(ref _blockedStartCount);
+                barrier.TrySetResult(true);
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
                 throw new InvalidOperationException("The cancelled startup unexpectedly continued.");
             }
