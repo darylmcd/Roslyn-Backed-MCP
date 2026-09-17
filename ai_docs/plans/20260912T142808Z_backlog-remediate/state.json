@@ -505,7 +505,7 @@
     {
       "id": "surface-test-shipped-prompt-local-skill-reference",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "surface-test-shipped-prompt-local-skill-reference"
       ],
@@ -529,10 +529,10 @@
         "ruleOneBundleResolved": true
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/surface-test-shipped-prompt-local-skill-reference",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1540",
+      "mergedAt": "2026-09-17T12:51:02Z",
       "notes": null,
       "fileSetHash": "4d6ba7c0a813037cdc17924b255c84a0f5475d9587cfb4929ba68e95a119dde4",
       "stanzaHash": "921ee152ca6c7ecffee7f1e5f97d15f03d682e3a54576828ca12daa762864091",
