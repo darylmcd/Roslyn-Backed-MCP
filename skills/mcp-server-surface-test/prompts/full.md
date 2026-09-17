@@ -22,7 +22,7 @@ You are a senior .NET architect running a Roslyn-MCP audit against the loaded re
 2. **Experimental promotion scorecard (primary).** Every experimental entry you exercise receives a rating — `promote`, `keep-experimental`, `needs-more-evidence`, or `deprecate` — with evidence citations. Feeds `docs/experimental-promotion-analysis.md` and release gating.
 3. **Apply-tool exercise on a disposable worktree (supporting).** **Phase 6 only.** Drive preview→apply→revert round-trips, verify with `compile_check` / `build_workspace` / `test_run`. Applies are test fixtures of the apply-tool surface — they run inside a disposable worktree the prompt creates at run start and tears down at run end. The audited repo's `main` branch and primary working tree are never mutated; no commit ever lands in the audited repo's history; no PR is opened.
 
-The static skills audit (SKILL.md frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, which walks both `skills/*/SKILL.md` (shipped) and `.claude/skills/*/SKILL.md` (maintainer-local). It is a static-catalog check, not a server-execution check, and is not part of this run.
+The static skills audit (SKILL.md frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, which walks both the shipped `skills/*/SKILL.md` files and any maintainer-local skill overrides kept outside the shipped plugin. It is a static-catalog check, not a server-execution check, and is not part of this run.
 
 ### Run shape
 

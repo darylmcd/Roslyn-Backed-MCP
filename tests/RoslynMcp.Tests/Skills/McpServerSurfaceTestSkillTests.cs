@@ -299,6 +299,7 @@ public sealed class McpServerSurfaceTestSkillTests
     [DataRow("<audited-repo-root>/backlog.d/,eng/stage-review-inbox.ps1", @"\beng/")]
     [DataRow("<repo-root>/ai_docs/domains/tool-usage-guide.md", @"\bai_docs/")]
     [DataRow("eng/single-line.md", @"\beng/")]
+    [DataRow("See `.claude/skills/bump/SKILL.md` for the release flow.", @"\.claude/")]
     public void GenericityPolicy_ReproducedLaunderingShapes_RemainVisible(
         string contents,
         string expectedPattern)

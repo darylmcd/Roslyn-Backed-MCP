@@ -45,7 +45,7 @@ Tell the user to run these two commands in the Claude Code chat input (they are 
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-**Note:** If the user's Claude Code client does not support `/plugin` slash commands (i.e., they get `/plugin isn't available in this environment`), tell them to update via their client's plugin/marketplace UI, or to uninstall and reinstall the plugin from the marketplace. Maintainers with the Roslyn-Backed-MCP source tree checked out have an agent-executable PowerShell fallback — see the repo-local override in `.claude/skills/update/` if present.
+**Note:** If the user's Claude Code client does not support `/plugin` slash commands (i.e., they get `/plugin isn't available in this environment`), tell them to update via their client's plugin/marketplace UI, or to uninstall and reinstall the plugin from the marketplace. Maintainers with the Roslyn-Backed-MCP source tree checked out have an agent-executable PowerShell fallback — see that checkout's repo-local override of this `update` skill, if present.
 
 ### Step 3: Optional Global Tool
 
