@@ -16,6 +16,86 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [4.2.1] - 2026-09-18
+
+### Fixed
+
+- **Fixed:** The `mcp-server-surface-test` apply phase no longer reports the long-fixed `change_signature_preview` callsite-summary gap as a known limitation (it now asserts the preview enumerates every callsite file and `callsiteUpdates` counts), and a static test rejects shipped-skill citations of backlog rows that no longer exist. Closes `change-signature-callsite-summary-stale-row-comments`.
+
+- **Fixed:** Reject new line-ending formatter findings in the changed-file gate while retaining counted baseline allowances.
+
+- **Fixed:** Discover exported code-fix providers through each analyzer reference's dependency loader without resolving unrelated helper types, preserving real provider failures; honor diagnostic descriptor help links with compiler-only fallback; and count diagnostic summaries separately by severity and category while retaining distinct-ID totals. Closes `diagnostic-details-repo-provider-load-failures`, `diagnostic-details-descriptor-help-link`, and `diagnostics-summary-mixed-severity-same-id`.
+
+- **Fixed:** Bound Git fixture execution and redirected output draining through the shared executable runner; cancel and observe both readers on timeout. Closes `git-fixture-runner-output-drain-budget`.
+
+- **Fixed:** Make the git-status timeout regression wait for cancellation instead of racing a 1 ms timer against real Git; retain the unknown-scope verdict and normal dirty-file control. Closes `git-status-timeout-deterministic-regression`.
+
+- **Fixed:** `eng/verify-install-layers.ps1` no longer reports an installed Layer 1 global tool as "is not installed" when the `dotnet tool list --global` query itself fails. The query's exit code is now checked and an exception is no longer swallowed into an empty result, so a broken `dotnet` resolution (for example a user-local SDK on `PATH` ahead of the one `global.json` pins) is reported as an unverifiable layer naming the real failure, rather than as a false absence that sends the maintainer to run `just tool-update` — which cannot fix SDK resolution. Genuine absence is still reported as before.
+
+- **Fixed:** Reference pages now honor an operator-configurable 32,000-byte JSON ceiling and provide additive `nextOffset` continuation without skipping references; clients should follow `nextOffset` while `hasMore=true`. Oversized individual references fail with recovery guidance. Workflow recommendations name registered tools, and bootstrap guidance explains default automatic workspace reloads. Closes `list-tool-response-byte-budget` and `server-guidance-callable-tools-autoreload`.
+
+- **Fixed:** `move_type_to_file_preview` now returns actionable, path-free refusal reasons through the existing InvalidOperation category. Added shared description-budget coverage for the 15 already-compliant code-action, file-operation, orchestration, and type-extraction tools; verified the existing restructure/interface ratchet. Closes `preview-refusal-public-reasons`, `method-diet-ratchet-only-clean-slices`, and `method-diet-restructure-interface`.
+
+- **Fixed:** Prevent delayed in-memory MCP discovery from silently downgrading to the legacy handshake. Preserve the overall initialization deadline and verify three concurrent modern/legacy rounds across the SDK probe threshold. Closes `prompt-wire-protocol-negotiation-parallel-isolation`.
+
+- **Fixed:** Route remediation-plan worktree cleanup through canonical shipping, preserve dirty residue, and reject direct removal guidance.
+
+- **Fixed:** The shipped-skill genericity gate now rejects `.claude/` maintainer-local path citations; the two remaining citations were reworded portably.
+
+- **Fixed:** Error classification selects the nearest registered exception base type independently of registration order, including parameter-binding errors; deterministic wire regressions verify full-suite `test_run` gate timeouts remain structured across both protocol eras. Closes `tool-error-classifier-exception-specificity` and `test-run-full-suite-timeout-envelope`.
+
+- **Fixed:** Type-move previews refuse file-local declarations and dependencies before publishing a token, and conservatively refuse source files containing directives because moving their syntax can change compiler context or split directive pairs. Move the whole file with `move_file_preview` or isolate its directive context before retrying. Unrelated file-local siblings remain supported. Refreshed type-move tool ownership documentation. Closes `type-move-file-local-binding-safety`, `type-move-directive-context-preservation`, and `type-move-tool-owner-comment-refresh`.
+
+- **Fixed:** Type-move previews reject ambiguous and nested declarations, preserve enclosing namespace and import scopes without guessing generic collection imports or rewriting accessibility, and propagate cleanup cancellation and failures before issuing a preview. Closes `type-move-nested-and-ambiguous-selection`, `type-move-namespace-import-preservation`, and `type-move-unused-using-failure-observability`.
+
+- **Fixed:** Exclude Markdown code spans and blocks from documentation link validation while preserving genuine broken-link diagnostics.
+
+- **Fixed:** Clarify validation diagnostic verdicts, error-severity input requirements, and synthetic timeout results when tests were not requested. Closes `workspace-validation-analyzer-error-label-and-precondition`.
+
+- **Fixed:** Apply platform path comparison and separator rules when excluding Git changes under bin/obj, preserving case-distinct source directories and literal backslashes on case-sensitive platforms. Closes `workspace-validation-build-output-path-platform-filter`.
+
+- **Fixed:** Validation now terminates and drains its owned Git process on cancellation, timeout, or failure; test-results cleanup errors preserve primary outcomes and use safe diagnostics; formatter fixtures use the shared asynchronous process runner before deleting their files. Closes `workspace-validation-git-process-lifetime`, `test-runner-results-cleanup-failure-precedence`, and `changed-format-test-process-runner-lifetime`.
+
+- **Fixed:** Validation resolves Git changes against the repository root for nested solutions. Shared PowerShell test execution now bounds post-exit output draining and observes cancelled readers, with owned descendant cleanup in regression tests. Closes `workspace-validation-git-root-relative-paths` and `pwsh-script-runner-post-exit-drain-budget`.
+
+- **Fixed:** Experimental validation bundles now report `compile-incomplete` when compilation was cancelled or did not finish every selected project, unless a diagnostic or test failure takes precedence. Migration: treat this status as non-passing and retry compilation; zero errors alone do not establish a clean result. See [ADR 0010](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/decisions/0010-validation-verdict-completeness.md). Closes `workspace-validation-incomplete-compile-verdict`.
+
+- **Fixed:** Preserve case-distinct workspace validation paths during caller deduplication, document membership, and change-tracker reconciliation. Closes `workspace-validation-platform-path-comparison`.
+
+- **Fixed:** Clarify that validation compiles and collects diagnostics across the whole workspace; changed paths scope related-test discovery.
+
+- **Fixed:** Preserve cancellation and report unexpected validation-scope failures through the structured tool boundary instead of silently continuing with unreconciled scope. Expected missing-session and malformed-path fallbacks remain supported. Closes `workspace-validation-scope-exception-classification`.
+
+- **Fixed:** Experimental validation bundles preserve related-test phase deadlines as retryable `timeout` results instead of non-retryable `test-failure` results. Migration: handle the `Timeout` failure envelope and retry the test phase; genuine runner failures and caller cancellation retain their existing behavior. See [ADR 0010](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/decisions/0010-validation-verdict-completeness.md). Closes `workspace-validation-test-phase-timeout-classification`.
+
+- **Fixed:** Preserve resolved changed and unknown paths in validation timeout results, including reconciled tracker and Git fallback scope.
+
+- **Fixed:** Emit the empty-test warning only for the test-zero-run verdict and report observed facts without speculative timing causes.
+
+### Changed
+
+- **Changed:** `apply_composite_preview` now states why its `_preview` suffix is retained (it names the preview token it redeems; the name is kept for API stability), and a catalog test rejects any other `_preview`-suffixed tool that is not read-only and non-destructive.
+
+- **Changed:** Consolidate diagnostic-harvest ownership comments and document the compile-test inputs and excluded workspace-diagnostic collection. Closes `validate-workspace-harvest-doc-hygiene-consolidated`.
+
+### Maintenance
+
+- **Maintenance:** Recorded the CI topology split in `ai_docs/prompts/backlog-sweep-addenda.md`. `ci_equivalent` describes the code-PR shape, but `eng/resolve-ci-topology.ps1` routes a PR whose changed paths are all `^(.*\.md|ai_docs/.*\.json)$` — excluding the behavior-bearing carve-out of `CHANGELOG.md` and anything under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, `.github/prompts/` — to a two-leg Linux docs matrix that skips `verify-changed-format`, `verify-nuget-audit` and the `sdk-floor` job, and forces `-TestShardOnly` on every `verify-release.ps1` leg. A docs-only initiative following `ci_equivalent` verbatim therefore runs two scripts CI will skip; the addenda now states that over-validating is the intended default and that a markdown-shaped change touching a skill, agent, prompt or the changelog is still a code PR.
+
+- **Maintenance:** Retrospective correction of `ai_docs/prompts/backlog-sweep-addenda.md` against the current repo shape. The `hooks` section described a `PreToolUse` gate on `mcp__roslyn__*_apply` that no longer exists and omitted both hooks that do — the release-managed-file guard (`eng/guard-release-managed-files.ps1`, a hard exit-2 block on `CHANGELOG.md`, `Directory.Build.props`, the `.claude-plugin/*.json` family and six more paths, overridable only by the `.release-managed-edit-allowed` sentinel) and the shipped-skill linter (`eng/verify-skills-on-edit.ps1`). `ci_equivalent` claimed two verify scripts were the gate when the PR leg runs five, so `verify-changed-format` and `verify-nuget-audit` failures were invisible to planning; the required `validate` check and the resulting no-`[skip ci]` rule are now recorded as `skipCiToken: ""`. The mandatory-companion table was prose-only and therefore invisible to `mandatoryCompanionSection()`, so `backlog.mjs audit` expanded zero companions and every surface-touching row under-counted the `ReadmeSurfaceCountTests` gate; it is now a machine-readable `## mandatory_companion_files` block (`promotion-tier-refactoring-batch-1` goes 4 prod / 0 test → 4 prod / 1 test). Hotspots were re-measured from `ai_docs/items/*.md` citation counts: `README.md` (39) and `ReadmeSurfaceCountTests.cs` (34) were absent and are now the top two entries, `WorkspaceManager.cs` is 1558 lines with 2 citations rather than "330+ lines / many rows", `ParameterObjectService.cs` is 1873 lines with 5 open rows rather than "1200+ / ~10", the catalog partials are called out as separately-conflicting files, and the DI hotspot path is corrected from the non-existent `src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs` to `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs`. Also aligns four key names with the global template (`worktreeLockRelease`, `changelogConvention`, `selfEditCaveat`, `preferred_read_side_tools`), records the mandatory fragment frontmatter, and repoints a dead `runtime.md#bootstrap-scope…` anchor. Closes `addenda-reconcile-pr-no-skip-ci`.
+
+- **Maintenance:** Update the Microsoft.Extensions hosting, HTTP, and logging runtime family together to 10.0.12, with synchronized dependency inventory and third-party notices.
+
+- **Maintenance:** Update MSTest.TestAdapter and MSTest.TestFramework together to 4.4.0, with synchronized dependency inventory and third-party notices.
+
+- **Maintenance:** Update TimeProvider testing to 10.10.0, Microsoft.NET.Test.Sdk to 18.10.0, NetAnalyzers and SourceLink to 10.0.401, and System.Security.Cryptography.Xml to 10.0.12, with synchronized dependency inventory and third-party notices.
+
+- **Maintenance:** `ai_docs/plans/*/drain.json` (the local-only `/backlog-remediate` drain-guard marker) is now git-ignored; the copy PR #1513 committed to `main` was untracked.
+
+- **Maintenance:** The `/release-cut` Step 6b and `/update` Step 3 lock-holder guidance now identifies the tool-store holder by `ParentProcessId` instead of assuming it is the current session's own MCP server. The v4.2.0 cut found all three holders parented to `codex.exe`, where restarting Claude Code releases nothing because its server runs from the Layer 2 `dnx` pin. Both skills now cover the other-agent case and the respawn race that defeats a stop-then-update run split across separate calls.
+
+- **Maintenance:** Startup-cancellation scripting regression now uses a causal barrier, a method-level deadlock guard, and five controlled repetitions instead of a per-await wall-clock timeout.
+
 ## [4.2.0] - 2026-09-14
 
 ### Fixed
