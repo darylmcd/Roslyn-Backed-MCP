@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-18T13:07:55Z
+**updated_at:** 2026-09-18T15:27:48Z
 
 ## Agent contract
 
@@ -103,6 +103,7 @@
 | `agents-md-missing-validation-runtime` | Medium | — | **`AGENTS.md` lacks the doc-audit v24 required `## Validation runtime` section.** Add it after Breaking-change posture with the canonical 9-column header and measured data; point `runtime.md` and the addenda at it instead of duplicating. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/agents-md-missing-validation-runtime.md |
 | `actionlint-local-only-no-ci-gate` | Medium | — | **`just ci` runs actionlint but no CI workflow does.** Either gate `.github/workflows/**` edits with `eng/verify-actionlint.ps1` in `ci.yml`, or stop calling `just ci` the local PR-pipeline equivalent. [type: ci-gap] [source: addenda retrospective 2026-09-15] | M | items/actionlint-local-only-no-ci-gate.md |
 | `sanctioned-roots-cwd-default-undocumented` | Medium | boundary-rejection-redacted-to-generic-schema-error | **Document the cwd-relative sanctioned-root default and a supported override** — the shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` resolves to the session cwd, so a session rooted elsewhere can load no workspace and has no documented escape hatch. [type: docs] [source: 2026-09-18 zero-Roslyn triage] | S | items/sanctioned-roots-cwd-default-undocumented.md |
+| `docs-only-route-runs-full-test-suite` | Medium | — | **Run documentation-contract tests, not the full suite, on the docs-only route** — docs-only narrows the CI topology but still runs every sharded test class, so a one-line backlog edit cost 941s on PR #1545. [type: perf] [source: 2026-09-18 CI cost review] | M | items/docs-only-route-runs-full-test-suite.md |
 
 ## Low
 
