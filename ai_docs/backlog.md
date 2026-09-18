@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-17T13:33:58Z
+**updated_at:** 2026-09-18T13:07:55Z
 
 ## Agent contract
 
@@ -47,6 +47,8 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `sweep-executor-override-stale-roslyn-prefix` | High | roslyn-hook-matchers-stale-tool-prefix | **Port or drop the stale repo-local executor override** — `.claude/agents/initiative-executor.md` names hardcoded `mcp__roslyn__*` tools no registration provides, so sweeps here reproduce the zero-Roslyn gap the global agent already fixed. [type: bug] [source: 2026-09-18 zero-Roslyn triage] | S | items/sweep-executor-override-stale-roslyn-prefix.md |
+| `boundary-rejection-redacted-to-generic-schema-error` | High | — | **Surface the sanctioned-root refusal instead of a generic schema error** — an out-of-boundary `workspace_load` reports `Parameter 'path' is invalid` with an absolute-path schema hint, because the accurate boundary message is redacted. [type: bug] [source: 2026-09-18 zero-Roslyn triage] | S | items/boundary-rejection-redacted-to-generic-schema-error.md |
 
 ## Medium
 
@@ -100,6 +102,7 @@
 | `roslyn-hook-matchers-stale-tool-prefix` | Medium | — | **`hooks/hooks.json` matchers never fire under the plugin tool prefix.** Both PostToolUse matchers hardcode `mcp__roslyn__*`; the live plugin surface is `mcp__plugin_roslyn-mcp_roslyn__*`. [type: bug] [source: addenda retrospective 2026-09-15] | M | items/roslyn-hook-matchers-stale-tool-prefix.md |
 | `agents-md-missing-validation-runtime` | Medium | — | **`AGENTS.md` lacks the doc-audit v24 required `## Validation runtime` section.** Add it after Breaking-change posture with the canonical 9-column header and measured data; point `runtime.md` and the addenda at it instead of duplicating. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/agents-md-missing-validation-runtime.md |
 | `actionlint-local-only-no-ci-gate` | Medium | — | **`just ci` runs actionlint but no CI workflow does.** Either gate `.github/workflows/**` edits with `eng/verify-actionlint.ps1` in `ci.yml`, or stop calling `just ci` the local PR-pipeline equivalent. [type: ci-gap] [source: addenda retrospective 2026-09-15] | M | items/actionlint-local-only-no-ci-gate.md |
+| `sanctioned-roots-cwd-default-undocumented` | Medium | boundary-rejection-redacted-to-generic-schema-error | **Document the cwd-relative sanctioned-root default and a supported override** — the shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` resolves to the session cwd, so a session rooted elsewhere can load no workspace and has no documented escape hatch. [type: docs] [source: 2026-09-18 zero-Roslyn triage] | S | items/sanctioned-roots-cwd-default-undocumented.md |
 
 ## Low
 
