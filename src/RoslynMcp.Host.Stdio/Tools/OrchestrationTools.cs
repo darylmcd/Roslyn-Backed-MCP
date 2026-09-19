@@ -9,11 +9,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// MCP tool entry points for orchestration operations (migrate_package, split_class,
-/// extract_and_wire_interface, apply_composite_preview). WS1 phase 1.6 — the pure
+/// extract_and_wire_interface, apply_composite). WS1 phase 1.6 — the pure
 /// dispatch shims delegate to <see cref="ToolDispatch"/>; the
 /// <c>PreviewExtractAndWireInterface</c> shim keeps its hand-written body because
 /// it wraps <see cref="ProgressHelper.Report"/> calls around the service call
-/// (non-dispatch bookkeeping). <c>ApplyCompositePreview</c> uses the phase-1.6
+/// (non-dispatch bookkeeping). <c>ApplyCompositeCore</c> uses the phase-1.6
 /// delegate overload of <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
 /// so it can reuse the shared dispatch body even though
 /// <c>ICompositePreviewStore</c> doesn't derive from <c>IPreviewStore</c>.
@@ -91,16 +91,36 @@ public static class OrchestrationTools
         }, ct);
     }
 
+    [McpServerTool(Name = "apply_composite", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("orchestration", "experimental", false, true,
+        "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session."),
+     Description("DESTRUCTIVE — apply an orchestration token.")]
+    public static Task<string> ApplyComposite(
+        IWorkspaceExecutionGate gate,
+        ICompositeApplyOrchestrator compositeApplyOrchestrator,
+        ICompositePreviewStore compositePreviewStore,
+        [Description("The preview token returned by an orchestration preview tool")] string previewToken,
+        CancellationToken ct = default)
+        => ApplyCompositeCore(gate, compositeApplyOrchestrator, compositePreviewStore, previewToken, ct);
+
     [McpServerTool(Name = "apply_composite_preview", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("orchestration", "experimental", false, true,
-        "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. The _preview suffix names the redeemed preview token; name kept for API stability. Pair with a *_preview call in the same session."),
-     Description("DESTRUCTIVE — applies a previously-previewed orchestration operation to disk (_preview names the redeemed token; kept for API stability). Run a *_preview in the same session before invoking.")]
+        "DESTRUCTIVE — deprecated compatibility alias for apply_composite; applies a previously-previewed orchestration operation to disk. Use apply_composite instead."),
+     Description("DESTRUCTIVE — deprecated apply_composite alias; applies a previously-previewed orchestration operation to disk in the same session before invoking.")]
     public static Task<string> ApplyCompositePreview(
         IWorkspaceExecutionGate gate,
         ICompositeApplyOrchestrator compositeApplyOrchestrator,
         ICompositePreviewStore compositePreviewStore,
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
+        => ApplyCompositeCore(gate, compositeApplyOrchestrator, compositePreviewStore, previewToken, ct);
+
+    private static Task<string> ApplyCompositeCore(
+        IWorkspaceExecutionGate gate,
+        ICompositeApplyOrchestrator compositeApplyOrchestrator,
+        ICompositePreviewStore compositePreviewStore,
+        string previewToken,
+        CancellationToken ct)
         => ToolDispatch.ApplyByTokenAsync(
             gate,
             compositePreviewStore.PeekWorkspaceId,

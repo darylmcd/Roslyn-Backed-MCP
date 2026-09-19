@@ -69,6 +69,35 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void ApplyCompositeAlias_PublishesCanonicalReplacementAndMatchingParameters()
+    {
+        var canonicalEntry = ServerSurfaceCatalog.Tools.Single(entry => entry.Name == "apply_composite");
+        var aliasEntry = ServerSurfaceCatalog.Tools.Single(entry => entry.Name == "apply_composite_preview");
+
+        Assert.IsNull(canonicalEntry.Deprecation, "The canonical apply_composite route must not be deprecated.");
+        Assert.IsNotNull(aliasEntry.Deprecation, "The compatibility alias must publish lifecycle metadata.");
+        Assert.AreEqual("apply_composite_preview", aliasEntry.Deprecation.AliasName);
+        Assert.AreEqual("apply_composite", aliasEntry.Deprecation.CanonicalName);
+        Assert.AreEqual("1.0.0", aliasEntry.Deprecation.IntroducedRelease);
+        Assert.AreEqual(5, aliasEntry.Deprecation.EarliestRemovalMajor);
+
+        var canonicalMethod = typeof(OrchestrationTools).GetMethod(
+            nameof(OrchestrationTools.ApplyComposite),
+            BindingFlags.Public | BindingFlags.Static);
+        var aliasMethod = typeof(OrchestrationTools).GetMethod(
+            nameof(OrchestrationTools.ApplyCompositePreview),
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(canonicalMethod);
+        Assert.IsNotNull(aliasMethod);
+
+        CollectionAssert.AreEqual(
+            canonicalMethod.GetParameters().Select(ParameterContract).ToArray(),
+            aliasMethod.GetParameters().Select(ParameterContract).ToArray(),
+            "The deprecated alias must remain parameter-compatible with apply_composite.");
+        Assert.AreEqual(canonicalMethod.ReturnType, aliasMethod.ReturnType);
+    }
+
+    [TestMethod]
     public void PageEntries_HonoursOffsetAndLimit_SurfacesPaginationMetadata()
     {
         var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 10, resourceName: "test");
@@ -183,12 +212,13 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual("e147875", diff.SnapshotSources.From.SourceCommit);
 
         CollectionAssert.AreEquivalent(
-            new[] { "workspace_readiness_report", "workspace_support_bundle", "find_overloads" },
+            new[] { "workspace_readiness_report", "workspace_support_bundle", "find_overloads", "apply_composite" },
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
         // The full changed-tool set: get_completions, bulk_replace_type_apply, and
-        // replace_invocation_preview changed summary (apply_composite_preview too: name-retention rationale); server_info changed outputSchema; the three
+        // replace_invocation_preview changed summary; apply_composite_preview changed summary and
+        // gained alias lifecycle metadata; server_info changed outputSchema; the three
         // retained aliases gained additive catalog deprecation metadata. The three
         // workspace-status-family tools below changed outputSchema because
         // restore-required-vs-build-conflation added `buildRequired` to
@@ -215,7 +245,6 @@ public sealed class SurfaceCatalogTests
                      "get_completions",
                      "bulk_replace_type_apply",
                      "replace_invocation_preview",
-                     "apply_composite_preview",
                  })
         {
             var changedSummaryTool = diff.Tools.Changed.Single(entry => entry.Name == summaryToolName);
@@ -223,6 +252,11 @@ public sealed class SurfaceCatalogTests
                 new[] { "summary" },
                 changedSummaryTool.ChangedFields.Select(field => field.Field).ToArray());
         }
+
+        var changedCompositeAlias = diff.Tools.Changed.Single(entry => entry.Name == "apply_composite_preview");
+        CollectionAssert.AreEqual(
+            new[] { "summary", "deprecation" },
+            changedCompositeAlias.ChangedFields.Select(field => field.Field).ToArray());
 
         var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
         CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
@@ -245,7 +279,7 @@ public sealed class SurfaceCatalogTests
                 $"{workspaceToolName} changed only its outputSchema (buildRequired added to WorkspaceStatusSummaryDto).");
         }
 
-        Assert.AreEqual(4, diff.Summary.Added);
+        Assert.AreEqual(5, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
         Assert.AreEqual(11, diff.Summary.Changed);
@@ -260,7 +294,7 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(document.RootElement.TryGetProperty("fromVersion", out var fromVersion));
         Assert.AreEqual("2.3.1", fromVersion.GetString());
         Assert.IsTrue(document.RootElement.TryGetProperty("summary", out var summary));
-        Assert.AreEqual(4, summary.GetProperty("added").GetInt32());
+        Assert.AreEqual(5, summary.GetProperty("added").GetInt32());
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
         CollectionAssert.AreEquivalent(
@@ -715,6 +749,12 @@ public sealed class SurfaceCatalogTests
         {
             Deprecation = deprecation,
         };
+
+    private static string ParameterContract(ParameterInfo parameter)
+    {
+        var description = parameter.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description;
+        return $"{parameter.Name}|{parameter.ParameterType}|{parameter.HasDefaultValue}|{parameter.DefaultValue}|{description}";
+    }
 
     private static SurfaceEntry PromptEntry(
         string name,
