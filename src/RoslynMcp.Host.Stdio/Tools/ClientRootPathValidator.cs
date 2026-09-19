@@ -103,9 +103,7 @@ internal static class ClientRootPathValidator
                 expandSanctionedRoots,
                 legacyClientRootPaths))
         {
-            throw new ArgumentException(
-                $"Path '{path}' is outside the configured sanctioned-root boundary.",
-                nameof(path));
+            throw new ArgumentException(SanctionedRootBoundaryRefusalMessage, nameof(path));
         }
 
         return canonicalPath;
@@ -168,4 +166,7 @@ internal static class ClientRootPathValidator
 
     internal static string ResolvePath(string path) =>
         ConfiguredRootBoundary.ResolvePath(path);
+
+    internal const string SanctionedRootBoundaryRefusalMessage =
+        "The requested path is outside the configured sanctioned-root boundary.";
 }

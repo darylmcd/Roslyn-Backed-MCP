@@ -563,6 +563,11 @@ internal static class ToolErrorHandler
         var parameter = exception.ParamName ?? "<unknown>";
         var rawMessage = exception.Message;
 
+        if (IsSanctionedRootBoundaryRefusal(exception))
+        {
+            return ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage;
+        }
+
         if (exception is PublicArgumentException publicArgument)
         {
             return publicArgument.PublicMessage;
@@ -706,7 +711,8 @@ internal static class ToolErrorHandler
         // server_info. Hint is omitted (rather than emitted as null) when the failing
         // parameter cannot be resolved against the tool catalog — keeps the envelope
         // shape stable for downstream parsers that do not expect the field.
-        var schemaHint = info.Category == ErrorCategories.InvalidArgument
+        var schemaHint = info.Category == ErrorCategories.InvalidArgument &&
+            !ContainsSanctionedRootBoundaryRefusal(ex)
             ? BuildSchemaHint(toolName, info.ParamName)
             : null;
 
@@ -736,6 +742,21 @@ internal static class ToolErrorHandler
         var formatted = string.Join(", ", all.Select(p => $"{p.Name}: {FormatTypeWithOptionalMarker(p)}"));
         return $"{toolName}({formatted})";
     }
+
+    private static bool ContainsSanctionedRootBoundaryRefusal(Exception exception)
+    {
+        var candidate = IsInvocationWrapper(exception)
+            ? exception.InnerException
+            : exception;
+        return candidate is ArgumentException argument && IsSanctionedRootBoundaryRefusal(argument);
+    }
+
+    private static bool IsSanctionedRootBoundaryRefusal(ArgumentException exception) =>
+        exception.GetType() == typeof(ArgumentException) &&
+        string.Equals(exception.ParamName, "path", StringComparison.Ordinal) &&
+        exception.Message.StartsWith(
+            ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage,
+            StringComparison.Ordinal);
 
     private static string FormatParameter(string toolName, ToolParameterSchema schema)
     {
