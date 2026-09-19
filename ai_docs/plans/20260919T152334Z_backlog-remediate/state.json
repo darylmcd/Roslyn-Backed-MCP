@@ -73,7 +73,7 @@
     {
       "id": "roslyn-hook-matchers-stale-tool-prefix",
       "order": 2,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "roslyn-hook-matchers-stale-tool-prefix"
       ],
@@ -107,8 +107,8 @@
       "dependsOn": [],
       "branch": "remediation/roslyn-hook-matchers-stale-tool-prefix",
       "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/roslyn-hook-matchers-stale-tool-prefix",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1550",
+      "mergedAt": "2026-09-19T19:16:32Z",
       "notes": null,
       "fileSetHash": "54d572fd17a3d8bece617a6912661b569ee92d603b4b97a8e4758221cd42bd8f",
       "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7",
@@ -121,7 +121,17 @@
           "previousStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
           "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7"
         }
-      ]
+      ],
+      "integrationGate": {
+        "pr": 1550,
+        "base": "main",
+        "mainOid": "44ed425fbbeb4010c8db134b02d874f7f637a792",
+        "headOid": "659ca8bc80e431752245a708c0423c9e97caf416",
+        "gatedTree": "fbe06a5a904b4c5620e5e29e8a1968c1b03ff434",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-roslyn-hook-matchers-stale-tool-prefix-pr1550-20260919T190134941Z-56940.log",
+        "gatedAt": "2026-09-19T19:16:06.539Z"
+      }
     },
     {
       "id": "server-info-update-unknown-not-false",
