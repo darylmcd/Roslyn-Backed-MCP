@@ -136,7 +136,7 @@
     {
       "id": "server-info-update-unknown-not-false",
       "order": 3,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "server-info-update-unknown-not-false"
       ],
