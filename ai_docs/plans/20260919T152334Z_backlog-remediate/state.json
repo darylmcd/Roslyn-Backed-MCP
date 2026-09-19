@@ -17,9 +17,10 @@
       "backlogRowsClosed": [
         "boundary-rejection-redacted-to-generic-schema-error"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs"
+        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
       ],
       "testFilesAdded": 1,
       "testFiles": [
@@ -29,7 +30,7 @@
         "changelog.d/boundary-rejection-redacted-to-generic-schema-error.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 30000,
+      "estimatedContextTokens": 35000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 1,
@@ -46,9 +47,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "59532b15d22633aba16b768a45f5b23cb349e35d234a2496fa0229dee5babdb4",
-      "stanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
-      "reviewedStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3"
+      "fileSetHash": "3131a58ebf7415c225dfcc6dde50597c9fa9f602f0a2fd2aa02cb95e687a512b",
+      "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586",
+      "reviewedStanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586",
+      "amendments": [
+        {
+          "at": "2026-09-19T16:40:31.154Z",
+          "finding": "Serial full-suite validation: 18 sibling/legacy tests require exact ArgumentException; PublicInvalidOperationException broke the established contract.",
+          "reason": "Retain exact ArgumentException and add the formatter as a defect-forced companion to expose only the fixed safe boundary message without schemaHint.",
+          "previousStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
+          "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586"
+        }
+      ]
     },
     {
       "id": "roslyn-hook-matchers-stale-tool-prefix",
@@ -431,9 +441,9 @@
       }
     ]
   },
-  "conflictGraphInputHash": "15240f1f1e5014f06383945b5b1e159e2f71b859d958a80396857a6e3c97fa4f",
-  "planHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
-  "backlogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79",
-  "reviewedPlanHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
+  "conflictGraphInputHash": "708e74cba480f11a166878f92a1bb71079b440674fe5b60446dd852b5bffb1bb",
+  "planHash": "b7ffb1b7fbd026dd83ba6d610eda1042c000f7fc39546868adf26149f98f1469",
+  "backlogSnapshotHash": "5f6cfd1684ad679136b3d8bdd7e381b90b8435927dc2154994740a417bfd74c7",
+  "reviewedPlanHash": "b7ffb1b7fbd026dd83ba6d610eda1042c000f7fc39546868adf26149f98f1469",
   "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79"
 }
