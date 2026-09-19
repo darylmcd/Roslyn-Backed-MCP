@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-18T15:27:48Z
+**updated_at:** 2026-09-19T15:49:12Z
 
 ## Agent contract
 
@@ -254,6 +254,7 @@
 | `items-gate-forced-companion-prose-dedupe` | Low | — | **Drop the duplicated gate-forced-companion paragraph from 34 items files** — the addenda now expresses the README surface-count companion once, machine-readably; replace the per-row prose with a pointer. [type: docs] [source: 2026-09-15 addenda retrospective] | M | items/items-gate-forced-companion-prose-dedupe.md |
 | `promotion-tier-extensionless-tool-anchors` | Low | — | **Add `.cs` to 32 extension-less `Tools/<Name>` anchors across 13 `promotion-tier-*` items.** They resolve today but miss literal-path consumers and the companion `*Tools.cs` glob. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/promotion-tier-extensionless-tool-anchors.md |
 | `workspace-load-unsupported-project-as-error` | Low | — | **Report unsupported project types as skipped, not workspace errors** — classify a solution project Roslyn cannot open (e.g. .wixproj) as an Info-level skipped project so workspaceErrorCount reflects real load failures. [type: bug] [source: SnipCue /backlog-remediate 20260916T160820Z retro] | S | items/workspace-load-unsupported-project-as-error.md |
+| `stale-pre-apply-hook-consumer-docs` | Low | — | **Consumer docs promise a removed blocking pre-apply hook.** Replace the stale blocking-hook claims with the current post-apply advisory hooks and server-enforced preview-token contract; repair the nonexistent README section link. [type: docs] [source: remediation review 2026-09-19] | S | items/stale-pre-apply-hook-consumer-docs.md |
 
 ## Defer
 
