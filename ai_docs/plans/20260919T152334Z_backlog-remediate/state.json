@@ -79,10 +79,11 @@
       ],
       "docFiles": [
         "ai_docs/bootstrap-read-tool-primer.md",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
         "changelog.d/roslyn-hook-matchers-stale-tool-prefix.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 45000,
+      "estimatedContextTokens": 47000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 3,
@@ -99,9 +100,18 @@
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "2b5aa1306ca413153bac2028cbd45d7627a1ca891e881e78c4adf00780d89721",
-      "stanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
-      "reviewedStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133"
+      "fileSetHash": "54d572fd17a3d8bece617a6912661b569ee92d603b4b97a8e4758221cd42bd8f",
+      "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7",
+      "reviewedStanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7",
+      "amendments": [
+        {
+          "at": "2026-09-19T18:06:24.261Z",
+          "finding": "Cold review: canonical remediation addenda still described both hook matchers as bare-prefix-only despite its maintenance rule requiring synchronization with hooks/hooks.json.",
+          "reason": "Add the addenda as a gate-forced companion and synchronize its examples/warning with the exact dual-prefix advisory contract.",
+          "previousStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
+          "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7"
+        }
+      ]
     },
     {
       "id": "server-info-update-unknown-not-false",
@@ -441,9 +451,9 @@
       }
     ]
   },
-  "conflictGraphInputHash": "708e74cba480f11a166878f92a1bb71079b440674fe5b60446dd852b5bffb1bb",
-  "planHash": "b7ffb1b7fbd026dd83ba6d610eda1042c000f7fc39546868adf26149f98f1469",
+  "conflictGraphInputHash": "77915e029420c6141983856958b1e18044678731a339a7c9d616d5156929ef78",
+  "planHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
   "backlogSnapshotHash": "5f6cfd1684ad679136b3d8bdd7e381b90b8435927dc2154994740a417bfd74c7",
-  "reviewedPlanHash": "b7ffb1b7fbd026dd83ba6d610eda1042c000f7fc39546868adf26149f98f1469",
+  "reviewedPlanHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
   "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79"
 }
