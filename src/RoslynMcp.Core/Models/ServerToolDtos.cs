@@ -127,13 +127,15 @@ public sealed record ServerCapabilitiesDto(bool Tools, bool Resources, bool Prom
 /// latest-version check status even when no newer version is available. The
 /// <see cref="Latest"/> field is non-null only when the registry version is STRICTLY GREATER
 /// than the running build (server-info-update-latest-inverted contract).
+/// <see cref="UpdateAvailable"/> is null until the check succeeds, so an unknown result is
+/// never misreported as "no update".
 /// <see cref="CheckStatus"/> and <see cref="LastCheckedAt"/> distinguish pending, failed,
 /// timed-out, and completed checks even when <see cref="Latest"/> is null.
 /// </summary>
 public sealed record ServerUpdateInfoDto(
     string Current,
     string? Latest,
-    bool UpdateAvailable,
+    bool? UpdateAvailable,
     string? Command,
     string CheckStatus,
     string? LastCheckedAt);

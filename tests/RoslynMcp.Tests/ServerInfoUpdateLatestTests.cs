@@ -10,10 +10,9 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Regression for `server-info-update-latest-inverted` (P4): Jellyfin 2026-04-16 §1
-/// reproduced `server_info` reporting `latest=1.16.0` while `current=1.18.2`. The
-/// update.latest field surfaced any cached registry value regardless of comparison
-/// to current. Post-fix: `latest` is only populated when strictly greater than current.
+/// Regressions for the server_info update contract: `latest` is populated only when
+/// strictly greater than current, and `updateAvailable` remains unknown until the
+/// registry check succeeds.
 /// </summary>
 [TestClass]
 public sealed class ServerInfoUpdateLatestTests
@@ -147,7 +146,21 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.AreEqual(JsonValueKind.Object, update.ValueKind);
         Assert.AreEqual("pending", update.GetProperty("checkStatus").GetString());
         Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
         Assert.AreEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_CheckNeverStarted_UpdateAvailabilityIsUnknown()
+    {
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new FakeVersionProvider(null, VersionCheckStatus.NeverChecked));
+        using var doc = JsonDocument.Parse(json.TextPayload());
+
+        var update = doc.RootElement.GetProperty("update");
+        Assert.AreEqual("neverChecked", update.GetProperty("checkStatus").GetString());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
     }
 
     [TestMethod]
@@ -163,7 +176,7 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString());
         Assert.AreEqual(completedAt.ToString("O"), update.GetProperty("lastCheckedAt").GetString());
         Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
-        Assert.IsFalse(update.GetProperty("updateAvailable").GetBoolean());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
     }
 
     [TestMethod]
@@ -183,6 +196,7 @@ public sealed class ServerInfoUpdateLatestTests
         var update = doc.RootElement.GetProperty("update");
         Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString(),
             "server_info must report the completed failure instead of starting a new pending check and hiding it.");
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
         Assert.AreNotEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
     }
 
@@ -210,6 +224,7 @@ public sealed class ServerInfoUpdateLatestTests
         var update = doc.RootElement.GetProperty("update");
         Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString(),
             "server_info must report a failed refresh instead of starting another pending check.");
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
         Assert.AreNotEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
     }
 
@@ -226,7 +241,7 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.AreEqual("timedOut", update.GetProperty("checkStatus").GetString());
         Assert.AreEqual(completedAt.ToString("O"), update.GetProperty("lastCheckedAt").GetString());
         Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
-        Assert.IsFalse(update.GetProperty("updateAvailable").GetBoolean());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("updateAvailable").ValueKind);
     }
 
     private static async Task WaitForTerminalStatusAsync(NuGetVersionChecker checker)
