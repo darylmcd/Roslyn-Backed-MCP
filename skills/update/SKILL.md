@@ -32,9 +32,17 @@ Call **`server_info`** on the running MCP host for semver + NuGet update hints. 
 Call `server_info` to get the current running version and check for updates. Report to the user:
 - Current version (from `version` field, strip the `+hash` suffix)
 - Latest NuGet version (from `update.latest` if available)
-- Whether an update is available (from `update.updateAvailable`)
+- Whether an update is available (from the tri-state `update.updateAvailable`)
 
-If `update` is `null`, the NuGet check hasn't completed yet. Tell the user the check is still pending and proceed to update anyway if they want the latest.
+The `update` block is always present. Interpret `update.updateAvailable` as follows:
+
+| Value | Meaning |
+|-------|---------|
+| `true` | A strictly newer NuGet version is available. |
+| `false` | The check succeeded and found no newer version. |
+| `null` | No successful result is available. Read `update.checkStatus`: `pending` / `neverChecked` means the check has not completed; `failed` / `timedOut` means availability remains unknown. |
+
+When the value is `null`, report the status rather than claiming there is no update. Proceed to update anyway if the user wants the latest.
 
 ### Step 2: Update Claude Code Plugin
 
