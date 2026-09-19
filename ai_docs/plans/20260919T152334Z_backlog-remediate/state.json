@@ -181,7 +181,7 @@
     {
       "id": "apply-composite-canonical-alias-surface",
       "order": 4,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "apply-composite-canonical-alias-surface"
       ],
@@ -215,12 +215,22 @@
       "dependsOn": [],
       "branch": "remediation/apply-composite-canonical-alias-surface",
       "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/apply-composite-canonical-alias-surface",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1551",
+      "mergedAt": "2026-09-19T19:30:38Z",
       "notes": null,
       "fileSetHash": "21ce2be08de0ddf04025835c776c5c264b40f5cc92e5e64f30fe2a4b4a665b84",
       "stanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69",
-      "reviewedStanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69"
+      "reviewedStanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69",
+      "integrationGate": {
+        "pr": 1551,
+        "base": "main",
+        "mainOid": "8073746cd9ca2e92d95d62bc848371da1a217094",
+        "headOid": "a4d2d38fa2fbc4abbe8966221954d15e405c4fef",
+        "gatedTree": "90b869799ea17933e26c669a866b409e024c4516",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-apply-composite-canonical-alias-surface-pr1551-20260919T191707407Z-54636.log",
+        "gatedAt": "2026-09-19T19:30:03.860Z"
+      }
     }
   ],
   "anchorVerification": "performed",
