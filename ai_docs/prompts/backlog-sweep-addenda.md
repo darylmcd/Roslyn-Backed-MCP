@@ -240,20 +240,25 @@ hooks:
       Runs eng/verify-skills-are-generic.ps1 on any edit under skills/ and
       exits with the verifier's code, so a non-generic shipped-skill edit
       fails in the same turn. Silent on every other path.
-  - tool: mcp__roslyn__(rename|extract_interface|extract_type|move_type_to_file|bulk_replace_type|remove_dead_code|move_file|create_file)_apply, apply_composite_preview
+  - tool: mcp__(?:plugin_roslyn-mcp_)?roslyn__(rename_apply|extract_interface_apply|extract_type_apply|move_type_to_file_apply|bulk_replace_type_apply|remove_dead_code_apply|apply_composite_preview|move_file_apply|create_file_apply)
     script: hooks/hooks.json                       # PostToolUse, type "prompt"
     effect: |
       ADVISORY ONLY — never blocks. Nudges the agent to run compile_check /
       build_workspace once a run of back-to-back applies ends. Plans must not
       treat it as a gate.
-  - tool: mcp__roslyn__server_info
+  - tool: mcp__(?:plugin_roslyn-mcp_)?roslyn__server_info
     script: hooks/hooks.json                       # PostToolUse, type "prompt"
     effect: |
       ADVISORY ONLY. Surfaces update.updateAvailable as a /roslyn-mcp:update
       nudge. Noise in a sweep session; never a gate.
 ```
 
-Both `hooks/hooks.json` matchers are written against the bare `mcp__roslyn__*` prefix. In a plugin-loaded session the live names are `mcp__plugin_roslyn-mcp_roslyn__*` and **neither matcher fires** — treat both as best-effort. `hooks/hooks.json` is itself a hard-blocked release-managed path, so do not "fix" it inside an initiative.
+Both `hooks/hooks.json` matchers accept exactly the bare `mcp__roslyn__*` and
+marketplace-plugin `mcp__plugin_roslyn-mcp_roslyn__*` prefixes. They remain
+advisory-only prompts under either registration shape and must not widen to unrelated
+MCP servers. `hooks/hooks.json` is a hard-blocked release-managed path, so an
+initiative that intentionally edits it must first create the fresh
+`.release-managed-edit-allowed` sentinel described above and remove it before commit.
 
 Planning consequence: `CHANGELOG.md` is release-managed *as well as* virtually-shared, so a subagent editing it hits a hard block before the discipline break is ever noticed. The fragment convention below is the only sanctioned path.
 
@@ -328,7 +333,7 @@ Compact pointer list — full retros live in `review-inbox/archive/<batch-ts>/` 
 - Update `Hooks that block subagent tool calls` against `.claude/settings.json` **and** `hooks/hooks.json` whenever either changes. Removing a hook without removing its addenda entry is the failure this section has already made once.
 - Keep `## mandatory_companion_files` as a top-level `##` heading with the key inside a fenced block. `backlog.mjs audit` matches the heading literally (`_anchor-classify.mjs:442`); demoting it to `###` or converting it back to a prose table silently disables mechanical companion expansion.
 - Re-derive a companion entry from the gate's *source*, not from what rows habitually cite. A gate that asserts against live state (`ReadmeSurfaceCountTests` reading `ServerSurfaceCatalog.Tools`) is never a companion; only a file carrying a literal that must move is. Check with `git log --name-only` over the last ~20 commits touching the trigger anchor: a file no such commit edits is not a companion.
-- Re-verify the tool-name prefix (`mcp__roslyn__*` vs `mcp__plugin_roslyn-mcp_roslyn__*`) whenever the install shape changes. Hooks, the read-side primer, and `.claude/settings.json` all hardcode it in places.
+- Re-verify the tool-name prefix aliases whenever the install shape changes. Keep the hooks' exact dual-prefix matcher contract, `.claude/settings.json` allowlist parity, and the read-side primer's live-prefix resolution guidance synchronized.
 - Append to `Case studies` whenever a sweep retro produces a quotable new lesson — keep this section append-only; old entries are evidence.
 
 The addenda file should hover around 150–250 lines. If it grows past 400, it's becoming a second planner — extract overflow to dedicated `ai_docs/` topics and link from here.

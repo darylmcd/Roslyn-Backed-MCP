@@ -143,13 +143,16 @@ table above.
 
 ## When the Roslyn MCP server is disconnected
 
-Check `server_info` or try any `mcp__roslyn__*` tool — if the response is "server
-not connected", then the fallback column of the table above is appropriate. Log the
-disconnect (the consumer-repo convention is a one-line note in the PR description)
-and follow up with `mcp-connection-session-resilience` diagnostics.
+Scan the live tool surface for `server_info` candidates, identify the Roslyn server by
+its response shape (`connection.state`, `catalogVersion`, and `surface.*`), then pin
+that candidate's client-assigned prefix for every later Roslyn tool call. If no
+candidate returns a Roslyn-shaped response, the fallback column of the table above is
+appropriate. Log the disconnect (the consumer-repo convention is a one-line note in
+the PR description) and follow up with `mcp-connection-session-resilience`
+diagnostics.
 
-Do **not** infer connectivity from the deferred-tool catalog (Claude Code may
-advertise `mcp__roslyn__*` names — schemas unloaded — even when the server is down).
+Do **not** infer connectivity from the deferred-tool catalog (a client may advertise
+Roslyn tool names with schemas unloaded even when the server is down).
 See `runtime.md` § *Connection-state signals* for the full list of authoritative
 probes and non-signals.
 
