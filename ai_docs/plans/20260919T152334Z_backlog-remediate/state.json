@@ -136,7 +136,7 @@
     {
       "id": "server-info-update-unknown-not-false",
       "order": 3,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "server-info-update-unknown-not-false"
       ],
@@ -169,8 +169,8 @@
       "dependsOn": [
         "roslyn-hook-matchers-stale-tool-prefix"
       ],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/server-info-update-unknown-not-false",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/server-info-update-unknown-not-false",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
