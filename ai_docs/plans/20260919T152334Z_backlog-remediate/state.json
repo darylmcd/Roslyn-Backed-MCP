@@ -13,7 +13,7 @@
     {
       "id": "boundary-rejection-redacted-to-generic-schema-error",
       "order": 1,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "boundary-rejection-redacted-to-generic-schema-error"
       ],
