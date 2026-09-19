@@ -12,11 +12,11 @@ public sealed class CatalogDestructiveWarningTests
 {
     private const string DestructiveMarker = "DESTRUCTIVE";
     private const string PreviewSuffix = "_preview";
-    private const string NameRetentionRationale = "kept for API stability";
+    private const string CanonicalCompositeApplyName = "apply_composite";
 
     // apply-composite-preview-destructive-misnomer: a `_preview` suffix tells agents the tool is a
-    // safe read. apply_composite_preview is the one deliberate exception — the suffix names the
-    // composite preview token it redeems, and the published name is retained for contract stability.
+    // safe read. apply_composite_preview is the one deliberate exception — it is a deprecated
+    // compatibility alias for the canonical destructive apply_composite route.
     // Any other `_preview` tool that writes must be renamed, not added to this allowlist silently.
     private static readonly HashSet<string> MutatingPreviewSuffixAllowlist = new(StringComparer.Ordinal)
     {
@@ -41,7 +41,7 @@ public sealed class CatalogDestructiveWarningTests
     }
 
     [TestMethod]
-    public void Allowlisted_MutatingPreviewTools_AreDestructiveAndStateNameRetentionRationale()
+    public void Allowlisted_MutatingPreviewTools_AreDestructiveAndNameCanonicalReplacement()
     {
         foreach (var name in MutatingPreviewSuffixAllowlist)
         {
@@ -49,8 +49,8 @@ public sealed class CatalogDestructiveWarningTests
             Assert.IsNotNull(entry, $"Allowlisted tool '{name}' must be present in the catalog; drop stale allowlist entries.");
             Assert.IsFalse(entry.ReadOnly, $"Allowlisted tool '{name}' is only allowlisted because it mutates; catalog must say readOnly=false.");
             Assert.IsTrue(entry.Destructive, $"Allowlisted tool '{name}' must be classified destructive in the catalog.");
-            StringAssert.Contains(entry.Summary, NameRetentionRationale,
-                $"Catalog summary for '{name}' must state why the '_preview' suffix is retained. Actual: '{entry.Summary}'");
+            StringAssert.Contains(entry.Summary, CanonicalCompositeApplyName,
+                $"Catalog summary for '{name}' must name its canonical replacement. Actual: '{entry.Summary}'");
         }
 
         var method = typeof(OrchestrationTools).GetMethod(
@@ -66,34 +66,48 @@ public sealed class CatalogDestructiveWarningTests
 
         var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
         Assert.IsNotNull(description, "ApplyCompositePreview must carry a [Description] attribute.");
-        StringAssert.Contains(description.Description, NameRetentionRationale,
-            $"Tool [Description] must state why the '_preview' suffix is retained. Actual: '{description.Description}'");
+        StringAssert.Contains(description.Description, CanonicalCompositeApplyName,
+            $"Tool [Description] must name its canonical replacement. Actual: '{description.Description}'");
     }
 
     [TestMethod]
-    public void Catalog_ApplyCompositePreview_SummaryLeadsWithDestructiveMarker()
+    public void Catalog_ApplyCompositeNames_AreSafetyEquivalent()
     {
-        var entry = ServerSurfaceCatalog.Tools.SingleOrDefault(t => t.Name == "apply_composite_preview");
-        Assert.IsNotNull(entry, "apply_composite_preview must be present in the tool catalog.");
-        Assert.IsTrue(entry.Destructive, "Catalog entry must classify the tool as destructive.");
-        Assert.IsTrue(
-            entry.Summary.StartsWith(DestructiveMarker, StringComparison.Ordinal),
-            $"Catalog summary must lead with '{DestructiveMarker}' so agents reading discover_capabilities see the warning before invoking. Actual: '{entry.Summary}'");
+        foreach (var name in new[] { "apply_composite", "apply_composite_preview" })
+        {
+            var entry = ServerSurfaceCatalog.Tools.SingleOrDefault(t => t.Name == name);
+            Assert.IsNotNull(entry, $"{name} must be present in the tool catalog.");
+            Assert.IsFalse(entry.ReadOnly, $"{name} must be classified as a write operation.");
+            Assert.IsTrue(entry.Destructive, $"{name} must be classified as destructive.");
+            Assert.IsTrue(
+                entry.Summary.StartsWith(DestructiveMarker, StringComparison.Ordinal),
+                $"Catalog summary for {name} must lead with '{DestructiveMarker}'. Actual: '{entry.Summary}'");
+        }
     }
 
     [TestMethod]
-    public void Tool_ApplyCompositePreview_DescriptionLeadsWithDestructiveMarker()
+    public void Tool_ApplyCompositeNames_AreSafetyEquivalent()
     {
-        var method = typeof(OrchestrationTools).GetMethod(
-            nameof(OrchestrationTools.ApplyCompositePreview),
-            BindingFlags.Public | BindingFlags.Static);
-        Assert.IsNotNull(method, "OrchestrationTools.ApplyCompositePreview must exist.");
+        foreach (var methodName in new[]
+                 {
+                     nameof(OrchestrationTools.ApplyComposite),
+                     nameof(OrchestrationTools.ApplyCompositePreview),
+                 })
+        {
+            var method = typeof(OrchestrationTools).GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+            Assert.IsNotNull(method, $"OrchestrationTools.{methodName} must exist.");
 
-        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
-        Assert.IsNotNull(description, "ApplyCompositePreview must carry a [Description] attribute for tool-schema rendering.");
-        Assert.IsTrue(
-            description.Description.StartsWith(DestructiveMarker, StringComparison.Ordinal),
-            $"Tool [Description] must lead with '{DestructiveMarker}' to mirror the catalog summary. Actual: '{description.Description}'");
+            var tool = method.GetCustomAttribute<McpServerToolAttribute>();
+            Assert.IsNotNull(tool, $"{methodName} must carry [McpServerTool].");
+            Assert.IsFalse(tool.ReadOnly, $"{tool.Name} must declare ReadOnly=false.");
+            Assert.IsTrue(tool.Destructive, $"{tool.Name} must declare Destructive=true.");
+
+            var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
+            Assert.IsNotNull(description, $"{methodName} must carry a [Description] attribute.");
+            Assert.IsTrue(
+                description.Description.StartsWith(DestructiveMarker, StringComparison.Ordinal),
+                $"Tool [Description] for {tool.Name} must lead with '{DestructiveMarker}'. Actual: '{description.Description}'");
+        }
     }
 
     // revert-last-apply-single-slot-doc-warning (2026-05-31 surface-test): revert_last_apply is

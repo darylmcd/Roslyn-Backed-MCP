@@ -29,7 +29,17 @@ public static partial class ServerSurfaceCatalog
         Tool("migrate_package_preview", "orchestration", "experimental", true, false, "Preview migrating a package across affected projects."),
         Tool("split_class_preview", "orchestration", "experimental", true, false, "Preview splitting a class into a new partial file."),
         Tool("extract_and_wire_interface_preview", "orchestration", "experimental", true, false, "Preview extracting an interface and updating DI registrations."),
-        Tool("apply_composite_preview", "orchestration", "experimental", false, true, "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. The _preview suffix names the redeemed preview token; name kept for API stability. Pair with a *_preview call in the same session."),
+        Tool("apply_composite", "orchestration", "experimental", false, true, "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session."),
+        Tool("apply_composite_preview", "orchestration", "experimental", false, true, "DESTRUCTIVE — deprecated compatibility alias for apply_composite; applies a previously-previewed orchestration operation to disk. Use apply_composite instead.") with
+        {
+            Deprecation = new ToolAliasDeprecation(
+                "apply_composite_preview",
+                "apply_composite",
+                "misleading destructive name retained for compatibility",
+                RiskBucket: null,
+                IntroducedRelease: "1.0.0",
+                EarliestRemovalMajor: 5),
+        },
         Tool("get_syntax_tree", "syntax", "stable", true, false, "Return a structured syntax tree for a document or range."),
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
         Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),

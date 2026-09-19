@@ -236,7 +236,7 @@ which is the fail-closed case above. Rationale and full detail:
 
 ## Live Surface
 
-The current release exposes **174 tools** (113 stable / 61 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
+The current release exposes **175 tools** (113 stable / 62 experimental), **14 resources** (9 stable / 5 experimental), and **20 prompts** (all experimental).
 
 Use the running server for the authoritative live catalog and support tiers:
 
