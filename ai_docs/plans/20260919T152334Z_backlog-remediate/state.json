@@ -13,7 +13,7 @@
     {
       "id": "boundary-rejection-redacted-to-generic-schema-error",
       "order": 1,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "boundary-rejection-redacted-to-generic-schema-error"
       ],
@@ -44,8 +44,8 @@
       "dependsOn": [],
       "branch": "remediation/boundary-rejection-redacted-to-generic-schema-error",
       "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/boundary-rejection-redacted-to-generic-schema-error",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1549",
+      "mergedAt": "2026-09-19T19:00:37Z",
       "notes": null,
       "fileSetHash": "3131a58ebf7415c225dfcc6dde50597c9fa9f602f0a2fd2aa02cb95e687a512b",
       "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586",
@@ -58,7 +58,17 @@
           "previousStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
           "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586"
         }
-      ]
+      ],
+      "integrationGate": {
+        "pr": 1549,
+        "base": "main",
+        "mainOid": "f0b7cafe4204290c710c05d752b91de0f91d37f1",
+        "headOid": "e01d29e8fe11bd5725a66ea7a7f1e2a5535c8be2",
+        "gatedTree": "1730ec1c87532989c493a5b093ef823a6682e8dc",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-boundary-rejection-redacted-to-generic-schema-error-pr1549-20260919T184315491Z-26488.log",
+        "gatedAt": "2026-09-19T18:58:55.654Z"
+      }
     },
     {
       "id": "roslyn-hook-matchers-stale-tool-prefix",
