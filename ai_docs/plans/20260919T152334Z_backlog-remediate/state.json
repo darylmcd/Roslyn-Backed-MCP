@@ -1,14 +1,14 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-19T15:23:35.049Z",
-  "backlogSnapshot": "2026-09-18T15:27:48Z",
+  "backlogSnapshot": "2026-09-19T20:41:49Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
-  "cycleCount": 0,
+  "phase": "complete",
+  "cycleCount": 1,
   "maxCycles": 2,
-  "completed": false,
-  "reviewStatus": "pending",
-  "readyForExecute": false,
+  "completed": true,
+  "reviewStatus": "passed",
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "boundary-rejection-redacted-to-generic-schema-error",
@@ -136,7 +136,7 @@
     {
       "id": "server-info-update-unknown-not-false",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "server-info-update-unknown-not-false"
       ],
@@ -169,14 +169,24 @@
       "dependsOn": [
         "roslyn-hook-matchers-stale-tool-prefix"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/server-info-update-unknown-not-false",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/server-info-update-unknown-not-false",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1553",
+      "mergedAt": "2026-09-19T20:40:25Z",
       "notes": null,
       "fileSetHash": "2bd3edf56731662caa8ae41ffb3e0990098fc05ab239fe62dc454672e76b6011",
       "stanzaHash": "0a5db5c0ec4b08d730316b5f61d1fce98667ed3ffe25c7334408753d5a573405",
-      "reviewedStanzaHash": "0a5db5c0ec4b08d730316b5f61d1fce98667ed3ffe25c7334408753d5a573405"
+      "reviewedStanzaHash": "0a5db5c0ec4b08d730316b5f61d1fce98667ed3ffe25c7334408753d5a573405",
+      "integrationGate": {
+        "pr": 1553,
+        "base": "main",
+        "mainOid": "ec8f80cc6fd2a329aaf2b1355b26a9545ee07c49",
+        "headOid": "cf07fc413526715d4d99eb8f23fe12da8c80963b",
+        "gatedTree": "0f64bb42b0a8e77aa2986c0643a783f7e89cccdf",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-server-info-update-unknown-not-false-pr1553-20260919T201334894Z-73104.log",
+        "gatedAt": "2026-09-19T20:26:22.461Z"
+      }
     },
     {
       "id": "apply-composite-canonical-alias-surface",
@@ -485,5 +495,12 @@
   "planHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
   "backlogSnapshotHash": "5f6cfd1684ad679136b3d8bdd7e381b90b8435927dc2154994740a417bfd74c7",
   "reviewedPlanHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
-  "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79"
+  "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79",
+  "completedAt": "2026-09-19T20:41:51.334Z",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 0,
+    "info": 0
+  },
+  "lastReviewFindings": []
 }

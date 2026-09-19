@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-19T19:31:44Z
+**updated_at:** 2026-09-19T20:41:49Z
 
 ## Agent contract
 
@@ -93,7 +93,6 @@
 | `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
-| `server-info-update-unknown-not-false` | Medium | — | **Emit `server_info.update.updateAvailable` as null unless the check succeeded** — make the DTO field nullable so a pending check stops reading as "up to date", and update the shipped update skill and version hook that branch on the boolean. [type: bug] [source: roslyn-mcp retro 2026-09-13] | M | items/server-info-update-unknown-not-false.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `verify-ai-docs-link-anchor-fragments` | Medium | — | **Validate `#anchor` fragments in ai_docs relative links** — teach `eng/verify-ai-docs.ps1` to check the fragment half against the target file headings, not just file existence. [type: chore] [source: 2026-09-15 addenda retrospective] | S | items/verify-ai-docs-link-anchor-fragments.md |
