@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-19T15:23:35.049Z",
+  "backlogSnapshot": "2026-09-18T15:27:48Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "boundary-rejection-redacted-to-generic-schema-error",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "boundary-rejection-redacted-to-generic-schema-error"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ClientRootPathValidatorTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/boundary-rejection-redacted-to-generic-schema-error.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "59532b15d22633aba16b768a45f5b23cb349e35d234a2496fa0229dee5babdb4",
+      "stanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
+      "reviewedStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3"
+    },
+    {
+      "id": "roslyn-hook-matchers-stale-tool-prefix",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "roslyn-hook-matchers-stale-tool-prefix"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "hooks/hooks.json",
+        ".claude/settings.json",
+        "eng/verify-skills-on-edit.ps1"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/HookConfigurationTests.cs"
+      ],
+      "docFiles": [
+        "ai_docs/bootstrap-read-tool-primer.md",
+        "changelog.d/roslyn-hook-matchers-stale-tool-prefix.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "2b5aa1306ca413153bac2028cbd45d7627a1ca891e881e78c4adf00780d89721",
+      "stanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
+      "reviewedStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133"
+    },
+    {
+      "id": "server-info-update-unknown-not-false",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "server-info-update-unknown-not-false"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs",
+        "src/RoslynMcp.Core/Models/ServerToolDtos.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ServerInfoUpdateLatestTests.cs"
+      ],
+      "docFiles": [
+        "skills/update/SKILL.md",
+        "hooks/hooks.json",
+        "changelog.d/server-info-update-unknown-not-false.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [
+        "roslyn-hook-matchers-stale-tool-prefix"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "2bd3edf56731662caa8ae41ffb3e0990098fc05ab239fe62dc454672e76b6011",
+      "stanzaHash": "0a5db5c0ec4b08d730316b5f61d1fce98667ed3ffe25c7334408753d5a573405",
+      "reviewedStanzaHash": "0a5db5c0ec4b08d730316b5f61d1fce98667ed3ffe25c7334408753d5a573405"
+    },
+    {
+      "id": "apply-composite-canonical-alias-surface",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "apply-composite-canonical-alias-surface"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/SurfaceCatalogTests.cs",
+        "tests/RoslynMcp.Tests/CatalogDestructiveWarningTests.cs"
+      ],
+      "docFiles": [
+        "README.md",
+        "src/RoslynMcp.Host.Stdio/README.md",
+        "changelog.d/apply-composite-canonical-alias-surface.md"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "21ce2be08de0ddf04025835c776c5c264b40f5cc92e5e64f30fe2a4b4a665b84",
+      "stanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69",
+      "reviewedStanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [
+      {
+        "a": 2,
+        "b": 3,
+        "sharedFiles": [
+          "hooks/hooks.json"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 0,
+      "2": 1,
+      "3": 1,
+      "4": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      4
+    ]
+  },
+  "selection": {
+    "requestedCount": 15,
+    "selectedCount": 4,
+    "skipped": [
+      {
+        "id": "sweep-executor-override-stale-roslyn-prefix",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "sanctioned-roots-cwd-default-undocumented",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-quality-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-code-search-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "host-tools-complexity-extraction",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "changelog-process-tests-runner-adoption",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "mutation-analysis-property-write-orchestrator-decomposition",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-build-test-run",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tasks-extension-contract-docs",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "apply-composite-canonical-owner-routing",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "apply-composite-guidance-wave-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "apply-composite-guidance-wave-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "apply-composite-operator-guidance-and-hook",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "apply-composite-shipped-skill-migration",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffolding-async-sibling-io-boundary",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "scaffold-warning-mrtr-typed-state",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "http-streamable-host-project",
+        "reason": "defer-band"
+      },
+      {
+        "id": "workspace-process-pool-or-daemon",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-next-major-flat-field-removal",
+        "reason": "defer-band"
+      },
+      {
+        "id": "locationdto-stage3-flat-field-deprecation",
+        "reason": "defer-band"
+      }
+    ]
+  },
+  "conflictGraphInputHash": "15240f1f1e5014f06383945b5b1e159e2f71b859d958a80396857a6e3c97fa4f",
+  "planHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
+  "backlogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79",
+  "reviewedPlanHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
+  "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79"
+}
