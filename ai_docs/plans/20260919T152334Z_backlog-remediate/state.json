@@ -13,7 +13,7 @@
     {
       "id": "boundary-rejection-redacted-to-generic-schema-error",
       "order": 1,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "boundary-rejection-redacted-to-generic-schema-error"
       ],
@@ -41,8 +41,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/boundary-rejection-redacted-to-generic-schema-error",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/boundary-rejection-redacted-to-generic-schema-error",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -53,7 +53,7 @@
     {
       "id": "roslyn-hook-matchers-stale-tool-prefix",
       "order": 2,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "roslyn-hook-matchers-stale-tool-prefix"
       ],
@@ -84,8 +84,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/roslyn-hook-matchers-stale-tool-prefix",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/roslyn-hook-matchers-stale-tool-prefix",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -141,7 +141,7 @@
     {
       "id": "apply-composite-canonical-alias-surface",
       "order": 4,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "apply-composite-canonical-alias-surface"
       ],
@@ -173,8 +173,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/apply-composite-canonical-alias-surface",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/apply-composite-canonical-alias-surface",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
