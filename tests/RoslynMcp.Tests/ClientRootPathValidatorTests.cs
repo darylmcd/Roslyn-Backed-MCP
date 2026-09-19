@@ -520,11 +520,13 @@ public class ClientRootPathValidatorTests
     }
 
     [TestMethod]
-    public void OrdinaryPathArgumentFailure_RemainsRedactedAndKeepsSchemaHint()
+    public void OrdinaryPathArgumentFailure_WithBoundaryPrefix_RemainsRedactedAndKeepsSchemaHint()
     {
-        const string privateDetail = "private-path:C:/tenant/private.slnx";
+        const string privateDetail = "caller-controlled private-path:C:/tenant/private.slnx";
         var envelope = ToolErrorHandler.ClassifyAndFormat(
-            new ArgumentException(privateDetail, "path"),
+            new ArgumentException(
+                ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage + " " + privateDetail,
+                "path"),
             "workspace_load");
         using var document = JsonDocument.Parse(envelope);
 

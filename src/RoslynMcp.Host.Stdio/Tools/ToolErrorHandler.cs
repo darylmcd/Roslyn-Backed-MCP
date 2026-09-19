@@ -563,7 +563,7 @@ internal static class ToolErrorHandler
         var parameter = exception.ParamName ?? "<unknown>";
         var rawMessage = exception.Message;
 
-        if (IsSanctionedRootBoundaryRefusal(exception))
+        if (ClientRootPathValidator.IsSanctionedRootBoundaryRefusal(exception))
         {
             return ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage;
         }
@@ -748,15 +748,9 @@ internal static class ToolErrorHandler
         var candidate = IsInvocationWrapper(exception)
             ? exception.InnerException
             : exception;
-        return candidate is ArgumentException argument && IsSanctionedRootBoundaryRefusal(argument);
+        return candidate is ArgumentException argument &&
+            ClientRootPathValidator.IsSanctionedRootBoundaryRefusal(argument);
     }
-
-    private static bool IsSanctionedRootBoundaryRefusal(ArgumentException exception) =>
-        exception.GetType() == typeof(ArgumentException) &&
-        string.Equals(exception.ParamName, "path", StringComparison.Ordinal) &&
-        exception.Message.StartsWith(
-            ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage,
-            StringComparison.Ordinal);
 
     private static string FormatParameter(string toolName, ToolParameterSchema schema)
     {
