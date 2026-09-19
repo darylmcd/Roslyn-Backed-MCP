@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Check the server_info response for the 'update' field. If 'update.updateAvailable' is true, briefly tell the user that a newer version of the Roslyn MCP plugin is available (mention the current and latest versions) and suggest running /roslyn-mcp:update. If update is null or updateAvailable is false, respond with 'ok' and do not mention updates."
+            "prompt": "Check the server_info response for the 'update' field. If 'update.updateAvailable' is true, briefly tell the user that a newer version of the Roslyn MCP plugin is available (mention the current and latest versions) and suggest running /roslyn-mcp:update. If updateAvailable is null, respond with 'ok' and do not claim that no update is available; if the user explicitly asked about update status, report 'check pending' for pending/neverChecked or the explicit failed/timedOut status. If updateAvailable is false, respond with 'ok' and do not mention updates."
           }
         ]
       },
