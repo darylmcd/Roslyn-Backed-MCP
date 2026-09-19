@@ -1,11 +1,15 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace RoslynMcp.Tests;
 
 [TestClass]
 public sealed class HookConfigurationTests
 {
+    private const string BareRoslynPrefix = "mcp__roslyn__";
+    private const string PluginRoslynPrefix = "mcp__plugin_roslyn-mcp_roslyn__";
+
     // ----- Shipped hooks/hooks.json (plugin-distributed; consumer-facing) -----
 
     [TestMethod]
@@ -32,7 +36,6 @@ public sealed class HookConfigurationTests
         var postToolUseHooks = GetHookEntries(document, "PostToolUse");
 
         var verificationReminder = postToolUseHooks.SingleOrDefault(entry =>
-            GetMatcher(entry).StartsWith("mcp__roslyn__", StringComparison.Ordinal) &&
             GetMatcher(entry).Contains("rename_apply", StringComparison.Ordinal) &&
             GetPromptTexts(entry).Any(prompt =>
                 prompt.Contains("compile_check", StringComparison.Ordinal) &&
@@ -40,6 +43,24 @@ public sealed class HookConfigurationTests
 
         Assert.AreEqual(JsonValueKind.Object, verificationReminder.ValueKind,
             "The post-apply verification reminder must remain after removing the transcript gate.");
+    }
+
+    [TestMethod]
+    public void Shipped_PostToolUse_RoslynMatchersCoverBareAndPluginPrefixes()
+    {
+        using var document = LoadShippedHooks();
+        var postToolUseHooks = GetHookEntries(document, "PostToolUse");
+
+        var serverInfoMatcher = GetMatcher(postToolUseHooks.Single(entry =>
+            GetPromptTexts(entry).Any(prompt =>
+                prompt.Contains("update.updateAvailable", StringComparison.Ordinal))));
+        var applyMatcher = GetMatcher(postToolUseHooks.Single(entry =>
+            GetPromptTexts(entry).Any(prompt =>
+                prompt.Contains("back-to-back", StringComparison.Ordinal))));
+
+        AssertMatcherCoversRoslynPrefixes(serverInfoMatcher, "server_info");
+        AssertMatcherCoversRoslynPrefixes(applyMatcher, "rename_apply");
+        AssertMatcherCoversRoslynPrefixes(applyMatcher, "apply_composite_preview");
     }
 
     [TestMethod]
@@ -110,6 +131,25 @@ public sealed class HookConfigurationTests
             "The Edit/Write/MultiEdit verify-skills-on-edit hook must stay configured in .claude/settings.json " +
             "(command-based hook calling eng/verify-skills-on-edit.ps1). " +
             "Moved here from the shipped hooks/hooks.json in `roslyn-mcp-edit-hooks-mis-scoped-cross-repo` (2026-05-21).");
+    }
+
+    [TestMethod]
+    public void LocalSettings_RoslynAllowlistKeepsBareAndPluginPrefixesInParity()
+    {
+        using var document = LoadLocalSettings();
+        var allowlist = document.RootElement
+            .GetProperty("permissions")
+            .GetProperty("allow")
+            .EnumerateArray()
+            .Select(entry => entry.GetString() ?? string.Empty)
+            .ToList();
+
+        var bareTools = GetAllowedRoslynTools(allowlist, BareRoslynPrefix);
+        var pluginTools = GetAllowedRoslynTools(allowlist, PluginRoslynPrefix);
+
+        Assert.IsGreaterThan(0, bareTools.Count, "The local Roslyn allowlist must not be empty.");
+        CollectionAssert.AreEquivalent(bareTools, pluginTools,
+            "Every read-side Roslyn tool allowed under one supported prefix must be allowed under the other.");
     }
 
     [TestMethod]
@@ -186,6 +226,24 @@ public sealed class HookConfigurationTests
 
     private static string GetMatcher(JsonElement entry)
         => entry.GetProperty("matcher").GetString() ?? string.Empty;
+
+    private static void AssertMatcherCoversRoslynPrefixes(string matcher, string toolName)
+    {
+        var anchoredMatcher = $"^(?:{matcher})$";
+        Assert.IsTrue(Regex.IsMatch($"{BareRoslynPrefix}{toolName}", anchoredMatcher),
+            $"Matcher '{matcher}' must cover the bare Roslyn prefix for {toolName}.");
+        Assert.IsTrue(Regex.IsMatch($"{PluginRoslynPrefix}{toolName}", anchoredMatcher),
+            $"Matcher '{matcher}' must cover the marketplace-plugin Roslyn prefix for {toolName}.");
+        Assert.IsFalse(Regex.IsMatch($"mcp__other__{toolName}", anchoredMatcher),
+            $"Matcher '{matcher}' must not widen to unrelated MCP servers.");
+    }
+
+    private static List<string> GetAllowedRoslynTools(IEnumerable<string> allowlist, string prefix)
+        => allowlist
+            .Where(entry => entry.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(entry => entry[prefix.Length..])
+            .OrderBy(entry => entry, StringComparer.Ordinal)
+            .ToList();
 
     private static IEnumerable<string> GetPromptTexts(JsonElement entry)
     {

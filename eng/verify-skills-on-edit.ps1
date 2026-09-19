@@ -4,7 +4,7 @@
 # generic-skills linter so violations surface in the same turn as the edit
 # instead of waiting for CI.
 #
-# Hook config: hooks/hooks.json -> PostToolUse -> Edit|Write|MultiEdit.
+# Hook config: .claude/settings.json -> PostToolUse -> Edit|Write|MultiEdit.
 # Verifier:    eng/verify-skills-are-generic.ps1.
 #
 # Silent on non-skill paths and on clean skill edits (the verifier prints a
