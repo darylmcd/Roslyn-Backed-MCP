@@ -161,7 +161,7 @@
     {
       "id": "apply-composite-canonical-alias-surface",
       "order": 4,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "apply-composite-canonical-alias-surface"
       ],
