@@ -13,13 +13,14 @@
     {
       "id": "boundary-rejection-redacted-to-generic-schema-error",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "boundary-rejection-redacted-to-generic-schema-error"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs"
+        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs"
       ],
       "testFilesAdded": 1,
       "testFiles": [
@@ -29,7 +30,7 @@
         "changelog.d/boundary-rejection-redacted-to-generic-schema-error.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 30000,
+      "estimatedContextTokens": 35000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 1,
@@ -41,19 +42,38 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/boundary-rejection-redacted-to-generic-schema-error",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/boundary-rejection-redacted-to-generic-schema-error",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1549",
+      "mergedAt": "2026-09-19T19:00:37Z",
       "notes": null,
-      "fileSetHash": "59532b15d22633aba16b768a45f5b23cb349e35d234a2496fa0229dee5babdb4",
-      "stanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
-      "reviewedStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3"
+      "fileSetHash": "3131a58ebf7415c225dfcc6dde50597c9fa9f602f0a2fd2aa02cb95e687a512b",
+      "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586",
+      "reviewedStanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586",
+      "amendments": [
+        {
+          "at": "2026-09-19T16:40:31.154Z",
+          "finding": "Serial full-suite validation: 18 sibling/legacy tests require exact ArgumentException; PublicInvalidOperationException broke the established contract.",
+          "reason": "Retain exact ArgumentException and add the formatter as a defect-forced companion to expose only the fixed safe boundary message without schemaHint.",
+          "previousStanzaHash": "b69cb8330e2167493e65ca8a230216e4810449c2dc8d1a165a85fbc5fe8281a3",
+          "stanzaHash": "1cfe8703dac62083b61dbd7235917276f14d3d9a79f58505de235d883570c586"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1549,
+        "base": "main",
+        "mainOid": "f0b7cafe4204290c710c05d752b91de0f91d37f1",
+        "headOid": "e01d29e8fe11bd5725a66ea7a7f1e2a5535c8be2",
+        "gatedTree": "1730ec1c87532989c493a5b093ef823a6682e8dc",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-boundary-rejection-redacted-to-generic-schema-error-pr1549-20260919T184315491Z-26488.log",
+        "gatedAt": "2026-09-19T18:58:55.654Z"
+      }
     },
     {
       "id": "roslyn-hook-matchers-stale-tool-prefix",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "roslyn-hook-matchers-stale-tool-prefix"
       ],
@@ -69,10 +89,11 @@
       ],
       "docFiles": [
         "ai_docs/bootstrap-read-tool-primer.md",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
         "changelog.d/roslyn-hook-matchers-stale-tool-prefix.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 45000,
+      "estimatedContextTokens": 47000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 3,
@@ -84,14 +105,33 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/roslyn-hook-matchers-stale-tool-prefix",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/roslyn-hook-matchers-stale-tool-prefix",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1550",
+      "mergedAt": "2026-09-19T19:16:32Z",
       "notes": null,
-      "fileSetHash": "2b5aa1306ca413153bac2028cbd45d7627a1ca891e881e78c4adf00780d89721",
-      "stanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
-      "reviewedStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133"
+      "fileSetHash": "54d572fd17a3d8bece617a6912661b569ee92d603b4b97a8e4758221cd42bd8f",
+      "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7",
+      "reviewedStanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7",
+      "amendments": [
+        {
+          "at": "2026-09-19T18:06:24.261Z",
+          "finding": "Cold review: canonical remediation addenda still described both hook matchers as bare-prefix-only despite its maintenance rule requiring synchronization with hooks/hooks.json.",
+          "reason": "Add the addenda as a gate-forced companion and synchronize its examples/warning with the exact dual-prefix advisory contract.",
+          "previousStanzaHash": "535ea3cf9ae9eb87edceee401a08585585b504b8c128211173cb3b8c80674133",
+          "stanzaHash": "f3014a1af80a85c2b8d8b18cb346f54719e27f3d327ebe493536403f81c505c7"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1550,
+        "base": "main",
+        "mainOid": "44ed425fbbeb4010c8db134b02d874f7f637a792",
+        "headOid": "659ca8bc80e431752245a708c0423c9e97caf416",
+        "gatedTree": "fbe06a5a904b4c5620e5e29e8a1968c1b03ff434",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-roslyn-hook-matchers-stale-tool-prefix-pr1550-20260919T190134941Z-56940.log",
+        "gatedAt": "2026-09-19T19:16:06.539Z"
+      }
     },
     {
       "id": "server-info-update-unknown-not-false",
@@ -141,7 +181,7 @@
     {
       "id": "apply-composite-canonical-alias-surface",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "apply-composite-canonical-alias-surface"
       ],
@@ -173,14 +213,24 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/apply-composite-canonical-alias-surface",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/apply-composite-canonical-alias-surface",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1551",
+      "mergedAt": "2026-09-19T19:30:38Z",
       "notes": null,
       "fileSetHash": "21ce2be08de0ddf04025835c776c5c264b40f5cc92e5e64f30fe2a4b4a665b84",
       "stanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69",
-      "reviewedStanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69"
+      "reviewedStanzaHash": "9dde09f5c55c1cba0f3bede784a6e9d388de76974141c27365429c989d2f3a69",
+      "integrationGate": {
+        "pr": 1551,
+        "base": "main",
+        "mainOid": "8073746cd9ca2e92d95d62bc848371da1a217094",
+        "headOid": "a4d2d38fa2fbc4abbe8966221954d15e405c4fef",
+        "gatedTree": "90b869799ea17933e26c669a866b409e024c4516",
+        "exit": 0,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/gate-apply-composite-canonical-alias-surface-pr1551-20260919T191707407Z-54636.log",
+        "gatedAt": "2026-09-19T19:30:03.860Z"
+      }
     }
   ],
   "anchorVerification": "performed",
@@ -431,9 +481,9 @@
       }
     ]
   },
-  "conflictGraphInputHash": "15240f1f1e5014f06383945b5b1e159e2f71b859d958a80396857a6e3c97fa4f",
-  "planHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
-  "backlogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79",
-  "reviewedPlanHash": "6001d532b0af7c90b3255dfa34588ef6c13b60d676255bf619368270c446da72",
+  "conflictGraphInputHash": "77915e029420c6141983856958b1e18044678731a339a7c9d616d5156929ef78",
+  "planHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
+  "backlogSnapshotHash": "5f6cfd1684ad679136b3d8bdd7e381b90b8435927dc2154994740a417bfd74c7",
+  "reviewedPlanHash": "729308acc5608e1d8bb9fc3170b843d08fedbc515365ffdc073c933d02e597cb",
   "reviewedBacklogSnapshotHash": "a1414d7e730d1bb89823a6a23ca639cbc366ba6e0a9158c6b552883a2f03dc79"
 }
