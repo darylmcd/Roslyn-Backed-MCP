@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
@@ -490,13 +491,14 @@ public class ClientRootPathValidatorTests
     }
 
     [TestMethod]
-    public async Task ValidatePathAgainstRoots_OutOfBoundaryPath_Throws_Instead_Of_Returning()
+    public async Task ValidatePathAgainstRoots_OutOfBoundaryPath_SurfacesSafeBoundaryRefusal()
     {
-        // Guards the throw against being softened into a canonical-path return when the method
-        // grew its return value.
         var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-canonical-reject-" + Guid.NewGuid().ToString("N"));
         var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
         var outsideFile = Path.Combine(testRoot, "outside", "file.cs");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(outsideFile)!);
+        await File.WriteAllTextAsync(outsideFile, "// outside boundary");
 
         var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             ClientRootPathValidator.ValidatePathAgainstRootsAsync(
@@ -505,7 +507,35 @@ public class ClientRootPathValidatorTests
                 CancellationToken.None,
                 securityOptions: new SecurityOptions { SanctionedRoots = [sanctionedRoot] }));
 
-        StringAssert.Contains(error.Message, "outside the configured sanctioned-root boundary");
+        var envelope = ToolErrorHandler.ClassifyAndFormat(error, "workspace_load");
+        using var document = JsonDocument.Parse(envelope);
+
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(
+            "The requested path is outside the configured sanctioned-root boundary.",
+            document.RootElement.GetProperty("message").GetString());
+        Assert.IsFalse(document.RootElement.TryGetProperty("schemaHint", out _));
+        Assert.IsFalse(envelope.Contains(outsideFile, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(envelope.Contains(sanctionedRoot, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void OrdinaryPathArgumentFailure_WithBoundaryPrefix_RemainsRedactedAndKeepsSchemaHint()
+    {
+        const string privateDetail = "caller-controlled private-path:C:/tenant/private.slnx";
+        var envelope = ToolErrorHandler.ClassifyAndFormat(
+            new ArgumentException(
+                ClientRootPathValidator.SanctionedRootBoundaryRefusalMessage + " " + privateDetail,
+                "path"),
+            "workspace_load");
+        using var document = JsonDocument.Parse(envelope);
+
+        Assert.AreEqual(
+            "Parameter 'path' is invalid. Check that all required parameters are provided and values match the expected types.",
+            document.RootElement.GetProperty("message").GetString());
+        Assert.IsTrue(document.RootElement.TryGetProperty("schemaHint", out var schemaHint));
+        StringAssert.Contains(schemaHint.GetString(), "workspace_load(path:");
+        Assert.IsFalse(envelope.Contains(privateDetail, StringComparison.Ordinal));
     }
 
     [TestMethod]

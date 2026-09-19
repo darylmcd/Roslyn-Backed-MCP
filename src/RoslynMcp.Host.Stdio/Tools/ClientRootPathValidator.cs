@@ -16,6 +16,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// </remarks>
 internal static class ClientRootPathValidator
 {
+    private static readonly object _sanctionedRootBoundaryRefusalMarkerKey = new();
+    private static readonly object _sanctionedRootBoundaryRefusalMarkerValue = new();
+
     /// <summary>
     /// Verifies that <paramref name="path"/> is located under a configured sanctioned root.
     /// </summary>
@@ -103,9 +106,7 @@ internal static class ClientRootPathValidator
                 expandSanctionedRoots,
                 legacyClientRootPaths))
         {
-            throw new ArgumentException(
-                $"Path '{path}' is outside the configured sanctioned-root boundary.",
-                nameof(path));
+            throw CreateSanctionedRootBoundaryRefusal();
         }
 
         return canonicalPath;
@@ -168,4 +169,20 @@ internal static class ClientRootPathValidator
 
     internal static string ResolvePath(string path) =>
         ConfiguredRootBoundary.ResolvePath(path);
+
+    internal const string SanctionedRootBoundaryRefusalMessage =
+        "The requested path is outside the configured sanctioned-root boundary.";
+
+    internal static bool IsSanctionedRootBoundaryRefusal(ArgumentException exception) =>
+        exception.GetType() == typeof(ArgumentException) &&
+        ReferenceEquals(
+            exception.Data[_sanctionedRootBoundaryRefusalMarkerKey],
+            _sanctionedRootBoundaryRefusalMarkerValue);
+
+    private static ArgumentException CreateSanctionedRootBoundaryRefusal()
+    {
+        var exception = new ArgumentException(SanctionedRootBoundaryRefusalMessage, "path");
+        exception.Data[_sanctionedRootBoundaryRefusalMarkerKey] = _sanctionedRootBoundaryRefusalMarkerValue;
+        return exception;
+    }
 }
