@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-19T15:49:12Z
+**updated_at:** 2026-09-19T19:31:44Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `sweep-executor-override-stale-roslyn-prefix` | High | roslyn-hook-matchers-stale-tool-prefix | **Port or drop the stale repo-local executor override** — `.claude/agents/initiative-executor.md` names hardcoded `mcp__roslyn__*` tools no registration provides, so sweeps here reproduce the zero-Roslyn gap the global agent already fixed. [type: bug] [source: 2026-09-18 zero-Roslyn triage] | S | items/sweep-executor-override-stale-roslyn-prefix.md |
-| `boundary-rejection-redacted-to-generic-schema-error` | High | — | **Surface the sanctioned-root refusal instead of a generic schema error** — an out-of-boundary `workspace_load` reports `Parameter 'path' is invalid` with an absolute-path schema hint, because the accurate boundary message is redacted. [type: bug] [source: 2026-09-18 zero-Roslyn triage] | S | items/boundary-rejection-redacted-to-generic-schema-error.md |
 
 ## Medium
 
@@ -99,7 +98,6 @@
 | `resource-cache-hint-wire-failure-diagnostics` | Medium | — | Diagnose missing resource cache hints with era-specific wire evidence and repeated modern/legacy reads. [type: test-reliability] [source: Dependabot PR 1478 CI] | M | items/resource-cache-hint-wire-failure-diagnostics.md |
 | `verify-ai-docs-link-anchor-fragments` | Medium | — | **Validate `#anchor` fragments in ai_docs relative links** — teach `eng/verify-ai-docs.ps1` to check the fragment half against the target file headings, not just file existence. [type: chore] [source: 2026-09-15 addenda retrospective] | S | items/verify-ai-docs-link-anchor-fragments.md |
 | `readme-stable-callable-count-ungated` | Medium | — | **Gate the stable-only callable count at `README.md:186`.** Assert the ungated prose "currently N callable tools" claim in `ReadmeSurfaceCountTests`, and correct the false "gated" boilerplate in ~34 `ai_docs/items/*.md`. [type: test-gap] [source: addenda retrospective 2026-09-15] | S | items/readme-stable-callable-count-ungated.md |
-| `roslyn-hook-matchers-stale-tool-prefix` | Medium | — | **`hooks/hooks.json` matchers never fire under the plugin tool prefix.** Both PostToolUse matchers hardcode `mcp__roslyn__*`; the live plugin surface is `mcp__plugin_roslyn-mcp_roslyn__*`. [type: bug] [source: addenda retrospective 2026-09-15] | M | items/roslyn-hook-matchers-stale-tool-prefix.md |
 | `agents-md-missing-validation-runtime` | Medium | — | **`AGENTS.md` lacks the doc-audit v24 required `## Validation runtime` section.** Add it after Breaking-change posture with the canonical 9-column header and measured data; point `runtime.md` and the addenda at it instead of duplicating. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/agents-md-missing-validation-runtime.md |
 | `actionlint-local-only-no-ci-gate` | Medium | — | **`just ci` runs actionlint but no CI workflow does.** Either gate `.github/workflows/**` edits with `eng/verify-actionlint.ps1` in `ci.yml`, or stop calling `just ci` the local PR-pipeline equivalent. [type: ci-gap] [source: addenda retrospective 2026-09-15] | M | items/actionlint-local-only-no-ci-gate.md |
 | `sanctioned-roots-cwd-default-undocumented` | Medium | boundary-rejection-redacted-to-generic-schema-error | **Document the cwd-relative sanctioned-root default and a supported override** — the shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` resolves to the session cwd, so a session rooted elsewhere can load no workspace and has no documented escape hatch. [type: docs] [source: 2026-09-18 zero-Roslyn triage] | S | items/sanctioned-roots-cwd-default-undocumented.md |
@@ -197,7 +195,6 @@
 | `update-skill-owned-process-snippet-bash-fence-mismatch` | Low | — | **update-skill's owned-process-identity snippet is fenced as bash but is raw PowerShell** — copy-pasting it into a bash/cmd shell fails with syntax errors. [type: bug] [source: tool-update-owned-process-shutdown cold review] | S | items/update-skill-owned-process-snippet-bash-fence-mismatch.md |
 | `resolve-ci-topology-enumeration-failed-unreachable` | Low | — | **`resolve-ci-topology.ps1`'s `-EnumerationFailed` fail-closed path is unreachable from the real `ci.yml` caller** — two different fail-closed mechanisms model the same failure with different runtime effects; only one is ever live. [type: chore] [source: ci-router-pure-decision cold review] | M | items/resolve-ci-topology-enumeration-failed-unreachable.md |
 | `architecture-workspace-id-optional-pilot-invariant` | Low | workspace-id-optional-adoption-evidence | Align the architecture workspaceId invariant with the live optional-pilot contract and the adoption decision. | M | items/architecture-workspace-id-optional-pilot-invariant.md |
-| `apply-composite-canonical-alias-surface` | Low | tool-consolidation-deprecated-alias-registry | Add the canonical apply_composite surface while retaining a declared compatibility alias. | M | items/apply-composite-canonical-alias-surface.md |
 | `apply-composite-canonical-owner-routing` | Low | apply-composite-canonical-alias-surface | Canonicalize composite-apply ownership, change-ledger names, and workflow hints. | M | items/apply-composite-canonical-owner-routing.md |
 | `apply-composite-guidance-wave-1` | Low | apply-composite-canonical-alias-surface | Migrate producer and DTO guidance to the canonical composite-apply name. | M | items/apply-composite-guidance-wave-1.md |
 | `apply-composite-guidance-wave-2` | Low | apply-composite-canonical-alias-surface | Migrate refactoring and scaffolding guidance to the canonical composite-apply name. | M | items/apply-composite-guidance-wave-2.md |
