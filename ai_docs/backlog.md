@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-20T04:02:23Z
+**updated_at:** 2026-09-20T04:05:29Z
 
 ## Agent contract
 
@@ -290,6 +290,7 @@
 | `promotion-tier-extensionless-tool-anchors` | Low | — | **Add `.cs` to 32 extension-less `Tools/<Name>` anchors across 13 `promotion-tier-*` items.** They resolve today but miss literal-path consumers and the companion `*Tools.cs` glob. [type: doc] [source: addenda retrospective 2026-09-15] | S | items/promotion-tier-extensionless-tool-anchors.md |
 | `workspace-load-unsupported-project-as-error` | Low | — | **Report unsupported project types as skipped, not workspace errors** — classify a solution project Roslyn cannot open (e.g. .wixproj) as an Info-level skipped project so workspaceErrorCount reflects real load failures. [type: bug] [source: SnipCue /backlog-remediate 20260916T160820Z retro] | S | items/workspace-load-unsupported-project-as-error.md |
 | `stale-pre-apply-hook-consumer-docs` | Low | — | **Consumer docs promise a removed blocking pre-apply hook.** Replace the stale blocking-hook claims with the current post-apply advisory hooks and server-enforced preview-token contract; repair the nonexistent README section link. [type: docs] [source: remediation review 2026-09-19] | S | items/stale-pre-apply-hook-consumer-docs.md |
+| `server-discovery-cache-hint-wire-failure-diagnostics` | Low | resource-cache-hint-wire-failure-diagnostics | **Give server-discovery cache-hint wire failures bounded frame diagnostics** — replace raw `GetProperty` assertions with era, ordinal, and captured-frame evidence while preserving the modern-value and legacy-omission contract. [type: test] [source: resource-cache-hint-wire-failure-diagnostics deepening] | S | items/server-discovery-cache-hint-wire-failure-diagnostics.md |
 
 ## Defer
 

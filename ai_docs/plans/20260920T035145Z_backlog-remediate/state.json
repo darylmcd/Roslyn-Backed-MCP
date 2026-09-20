@@ -3,12 +3,12 @@
   "generatedAt": "2026-09-20T03:51:47.011Z",
   "backlogSnapshot": "2026-09-19T20:41:49Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
-  "cycleCount": 0,
+  "phase": "complete",
+  "cycleCount": 1,
   "maxCycles": 2,
   "completed": false,
-  "reviewStatus": "pending",
-  "readyForExecute": false,
+  "reviewStatus": "passed",
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "sweep-executor-override-stale-roslyn-prefix",
@@ -17,29 +17,36 @@
       "backlogRowsClosed": [
         "sweep-executor-override-stale-roslyn-prefix"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [
+        ".claude/agents/initiative-executor.md",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
+        "changelog.d/sweep-executor-override-stale-roslyn-prefix.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 14000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "7907e830f6f64c1a162253929a335d008451d6184681e9ab29e60046f53f9aa7",
+      "stanzaHash": "51e05d0fbed55b674eaf12543a9898137123a801958fe79503b1a63d89ae3d6a",
+      "reviewedStanzaHash": "51e05d0fbed55b674eaf12543a9898137123a801958fe79503b1a63d89ae3d6a"
     },
     {
       "id": "coverage-baseline-stale",
@@ -48,29 +55,36 @@
       "backlogRowsClosed": [
         "coverage-baseline-stale"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [
+        "docs/coverage-baseline.md",
+        ".github/copilot-instructions.md",
+        "changelog.d/coverage-baseline-stale.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 20000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "c224232dcfc7b838f552d612565a27ca7168b32d81fe7ef32dee3be5d5bbeb15",
+      "stanzaHash": "0cb745310f1acab0c5cb3956868cd295f1161589dd46487296d500d16406c925",
+      "reviewedStanzaHash": "0cb745310f1acab0c5cb3956868cd295f1161589dd46487296d500d16406c925"
     },
     {
       "id": "formatter-baseline-contended-nested-process-timeout-investigation",
@@ -79,195 +93,223 @@
       "backlogRowsClosed": [
         "formatter-baseline-contended-nested-process-timeout-investigation"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "workspace-id-unknown-error-category",
-      "order": 5,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "workspace-id-unknown-error-category"
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "eng/generate-format-baseline.ps1"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "40c9368ad7a3aeff630065ff934ffd74a07dea6eb373c34dd091070388214c1c",
+      "stanzaHash": "01367d982bf1ed870d12ccf80a2e687ea7cc742a5951721ab2a83d84f0230725",
+      "reviewedStanzaHash": "01367d982bf1ed870d12ccf80a2e687ea7cc742a5951721ab2a83d84f0230725"
     },
     {
       "id": "retro-prompt-window-and-codex-extraction-rules",
-      "order": 6,
+      "order": 5,
       "status": "pending",
       "backlogRowsClosed": [
         "retro-prompt-window-and-codex-extraction-rules"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [
+        "ai_docs/prompts/roslyn-mcp-multisession-retro.md",
+        "changelog.d/retro-prompt-window-and-codex-extraction-rules.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 12000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e0985520b308fe3e65be3f8d31299d6b1b8dae45db62ebf371b07a682597c2e1",
+      "stanzaHash": "aa25b7a120e0aded65b8b5d453dcbc6e5358dc2238660434dc7a8fdd84435151",
+      "reviewedStanzaHash": "aa25b7a120e0aded65b8b5d453dcbc6e5358dc2238660434dc7a8fdd84435151"
     },
     {
       "id": "resource-cache-hint-wire-failure-diagnostics",
-      "order": 7,
+      "order": 6,
       "status": "pending",
       "backlogRowsClosed": [
         "resource-cache-hint-wire-failure-diagnostics"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ResourceReadWireContractTests.cs"
+      ],
+      "docFiles": [
+        "changelog.d/resource-cache-hint-wire-failure-diagnostics.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "88f7a2655206231cce08718b52ef5aafc37a39ea18754d5ce051b6389e8c64cb",
+      "stanzaHash": "27a8878beeb9d05f7113fcc99e6cab04ad2e4863c49cfcf4918f824574a625b0",
+      "reviewedStanzaHash": "27a8878beeb9d05f7113fcc99e6cab04ad2e4863c49cfcf4918f824574a625b0"
     },
     {
       "id": "verify-ai-docs-link-anchor-fragments",
-      "order": 8,
+      "order": 7,
       "status": "pending",
       "backlogRowsClosed": [
         "verify-ai-docs-link-anchor-fragments"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "eng/markdown-link-validation.ps1"
+      ],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [
+        "changelog.d/verify-ai-docs-link-anchor-fragments.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e0671006028fdfeb3549994e4d63308b73d75da0e5f4eb4e6bb0730347c6ce8f",
+      "stanzaHash": "b350d64b44e05bf9df13a16b27f793262d547cbd6b5a2fb6f30f4e5901898c56",
+      "reviewedStanzaHash": "b350d64b44e05bf9df13a16b27f793262d547cbd6b5a2fb6f30f4e5901898c56"
     },
     {
       "id": "agents-md-missing-validation-runtime",
-      "order": 9,
+      "order": 8,
       "status": "pending",
       "backlogRowsClosed": [
         "agents-md-missing-validation-runtime"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [
+        "AGENTS.md",
+        "ai_docs/runtime.md",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
+        "changelog.d/agents-md-missing-validation-runtime.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "sweep-executor-override-stale-roslyn-prefix"
+      ],
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "3b0cb4a99ed37c7c3820c1aea798bd6526f00bc57ba52747c3c7b60f6e1e6610",
+      "stanzaHash": "8e46c90c9fdada16a5e518d248527c5ad72535d54ad367d786aefe34c318a37f",
+      "reviewedStanzaHash": "8e46c90c9fdada16a5e518d248527c5ad72535d54ad367d786aefe34c318a37f"
     }
   ],
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 1,
+        "b": 8,
+        "sharedFiles": [
+          "ai_docs/prompts/backlog-sweep-addenda.md"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 1,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 1
+    },
+    "zeroDegreeInitiatives": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
   },
   "selection": {
     "requestedCount": 10,
-    "selectedCount": 9,
+    "selectedCount": 8,
     "skipped": [
       {
         "id": "coverlet-net10-session-end-crash-upgrade",
@@ -468,6 +510,10 @@
       {
         "id": "locationdto-stage3-flat-field-deprecation",
         "reason": "defer-band"
+      },
+      {
+        "id": "workspace-id-unknown-error-category",
+        "reason": "split-budget-exhausted"
       }
     ],
     "splits": [
@@ -517,5 +563,16 @@
         ]
       }
     ]
-  }
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 0,
+    "info": 0
+  },
+  "lastReviewFindings": [],
+  "conflictGraphInputHash": "114ad5cf7f52267b8491ada29464a5ef633ddcc88e956d15cc2e34baaf69405e",
+  "planHash": "93a6ab15fdca2a4f588eabe88018d5b6118364d5ada3c8126ad4daf2c8317915",
+  "backlogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1",
+  "reviewedPlanHash": "93a6ab15fdca2a4f588eabe88018d5b6118364d5ada3c8126ad4daf2c8317915",
+  "reviewedBacklogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1"
 }
