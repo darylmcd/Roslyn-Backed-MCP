@@ -81,30 +81,32 @@ preferred_read_side_tools:
 
 ## Parallel-execution safety
 
-The operator-facing concurrency value is repeated in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime); the block below remains the parser-owned source with its evidence and reversal condition.
+The full aggregate's operator-facing concurrency value is repeated in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime); the block below remains the parser-owned source for scoped-test parallelism and aggregate serialization.
 
 ```yaml
 parallel_safety:
   parallelSafe: true
+  serializeFullCi: true
   rationale: |
-    Test artifacts are isolated per test-assembly PROCESS, so two concurrent
-    `ci_equivalent` / `dotnet test` runs on one machine do not contend on shared
-    filesystem state. Every temp path is built under `TestTempRoot.Current`
+    Scoped targeted test runs are parallel-safe because test artifacts are
+    isolated per test-assembly PROCESS. Every temp path is built under `TestTempRoot.Current`
     (`tests/RoslynMcp.Tests/TestInfrastructure/TestTempRoot.cs`) =
     `%TEMP%/RoslynMcpTests/run-<pid>-<rand>/`, and `[AssemblyCleanup]` deletes only
-    that subtree — never the shared parent.
+    that subtree — never the shared parent. Full `just ci` / `ci_equivalent`
+    runs remain serialized: they share resource-heavy build/test infrastructure,
+    and concurrent full gates produced host-contention failures in the 2026-09-20
+    remediation run.
   evidence: |
     Two concurrent `dotnet test` invocations over the fixture-heavy undo/edit/
     project-mutation set: 74 passed each, 0 DirectoryNotFoundException
     (2026-08-10). The same command before the isolation landed produced 6
     failures. Row: test-temp-root-shared-cleanup-race.
   scope_caveat: |
-    The evidence covers the fixture-copy path, which is where the contention was.
-    It is NOT a proof that every test in the suite is parallel-safe. Flip
-    parallelSafe back to false (which forces `/backlog-remediate` serial mode
-    and engages `bsweep-state.mjs ci-lock-acquire`) if a NEW machine-global
-    dependency appears — a fixed port, a shared database, an HKCU/%AppData% write,
-    or any test writing outside `TestTempRoot.Current`.
+    The evidence covers targeted tests on the fixture-copy path; it is not evidence
+    for concurrent full gates. Keep `serializeFullCi: true`. Flip `parallelSafe`
+    to false as well if scoped tests gain a machine-global dependency such as a
+    fixed port, shared database, HKCU/%AppData% write, or a path outside
+    `TestTempRoot.Current`.
 ```
 
 **Regression guard:** `tests/RoslynMcp.Tests/TestTempRootTests.cs` asserts the load-bearing property — the abandoned-run reaper never deletes a *live* sibling run's directory, and never deletes the shared parent. A new temp path must combine against `TestTempRoot.Current`; re-deriving `Path.GetTempPath()` + `"RoslynMcpTests"` at a call site puts that path outside the isolation and re-opens the race.
