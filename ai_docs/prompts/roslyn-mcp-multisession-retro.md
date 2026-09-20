@@ -9,7 +9,7 @@ Both harnesses are in scope. Each reaches the server through different plumbing 
 
 ## 0. Window, sources, filter
 
-**Window** — default last 14 days by file mtime; honor a window the user named. State the window, the resolved report path, and per-source session counts in your first user-facing line.
+**Window** — default last 14 days; honor a window the user named. A session is in-window only when at least one record timestamp is within both inclusive window bounds. Do not select Codex rollouts by file mtime. Claude files may use a widened mtime range as a discovery pre-filter, but record timestamps remain the selection rule. State the window, the resolved report path, and per-source session counts in your first user-facing line.
 
 **Sources**
 
@@ -18,14 +18,14 @@ Both harnesses are in scope. Each reaches the server through different plumbing 
 | Files | `~/.claude/projects/<encoded-repo-path>/*.jsonl` — one dir per repo; worktrees get their own dir (attribute to the parent repo, keep the worktree marker in notes) | `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl` (live) **and** `~/.codex/archived_sessions/rollout-*.jsonl` (flat, no date dirs). Scan both — the archived dir has carried all Codex evidence in past windows |
 | Session id | `.jsonl` basename (UUID) | `session_meta.payload.id` |
 | Repo | decode the dir name against real `C:/Code-Repo/*` names — a blanket `-`→`/` replace mangles hyphenated repos | `session_meta.payload.cwd` (authoritative; the file path carries only a date) |
-| Tool call | `.message.content[]` entry with `.type=="tool_use"`; `.name` is flat and fully qualified | `response_item` with `.payload.type=="function_call"`; `.payload.name` is the **bare** tool name and `.payload.namespace` carries the server (`mcp__roslyn`). No flat `mcp__roslyn__<tool>` string exists in Codex records |
-| Tool result | `tool_result` matched by `tool_use_id`; `is_error` or error text | `function_call_output` matched by `call_id`; error text or non-success status |
+| Tool call | `.message.content[]` entry with `.type=="tool_use"`; `.name` is flat and fully qualified | `response_item` with `.payload.type=="custom_tool_call"` and `.payload.name=="exec"`; inspect the JavaScript `.payload.input` for an awaited `tools.<flat-tool-name>(...)` or `tools["<flat-tool-name>"](...)` call |
+| Tool result | `tool_result` matched by `tool_use_id`; `is_error` or error text | `response_item` with `.payload.type=="custom_tool_call_output"`, matched to the call by `.payload.call_id`; inspect `.payload.output` for error text or a non-success status |
 | Subagents | separate session files | separate rollouts with `thread_source: "subagent"` and `parent_thread_id` — roll up under the parent and count them in frontmatter |
 | Other useful records | `custom-title`, `last-prompt` | `token_count` (context pressure), `turn_context`, `tool_search_output` (schema dumps — never evidence of a call) |
 
 `~/.codex/session_index.jsonl` gives thread titles. `~/.codex/logs_2.sqlite` is multi-GB and not a source. Extract call, result, and error records with `rg`/`jq` first; deep-read only sessions that carry findings.
 
-**Tool-name matching is prefix-agnostic.** The client-assigned prefix follows the registration key: `mcp__roslyn__symbol_search` on the dev-build entry, `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on the marketplace plugin, other prefixes on other keys. Claude: match `mcp__\S*roslyn\S*__\S+`. Codex: match a `namespace` containing `roslyn`. A false-positive server is visible at read time; a dropped prefix silently loses whole repos (three-quarters of Claude-side calls in a recent window sat under the plugin prefix). Normalize every tool name to flat `mcp__roslyn__<tool>` in the report so cross-harness collapse works.
+**Tool-name matching is prefix-agnostic.** The client-assigned prefix follows the registration key: `mcp__roslyn__symbol_search` on the dev-build entry, `mcp__plugin_roslyn-mcp_roslyn__symbol_search` on the marketplace plugin, other prefixes on other keys. For both harnesses, match the flat name with a pattern equivalent to `mcp__\S*roslyn\S*__\S+`; on Codex, apply it to the tool reference inside the `exec` JavaScript. `mcp__roslyn__<tool>` is the form observed in the current Codex window, not a required literal. Legacy Codex records with a `namespace` containing `roslyn` may be included as a fallback, but namespace-only matching must not be the current-record extraction path. A false-positive server is visible at read time; a dropped prefix silently loses whole repos (three-quarters of Claude-side calls in a recent window sat under the plugin prefix). Normalize every tool name to flat `mcp__roslyn__<tool>` in the report so cross-harness collapse works.
 
 **Relevance filter** — include a session if any of: at least one actual Roslyn MCP invocation per the rule above; a `/roslyn-mcp:*` skill invocation; substantive discussion of Roslyn MCP or a named tool in user/assistant text. Never a bare full-file grep for `roslyn` — it matches every Codex rollout (schema dumps, `cwd`, AGENTS.md preambles) and half the archived hits carry no real call. Dropped sessions are counted per source in §0 and §5, not listed.
 
