@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | direct |
+| Diagnosis | The tracked repo-local `initiative-executor` is an obsolete fork of the corrected global agent: it hardcodes the bare Roslyn prefix and lacks the current stanza/base-ref/staged-ship contract. The only repo-specific companion was an ignored operator-local server enablement entry; plan preflight removed that dead entry and validated the JSON. |
+| Approach | - [ ] The repo-local executor override names no hardcoded `mcp__roslyn__<tool>`; every Roslyn tool goes through a `<roslyn>` prefix resolved from the tool whose name ends in `server_info`, matching the global agent after PR #354 upstream.<br>- [ ] The override requires the `roslyn: <prefix> used=[tools] \| unavailable (<reason>)` notes token, or the override is deleted and the global agent inherited.<br>- [ ] `enabledMcpjsonServers: ["roslyn"]` is removed from `.claude/settings.local.json` or a `.mcp.json` defining that server is added.<br>- [ ] The permission allowlist owned by `roslyn-hook-matchers-stale-tool-prefix` is left untouched (see Context). |
+| Scope | Delete `.claude/agents/initiative-executor.md` so the maintained global agent is inherited. Update `ai_docs/prompts/backlog-sweep-addenda.md` to remove the stale repo-local executor inventory entry while preserving all machine-readable execution keys. Add `changelog.d/sweep-executor-override-stale-roslyn-prefix.md`. The ignored primary-checkout `.claude/settings.local.json` cleanup is already complete and is validation evidence, not a staged PR file. Do not edit `.claude/settings.json` or hooks. |
+| Tool policy | edit-only |
+| Estimated context cost | 12000 |
+| Risks | Deleting an override changes agent behavior wholesale, so compare the live global agent before deletion and verify the repo addenda supplies all repo-specific facts it consumes. The ignored local setting is machine-local and cannot be carried by the PR; validate it separately without staging it. This is not refactor-shaped, so fanout is not applicable. |
+| Validation | Confirm the global `C:/Users/daryl/.claude/agents/initiative-executor.md` contains prefix discovery via `server_info` and the required Roslyn notes token; confirm the tracked override and its addenda inventory entry are absent; parse the primary checkout's `.claude/settings.local.json` and prove `enabledMcpjsonServers` is absent; run `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1`, `pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1`, and `just ci`. |
+| Performance review | N/A — agent configuration cleanup. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Remove the stale repo-local remediation executor so sweeps inherit prefix-aware Roslyn discovery and the current staged-ship contract. |
+| Backlog sync | Close rows: [sweep-executor-override-stale-roslyn-prefix]. |

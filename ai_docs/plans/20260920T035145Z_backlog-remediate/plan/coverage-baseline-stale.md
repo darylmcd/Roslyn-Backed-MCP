@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | deepen |
+| Diagnosis | `docs/coverage-baseline.md:20-23` still publishes ~60.7% line / ~47.3% branch coverage and a 2026-04-11 v1.9.0/329-test stamp, while the live release version is 4.2.1 at `Directory.Build.props:8`. The baseline is a manually copied measurement: `eng/verify-release.ps1:420-440` routes a coverage-enabled test run into the coverage output directory and attaches the XPlat collector, but no step refreshes the document. |
+| Approach | Run `pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release -OutputRoot artifacts/coverage-baseline-stale-<run-id>` without `-NoCoverage`, require a zero exit, and read the root `line-rate` / `branch-rate` from that run's `coverage.cobertura.xml` plus the matching TRX counters for the test count. Update `docs/coverage-baseline.md:16-39` with the measured rates, execution date, current version from `Directory.Build.props`, and a priority list re-derived from the same Cobertura class/package data. If the displayed aggregate changes, synchronize `.github/copilot-instructions.md:60`; add `changelog.d/coverage-baseline-stale.md` in the repository's fragment format. |
+| Scope | Production files (0). Test files (0). Documentation files (3): `docs/coverage-baseline.md`, `.github/copilot-instructions.md` (only when the displayed aggregate changes), and `changelog.d/coverage-baseline-stale.md`. Generated measurement artifacts under the isolated `artifacts/coverage-baseline-stale-<run-id>/` output are uncommitted evidence, not scope. |
+| Tool policy | edit-only |
+| Estimated context cost | 20000 |
+| Risks | Fanout probe not applicable: this is a measurement and documentation refresh, not a refactor-shaped change. Use an isolated output root so an older Cobertura/TRX file cannot be mistaken for this run, and do not publish numbers unless the full verifier exits zero and both artifacts belong to that invocation. The tracked Coverlet Windows/.NET 10 teardown crash may still block collection; report that failure rather than accepting a partial artifact. Preserve the existing distinction between behavioral-service priorities and low-value DTO-only coverage. |
+| Validation | Measurement: `pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release -OutputRoot artifacts/coverage-baseline-stale-<run-id>` and verify one current Cobertura root plus a matching readable TRX with executed tests. Documentation: `pwsh -NoProfile -File ./eng/verify-ai-docs.ps1` and `pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1`. Merge-ready gate: `just ci`. |
+| Performance review | N/A — documentation refresh; no hot-path changes. |
+| CHANGELOG category | Maintenance |
+| CHANGELOG entry (draft) | Refresh the published line and branch coverage baseline, test count, and test-priority guidance from a current full release measurement. |
+| Backlog sync | Close rows: [coverage-baseline-stale]. Mark obsolete: []. |
