@@ -129,7 +129,7 @@ tool derives its scope from `git status --porcelain`.
 
 Reach for these **only** when you need byte-identical CI parity (e.g., the final
 `verify-release.ps1` check before cutting a release), or when the MCP server is
-disconnected and the [fallback column in the primer](../bootstrap-read-tool-primer.md#pattern--tool-read-sideawayssafe)
+disconnected and the [fallback column in the primer](../bootstrap-read-tool-primer.md#pattern--tool-read-side--always-safe)
 applies:
 
 - `Bash: dotnet build <sln> -c Release -p:TreatWarningsAsErrors=true` — full MSBuild
