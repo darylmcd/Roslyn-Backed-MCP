@@ -285,7 +285,6 @@ See [ai_docs/runtime.md § Write-side by session shape](../runtime.md#write-side
 ## Subagents available in this repo
 
 ```yaml
-initiative_executor: .claude/agents/initiative-executor.md  # use for Step 7 spawn
 pr_reconciler:       .claude/agents/pr-reconciler.md         # readiness-only; parent owns /ship --land=<pr>
 backlog_anchor_auditor: .claude/agents/backlog-anchor-auditor.md  # pre-plan anchor scan
 backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 of /backlog-intake
