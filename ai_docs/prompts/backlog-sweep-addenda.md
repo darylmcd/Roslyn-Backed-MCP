@@ -32,7 +32,7 @@ skipCiToken: ""   # NONE — see CI gate note below
 
 **`verify-changelog-fragments.ps1` is doubly covered — do not read the standalone CI step as the only run.** On a *code* PR the standalone step is skipped (`ci.yml:111` gates it on `docs_only == 'true'`); the fragment check still executes as a `verify-release.ps1` child step (`eng/verify-release.ps1:296-299`, inside the `-not $TestShardOnly` block that only the artifact-owner leg reaches). On a *docs-only* PR every leg is forced `-TestShardOnly`, that whole child block is skipped, and the standalone step is the sole coverage. Running it explicitly first, as `ci_equivalent` does, is correct on both paths.
 
-**One-command local equivalent: `just ci`** (`verify-docs verify-skills verify-changed-format verify-actionlint verify-release-pr vuln-audit`). It is close but not identical to `ci_equivalent`: `verify-release-pr` passes `-NoCoverage -ExcludeNetworkTests` (matching CI's PR lane, and faster than the bare `-Configuration Release` above), `verify-skills` is redundant with the `verify-release.ps1` child step, and **`verify-actionlint` has no CI counterpart at all** — no workflow in `.github/workflows/` invokes actionlint, so it is a local-only lint. Prefer `just ci` for a full local pass; keep `ci_equivalent`'s explicit list when you need to run or skip individual gates.
+**One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list above for consumers that must run or skip individual gates; `just ci` additionally runs the local-only `verify-actionlint` recipe and passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
 
 **Topology split — `ci_equivalent` is the code-PR shape.** The `route` job runs `eng/resolve-ci-topology.ps1`, which classifies a PR as **docs-only** when every changed path matches `^(.*\.md|ai_docs/.*\.json)$` *and* none matches the behavior-bearing carve-out (`CHANGELOG.md`, or anything under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, `.github/prompts/`). A partial or over-capped files-API enumeration fails closed to the full matrix.
 
@@ -80,6 +80,8 @@ preferred_read_side_tools:
 ```
 
 ## Parallel-execution safety
+
+The operator-facing concurrency value is repeated in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime); the block below remains the parser-owned source with its evidence and reversal condition.
 
 ```yaml
 parallel_safety:

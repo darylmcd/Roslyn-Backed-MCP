@@ -72,6 +72,14 @@ After the required reads, use `ai_docs/planning_index.md` for next-step routing 
 
 This is a **public repo** (per `.ai-doc-audit.md` `repo_class: public`), published as `roslyn-mcp@roslyn-mcp-marketplace`. Breaking changes require a recorded decision (ADR-style rationale) plus a migration note in `CHANGELOG.md`; compatibility and deprecation rules are defined in `docs/release-policy.md`. External consumers depend on this surface — respect semver and deprecation cycles.
 
+## Validation runtime
+
+Read this row before running the authoritative gate. Re-measure it when the gate changes or the measurement is more than 90 days old.
+
+| gate | command | typical duration (measured 2026-09-20) | Bash timeout / background | hooks (pre-commit/pre-push + runtime) | CI-equivalent filter | regen companions | flake registry | parallelSafe |
+|---|---|---|---|---|---|---|---|---|
+| PR-equivalent aggregate | `just ci` | 13m24s | Run in background | No Git pre-commit/pre-push hooks; Codex publication-boundary `PreToolUse` runs `eng/verify-changelog-fragments.ps1` with a 30 s cap (1.7 s measured) | `TestCategory!=Benchmark&TestCategory!=Network`; coverage disabled | — | `ai_docs/known-flakes.md` | true |
+
 ## Planning Scope
 
 1. User named no specific repo / adapter / ecosystem / integration / cross-repo term -> scope = in-repo -> read `ai_docs/backlog.md`, then any named in-repo file under `ai_docs/plans/` -> STOP. Do not open `ai_docs/ecosystem/**`.
