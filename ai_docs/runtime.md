@@ -12,7 +12,7 @@ This document is the canonical runtime and execution-context reference for AI ag
 
 ## Task Runner
 
-Use `just --list` for the full recipe menu. `just ci` is the canonical local CI mirror.
+Use `just --list` for the full recipe menu. `just ci` is the canonical local CI mirror; its measured cost, timeout/background mode, hook runtime, exact test filter, regeneration companions, flake registry, and concurrency safety live in [AGENTS.md § Validation runtime](../AGENTS.md#validation-runtime).
 
 | Recipe | What it does |
 |--------|--------------|
@@ -33,13 +33,13 @@ See `justfile` for the full recipe list, including packaging, Docker, and securi
 
 - .NET SDK: `10.0.400` (`rollForward: latestFeature`) — see `global.json`; CI also runs an exact-floor build/workspace probe
 - Primary v1 OS target: Windows. macOS and Linux are supported wherever the .NET 10 SDK is available.
-- Main local validation entry point: `just ci` (the PR-equivalent `verify-release.ps1 -NoCoverage -ExcludeNetworkTests` lane plus docs/skills and vulnerability audit). Use `just full` only when the informational coverage/live-network lane is required.
+- Main local validation entry point: `just ci`; use the canonical runtime row in [AGENTS.md § Validation runtime](../AGENTS.md#validation-runtime) before invoking it. Use `just full` only when the informational coverage/live-network lane is required.
 - Test framework: MSTest (`[TestClass]`, `[TestMethod]`)
 - Fast raw commands:
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
-  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 2` — reproduce one CI non-owner class shard without duplicate policy/publish work; use the complementary zero-based index for the other half. Omit `-TestShardOnly` for a standalone full release gate. The unsharded `just ci` default remains authoritative locally.
+  - `pwsh ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardOnly -TestShardIndex 0 -TestShardCount 2` — reproduce one CI non-owner class shard without duplicate policy/publish work; use the complementary zero-based index for the other half. Omit `-TestShardOnly` for a standalone full release gate.
   - `pwsh ./eng/get-test-shard-plan.ps1 -TestAssemblyPath <RoslynMcp.Tests.dll> -TestShardCount 2 -TestShardIndex 0` — inspect the deterministic complete/disjoint class manifest as JSON. Discovery and integrity failures exit nonzero.
 
 ## Package Identity
