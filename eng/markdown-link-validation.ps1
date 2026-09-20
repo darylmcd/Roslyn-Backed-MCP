@@ -61,6 +61,44 @@ function Get-MarkdownHeadingText {
     return $text.ToString()
 }
 
+function Get-MarkdownExplicitAnchor {
+    param(
+        [AllowEmptyString()][string]$Content,
+        $Pipeline
+    )
+
+    # Mask Markdown code before scanning raw HTML so examples cannot manufacture
+    # anchors. The tag expression keeps quoted `>` characters inside one tag.
+    $contentWithoutCode = Remove-MarkdownCode -Content $Content -Pipeline $Pipeline
+    $contentWithoutCode = [regex]::Replace($contentWithoutCode, '(?s)<!--.*?(?:-->|$)', '')
+    $tagPattern = '(?is)<\s*(?<tag>[A-Za-z][A-Za-z0-9:-]*)(?<attributes>(?:[^<>"'']+|"[^"]*"|''[^'']*'')*)>'
+    $attributePattern = '(?i)(?<![A-Za-z0-9_:-])(?<name>id|name)\s*=\s*(?:"(?<double>[^"]*)"|''(?<single>[^'']*)''|(?<unquoted>[^\s"''=<>`]+))'
+
+    foreach ($tagMatch in [regex]::Matches($contentWithoutCode, $tagPattern)) {
+        $tagName = $tagMatch.Groups['tag'].Value
+        foreach ($attributeMatch in [regex]::Matches($tagMatch.Groups['attributes'].Value, $attributePattern)) {
+            $attributeName = $attributeMatch.Groups['name'].Value
+            if ($attributeName -ine 'id' -and -not ($tagName -ieq 'a' -and $attributeName -ieq 'name')) {
+                continue
+            }
+
+            $value = if ($attributeMatch.Groups['double'].Success) {
+                $attributeMatch.Groups['double'].Value
+            }
+            elseif ($attributeMatch.Groups['single'].Success) {
+                $attributeMatch.Groups['single'].Value
+            }
+            else {
+                $attributeMatch.Groups['unquoted'].Value
+            }
+
+            if (-not [string]::IsNullOrEmpty($value)) {
+                Write-Output ([System.Net.WebUtility]::HtmlDecode($value))
+            }
+        }
+    }
+}
+
 function Get-MarkdownAnchorSet {
     param(
         [AllowEmptyString()][string]$Content,
@@ -68,14 +106,14 @@ function Get-MarkdownAnchorSet {
     )
 
     $document = [Markdig.Markdown]::Parse($Content, $Pipeline, $null)
-    $slugs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $headingSlugs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $nextSuffix = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::Ordinal)
 
     foreach ($heading in [Markdig.Syntax.MarkdownObjectExtensions]::Descendants($document)) {
         if ($heading -is [Markdig.Syntax.HeadingBlock]) {
             $baseSlug = ConvertTo-GitHubHeadingSlug -Heading (Get-MarkdownHeadingText -Heading $heading)
             $slug = $baseSlug
-            while (-not $slugs.Add($slug)) {
+            while (-not $headingSlugs.Add($slug)) {
                 if (-not $nextSuffix.ContainsKey($baseSlug)) {
                     $nextSuffix[$baseSlug] = 0
                 }
@@ -84,15 +122,16 @@ function Get-MarkdownAnchorSet {
                 $slug = "$baseSlug-$($nextSuffix[$baseSlug])"
             }
         }
-        elseif ($heading -is [Markdig.Syntax.Inlines.HtmlInline]) {
-            $anchorMatch = [regex]::Match($heading.Tag, '(?i)^<a\s+[^>]*(?:id|name)\s*=\s*["'']([^"'']+)["'']')
-            if ($anchorMatch.Success) {
-                $null = $slugs.Add([System.Net.WebUtility]::HtmlDecode($anchorMatch.Groups[1].Value))
-            }
-        }
     }
 
-    return ,$slugs
+    # Explicit anchors share the final lookup set but never participate in the
+    # duplicate-heading counter. GitHub suffixes headings from headings alone.
+    $anchors = [System.Collections.Generic.HashSet[string]]::new($headingSlugs, [System.StringComparer]::Ordinal)
+    foreach ($explicitAnchor in Get-MarkdownExplicitAnchor -Content $Content -Pipeline $Pipeline) {
+        $null = $anchors.Add($explicitAnchor)
+    }
+
+    return ,$anchors
 }
 
 function Get-MarkdownLinkIssueCore {
@@ -201,10 +240,52 @@ function Get-MarkdownLinkIssue {
         $validPath = Join-Path $fixtureRoot 'valid.md'
         $deadPath = Join-Path $fixtureRoot 'dead.md'
         $assetPath = Join-Path $fixtureRoot 'asset.txt'
-        [System.IO.File]::WriteAllText($targetPath, "# Hello, World!`n`n## Repeated heading`n`n## Repeated heading`n`n## Encoded café`n`n<a id=`"explicit-anchor`"></a>`n")
+        $targetFixture = @'
+# Hello, World!
+
+## Repeated heading
+
+## Repeated heading
+
+## Encoded café
+
+<div id="element-double"></div>
+<span id='element-single'></span>
+<section id=element-unquoted></section>
+<a name="anchor-double"></a>
+<a name='anchor-single'></a>
+<a name=anchor-unquoted></a>
+<a id="anchor-id" name=anchor-name></a>
+<div id="foo"></div>
+
+# Foo
+
+# Foo
+'@
+        $validFixture = @'
+# Local heading
+
+[punctuation](target.md#hello-world)
+[duplicate](target.md#repeated-heading-1)
+[encoded](target.md#encoded-caf%C3%A9)
+[element double](target.md#element-double)
+[element single](target.md#element-single)
+[element unquoted](target.md#element-unquoted)
+[anchor double](target.md#anchor-double)
+[anchor single](target.md#anchor-single)
+[anchor unquoted](target.md#anchor-unquoted)
+[distinct id](target.md#anchor-id)
+[distinct name](target.md#anchor-name)
+[explicit and first heading](target.md#foo)
+[second heading](target.md#foo-1)
+[same file](#local-heading)
+[fragmentless](target.md)
+[non-Markdown](asset.txt#ignored)
+'@
+        [System.IO.File]::WriteAllText($targetPath, $targetFixture)
         [System.IO.File]::WriteAllText($assetPath, 'not Markdown')
-        [System.IO.File]::WriteAllText($validPath, "# Local heading`n`n[punctuation](target.md#hello-world)`n[duplicate](target.md#repeated-heading-1)`n[encoded](target.md#encoded-caf%C3%A9)`n[explicit](target.md#explicit-anchor)`n[same file](#local-heading)`n[fragmentless](target.md)`n[non-Markdown](asset.txt#ignored)`n")
-        [System.IO.File]::WriteAllText($deadPath, "[dead](target.md#repeated-heading-2)`n")
+        [System.IO.File]::WriteAllText($validPath, $validFixture)
+        [System.IO.File]::WriteAllText($deadPath, '[dead duplicate](target.md#foo-2)')
 
         $validFixtureIssues = @(Get-MarkdownLinkIssueCore -Files ([System.IO.FileInfo]::new($validPath)) -Pipeline $pipeline)
         if ($validFixtureIssues.Count -ne 0) {
