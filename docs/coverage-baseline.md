@@ -17,10 +17,10 @@ CI uploads the **`code-coverage`** artifact (Cobertura + HTML summary when the w
 
 | Metric | Value | Source |
 |--------|-------|--------|
-| Line coverage | **~60.7%** | `<coverage line-rate="…">` in Cobertura (e.g. ~0.607) |
-| Branch coverage | **~47.3%** | `<coverage branch-rate="…">` |
+| Line coverage | **~86.2%** | Cobertura root: 33,105 / 38,387 lines (`line-rate="0.8624"`) |
+| Branch coverage | **~71.9%** | Cobertura root: 13,230 / 18,394 branches (`branch-rate="0.7192"`) |
 
-**Updated:** 2026-04-11 — measured after v1.9.0 (329 tests via `verify-release.ps1`). Rates unchanged from v1.6.0 baseline despite 120 additional tests — new tests cover previously-exercised code paths rather than net-new coverage.
+**Updated:** 2026-09-20 — measured at v4.2.1 with `verify-release.ps1` (3,156 discovered tests: 3,144 passed and 12 skipped).
 
 Historical note: older docs cited ~50% line / ~34% branch from an earlier toolchain or partial collection; the **do not regress** rule applies to this **current** baseline.
 
@@ -30,11 +30,11 @@ Use this list when expanding `tests/RoslynMcp.Tests/` integration coverage. Pref
 
 | Priority | Area | Rationale |
 |----------|------|-----------|
-| P1 | `CompileCheckService`, `CodeActionService` hot paths | Validation and code-action flows; previously under-covered async paths. |
-| P1 | `DependencyAnalysisService`, `DeadCodeService` branches | Large surface; mutation-adjacent behavior. |
-| P2 | `BoundedStore<T>` via preview stores | Eviction/TTL paths; exercise through preview/apply integration tests. |
-| P2 | `ServiceCollectionExtensions` (DI registration) | Low direct coverage; optional smoke test that builds host `ServiceProvider`. |
-| P3 | Core DTOs | Improve only when tied to a behavioral regression or serialization contract test. |
+| P1 | `TypeScaffolder`, `BatchTestScaffolder`, and `SingleTestScaffolder` | Current report leaves 371 source lines uncovered across behavior-heavy test-generation paths. |
+| P1 | `ProjectMutationTools` and `UndoTools` | Both host tool surfaces report 0% line coverage; add protocol-level integration tests for mutation and rollback behavior. |
+| P1 | `TestDiscoveryService`, `WorkspaceManager`, and `SymbolRefactorService` | Large workspace/refactoring surfaces account for 352 uncovered source lines and carry state-management risk. |
+| P2 | `InterfaceMemberRemovalOrchestrator`, `SymbolSearchService`, and `InterfaceExtractionService` | Low-to-moderate line coverage (7.5%, 61.4%, and 66.9%) leaves orchestration and semantic-search branches exposed. |
+| P3 | Generated regex code and core DTOs | Do not target generated or data-only code in isolation; cover it only through behavioral or serialization contracts. |
 
 After adding tests, re-run `verify-release.ps1` and update the **Current baseline** table and `.github/copilot-instructions.md` if the aggregate moves materially.
 
