@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -355,6 +356,135 @@ public sealed class FormatterBaselineContractTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task TimedOutCapture_RetainsPhaseMarkerAndTerminatesRecordedNestedChildAsync()
+    {
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(FormatterBaselineContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        var childPidPath = Path.Combine(fixtureRoot, "child.pid");
+        var releasePath = Path.Combine(fixtureRoot, "release");
+        Process? outerProcess = null;
+        IncrementalTextCapture? stdoutCapture = null;
+        IncrementalTextCapture? stderrCapture = null;
+        try
+        {
+            var childScript = Path.Combine(fixtureRoot, "retain-stderr.ps1");
+            await File.WriteAllTextAsync(childScript, """
+                param([string]$ReleasePath, [string]$ChildPidPath)
+                [IO.File]::WriteAllText($ChildPidPath + '.tmp', [string]$PID)
+                [IO.File]::Move($ChildPidPath + '.tmp', $ChildPidPath)
+                $deadline = [DateTime]::UtcNow.AddMinutes(1)
+                while (!(Test-Path -LiteralPath $ReleasePath) -and [DateTime]::UtcNow -lt $deadline) {
+                    Start-Sleep -Milliseconds 50
+                }
+                """);
+            var outerScript = Path.Combine(fixtureRoot, "emit-marker-and-exit.ps1");
+            await File.WriteAllTextAsync(outerScript, """
+                param([string]$ChildScript, [string]$ReleasePath, [string]$ChildPidPath)
+                $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+                $info.UseShellExecute = $false
+                $info.CreateNoWindow = $true
+                foreach ($argument in @('-NoProfile', '-File', $ChildScript, $ReleasePath, $ChildPidPath)) {
+                    $info.ArgumentList.Add($argument)
+                }
+                $child = [Diagnostics.Process]::Start($info)
+                [Console]::Error.WriteLine("##format-phase## format start elapsedMs=1 childPid=$($child.Id)")
+                $child.Dispose()
+                Start-Sleep -Seconds 60
+                """);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+            {
+                "-NoProfile", "-File", outerScript, childScript, releasePath, childPidPath,
+            })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            outerProcess = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start inherited-pipe fixture.");
+            stdoutCapture = new IncrementalTextCapture(outerProcess.StandardOutput);
+            stderrCapture = new IncrementalTextCapture(outerProcess.StandardError);
+            Assert.IsTrue(
+                await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(10)),
+                "The nested child did not publish its handshake.");
+            Assert.IsFalse(
+                outerProcess.HasExited,
+                $"The fixture outer process exited before supervision began. stderr={stderrCapture.Snapshot}");
+            Assert.IsFalse(
+                stderrCapture.Completion.IsCompleted,
+                "The stderr reader unexpectedly reached EOF while the nested child retained the inherited pipe.");
+            Assert.IsFalse(
+                stdoutCapture.Completion.IsCompleted,
+                "The stdout reader unexpectedly reached EOF while the nested child retained the inherited pipe.");
+            StringAssert.Contains(
+                stderrCapture.Snapshot,
+                _formatPhaseMarkerPrefix,
+                "Incremental capture must retain the phase marker before inherited-pipe EOF. A whole-stream "
+                + "ReadToEndAsync result cannot expose this evidence until the nested child exits.");
+
+            var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+            var ownedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    int.Parse(
+                        await File.ReadAllTextAsync(childPidPath),
+                        System.Globalization.CultureInfo.InvariantCulture),
+                },
+                ownedChildProcessIds,
+                "The partial phase record must identify the exact nested child that retained the pipe.");
+            var teardown = await TerminateAndDrainOwnedTreeAsync(
+                outerProcess,
+                ownedChildProcessIds,
+                stdoutCapture,
+                stderrCapture);
+            Assert.IsTrue(
+                teardown.OuterExited,
+                $"The outer fixture did not exit within the {_drainTimeout.TotalSeconds:g}-second cleanup bound.");
+            Assert.IsTrue(
+                teardown.OwnedChildrenExited,
+                $"The phase-recorded nested child survived the {_drainTimeout.TotalSeconds:g}-second cleanup bound.");
+            Assert.IsTrue(teardown.StdOut.Drained, "The owned child retained stdout after bounded teardown.");
+            Assert.IsTrue(teardown.StdErr.Drained, "The owned child retained stderr after bounded teardown.");
+            StringAssert.Contains(
+                teardown.StdErr.Text,
+                _formatPhaseMarkerPrefix,
+                "The retained partial phase marker must survive bounded teardown and full drain.");
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(releasePath, string.Empty);
+            await StopFixtureChildAsync(childPidPath);
+            if (stderrCapture is not null)
+            {
+                try { await stderrCapture.Completion.WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch (TimeoutException) { /* The explicit child cleanup assertion reports the leak. */ }
+            }
+
+            if (stdoutCapture is not null)
+            {
+                try { await stdoutCapture.Completion.WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch (TimeoutException) { /* The explicit child cleanup assertion reports the leak. */ }
+            }
+
+            outerProcess?.Dispose();
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task Generator_IsDeterministicAndTheTrackedInventoryCoversTheLiveRunAsync()
     {
         var firstRun = await RunGeneratorCheckAsync();
@@ -385,6 +515,14 @@ public sealed class FormatterBaselineContractTests
                 .Select(marker => string.Join(' ', marker.Split(' ').Skip(1).Take(2)))
                 .ToArray(),
             $"The second deterministic pass must reuse the first restore and run formatting only. stderr={secondRun.StdErr}");
+        Assert.AreEqual(
+            2,
+            ExtractOwnedChildProcessIds(ExtractPhaseMarkers(firstRun.StdErr)).Length,
+            $"Restore and format must each identify one owned dotnet child. stderr={firstRun.StdErr}");
+        Assert.AreEqual(
+            1,
+            ExtractOwnedChildProcessIds(ExtractPhaseMarkers(secondRun.StdErr)).Length,
+            $"The no-restore pass must identify its owned formatter child. stderr={secondRun.StdErr}");
 
         var live = ParseInventory(
             firstRun.StdOut,
@@ -467,6 +605,32 @@ public sealed class FormatterBaselineContractTests
             .Select(line => line.Trim())
             .Where(line => line.StartsWith(_formatPhaseMarkerPrefix, StringComparison.Ordinal))
             .ToArray();
+
+    private static int[] ExtractOwnedChildProcessIds(IEnumerable<string> phaseMarkers)
+        => phaseMarkers
+            .Select(marker => Regex.Match(marker, @"\bchildPid=(?<pid>\d+)\b"))
+            .Where(match => match.Success)
+            .Select(match => int.Parse(
+                match.Groups["pid"].Value,
+                System.Globalization.CultureInfo.InvariantCulture))
+            .Distinct()
+            .ToArray();
+
+    private static string DescribeActiveGeneratorPhase(IReadOnlyList<string> phaseMarkers)
+    {
+        if (phaseMarkers.Count == 0)
+        {
+            return "not-started";
+        }
+
+        var parts = phaseMarkers[^1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3)
+        {
+            return "malformed-marker";
+        }
+
+        return parts[2] == "start" ? parts[1] : "between-phases";
+    }
 
     /// <summary>
     /// Names the contending processes visible right now. A process class whose enumeration fails is
@@ -573,6 +737,126 @@ public sealed class FormatterBaselineContractTests
         }
     }
 
+    private static async Task<DrainResult> DrainAsync(
+        IncrementalTextCapture capture,
+        string streamName,
+        TimeSpan drainTimeout)
+    {
+        try
+        {
+            var completed = await Task.WhenAny(capture.Completion, Task.Delay(drainTimeout));
+            return completed == capture.Completion
+                ? new DrainResult(true, await capture.Completion)
+                : new DrainResult(false, capture.Snapshot);
+        }
+        catch (IOException)
+        {
+            return new DrainResult(false, capture.Snapshot);
+        }
+        catch (ObjectDisposedException)
+        {
+            return new DrainResult(false, capture.Snapshot);
+        }
+    }
+
+    private static async Task<ProcessTeardownResult> TerminateAndDrainOwnedTreeAsync(
+        Process process,
+        IReadOnlyList<int> ownedChildProcessIds,
+        IncrementalTextCapture stdoutCapture,
+        IncrementalTextCapture stderrCapture)
+    {
+        var elapsed = Stopwatch.StartNew();
+        if (!process.HasExited)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) when (process.HasExited)
+            {
+                // The generator exited between the state check and the kill request.
+            }
+        }
+
+        var outerExited = await WaitForProcessExitAsync(process, RemainingCleanupBudget(elapsed));
+        var ownedChildrenExited = await WaitForOwnedChildrenExitAsync(
+            ownedChildProcessIds,
+            RemainingCleanupBudget(elapsed));
+        var remaining = RemainingCleanupBudget(elapsed);
+        var drains = await Task.WhenAll(
+            DrainAsync(stdoutCapture, "stdout", remaining),
+            DrainAsync(stderrCapture, "stderr", remaining));
+        elapsed.Stop();
+        return new ProcessTeardownResult(
+            outerExited,
+            ownedChildrenExited,
+            drains[0],
+            drains[1],
+            elapsed.ElapsedMilliseconds);
+    }
+
+    private static TimeSpan RemainingCleanupBudget(Stopwatch elapsed)
+    {
+        var remaining = _drainTimeout - elapsed.Elapsed;
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    private static async Task<bool> WaitForProcessExitAsync(Process process, TimeSpan timeout)
+    {
+        if (process.HasExited)
+        {
+            return true;
+        }
+
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return process.HasExited;
+        }
+    }
+
+    private static async Task<bool> WaitForOwnedChildrenExitAsync(
+        IReadOnlyList<int> processIds,
+        TimeSpan timeout)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            var anyRunning = false;
+            foreach (var processId in processIds)
+            {
+                try
+                {
+                    using var process = Process.GetProcessById(processId);
+                    anyRunning |= !process.HasExited;
+                }
+                catch (ArgumentException)
+                {
+                    // No process currently owns the phase-recorded identifier.
+                }
+            }
+
+            if (!anyRunning)
+            {
+                return true;
+            }
+
+            var remaining = timeout - deadline.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return false;
+            }
+
+            await Task.Delay(remaining < TimeSpan.FromMilliseconds(50)
+                ? remaining
+                : TimeSpan.FromMilliseconds(50));
+        }
+    }
+
     private static async Task<ProcessResult> RunGeneratorCheckAsync(bool noRestore = false)
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -607,8 +891,9 @@ public sealed class FormatterBaselineContractTests
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start PowerShell.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
+        var stdoutCapture = new IncrementalTextCapture(process.StandardOutput);
+        var stderrCapture = new IncrementalTextCapture(process.StandardError);
+        const string harnessWaitPhase = "wait-for-generator-exit";
         using var timeout = new CancellationTokenSource(_processTimeout);
         try
         {
@@ -622,38 +907,53 @@ public sealed class FormatterBaselineContractTests
             var stillCompeting = SnapshotCompetingProcesses()
                 .Where(entry => entry.Id != process.Id && startingIds.Contains(entry.Id))
                 .ToArray();
-
-            process.Kill(entireProcessTree: true);
-
-            var partialStdOut = await DrainAsync(stdoutTask, "stdout");
-            var partialStdErr = await DrainAsync(stderrTask, "stderr");
-            var phaseMarkers = ExtractPhaseMarkers(partialStdErr.Text);
+            var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+            var timeoutOwnedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
+            var teardown = await TerminateAndDrainOwnedTreeAsync(
+                process,
+                timeoutOwnedChildProcessIds,
+                stdoutCapture,
+                stderrCapture);
+            phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
             var classification = ClassifyGeneratorTimeout(
                 phaseMarkers,
                 competingAtStart.Count,
                 stillCompeting.Length,
-                partialStdErr.Drained);
+                teardown.StdErr.Drained);
 
             throw new TimeoutException(
                 $"Formatter baseline generator did not exit within {_processTimeout.TotalMinutes} minutes. "
+                + $"generatorPid={process.Id}; "
+                + $"harnessPhase={harnessWaitPhase}; "
+                + $"activeGeneratorPhase={DescribeActiveGeneratorPhase(phaseMarkers)}; "
                 + $"classification={classification}; "
-                + $"stdoutDrained={partialStdOut.Drained}; "
-                + $"stderrDrained={partialStdErr.Drained}; "
+                + $"outerExited={teardown.OuterExited}; "
+                + $"ownedChildrenExited={teardown.OwnedChildrenExited}; "
+                + $"ownedChildPids=[{string.Join(",", timeoutOwnedChildProcessIds)}]; "
+                + $"cleanupMs={teardown.ElapsedMilliseconds}; "
+                + $"stdoutDrained={teardown.StdOut.Drained}; "
+                + $"stderrDrained={teardown.StdErr.Drained}; "
                 + $"phases=[{string.Join(" | ", phaseMarkers)}]; "
                 + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
                 + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
-                + $"partialStdOut={DescribeDrainedLength(partialStdOut)}; "
-                + $"partialStdErr={partialStdErr.Text}");
+                + $"partialStdOut={DescribeDrainedLength(teardown.StdOut)}; "
+                + $"partialStdErr={stderrCapture.Snapshot}");
         }
 
         elapsed.Stop();
-        var stdOut = await stdoutTask;
-        var stdErr = await stderrTask;
+        var stdOut = await stdoutCapture.Completion;
+        var stdErr = await stderrCapture.Completion;
+        var ownedChildProcessIds = ExtractOwnedChildProcessIds(ExtractPhaseMarkers(stdErr));
+        Assert.IsTrue(
+            await WaitForOwnedChildrenExitAsync(ownedChildProcessIds, _drainTimeout),
+            $"Formatter phase children were still running after the generator exited: "
+            + string.Join(",", ownedChildProcessIds));
 
         // Recorded on every successful run so TRX history accumulates the repeated phase evidence
         // any future change to _processTimeout would have to be argued from.
         Console.WriteLine(
-            $"[formatter-baseline] totalMs={elapsed.ElapsedMilliseconds}; "
+            $"[formatter-baseline] generatorPid={process.Id}; harnessPhase=completed; "
+            + $"totalMs={elapsed.ElapsedMilliseconds}; "
             + $"phases=[{string.Join(" | ", ExtractPhaseMarkers(stdErr))}]; "
             + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}");
 
@@ -694,11 +994,119 @@ public sealed class FormatterBaselineContractTests
         return File.ReadAllText(path).ReplaceLineEndings("\n");
     }
 
+    private static async Task<bool> WaitForFileAsync(string path, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (File.Exists(path))
+            {
+                return true;
+            }
+
+            await Task.Delay(50);
+        }
+
+        return File.Exists(path);
+    }
+
+    private static async Task StopFixtureChildAsync(string childPidPath)
+    {
+        if (!File.Exists(childPidPath))
+        {
+            return;
+        }
+
+        var childPid = int.Parse(
+            await File.ReadAllTextAsync(childPidPath),
+            System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            using var child = Process.GetProcessById(childPid);
+            if (!child.HasExited)
+            {
+                child.Kill(entireProcessTree: true);
+                await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            }
+        }
+        catch (ArgumentException)
+        {
+            // The child already exited between the handshake read and lookup.
+        }
+    }
+
+    private sealed class IncrementalTextCapture
+    {
+        private readonly object _gate = new();
+        private readonly StringBuilder _text = new();
+
+        internal IncrementalTextCapture(StreamReader reader)
+        {
+            Completion = CaptureAsync(reader);
+        }
+
+        internal Task<string> Completion { get; }
+
+        internal string Snapshot
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _text.ToString();
+                }
+            }
+        }
+
+        private async Task<string> CaptureAsync(StreamReader reader)
+        {
+            var byteBuffer = new byte[4096];
+            var decoder = reader.CurrentEncoding.GetDecoder();
+            var charBuffer = new char[reader.CurrentEncoding.GetMaxCharCount(byteBuffer.Length)];
+            int read;
+            while ((read = await reader.BaseStream.ReadAsync(byteBuffer.AsMemory())) > 0)
+            {
+                var charCount = decoder.GetChars(
+                    byteBuffer,
+                    0,
+                    read,
+                    charBuffer,
+                    0,
+                    flush: false);
+                lock (_gate)
+                {
+                    _text.Append(charBuffer, 0, charCount);
+                }
+            }
+
+            var trailingCharCount = decoder.GetChars(
+                [],
+                0,
+                0,
+                charBuffer,
+                0,
+                flush: true);
+            lock (_gate)
+            {
+                _text.Append(charBuffer, 0, trailingCharCount);
+            }
+
+            return Snapshot;
+        }
+    }
+
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 
     private sealed record CompetingProcess(int Id, string Name);
 
     private sealed record DrainResult(bool Drained, string Text);
+
+    private sealed record ProcessTeardownResult(
+        bool OuterExited,
+        bool OwnedChildrenExited,
+        DrainResult StdOut,
+        DrainResult StdErr,
+        long ElapsedMilliseconds);
 
     private sealed record FormatBaseline(
         int SchemaVersion,
