@@ -113,6 +113,61 @@ $prReconcilerRelativePath = '.claude/agents/pr-reconciler.md'
 $prReconcilerPath = Join-Path $RepoRoot $prReconcilerRelativePath
 $backlogAddendaRelativePath = 'ai_docs/prompts/backlog-sweep-addenda.md'
 $backlogAddendaPath = Join-Path $RepoRoot $backlogAddendaRelativePath
+$initiativeExecutorRelativePath = '.claude/agents/initiative-executor.md'
+$initiativeExecutorPath = Join-Path $RepoRoot $initiativeExecutorRelativePath
+
+# sweep-executor-override-stale-roslyn-prefix: a repo-local executor supersedes the maintained
+# global agent. If an override is reintroduced, keep its Roslyn calls prefix-agnostic and preserve
+# the live discovery and result-evidence contract that prevents silent CLI fallback.
+function Get-InitiativeExecutorRoslynContractIssue {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Content,
+
+        [string]$Source = $initiativeExecutorRelativePath
+    )
+
+    $contractIssues = New-Object System.Collections.Generic.List[string]
+    if ([regex]::IsMatch($Content, 'mcp__(?:plugin_roslyn-mcp_)?roslyn__[A-Za-z0-9][A-Za-z0-9_-]*')) {
+        $contractIssues.Add("Initiative executor hardcodes a Roslyn tool prefix: $Source")
+    }
+
+    $requiredStatements = @(
+        'tool whose name ends in `server_info`',
+        'bind that prefix as `<roslyn>`',
+        'Call `<roslyn>server_info`',
+        'roslyn: <prefix> used=[tools] | unavailable (<reason>)'
+    )
+    foreach ($requiredStatement in $requiredStatements) {
+        if (-not $Content.Contains($requiredStatement, [System.StringComparison]::Ordinal)) {
+            $contractIssues.Add("Initiative executor is missing live Roslyn prefix discovery/evidence: $Source -> $requiredStatement")
+        }
+    }
+
+    return [string[]]$contractIssues
+}
+
+$staleInitiativeExecutorFixture = @'
+Use `mcp__roslyn__compile_check` after every edit.
+'@
+$staleFixtureIssues = @(Get-InitiativeExecutorRoslynContractIssue -Content $staleInitiativeExecutorFixture -Source '<stale-fixture>')
+if ($staleFixtureIssues.Count -ne 5 -or -not ($staleFixtureIssues | Where-Object { $_ -like 'Initiative executor hardcodes a Roslyn tool prefix:*' })) {
+    $issues.Add('Initiative-executor Roslyn contract guard does not reject the bounded stale-prefix fixture.')
+}
+
+$validInitiativeExecutorFixture = @'
+The server registers under `mcp__plugin_roslyn-mcp_roslyn__` or `mcp__roslyn__`, so never assume one.
+Find the tool whose name ends in `server_info`, bind that prefix as `<roslyn>`, and Call `<roslyn>server_info` once.
+Report `roslyn: <prefix> used=[tools] | unavailable (<reason>)` in notes.
+'@
+if (@(Get-InitiativeExecutorRoslynContractIssue -Content $validInitiativeExecutorFixture -Source '<valid-fixture>').Count -ne 0) {
+    $issues.Add('Initiative-executor Roslyn contract guard rejects the bounded prefix-aware fixture.')
+}
+
+if ([System.IO.File]::Exists($initiativeExecutorPath)) {
+    $initiativeExecutor = [System.IO.File]::ReadAllText($initiativeExecutorPath)
+    $issues.AddRange([string[]]@(Get-InitiativeExecutorRoslynContractIssue -Content $initiativeExecutor))
+}
 
 # pr-reconciler-fail-closed-ship-cleanup: both the reconciler and its repository addenda are
 # readiness-only documents. Required handoff words alone are insufficient: a destructive command
