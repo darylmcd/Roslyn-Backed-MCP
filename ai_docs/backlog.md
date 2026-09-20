@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-20T04:05:29Z
+**updated_at:** 2026-09-20T14:12:15Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `sweep-executor-override-stale-roslyn-prefix` | High | roslyn-hook-matchers-stale-tool-prefix | **Port or drop the stale repo-local executor override** — `.claude/agents/initiative-executor.md` names hardcoded `mcp__roslyn__*` tools no registration provides, so sweeps here reproduce the zero-Roslyn gap the global agent already fixed. [type: bug] [source: 2026-09-18 zero-Roslyn triage] | S | items/sweep-executor-override-stale-roslyn-prefix.md |
 
 ## Medium
 
@@ -89,7 +88,6 @@
 | `tool-merge-apply-code-transform-4` | Medium | tool-consolidation-adr-and-alias-machinery,tool-merge-apply-code-transform-3 | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 1 applies into `code_transform_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-code-transform-4.md |
 | `tool-merge-apply-file-lifecycle` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 5 applies into `file_lifecycle_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-file-lifecycle.md |
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
-| `coverage-baseline-stale` | Medium | — | **Re-measure and refresh docs/coverage-baseline.md.** Baseline stamped 2026-04-11 at v1.9.0 (329 tests); repo now v4.1.2 — 5-month, 2-version gap. Run verify-release.ps1, update the table + Updated stamp. [type: doc-staleness] [source: audit] | S | items/coverage-baseline-stale.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `workspace-id-unknown-error-category` | Medium | — | **Give an unknown workspaceId its own error category** — throw a typed WorkspaceNotFoundException from BOTH the gate precheck and WorkspaceManager's session miss, and register it ahead of KeyNotFoundException in ToolErrorHandler. [type: enhancement] [source: roslyn-mcp retro 2026-09-13] | M | items/workspace-id-unknown-error-category.md |
 | `retro-prompt-window-and-codex-extraction-rules` | Medium | — | **Retro prompt window and Codex extraction rules are stale** — rewrite §0 of the retro prompt to select sessions by record timestamp (not file mtime) and to match Codex Roslyn calls via the `custom_tool_call` exec shape, not `payload.namespace`. [type: docs] [source: roslyn-mcp retro 2026-09-13] | S | items/retro-prompt-window-and-codex-extraction-rules.md |
@@ -146,7 +144,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `tool-surface-pagination-or-tool-sets` | Low | resource-read-protocol-error-semantics | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |
-| `initiative-executor-roslyn-tool-discovery-experiment` | Low | — | **Executor Roslyn first-hop experiment** — measure post-`recommend_workflow` bypass (semantic-first-hop vs `Read`/`Grep`/`Edit` counts), produce a go/no-go note before editing the executor brief. [source: 2026-06-04 discovery-sweep + 2026-06-08 retro] | S | items/initiative-executor-roslyn-tool-discovery-experiment.md |
+| `initiative-executor-roslyn-tool-discovery-experiment` | Low | — | **Inherited executor Roslyn first-hop experiment** — measure semantic-first-hop versus generic calls under the global executor; require a demonstrated repo-specific need before proposing a local override. [type: chore] [source: PR #1556 cold review] | S | items/initiative-executor-roslyn-tool-discovery-experiment.md |
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
 | `filewatcher-markstaleifrelevant-stale-precedence-comment` | Low | — | **Fix stale MarkStaleIfRelevant precedence comment** — align it with unconditional last-writer-wins behavior in MarkStaleWithReason. [type: docs] [source: 2026-06-21 top-n cold-review] | S | items/filewatcher-markstaleifrelevant-stale-precedence-comment.md |
@@ -278,7 +276,7 @@
 | `upgrade-reference-static-count-date-drift` | Low | — | Remove stale date and version-source count claims from upgrade references. [type: docs] [source: Dependabot remediation review] | S | items/upgrade-reference-static-count-date-drift.md |
 | `type-move-preview-orchestration-decomposition` | Low | — | Decompose type-move declaration selection and target-document planning while preserving preview and refusal contracts. [type: quality] [source: adjacent-review] | S | items/type-move-preview-orchestration-decomposition.md |
 | `markdown-link-destination-parser` | Low | — | Parse real Markdown link destinations without truncating balanced parentheses in valid filenames. [type: validation] [source: 2026-09-15 adjacent probe] | S | items/markdown-link-destination-parser.md |
-| `pwsh-script-runner-launch-configuration-deduplication` | Low | — | Share duplicated launch configuration across the PowerShell and generic executable test-runner entry points. [type: test-refactor] [source: adjacent-review] | S | items/pwsh-script-runner-launch-configuration-deduplication.md |
+| `pwsh-script-runner-launch-configuration-deduplication` | Low | — | Share PowerShell test-process launch, incremental capture, timeout evidence, and owned-tree teardown across runner entry points and the formatter-baseline fixture. [type: test-refactor] [source: PR #1558 cold review] | S | items/pwsh-script-runner-launch-configuration-deduplication.md |
 | `workspace-validation-explicit-empty-tracker-fallback` | Low | — | Preserve explicit empty path lists without consulting the change tracker; reserve tracker fallback for omitted scope. [type: bug] [source: adjacent-review] | M | items/workspace-validation-explicit-empty-tracker-fallback.md |
 | `change-tracker-subscriber-failure-isolation` | Low | — | Invoke change-recorded subscribers independently so one failure cannot suppress later undo or state subscribers. [type: bug] [source: adjacent-review] | S | items/change-tracker-subscriber-failure-isolation.md |
 | `symbol-search-response-byte-budget` | Low | — | Bound symbol-search result pages by serialized bytes with lossless continuation. [type: quality] [source: adjacent-review] | M | items/symbol-search-response-byte-budget.md |
