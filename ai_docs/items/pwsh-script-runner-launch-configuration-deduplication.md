@@ -4,14 +4,16 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs` — RunAsync and RunExecutableAsync duplicate timeout validation, ProcessStartInfo settings, and argument population.
-- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs` — argument, exit, and process ownership coverage.
+- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunner.cs` — duplicated launch configuration and current shared ownership boundary.
+- `tests/RoslynMcp.Tests/Helpers/PwshScriptRunnerTests.cs` — argument, exit, cancellation, and process-ownership coverage.
+- `tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs` — incremental phase/PID capture and bounded owned-tree teardown consumer.
 
 ## Acceptance
 
-- Share one internal launch-configuration helper while retaining the PowerShell executable default and optional environment overrides.
-- Both entry points reject nonpositive timeouts consistently and preserve argument boundaries, redirected streams, and hidden-window behavior.
-- Exercise both entry points through the shared argument-boundary regression shape; preserve cancellation and drain tests.
+- [ ] One shared launch and owned-tree teardown path supports bounded incremental stdout/stderr snapshots plus complete exit/drain capture.
+- [ ] PowerShell and generic executable entry points retain defaults, optional environment overrides, argument boundaries, hidden-window behavior, and consistent nonpositive-timeout rejection.
+- [ ] The formatter-baseline fixture uses the shared path while preserving PID, phase, classification, cancellation, cleanup-budget, and drain diagnostics.
+- [ ] Shared regressions cover early assertion failure and prove no owned outer or descendant process remains after return.
 
 ## Evidence
 

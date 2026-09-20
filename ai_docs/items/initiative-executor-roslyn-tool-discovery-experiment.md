@@ -4,15 +4,17 @@
 
 ## Anchors
 
-- `.claude/agents/initiative-executor.md`
-- `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.GuidedWorkflows.cs`
-- `skills/refactor/SKILL.md`
-- `skills/semantic-find/SKILL.md`
+- `C:/Users/daryl/.claude/agents/initiative-executor.md` — inherited executor contract; read as external evidence, do not edit from this product repo.
+- `ai_docs/prompts/backlog-sweep-addenda.md` — repo-specific execution facts consumed by the inherited executor.
+- `ai_docs/reports/20260521T043918Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md`
+- `ai_docs/reports/20260608T203050Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md`
 
 ## Acceptance
 
-- [ ] Measurement note created with sample source, semantic-first-hop counts, generic `Read`/`Grep`/`Edit` counts, `workspace_reload` counts, and a go/no-go decision
-- [ ] If go: one follow-on implementation row added to inject the Roslyn-first stanza and validate it with a controlled refactor rerun
+- [ ] Measurement note records sample source, semantic-first-hop counts, generic read/search/edit counts, `workspace_reload` counts, the resolved Roslyn prefix, and a go/no-go decision.
+- [ ] The experiment measures the inherited global executor; it does not recreate `.claude/agents/initiative-executor.md`.
+- [ ] A follow-on may propose a repo-local override only when the measurement identifies a concrete repo-specific requirement that the global executor plus addenda cannot express.
+- [ ] Any approved follow-on is filed in the owning repository: global executor changes under `C:/Users/daryl/.claude`; repo-addenda-only changes here.
 
 ## Evidence
 
@@ -81,3 +83,7 @@ measurement experiment:
 ## Follow-On Row
 
 Legacy fat-row snapshot (pre-v15). Design brief content migrated to **Notes — migrated design brief** above; Evidence cites the 2026-06-08 retro corroboration.
+
+## Superseding note — inherited executor after PR #1556
+
+The migrated design brief below is historical evidence, not an implementation instruction. Its references to editing `.claude/agents/initiative-executor.md` are superseded by the current Anchors and Acceptance: measure the inherited global executor, and do not recreate a local override without a demonstrated repo-specific requirement.

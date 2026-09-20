@@ -13,12 +13,14 @@
     {
       "id": "sweep-executor-override-stale-roslyn-prefix",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "sweep-executor-override-stale-roslyn-prefix"
       ],
-      "productionFilesTouched": 0,
-      "productionFiles": [],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "eng/verify-ai-docs.ps1"
+      ],
       "testFilesAdded": 0,
       "testFiles": [],
       "docFiles": [
@@ -27,7 +29,7 @@
         "changelog.d/sweep-executor-override-stale-roslyn-prefix.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 14000,
+      "estimatedContextTokens": 16000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
@@ -39,19 +41,38 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/sweep-executor-override-stale-roslyn-prefix",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/sweep-executor-override-stale-roslyn-prefix",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1556",
+      "mergedAt": "2026-09-20T13:27:03Z",
+      "notes": "implementation review passed cycle 2; hosted validate passed; current-main integration gate tree 2f3f8295aa87cc03ad6f3f8623da6408025e55fc passed just ci",
       "fileSetHash": "7907e830f6f64c1a162253929a335d008451d6184681e9ab29e60046f53f9aa7",
-      "stanzaHash": "51e05d0fbed55b674eaf12543a9898137123a801958fe79503b1a63d89ae3d6a",
-      "reviewedStanzaHash": "51e05d0fbed55b674eaf12543a9898137123a801958fe79503b1a63d89ae3d6a"
+      "stanzaHash": "de75fa81eab7c7261e7ab234ff539c0078c25b15c2431e10b78ace97d75fa7eb",
+      "reviewedStanzaHash": "de75fa81eab7c7261e7ab234ff539c0078c25b15c2431e10b78ace97d75fa7eb",
+      "amendments": [
+        {
+          "at": "2026-09-20T05:49:04.308Z",
+          "finding": "implementation review cycle 1: eng/verify-ai-docs.ps1 is required by the accepted regression guard",
+          "reason": "Scope and state now name the production validation companion explicitly",
+          "previousStanzaHash": "51e05d0fbed55b674eaf12543a9898137123a801958fe79503b1a63d89ae3d6a",
+          "stanzaHash": "de75fa81eab7c7261e7ab234ff539c0078c25b15c2431e10b78ace97d75fa7eb"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1556,
+        "base": "main",
+        "mainOid": "2c62286d42887c4fd17a3ba6e38bacd3fea5e2fb",
+        "headOid": "b2c9ea2948db37d221c6cf759841110e732f5ca6",
+        "gatedTree": "2f3f8295aa87cc03ad6f3f8623da6408025e55fc",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z_backlog-remediate/integration-logs/gate-sweep-executor-override-stale-roslyn-prefix-pr1556-20260920T131243095Z-36860.log",
+        "gatedAt": "2026-09-20T13:26:22.383Z"
+      }
     },
     {
       "id": "coverage-baseline-stale",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "coverage-baseline-stale"
       ],
@@ -77,19 +98,29 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/coverage-baseline-stale",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/coverage-baseline-stale",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1557",
+      "mergedAt": "2026-09-20T13:54:50Z",
+      "notes": "Cold review cycle 0 passed with independent metric recomputation. Hosted validate and CodeQL passed. Current-main integration gate passed against main ad576b9cb750cc86dca0eff996be7c9f80c25b72 with gated tree fb284766b2c1030669703e5d4963ba7031307b5c; merge commit 74c7b6d661002124711470d2ceb69ab4151e2aeb.",
       "fileSetHash": "c224232dcfc7b838f552d612565a27ca7168b32d81fe7ef32dee3be5d5bbeb15",
       "stanzaHash": "0cb745310f1acab0c5cb3956868cd295f1161589dd46487296d500d16406c925",
-      "reviewedStanzaHash": "0cb745310f1acab0c5cb3956868cd295f1161589dd46487296d500d16406c925"
+      "reviewedStanzaHash": "0cb745310f1acab0c5cb3956868cd295f1161589dd46487296d500d16406c925",
+      "integrationGate": {
+        "pr": 1557,
+        "base": "main",
+        "mainOid": "ad576b9cb750cc86dca0eff996be7c9f80c25b72",
+        "headOid": "4eb20730ddee70dde6ad4bde5b6f3e6455dea46e",
+        "gatedTree": "fb284766b2c1030669703e5d4963ba7031307b5c",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z_backlog-remediate/integration-logs/gate-coverage-baseline-stale-pr1557-20260920T132820012Z-57256.log",
+        "gatedAt": "2026-09-20T13:54:13.605Z"
+      }
     },
     {
       "id": "formatter-baseline-contended-nested-process-timeout-investigation",
       "order": 4,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "formatter-baseline-contended-nested-process-timeout-investigation"
       ],
@@ -115,11 +146,11 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
+      "branch": "remediation/formatter-baseline-contended-nested-process-timeout-investigation",
+      "worktreePath": "C:/Code-Repo/Roslyn-Backed-MCP/.worktrees/formatter-baseline-contended-nested-process-timeout-investigation",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1558",
       "mergedAt": null,
-      "notes": null,
+      "notes": "held after cold-review cycle cap: final drained phase markers can reveal a child PID captured during teardown after the pre-teardown PID set was computed; recompute and verify the final owned-child set and add a late-marker regression before landing. PR #1558 remains unmerged. Existing pwsh-script-runner-launch-configuration-deduplication row was amended for the shared ownership follow-up.",
       "fileSetHash": "40c9368ad7a3aeff630065ff934ffd74a07dea6eb373c34dd091070388214c1c",
       "stanzaHash": "01367d982bf1ed870d12ccf80a2e687ea7cc742a5951721ab2a83d84f0230725",
       "reviewedStanzaHash": "01367d982bf1ed870d12ccf80a2e687ea7cc742a5951721ab2a83d84f0230725"
@@ -571,8 +602,8 @@
   },
   "lastReviewFindings": [],
   "conflictGraphInputHash": "114ad5cf7f52267b8491ada29464a5ef633ddcc88e956d15cc2e34baaf69405e",
-  "planHash": "93a6ab15fdca2a4f588eabe88018d5b6118364d5ada3c8126ad4daf2c8317915",
+  "planHash": "f0712d5045940bc11af38eab4b711b749e965a103cdfa3624caaf5dfd4beb144",
   "backlogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1",
-  "reviewedPlanHash": "93a6ab15fdca2a4f588eabe88018d5b6118364d5ada3c8126ad4daf2c8317915",
+  "reviewedPlanHash": "f0712d5045940bc11af38eab4b711b749e965a103cdfa3624caaf5dfd4beb144",
   "reviewedBacklogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1"
 }
