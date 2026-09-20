@@ -248,35 +248,53 @@ public sealed class ResourceReadWireContractTests
     [TestMethod]
     public async Task ResourceRead_MigratedEndpointSuccess_KeepsCacheHintNormalizationPerEra()
     {
+        const int readsPerEra = 2;
+
         foreach (var protocol in _protocolEras)
         {
             await using var harness = await CreateHarnessAsync(protocol.RequestedVersion, protocol.ExpectedVersion);
-            var before = harness.RawServerMessages.Count;
 
-            var result = await harness.Client.ReadResourceAsync(
-                new ReadResourceRequestParams { Uri = "roslyn://server/catalog/tools/0/5" },
-                CancellationToken.None);
-            Assert.AreEqual(1, result.Contents.Count);
-
-            var rawFrame = FindSingleNewResponseFrame(
-                harness.RawServerMessages, before, $"[{protocol.ExpectedVersion}] tools page success");
-            using var frame = JsonDocument.Parse(rawFrame);
-            var resultElement = frame.RootElement.GetProperty("result");
-            Assert.IsTrue(resultElement.TryGetProperty("contents", out _),
-                $"success frame must carry result.contents: {rawFrame}");
-
-            if (protocol.SupportsJuly2026Features)
+            for (var readOrdinal = 1; readOrdinal <= readsPerEra; readOrdinal++)
             {
-                Assert.AreEqual(0L, resultElement.GetProperty("ttlMs").GetInt64(),
-                    "2026-07-28 read must stamp ttlMs=0 (immediately stale).");
-                Assert.AreEqual("private", resultElement.GetProperty("cacheScope").GetString());
-            }
-            else
-            {
-                Assert.IsFalse(resultElement.TryGetProperty("ttlMs", out _),
-                    "2025-11-25 read must not carry ttlMs.");
-                Assert.IsFalse(resultElement.TryGetProperty("cacheScope", out _),
-                    "2025-11-25 read must not carry cacheScope.");
+                var label = $"[{protocol.ExpectedVersion}] tools page success read {readOrdinal}/{readsPerEra}";
+                Assert.AreEqual(protocol.ExpectedVersion, harness.Client.NegotiatedProtocolVersion,
+                    $"{label}: client negotiated an unexpected protocol version.");
+
+                var before = harness.RawServerMessages.Count;
+                var result = await harness.Client.ReadResourceAsync(
+                    new ReadResourceRequestParams { Uri = "roslyn://server/catalog/tools/0/5" },
+                    CancellationToken.None);
+                Assert.AreEqual(1, result.Contents.Count, $"{label}: unexpected content count.");
+
+                var rawFrame = FindSingleNewResponseFrame(harness.RawServerMessages, before, label);
+                using var frame = JsonDocument.Parse(rawFrame);
+                var resultElement = frame.RootElement.GetProperty("result");
+                Assert.IsTrue(resultElement.TryGetProperty("contents", out _),
+                    $"{label}: success frame must carry result.contents. Frame: {rawFrame}");
+
+                if (protocol.SupportsJuly2026Features)
+                {
+                    Assert.IsTrue(resultElement.TryGetProperty("ttlMs", out var ttlMs),
+                        $"{label}: modern read must carry ttlMs. Frame: {rawFrame}");
+                    Assert.AreEqual(JsonValueKind.Number, ttlMs.ValueKind,
+                        $"{label}: ttlMs must be numeric. Frame: {rawFrame}");
+                    Assert.AreEqual(0L, ttlMs.GetInt64(),
+                        $"{label}: modern read must stamp ttlMs=0 (immediately stale). Frame: {rawFrame}");
+
+                    Assert.IsTrue(resultElement.TryGetProperty("cacheScope", out var cacheScope),
+                        $"{label}: modern read must carry cacheScope. Frame: {rawFrame}");
+                    Assert.AreEqual(JsonValueKind.String, cacheScope.ValueKind,
+                        $"{label}: cacheScope must be a string. Frame: {rawFrame}");
+                    Assert.AreEqual("private", cacheScope.GetString(),
+                        $"{label}: modern read must stamp cacheScope=private. Frame: {rawFrame}");
+                }
+                else
+                {
+                    Assert.IsFalse(resultElement.TryGetProperty("ttlMs", out _),
+                        $"{label}: legacy read must not carry ttlMs. Frame: {rawFrame}");
+                    Assert.IsFalse(resultElement.TryGetProperty("cacheScope", out _),
+                        $"{label}: legacy read must not carry cacheScope. Frame: {rawFrame}");
+                }
             }
         }
     }
@@ -373,7 +391,13 @@ public sealed class ResourceReadWireContractTests
             }
         }
 
-        Assert.AreEqual(1, responses.Count, $"{label}: expected exactly one new response frame.");
+        var capturedMessages = messages.Count == skip
+            ? "<none>"
+            : string.Join(Environment.NewLine, messages.Skip(skip).Select(
+                static (message, index) => $"[{index}] {message}"));
+        Assert.AreEqual(1, responses.Count,
+            $"{label}: expected exactly one new response frame, found {responses.Count}. " +
+            $"Captured post-skip messages:{Environment.NewLine}{capturedMessages}");
         return responses[0];
     }
 
