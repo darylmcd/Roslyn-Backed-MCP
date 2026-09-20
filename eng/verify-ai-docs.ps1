@@ -128,7 +128,7 @@ function Get-InitiativeExecutorRoslynContractIssue {
     )
 
     $contractIssues = New-Object System.Collections.Generic.List[string]
-    if ([regex]::IsMatch($Content, 'mcp__(?:plugin_roslyn-mcp_)?roslyn__')) {
+    if ([regex]::IsMatch($Content, 'mcp__(?:plugin_roslyn-mcp_)?roslyn__[A-Za-z0-9][A-Za-z0-9_-]*')) {
         $contractIssues.Add("Initiative executor hardcodes a Roslyn tool prefix: $Source")
     }
 
@@ -156,6 +156,7 @@ if ($staleFixtureIssues.Count -ne 5 -or -not ($staleFixtureIssues | Where-Object
 }
 
 $validInitiativeExecutorFixture = @'
+The server registers under `mcp__plugin_roslyn-mcp_roslyn__` or `mcp__roslyn__`, so never assume one.
 Find the tool whose name ends in `server_info`, bind that prefix as `<roslyn>`, and Call `<roslyn>server_info` once.
 Report `roslyn: <prefix> used=[tools] | unavailable (<reason>)` in notes.
 '@
