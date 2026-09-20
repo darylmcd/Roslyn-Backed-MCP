@@ -42,37 +42,6 @@
       "notes": null
     },
     {
-      "id": "test-assembly-donotparallelize-audit",
-      "order": 2,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "test-assembly-donotparallelize-audit"
-      ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
       "id": "coverage-baseline-stale",
       "order": 3,
       "status": "pending",
@@ -499,6 +468,53 @@
       {
         "id": "locationdto-stage3-flat-field-deprecation",
         "reason": "defer-band"
+      }
+    ],
+    "splits": [
+      {
+        "parent": "test-assembly-donotparallelize-audit",
+        "children": [
+          "donotparallelize-audit-wave-01",
+          "donotparallelize-audit-wave-02",
+          "donotparallelize-audit-wave-03",
+          "donotparallelize-audit-wave-04",
+          "donotparallelize-audit-wave-05",
+          "donotparallelize-audit-wave-06",
+          "donotparallelize-audit-wave-07",
+          "donotparallelize-audit-wave-08",
+          "donotparallelize-audit-wave-09",
+          "donotparallelize-audit-wave-10",
+          "donotparallelize-audit-wave-11",
+          "donotparallelize-audit-wave-12",
+          "donotparallelize-audit-wave-13",
+          "donotparallelize-audit-wave-14",
+          "donotparallelize-audit-wave-15",
+          "donotparallelize-audit-wave-16",
+          "donotparallelize-audit-wave-17",
+          "donotparallelize-audit-wave-18",
+          "donotparallelize-audit-wave-19",
+          "donotparallelize-audit-wave-20",
+          "donotparallelize-audit-wave-21",
+          "donotparallelize-audit-wave-22",
+          "donotparallelize-audit-wave-23",
+          "donotparallelize-audit-wave-24",
+          "donotparallelize-audit-wave-25",
+          "donotparallelize-audit-wave-26",
+          "donotparallelize-audit-wave-27",
+          "donotparallelize-audit-wave-28",
+          "donotparallelize-audit-wave-29",
+          "donotparallelize-audit-wave-30",
+          "donotparallelize-audit-wave-31",
+          "donotparallelize-audit-wave-32",
+          "donotparallelize-audit-wave-33",
+          "donotparallelize-audit-wave-34",
+          "donotparallelize-audit-wave-35",
+          "donotparallelize-audit-wave-36",
+          "donotparallelize-audit-wave-37",
+          "donotparallelize-audit-wave-38",
+          "donotparallelize-audit-wave-39",
+          "donotparallelize-audit-wave-40"
+        ]
       }
     ]
   }
