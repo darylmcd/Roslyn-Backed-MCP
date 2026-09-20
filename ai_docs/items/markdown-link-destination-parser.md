@@ -18,3 +18,4 @@
 ## Evidence
 
 2026-09-15 isolated live probe: a file named a(b).md exists, but the preserved legacy target regex reports a broken target a(b. Code exclusion is repaired separately; this follow-up owns actual destination grammar and path policy.
+2026-09-20 verify-ai-docs-link-anchor-fragments implementation review: the validator still discovers links with regex \[[^\]]+\]\(([^)]+)\), so the existing Markdig migration must also cover escaped delimiters, optional titles, images, and code masking while preserving the new relative-fragment rules.

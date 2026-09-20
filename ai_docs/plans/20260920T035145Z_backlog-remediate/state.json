@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-20T03:51:47.011Z",
-  "backlogSnapshot": "2026-09-19T20:41:49Z",
+  "backlogSnapshot": "2026-09-20T16:50:34Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 1,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed",
   "readyForExecute": true,
   "initiatives": [
@@ -158,7 +158,7 @@
     {
       "id": "retro-prompt-window-and-codex-extraction-rules",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "retro-prompt-window-and-codex-extraction-rules"
       ],
@@ -183,19 +183,29 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/retro-prompt-window-and-codex-extraction-rules",
+      "worktreePath": ".worktrees/retro-prompt-window-and-codex-extraction-rules",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1560",
+      "mergedAt": "2026-09-20T16:01:24Z",
+      "notes": "Cold review cycle 0 passed. Hosted checks passed. Current-main integration gate passed against 1dd246007a99edde14db5fe328fd230a597bc38a with gated tree 4c86a6ff64aea2e5993760323885532b30bdf991; merge commit 6358d0341d4b8ceaa895e843145334c14de9ee49.",
       "fileSetHash": "e0985520b308fe3e65be3f8d31299d6b1b8dae45db62ebf371b07a682597c2e1",
       "stanzaHash": "aa25b7a120e0aded65b8b5d453dcbc6e5358dc2238660434dc7a8fdd84435151",
-      "reviewedStanzaHash": "aa25b7a120e0aded65b8b5d453dcbc6e5358dc2238660434dc7a8fdd84435151"
+      "reviewedStanzaHash": "aa25b7a120e0aded65b8b5d453dcbc6e5358dc2238660434dc7a8fdd84435151",
+      "integrationGate": {
+        "pr": 1560,
+        "base": "main",
+        "mainOid": "1dd246007a99edde14db5fe328fd230a597bc38a",
+        "headOid": "65467eb6cb6ab6d926753daf13d241a4c248a3d9",
+        "gatedTree": "4c86a6ff64aea2e5993760323885532b30bdf991",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z-backlog-remediate/integration-logs/gate-retro-prompt-window-and-codex-extraction-rules-pr1560-20260920T154918673Z-87972.log",
+        "gatedAt": "2026-09-20T16:00:51.854Z"
+      }
     },
     {
       "id": "resource-cache-hint-wire-failure-diagnostics",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "resource-cache-hint-wire-failure-diagnostics"
       ],
@@ -221,19 +231,29 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/resource-cache-hint-wire-failure-diagnostics",
+      "worktreePath": ".worktrees/resource-cache-hint-wire-failure-diagnostics",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1563",
+      "mergedAt": "2026-09-20T16:26:58Z",
+      "notes": "Cold review cycle 0 passed with Roslyn compile_check at zero diagnostics. Hosted checks passed. Current-main integration gate passed against 40a15ffd9dcca419ce929d06161ca82675272a7e with gated tree 21206ac673a2eb97895105a6cd03c733ef8c2ae6; merge commit 656a639756949a3be13cbf80f63a2a62cb445e2e.",
       "fileSetHash": "88f7a2655206231cce08718b52ef5aafc37a39ea18754d5ce051b6389e8c64cb",
       "stanzaHash": "27a8878beeb9d05f7113fcc99e6cab04ad2e4863c49cfcf4918f824574a625b0",
-      "reviewedStanzaHash": "27a8878beeb9d05f7113fcc99e6cab04ad2e4863c49cfcf4918f824574a625b0"
+      "reviewedStanzaHash": "27a8878beeb9d05f7113fcc99e6cab04ad2e4863c49cfcf4918f824574a625b0",
+      "integrationGate": {
+        "pr": 1563,
+        "base": "main",
+        "mainOid": "40a15ffd9dcca419ce929d06161ca82675272a7e",
+        "headOid": "0ad52cef45c28a72ffaf05837d43d221c8e239f1",
+        "gatedTree": "21206ac673a2eb97895105a6cd03c733ef8c2ae6",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z-backlog-remediate/integration-logs/gate-resource-cache-hint-wire-failure-diagnostics-pr1563-20260920T161441987Z-37660.log",
+        "gatedAt": "2026-09-20T16:26:13.279Z"
+      }
     },
     {
       "id": "verify-ai-docs-link-anchor-fragments",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "verify-ai-docs-link-anchor-fragments"
       ],
@@ -244,10 +264,12 @@
       "testFilesAdded": 0,
       "testFiles": [],
       "docFiles": [
+        "ai_docs/domains/tool-usage-guide.md",
+        "ai_docs/references/tooling/mcp-clients.md",
         "changelog.d/verify-ai-docs-link-anchor-fragments.md"
       ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": 18000,
+      "estimatedContextTokens": 20000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
@@ -259,19 +281,45 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/verify-ai-docs-link-anchor-fragments",
+      "worktreePath": ".worktrees/verify-ai-docs-link-anchor-fragments",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1561",
+      "mergedAt": "2026-09-20T16:14:10Z",
+      "notes": "Cold review cycle 0 failed two explicit-anchor/slug-counter gaps; fix cycle 1 passed cold review. Hosted checks passed. Current-main integration gate passed against 6358d0341d4b8ceaa895e843145334c14de9ee49 with gated tree bca5be33b26ed5b5d20f5e5acfb4777a7f357014; merge commit 40a15ffd9dcca419ce929d06161ca82675272a7e.",
       "fileSetHash": "e0671006028fdfeb3549994e4d63308b73d75da0e5f4eb4e6bb0730347c6ce8f",
-      "stanzaHash": "b350d64b44e05bf9df13a16b27f793262d547cbd6b5a2fb6f30f4e5901898c56",
-      "reviewedStanzaHash": "b350d64b44e05bf9df13a16b27f793262d547cbd6b5a2fb6f30f4e5901898c56"
+      "stanzaHash": "1e5b1cfbed9454cabc4f0c4904d5cec86fbd5220b0c8adaa9700ddc7868c260b",
+      "reviewedStanzaHash": "1e5b1cfbed9454cabc4f0c4904d5cec86fbd5220b0c8adaa9700ddc7868c260b",
+      "amendments": [
+        {
+          "at": "2026-09-20T14:33:04.618Z",
+          "finding": "Executor validation exposed a pre-existing dead fragment in ai_docs/domains/tool-usage-guide.md",
+          "reason": "Include the one documentation correction required for the strengthened validator to keep the repository clean without weakening matching",
+          "previousStanzaHash": "b350d64b44e05bf9df13a16b27f793262d547cbd6b5a2fb6f30f4e5901898c56",
+          "stanzaHash": "e0ee96b8e55033f1afd789268a65180c00a42e2c3d436ebe69b6fca2def045e9"
+        },
+        {
+          "at": "2026-09-20T14:34:21.130Z",
+          "finding": "Executor clean-tree validation exposed a second pre-existing dead fragment in ai_docs/references/tooling/mcp-clients.md and a valid explicit HTML anchor",
+          "reason": "Include the second required documentation correction and define explicit HTML id/name anchors as valid Markdown fragment targets",
+          "previousStanzaHash": "e0ee96b8e55033f1afd789268a65180c00a42e2c3d436ebe69b6fca2def045e9",
+          "stanzaHash": "1e5b1cfbed9454cabc4f0c4904d5cec86fbd5220b0c8adaa9700ddc7868c260b"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1561,
+        "base": "main",
+        "mainOid": "6358d0341d4b8ceaa895e843145334c14de9ee49",
+        "headOid": "a27b5826e48f63e8b028c73c08c58af03e164bbe",
+        "gatedTree": "bca5be33b26ed5b5d20f5e5acfb4777a7f357014",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z-backlog-remediate/integration-logs/gate-verify-ai-docs-link-anchor-fragments-pr1561-20260920T160216598Z-71900.log",
+        "gatedAt": "2026-09-20T16:13:36.215Z"
+      }
     },
     {
       "id": "agents-md-missing-validation-runtime",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "agents-md-missing-validation-runtime"
       ],
@@ -300,14 +348,24 @@
       "dependsOn": [
         "sweep-executor-override-stale-roslyn-prefix"
       ],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null,
+      "branch": "remediation/agents-md-missing-validation-runtime",
+      "worktreePath": ".worktrees/agents-md-missing-validation-runtime",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1562",
+      "mergedAt": "2026-09-20T16:39:40Z",
+      "notes": "Cold review cycle 0 failed three runtime-contract omissions; fix cycle 1 passed cold review. Hosted checks passed. Current-main integration gate passed against 656a639756949a3be13cbf80f63a2a62cb445e2e with gated tree 3a3fc6ab427da7dc25bd48e33aad69f64bc04a3b; merge commit c16102ca3b8fa91adef47707e2586a3ee88213fd.",
       "fileSetHash": "3b0cb4a99ed37c7c3820c1aea798bd6526f00bc57ba52747c3c7b60f6e1e6610",
       "stanzaHash": "8e46c90c9fdada16a5e518d248527c5ad72535d54ad367d786aefe34c318a37f",
-      "reviewedStanzaHash": "8e46c90c9fdada16a5e518d248527c5ad72535d54ad367d786aefe34c318a37f"
+      "reviewedStanzaHash": "8e46c90c9fdada16a5e518d248527c5ad72535d54ad367d786aefe34c318a37f",
+      "integrationGate": {
+        "pr": 1562,
+        "base": "main",
+        "mainOid": "656a639756949a3be13cbf80f63a2a62cb445e2e",
+        "headOid": "6736e78df3a81ea35830bce712ce968def883ebe",
+        "gatedTree": "3a3fc6ab427da7dc25bd48e33aad69f64bc04a3b",
+        "exit": 0,
+        "log": "C:/Users/daryl/.codex/visualizations/2026/09/20/01a0bcec-170f-7820-aaef-980005286f08/20260920T035145Z-backlog-remediate/integration-logs/gate-agents-md-missing-validation-runtime-pr1562-20260920T162748480Z-70824.log",
+        "gatedAt": "2026-09-20T16:39:10.846Z"
+      }
     }
   ],
   "anchorVerification": "performed",
@@ -602,8 +660,9 @@
   },
   "lastReviewFindings": [],
   "conflictGraphInputHash": "114ad5cf7f52267b8491ada29464a5ef633ddcc88e956d15cc2e34baaf69405e",
-  "planHash": "f0712d5045940bc11af38eab4b711b749e965a103cdfa3624caaf5dfd4beb144",
+  "planHash": "5ea23045d851a4f27a1748c2c3380a66397bd82e30bc5c27ad347c820d9e29d7",
   "backlogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1",
-  "reviewedPlanHash": "f0712d5045940bc11af38eab4b711b749e965a103cdfa3624caaf5dfd4beb144",
-  "reviewedBacklogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1"
+  "reviewedPlanHash": "5ea23045d851a4f27a1748c2c3380a66397bd82e30bc5c27ad347c820d9e29d7",
+  "reviewedBacklogSnapshotHash": "538a414474bbeffd7dabda2688b723e4a4f8bf89809a558b8a06d1a74b7b1ba1",
+  "completedAt": "2026-09-20T16:50:53.991Z"
 }
