@@ -366,8 +366,6 @@ public sealed class FormatterBaselineContractTests
         var childPidPath = Path.Combine(fixtureRoot, "child.pid");
         var releasePath = Path.Combine(fixtureRoot, "release");
         Process? outerProcess = null;
-        IncrementalTextCapture? stdoutCapture = null;
-        IncrementalTextCapture? stderrCapture = null;
         try
         {
             var childScript = Path.Combine(fixtureRoot, "retain-stderr.ps1");
@@ -390,6 +388,11 @@ public sealed class FormatterBaselineContractTests
                     $info.ArgumentList.Add($argument)
                 }
                 $child = [Diagnostics.Process]::Start($info)
+                $deadline = [DateTime]::UtcNow.AddSeconds(10)
+                while (!(Test-Path -LiteralPath $ChildPidPath) -and [DateTime]::UtcNow -lt $deadline) {
+                    Start-Sleep -Milliseconds 25
+                }
+                if (!(Test-Path -LiteralPath $ChildPidPath)) { exit 9 }
                 [Console]::Error.WriteLine("##format-phase## format start elapsedMs=1 childPid=$($child.Id)")
                 $child.Dispose()
                 Start-Sleep -Seconds 60
@@ -413,71 +416,80 @@ public sealed class FormatterBaselineContractTests
 
             outerProcess = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Could not start inherited-pipe fixture.");
-            stdoutCapture = new IncrementalTextCapture(outerProcess.StandardOutput);
-            stderrCapture = new IncrementalTextCapture(outerProcess.StandardError);
+            var competingProcess = new CompetingProcess(123456789, "dotnet");
+            var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                RunGeneratorCheckAsync(
+                    executionSeam: new GeneratorExecutionSeam(
+                        outerProcess,
+                        TimeSpan.FromSeconds(2),
+                        () => [competingProcess])));
             Assert.IsTrue(
                 await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(10)),
                 "The nested child did not publish its handshake.");
-            Assert.IsFalse(
-                outerProcess.HasExited,
-                $"The fixture outer process exited before supervision began. stderr={stderrCapture.Snapshot}");
-            Assert.IsFalse(
-                stderrCapture.Completion.IsCompleted,
-                "The stderr reader unexpectedly reached EOF while the nested child retained the inherited pipe.");
-            Assert.IsFalse(
-                stdoutCapture.Completion.IsCompleted,
-                "The stdout reader unexpectedly reached EOF while the nested child retained the inherited pipe.");
-            StringAssert.Contains(
-                stderrCapture.Snapshot,
-                _formatPhaseMarkerPrefix,
-                "Incremental capture must retain the phase marker before inherited-pipe EOF. A whole-stream "
-                + "ReadToEndAsync result cannot expose this evidence until the nested child exits.");
 
-            var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
-            var ownedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
-            CollectionAssert.AreEqual(
-                new[]
-                {
-                    int.Parse(
-                        await File.ReadAllTextAsync(childPidPath),
-                        System.Globalization.CultureInfo.InvariantCulture),
-                },
-                ownedChildProcessIds,
-                "The partial phase record must identify the exact nested child that retained the pipe.");
-            var teardown = await TerminateAndDrainOwnedTreeAsync(
-                outerProcess,
-                ownedChildProcessIds,
-                stdoutCapture,
-                stderrCapture);
+            var childProcessId = int.Parse(
+                await File.ReadAllTextAsync(childPidPath),
+                System.Globalization.CultureInfo.InvariantCulture);
+            var expectedMarker = $"{_formatPhaseMarkerPrefix} format start elapsedMs=1 childPid={childProcessId}";
+            var expectedDiagnosticParts = new[]
+            {
+                "Formatter baseline generator did not exit within 2 seconds.",
+                $"generatorPid={outerProcess.Id}",
+                "harnessPhase=wait-for-generator-exit",
+                "activeGeneratorPhase=format",
+                "classification=host-contention",
+                "phaseSnapshot=refreshed-after-teardown",
+                "outerExited=True",
+                "ownedChildrenExited=True",
+                $"ownedChildPids=[{childProcessId}]",
+                "stdoutDrained=True",
+                "stderrDrained=True",
+                $"phases=[{expectedMarker}]",
+                "competingAtStart=1 [dotnet#123456789]",
+                "stillCompetingAtTimeout=1 [dotnet#123456789]",
+                "partialStdOut=0 chars",
+                $"partialStdErr={expectedMarker}",
+            };
+            foreach (var expectedPart in expectedDiagnosticParts)
+            {
+                StringAssert.Contains(
+                    timeout.Message,
+                    expectedPart,
+                    $"The timeout diagnostic must compose the owned evidence field '{expectedPart}'.");
+            }
+
+            StringAssert.Matches(
+                timeout.Message,
+                new Regex(@"\bcleanupMs=\d+;"),
+                "The composed diagnostic must include the bounded cleanup duration.");
+            Assert.IsTrue(outerProcess.HasExited, "The timeout path must terminate and await the outer process.");
             Assert.IsTrue(
-                teardown.OuterExited,
-                $"The outer fixture did not exit within the {_drainTimeout.TotalSeconds:g}-second cleanup bound.");
-            Assert.IsTrue(
-                teardown.OwnedChildrenExited,
-                $"The phase-recorded nested child survived the {_drainTimeout.TotalSeconds:g}-second cleanup bound.");
-            Assert.IsTrue(teardown.StdOut.Drained, "The owned child retained stdout after bounded teardown.");
-            Assert.IsTrue(teardown.StdErr.Drained, "The owned child retained stderr after bounded teardown.");
-            StringAssert.Contains(
-                teardown.StdErr.Text,
-                _formatPhaseMarkerPrefix,
-                "The retained partial phase marker must survive bounded teardown and full drain.");
+                await WaitForOwnedChildrenExitAsync([childProcessId], TimeSpan.Zero),
+                "The timeout path must terminate the phase-recorded nested child.");
         }
         finally
         {
             await File.WriteAllTextAsync(releasePath, string.Empty);
+            if (outerProcess is not null)
+            {
+                if (!outerProcess.HasExited)
+                {
+                    try
+                    {
+                        outerProcess.Kill(entireProcessTree: true);
+                    }
+                    catch (InvalidOperationException) when (outerProcess.HasExited)
+                    {
+                        // The fixture exited between the state check and the cleanup request.
+                    }
+                }
+
+                Assert.IsTrue(
+                    await WaitForProcessExitAsync(outerProcess, _drainTimeout),
+                    "Fixture cleanup did not terminate the outer PowerShell process within the cleanup bound.");
+            }
+
             await StopFixtureChildAsync(childPidPath);
-            if (stderrCapture is not null)
-            {
-                try { await stderrCapture.Completion.WaitAsync(TimeSpan.FromSeconds(10)); }
-                catch (TimeoutException) { /* The explicit child cleanup assertion reports the leak. */ }
-            }
-
-            if (stdoutCapture is not null)
-            {
-                try { await stdoutCapture.Completion.WaitAsync(TimeSpan.FromSeconds(10)); }
-                catch (TimeoutException) { /* The explicit child cleanup assertion reports the leak. */ }
-            }
-
             outerProcess?.Dispose();
             TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
         }
@@ -857,107 +869,140 @@ public sealed class FormatterBaselineContractTests
         }
     }
 
-    private static async Task<ProcessResult> RunGeneratorCheckAsync(bool noRestore = false)
+    private static async Task<ProcessResult> RunGeneratorCheckAsync(
+        bool noRestore = false,
+        GeneratorExecutionSeam? executionSeam = null)
     {
-        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var generatorPath = Path.Combine(repositoryRoot, "eng", "generate-format-baseline.ps1");
-        Assert.IsTrue(File.Exists(generatorPath), $"Generator not found at {generatorPath}.");
-
-        var startInfo = new ProcessStartInfo
+        Process process;
+        TimeSpan processTimeout;
+        Func<IReadOnlyList<CompetingProcess>> snapshotCompetingProcesses;
+        IReadOnlyList<CompetingProcess> competingAtStart;
+        var ownsProcess = executionSeam is null;
+        if (executionSeam is null)
         {
-            FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
-            WorkingDirectory = repositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(generatorPath);
+            var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+            var generatorPath = Path.Combine(repositoryRoot, "eng", "generate-format-baseline.ps1");
+            Assert.IsTrue(File.Exists(generatorPath), $"Generator not found at {generatorPath}.");
 
-        // -Check never writes, so the working tree stays clean. Its exit code is 1 when the
-        // tracked artifact has drifted; drift in the shrinking direction is expected and is
-        // evaluated by the subset assertions rather than by the exit code.
-        startInfo.ArgumentList.Add("-Check");
-        if (noRestore)
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+                WorkingDirectory = repositoryRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(generatorPath);
+
+            // -Check never writes, so the working tree stays clean. Its exit code is 1 when the
+            // tracked artifact has drifted; drift in the shrinking direction is expected and is
+            // evaluated by the subset assertions rather than by the exit code.
+            startInfo.ArgumentList.Add("-Check");
+            if (noRestore)
+            {
+                startInfo.ArgumentList.Add("-NoRestore");
+            }
+
+            processTimeout = _processTimeout;
+            snapshotCompetingProcesses = SnapshotCompetingProcesses;
+            // Taken before launch, so nothing the generator itself spawns can appear in it.
+            competingAtStart = snapshotCompetingProcesses();
+            process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start PowerShell.");
+        }
+        else
         {
-            startInfo.ArgumentList.Add("-NoRestore");
+            process = executionSeam.Process;
+            processTimeout = executionSeam.Timeout;
+            snapshotCompetingProcesses = executionSeam.SnapshotCompetingProcesses;
+            competingAtStart = snapshotCompetingProcesses();
         }
 
-        // Taken before launch, so nothing the generator itself spawns can appear in it.
-        var competingAtStart = SnapshotCompetingProcesses();
         var elapsed = Stopwatch.StartNew();
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start PowerShell.");
         var stdoutCapture = new IncrementalTextCapture(process.StandardOutput);
         var stderrCapture = new IncrementalTextCapture(process.StandardError);
         const string harnessWaitPhase = "wait-for-generator-exit";
-        using var timeout = new CancellationTokenSource(_processTimeout);
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
+            using var timeout = new CancellationTokenSource(processTimeout);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                // Intersecting on pid with the pre-launch snapshot excludes the generator's own tree
+                // without a parent-pid lookup: every descendant it spawned started later.
+                var startingIds = competingAtStart.Select(entry => entry.Id).ToHashSet();
+                var stillCompeting = snapshotCompetingProcesses()
+                    .Where(entry => entry.Id != process.Id && startingIds.Contains(entry.Id))
+                    .ToArray();
+                var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+                var timeoutOwnedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
+                var teardown = await TerminateAndDrainOwnedTreeAsync(
+                    process,
+                    timeoutOwnedChildProcessIds,
+                    stdoutCapture,
+                    stderrCapture);
+                phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+                var classification = ClassifyGeneratorTimeout(
+                    phaseMarkers,
+                    competingAtStart.Count,
+                    stillCompeting.Length,
+                    teardown.StdErr.Drained);
+                var timeoutDescription = processTimeout == _processTimeout
+                    ? $"{processTimeout.TotalMinutes:g} minutes"
+                    : $"{processTimeout.TotalSeconds:g} seconds";
+
+                throw new TimeoutException(
+                    $"Formatter baseline generator did not exit within {timeoutDescription}. "
+                    + $"generatorPid={process.Id}; "
+                    + $"harnessPhase={harnessWaitPhase}; "
+                    + $"activeGeneratorPhase={DescribeActiveGeneratorPhase(phaseMarkers)}; "
+                    + $"classification={classification}; "
+                    + "phaseSnapshot=refreshed-after-teardown; "
+                    + $"outerExited={teardown.OuterExited}; "
+                    + $"ownedChildrenExited={teardown.OwnedChildrenExited}; "
+                    + $"ownedChildPids=[{string.Join(",", timeoutOwnedChildProcessIds)}]; "
+                    + $"cleanupMs={teardown.ElapsedMilliseconds}; "
+                    + $"stdoutDrained={teardown.StdOut.Drained}; "
+                    + $"stderrDrained={teardown.StdErr.Drained}; "
+                    + $"phases=[{string.Join(" | ", phaseMarkers)}]; "
+                    + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
+                    + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
+                    + $"partialStdOut={DescribeDrainedLength(teardown.StdOut)}; "
+                    + $"partialStdErr={stderrCapture.Snapshot}");
+            }
+
+            elapsed.Stop();
+            var stdOut = await stdoutCapture.Completion;
+            var stdErr = await stderrCapture.Completion;
+            var ownedChildProcessIds = ExtractOwnedChildProcessIds(ExtractPhaseMarkers(stdErr));
+            Assert.IsTrue(
+                await WaitForOwnedChildrenExitAsync(ownedChildProcessIds, _drainTimeout),
+                $"Formatter phase children were still running after the generator exited: "
+                + string.Join(",", ownedChildProcessIds));
+
+            // Recorded on every successful run so TRX history accumulates the repeated phase evidence
+            // any future change to _processTimeout would have to be argued from.
+            Console.WriteLine(
+                $"[formatter-baseline] generatorPid={process.Id}; harnessPhase=completed; "
+                + $"totalMs={elapsed.ElapsedMilliseconds}; "
+                + $"phases=[{string.Join(" | ", ExtractPhaseMarkers(stdErr))}]; "
+                + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}");
+
+            return new ProcessResult(process.ExitCode, stdOut, stdErr);
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        finally
         {
-            // Intersecting on pid with the pre-launch snapshot excludes the generator's own tree
-            // without a parent-pid lookup: every descendant it spawned started later.
-            var startingIds = competingAtStart.Select(entry => entry.Id).ToHashSet();
-            var stillCompeting = SnapshotCompetingProcesses()
-                .Where(entry => entry.Id != process.Id && startingIds.Contains(entry.Id))
-                .ToArray();
-            var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
-            var timeoutOwnedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
-            var teardown = await TerminateAndDrainOwnedTreeAsync(
-                process,
-                timeoutOwnedChildProcessIds,
-                stdoutCapture,
-                stderrCapture);
-            phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
-            var classification = ClassifyGeneratorTimeout(
-                phaseMarkers,
-                competingAtStart.Count,
-                stillCompeting.Length,
-                teardown.StdErr.Drained);
-
-            throw new TimeoutException(
-                $"Formatter baseline generator did not exit within {_processTimeout.TotalMinutes} minutes. "
-                + $"generatorPid={process.Id}; "
-                + $"harnessPhase={harnessWaitPhase}; "
-                + $"activeGeneratorPhase={DescribeActiveGeneratorPhase(phaseMarkers)}; "
-                + $"classification={classification}; "
-                + $"outerExited={teardown.OuterExited}; "
-                + $"ownedChildrenExited={teardown.OwnedChildrenExited}; "
-                + $"ownedChildPids=[{string.Join(",", timeoutOwnedChildProcessIds)}]; "
-                + $"cleanupMs={teardown.ElapsedMilliseconds}; "
-                + $"stdoutDrained={teardown.StdOut.Drained}; "
-                + $"stderrDrained={teardown.StdErr.Drained}; "
-                + $"phases=[{string.Join(" | ", phaseMarkers)}]; "
-                + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
-                + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
-                + $"partialStdOut={DescribeDrainedLength(teardown.StdOut)}; "
-                + $"partialStdErr={stderrCapture.Snapshot}");
+            if (ownsProcess)
+            {
+                process.Dispose();
+            }
         }
-
-        elapsed.Stop();
-        var stdOut = await stdoutCapture.Completion;
-        var stdErr = await stderrCapture.Completion;
-        var ownedChildProcessIds = ExtractOwnedChildProcessIds(ExtractPhaseMarkers(stdErr));
-        Assert.IsTrue(
-            await WaitForOwnedChildrenExitAsync(ownedChildProcessIds, _drainTimeout),
-            $"Formatter phase children were still running after the generator exited: "
-            + string.Join(",", ownedChildProcessIds));
-
-        // Recorded on every successful run so TRX history accumulates the repeated phase evidence
-        // any future change to _processTimeout would have to be argued from.
-        Console.WriteLine(
-            $"[formatter-baseline] generatorPid={process.Id}; harnessPhase=completed; "
-            + $"totalMs={elapsed.ElapsedMilliseconds}; "
-            + $"phases=[{string.Join(" | ", ExtractPhaseMarkers(stdErr))}]; "
-            + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}");
-
-        return new ProcessResult(process.ExitCode, stdOut, stdErr);
     }
 
     private static void AssertStrictlyAscendingOrdinal(string[] values, string description)
@@ -1098,6 +1143,11 @@ public sealed class FormatterBaselineContractTests
     private sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 
     private sealed record CompetingProcess(int Id, string Name);
+
+    private sealed record GeneratorExecutionSeam(
+        Process Process,
+        TimeSpan Timeout,
+        Func<IReadOnlyList<CompetingProcess>> SnapshotCompetingProcesses);
 
     private sealed record DrainResult(bool Drained, string Text);
 
