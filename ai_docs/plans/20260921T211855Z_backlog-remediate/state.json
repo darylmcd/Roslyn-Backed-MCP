@@ -1,0 +1,312 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-21T21:19:20.131Z",
+  "backlogSnapshot": "2026-09-20T16:50:34Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 1,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "workspace-id-unknown-error-category",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-id-unknown-error-category"
+      ],
+      "productionFilesTouched": 7,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Services/WorkspaceNotFoundException.cs",
+        "src/RoslynMcp.Roslyn/Contracts/IWorkspaceManager.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/ResourceReadResultFilter.cs",
+        "ai_docs/items/compile-check-eviction-retry-nonrecovering-coverage.md"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/WorkspaceManagerEvictionTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceEvictionAutoRetryTests.cs",
+        "tests/RoslynMcp.Tests/ToolErrorHandlerSpecificityTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 7,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "95f38373296faadb971b5d71bc741c35758e1f30cc5c92efa55a0a7160833fc5",
+      "stanzaHash": "32bcae26870957e541f9fed5e11e6513da94765ee30da0a615f005f491b03c21",
+      "reviewedStanzaHash": "32bcae26870957e541f9fed5e11e6513da94765ee30da0a615f005f491b03c21"
+    },
+    {
+      "id": "readme-stable-callable-count-ungated",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "readme-stable-callable-count-ungated"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "README.md"
+      ],
+      "testFilesAdded": 0,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 0,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 2,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "cefc3be3eec0200c405accf71ddc1a5607086d49f931f0fc7d863d9b9472e87b",
+      "stanzaHash": "735e9ac574b5f7fadf850c82b2e3034c81f57aedb803f616dc5c217234634cf1",
+      "reviewedStanzaHash": "735e9ac574b5f7fadf850c82b2e3034c81f57aedb803f616dc5c217234634cf1"
+    },
+    {
+      "id": "actionlint-local-only-no-ci-gate",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "actionlint-local-only-no-ci-gate"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        ".github/workflows/ci.yml",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
+        "CI_POLICY.md"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ActionlintGateContractTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "750a498abba2383e49bc911a553349ff74db6cb3260e0b1d8fa0a0febb6a47b0",
+      "stanzaHash": "aae0b8417f3ac795bb74678c7fa0fd975cedfc7d35284e064f6eaa043c132821",
+      "reviewedStanzaHash": "aae0b8417f3ac795bb74678c7fa0fd975cedfc7d35284e064f6eaa043c132821"
+    },
+    {
+      "id": "docs-only-route-runs-full-test-suite",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "docs-only-route-runs-full-test-suite"
+      ],
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "eng/verify-release.ps1",
+        ".github/workflows/ci.yml",
+        "eng/docs-only-test-classes.txt"
+      ],
+      "testFilesAdded": 0,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CiTopologyDecisionContractTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 3,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [
+        "actionlint-local-only-no-ci-gate",
+        "verify-release-stale-package-cache-asset-graph"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "1c346910ed4e79b411011d7398ca4d4e4b8b5d797c5a0175e43d135b77fea351",
+      "stanzaHash": "894b3731cd13efd896e831945e14f2b7876c009f50b4e38701d56dc69d3e2f11",
+      "reviewedStanzaHash": "894b3731cd13efd896e831945e14f2b7876c009f50b4e38701d56dc69d3e2f11"
+    },
+    {
+      "id": "verify-release-stale-package-cache-asset-graph",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "verify-release-stale-package-cache-asset-graph"
+      ],
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "eng/update-third-party-notices.ps1",
+        "eng/verify-release.ps1"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ThirdPartyNoticeDriftTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8d45cd49fb8590a50b6a9d0ae83306866e5072257f3fb7111a9a7b9fc02a56e8",
+      "stanzaHash": "d5fe8407e89bf9607cc85d09826027ec4147b577248b1e01d92e545e434e9664",
+      "reviewedStanzaHash": "d5fe8407e89bf9607cc85d09826027ec4147b577248b1e01d92e545e434e9664"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [
+      {
+        "a": 3,
+        "b": 4,
+        "sharedFiles": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      {
+        "a": 4,
+        "b": 5,
+        "sharedFiles": [
+          "eng/verify-release.ps1"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 1,
+      "4": 2,
+      "5": 1
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2
+    ]
+  },
+  "selection": {
+    "requestedCount": "auto",
+    "selectedCount": 5,
+    "skipped": [
+      {
+        "id": "formatter-baseline-contended-nested-process-timeout-investigation",
+        "reason": "in-flight-pr"
+      },
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      }
+    ]
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 3,
+    "info": 2
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "plan-wide",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "stored conflictGraph empty; rebuilt edges 3-4 (ci.yml) and 4-5 (verify-release.ps1); refreshed by generations --persist",
+      "resolved": true,
+      "resolution": "generations --persist refreshes the stored graph"
+    },
+    {
+      "initiativeId": "docs-only-route-runs-full-test-suite",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "orders 3 and 4 share .github/workflows/ci.yml",
+      "resolved": true,
+      "resolution": "ordered by dependsOn (4 depends on 3)"
+    },
+    {
+      "initiativeId": "verify-release-stale-package-cache-asset-graph",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "orders 4 and 5 share eng/verify-release.ps1",
+      "resolved": true,
+      "resolution": "ordered by dependsOn (4 depends on 5)"
+    },
+    {
+      "initiativeId": "workspace-id-unknown-error-category",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "7 production files, defect-forced-companion holds"
+    },
+    {
+      "initiativeId": "readme-stable-callable-count-ungated",
+      "severity": "info",
+      "rule": "state-consistency",
+      "evidence": "rowsClosedCount 0 vs backlogRowsClosed 1"
+    }
+  ],
+  "conflictGraphInputHash": "f1db72c7b29211e3a6b6cd0193b5a84643468b88570e7feb1f18f008e05ec07f",
+  "planHash": "c67ba92f0b5925370890f4610d65ede0f760ae54c5cd34a04dd56b16dcd72710",
+  "backlogSnapshotHash": "7fe43046d9dabfd09df93982c8a5bd05ee25870d66ed1f2a61ee811d58bc6244",
+  "reviewedPlanHash": "c67ba92f0b5925370890f4610d65ede0f760ae54c5cd34a04dd56b16dcd72710",
+  "reviewedBacklogSnapshotHash": "7fe43046d9dabfd09df93982c8a5bd05ee25870d66ed1f2a61ee811d58bc6244"
+}

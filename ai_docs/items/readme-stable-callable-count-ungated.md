@@ -10,8 +10,6 @@
 ## Acceptance
 
 - [ ] `README.md:186`'s stable-only callable count ("currently 94 callable tools") is asserted against the live stable-tier callable selection, or the claim is removed/reshaped so no ungated number remains.
-- [ ] The false "gated by `ReadmeSurfaceCountTests`" claim is corrected in the ~34 `ai_docs/items/*.md` files carrying the "Gate-forced companions" boilerplate (grep: `README.md:186`).
-- [ ] That same boilerplate names `src/RoslynMcp.Host.Stdio/README.md` (gated at its line 88 by `HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog`) as a second gate-forced companion, and stops describing `ReadmeSurfaceCountTests.cs` as an edit target.
 - [ ] A regression test fails when the documented stable-only count drifts from the catalog.
 
 ## Evidence

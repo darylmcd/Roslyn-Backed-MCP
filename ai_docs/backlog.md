@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-20T16:50:34Z
+**updated_at:** 2026-09-21T21:24:43Z
 
 ## Agent contract
 
@@ -287,6 +287,7 @@
 | `stale-pre-apply-hook-consumer-docs` | Low | — | **Consumer docs promise a removed blocking pre-apply hook.** Replace the stale blocking-hook claims with the current post-apply advisory hooks and server-enforced preview-token contract; repair the nonexistent README section link. [type: docs] [source: remediation review 2026-09-19] | S | items/stale-pre-apply-hook-consumer-docs.md |
 | `server-discovery-cache-hint-wire-failure-diagnostics` | Low | resource-cache-hint-wire-failure-diagnostics | **Give server-discovery cache-hint wire failures bounded frame diagnostics** — replace raw `GetProperty` assertions with era, ordinal, and captured-frame evidence while preserving the modern-value and legacy-omission contract. [type: test] [source: resource-cache-hint-wire-failure-diagnostics deepening] | S | items/server-discovery-cache-hint-wire-failure-diagnostics.md |
 | `markdown-link-destination-parser-detail-duplicate-heading` | Low | — | **Normalize duplicate Markdown link detail headings.** Remove duplicate H1s without changing acceptance evidence. [type: docs] [source: 20260920T035145Z closeout cold review] | S | items/markdown-link-destination-parser-detail-duplicate-heading.md |
+| `readme-callable-gate-boilerplate-sweep` | Low | readme-stable-callable-count-ungated | **Correct the false README.md:186 gate boilerplate in item files** — one scripted pattern edit across the ai_docs/items files that cite it. [type: chore] [source: readme-stable-callable-count-ungated] | S | items/readme-callable-gate-boilerplate-sweep.md |
 
 ## Defer
 
