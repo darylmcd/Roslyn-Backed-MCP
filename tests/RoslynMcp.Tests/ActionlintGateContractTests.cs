@@ -49,6 +49,15 @@ public sealed class ActionlintGateContractTests
             "verify-actionlint",
             "The 'just ci' aggregate must depend on verify-actionlint so a malformed workflow expression fails locally before push.");
 
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml"));
+        var stepIndex = workflow.IndexOf("run: ./eng/verify-actionlint.ps1", StringComparison.Ordinal);
+        Assert.IsTrue(stepIndex >= 0, "ci.yml must run ./eng/verify-actionlint.ps1 so the gate is a real pull-request merge gate.");
+        var stepStart = workflow.LastIndexOf("- name:", stepIndex, StringComparison.Ordinal);
+        StringAssert.Contains(
+            workflow[stepStart..stepIndex],
+            "matrix.leg.artifact_owner == true",
+            "The actionlint step must run on the artifact-owner leg.");
+
         StringAssert.Contains(ciPolicy, "./eng/verify-actionlint.ps1");
         StringAssert.Contains(
             ciPolicy,
