@@ -116,6 +116,11 @@ jobs:
         shell: pwsh
         run: ./eng/verify-ai-docs.ps1
 
+      - name: Lint GitHub Actions workflows
+        if: matrix.leg.artifact_owner == true
+        shell: pwsh
+        run: ./eng/verify-actionlint.ps1
+
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:

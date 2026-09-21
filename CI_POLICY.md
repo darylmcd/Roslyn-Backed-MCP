@@ -131,7 +131,7 @@ Combine filters with `&` (AND) or `|` (OR) per `dotnet test` syntax.
 | Informational coverage/live-network gate | `just full` |
 | One release shard | `pwsh -NoProfile -File ./eng/verify-release.ps1 -NoCoverage -ExcludeNetworkTests -TestShardIndex <zero-based> -TestShardCount <count>` |
 
-`just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. Local validation remains unsharded so one command proves the complete suite.
+`just ci` composes docs, shipped skills, the changed-file formatter gate, the checksum-pinned actionlint gate, unsharded PR-equivalent release validation, and the vulnerability audit. The same actionlint script also runs on the hosted artifact-owner PR leg. Local validation remains unsharded so one command proves the complete suite.
 
 ## Merge Gating Expectations
 
