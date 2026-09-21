@@ -29,6 +29,7 @@ internal static class ResourceReadResultFilter
             [ToolErrorHandler.ToolErrorCategory.FileNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.DirectoryNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.WorkspaceEvicted] = McpErrorCode.ResourceNotFound,
+            [ToolErrorHandler.ToolErrorCategory.WorkspaceNotFound] = McpErrorCode.ResourceNotFound,
             [ToolErrorHandler.ToolErrorCategory.InvalidArgument] = McpErrorCode.InvalidParams,
             [ToolErrorHandler.ToolErrorCategory.StaleWorkspaceTransition] = McpErrorCode.InternalError,
             [ToolErrorHandler.ToolErrorCategory.WorkspaceReloadedDuringCall] = McpErrorCode.InternalError,

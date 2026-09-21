@@ -36,8 +36,8 @@ namespace RoslynMcp.Tests;
 ///     <see cref="WorkspaceEvictedException"/> with <c>workspaceLoadedAt=null</c> (the
 ///     prior process's timestamp was lost with the process).</description></item>
 ///   <item><description><b>Genuine miss</b> — never-loaded id, no recycle context.
-///     Throws plain <see cref="System.Collections.Generic.KeyNotFoundException"/>
-///     surfacing as <c>category="NotFound"</c> (existing behavior).</description></item>
+///     Throws <see cref="WorkspaceNotFoundException"/>
+///     surfacing as <c>category="WorkspaceNotFound"</c>.</description></item>
 /// </list>
 ///
 /// <para>
@@ -246,25 +246,20 @@ public sealed class WorkspaceManagerEvictionTests
 
     /// <summary>
     /// Path 3: legitimate miss. No prior recycle, no in-process eviction record. The
-    /// manager throws plain <see cref="System.Collections.Generic.KeyNotFoundException"/>
+    /// manager throws <see cref="WorkspaceNotFoundException"/>
     /// — NOT <see cref="WorkspaceEvictedException"/> — preserving the existing
-    /// <c>category="NotFound"</c> envelope for callers that genuinely typo'd the id.
+    /// <c>category="WorkspaceNotFound"</c> envelope for callers that genuinely typo'd the id.
     /// </summary>
     [TestMethod]
-    public void NeverLoaded_AndNoRecycle_Throws_PlainKeyNotFoundException()
+    public void NeverLoaded_AndNoRecycle_Throws_WorkspaceNotFoundException()
     {
         // Reset the registry to a cold-start state — no prior recycle signal.
         WorkspaceEvictionRegistry.Reset();
         using var manager = CreateManager();
 
         const string typoedWorkspaceId = "this-id-was-never-issued";
-        var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
+        var ex = Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
             manager.GetStatus(typoedWorkspaceId));
-
-        Assert.IsFalse(ex is WorkspaceEvictedException,
-            "A miss with no recycle context and no prior eviction record must NOT be " +
-            "elevated to WorkspaceEvictedException — that would over-classify legitimate " +
-            "typos as eviction recoveries.");
         StringAssert.Contains(ex.Message, typoedWorkspaceId,
             "The plain envelope must still surface the requested id for diagnosis.");
     }
@@ -277,7 +272,7 @@ public sealed class WorkspaceManagerEvictionTests
     /// was never issued.
     /// </summary>
     [TestMethod]
-    public async Task HostRecycled_ButLiveSessionExists_TypoStillThrowsKeyNotFoundException()
+    public async Task HostRecycled_ButLiveSessionExists_TypoStillThrowsWorkspaceNotFoundException()
     {
         WorkspaceEvictionRegistry.PublishRecycleContext(
             DateTimeOffset.UtcNow,
@@ -293,11 +288,8 @@ public sealed class WorkspaceManagerEvictionTests
                 "LoadAsync must return a non-empty id (sanity).");
 
             const string typoedId = "still-a-typo-because-there-is-a-live-session";
-            var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
+            Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
                 manager.GetStatus(typoedId));
-            Assert.IsFalse(ex is WorkspaceEvictedException,
-                "When a live session exists in the current process, a miss is a typo " +
-                "regardless of the recycle signal — recycle would have wiped everything.");
         }
         finally
         {

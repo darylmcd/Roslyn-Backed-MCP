@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -53,7 +54,7 @@ public class IntegrationTests_WorkspaceCore : SharedWorkspaceTestBase
     [TestMethod]
     public async Task Workspace_Reload_Rejects_Unknown_Id()
     {
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             WorkspaceManager.ReloadAsync("missing-workspace", CancellationToken.None));
     }
 

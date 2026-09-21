@@ -274,7 +274,7 @@ public class WorkspaceExecutionGateTests
     public async Task RunReadAsync_ThrowsWhenWorkspaceMissing()
     {
         var gate = CreateGate(new FakeGateWorkspaceManager(containsAny: false));
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
 
@@ -282,7 +282,7 @@ public class WorkspaceExecutionGateTests
     public async Task RunWriteAsync_ThrowsWhenWorkspaceMissing()
     {
         var gate = CreateGate(new FakeGateWorkspaceManager(containsAny: false));
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
 
@@ -297,7 +297,7 @@ public class WorkspaceExecutionGateTests
         manager.RemoveWorkspace(WorkspaceA);
         gate.RemoveGate(WorkspaceA);
 
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
 

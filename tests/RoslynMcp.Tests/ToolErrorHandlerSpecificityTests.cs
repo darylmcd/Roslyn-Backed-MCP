@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -44,6 +45,9 @@ public sealed class ToolErrorHandlerSpecificityTests
         [
             (new PreviewTokenStaleException("opaque", "private detail"), "PreviewTokenStale"),
             (new WorkspaceEvictedException("opaque", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "private-path", "private detail"), "WorkspaceEvicted"),
+            (new WorkspaceNotFoundException("opaque", "private detail"), "WorkspaceNotFound"),
+            (new KeyNotFoundException("Metadata name not found: private detail"), "NotFound"),
+            (new KeyNotFoundException("Symbol handle is stale: private detail"), "NotFound"),
             (new KeyNotFoundException("private detail"), "NotFound"),
             (new InvalidOperationException("private detail"), "InvalidOperation"),
         ];
@@ -53,6 +57,26 @@ public sealed class ToolErrorHandlerSpecificityTests
             Assert.AreEqual(category, json.RootElement.GetProperty("category").GetString());
             Assert.IsFalse(json.RootElement.GetRawText().Contains("private", StringComparison.Ordinal));
         }
+    }
+
+    [TestMethod]
+    public async Task UnknownWorkspaceId_AfterAutoReload_StaysWorkspaceNotFound()
+    {
+        var result = await ToolExecutionTestHarness.RunAsync(
+            "get_source_text",
+            () =>
+            {
+                if (AmbientGateMetrics.Current is { } m)
+                {
+                    m.StaleAction = "auto-reloaded";
+                }
+
+                throw new WorkspaceNotFoundException("opaque", "private detail");
+            });
+
+        using var doc = JsonDocument.Parse(result);
+        Assert.AreEqual("WorkspaceNotFound", doc.RootElement.GetProperty("category").GetString(),
+            $"An unknown workspaceId must not be relabeled WorkspaceReloadedDuringCall. Payload: {result}");
     }
 
     private sealed class DerivedNullException : ArgumentNullException;

@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Roslyn.Contracts;
@@ -58,6 +59,16 @@ public interface IWorkspaceManager
     /// Returns whether an active workspace session exists for the given identifier.
     /// </summary>
     bool ContainsWorkspace(string workspaceId);
+
+    /// <summary>
+    /// Builds the exception thrown when <paramref name="workspaceId"/> is unknown. Default
+    /// member so test doubles need no override; <c>WorkspaceManager</c> overrides it with the
+    /// active-session count.
+    /// </summary>
+    WorkspaceNotFoundException CreateWorkspaceNotFoundException(string workspaceId) =>
+        new(workspaceId,
+            $"Workspace '{workspaceId}' not found or has been closed. " +
+            "Use workspace_list to see active sessions, then workspace_load to create a new one.");
 
     /// <summary>
     /// Returns whether the specified workspace has observed on-disk changes since its

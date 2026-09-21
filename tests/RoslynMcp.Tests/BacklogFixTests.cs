@@ -177,7 +177,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public void WorkspaceManager_SessionNotFound_ErrorIncludesActiveCount()
     {
-        var ex = Assert.ThrowsExactly<KeyNotFoundException>(() =>
+        var ex = Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
             WorkspaceManager.GetCurrentSolution("nonexistent-workspace-id"));
 
         Assert.IsTrue(ex.Message.Contains("active session(s)"));

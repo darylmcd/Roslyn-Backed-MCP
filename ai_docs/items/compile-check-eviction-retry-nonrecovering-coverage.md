@@ -10,8 +10,8 @@
 
 ## Acceptance
 
-- [ ] A test pins `compile_check` with an `IWorkspaceManager` wired and the evicted session's recorded `LoadedPath` deleted: the reload fails, `ReadByWorkspaceIdWithEvictionRetryAsync` rethrows, and the pre-existing NotFound error envelope reaches the caller unchanged.
-- [ ] A test pins the never-loaded/typo'd `workspaceId` shape for `compile_check` (manager wired): `TryReclassifyAsEvicted` returns null, no MSBuild reload is attempted, envelope unchanged.
+- [ ] A test pins `compile_check` with an `IWorkspaceManager` wired and the evicted session's recorded `LoadedPath` deleted: the reload fails, `ReadByWorkspaceIdWithEvictionRetryAsync` rethrows, and the pre-existing error envelope (`category=WorkspaceNotFound` since `workspace-id-unknown-error-category`) reaches the caller unchanged.
+- [ ] A test pins the never-loaded/typo'd `workspaceId` shape for `compile_check` (manager wired): `TryReclassifyAsEvicted` returns null, no MSBuild reload is attempted, envelope unchanged (`category=WorkspaceNotFound`).
 
 ## Evidence
 
