@@ -327,7 +327,7 @@ if (-not $TestShardOnly) {
     Invoke-ChildScriptStep `
         -Description 'Restored third-party license validation' `
         -ScriptPath (Join-Path $PSScriptRoot 'update-third-party-notices.ps1') `
-        -Parameters @{ RepoRoot = $repoRoot; Verify = $true; VerifyRestoredLicenses = $true }
+        -Parameters @{ RepoRoot = $repoRoot; SolutionPath = $solutionPath; Verify = $true; VerifyRestoredLicenses = $true }
 }
 
 Invoke-ChildScriptStep `

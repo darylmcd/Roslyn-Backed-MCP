@@ -2,6 +2,7 @@
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$PackageMetadataRoot,
+    [string]$SolutionPath,
     [switch]$Verify,
     [switch]$VerifyRestoredLicenses
 )
@@ -45,6 +46,36 @@ $attributions = @{
 }
 $script:noticeAssetRecords = $null
 
+function Get-SolutionProjectPaths {
+    param([Parameter(Mandatory)][string]$Solution)
+
+    $solutionFull = [System.IO.Path]::GetFullPath($Solution)
+    if (-not [System.IO.File]::Exists($solutionFull)) {
+        throw "Solution '$solutionFull' does not exist."
+    }
+    $solutionDir = [System.IO.Path]::GetDirectoryName($solutionFull)
+    $paths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($solutionFull.EndsWith('.slnx', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $xml = [xml][System.IO.File]::ReadAllText($solutionFull)
+        foreach ($node in $xml.SelectNodes('//Project')) {
+            [void]$paths.Add([System.IO.Path]::GetFullPath((Join-Path $solutionDir $node.GetAttribute('Path'))))
+        }
+    }
+    else {
+        $listed = & dotnet sln $solutionFull list
+        if ($LASTEXITCODE -ne 0) {
+            throw "'dotnet sln list' failed for '$solutionFull'."
+        }
+        foreach ($line in @($listed)) {
+            $text = "$line".Trim()
+            if ($text -match '\.[a-z]+proj\z') {
+                [void]$paths.Add([System.IO.Path]::GetFullPath((Join-Path $solutionDir $text)))
+            }
+        }
+    }
+    return $paths
+}
+
 function Get-RestoredAssetRecords {
     if ($null -ne $script:noticeAssetRecords) {
         return @($script:noticeAssetRecords)
@@ -56,9 +87,35 @@ function Get-RestoredAssetRecords {
         throw "No project.assets.json files exist under '$RepoRoot'. Run restore first."
     }
 
+    $solutionProjects = $null
+    if (-not [string]::IsNullOrWhiteSpace($SolutionPath)) {
+        $solutionProjects = Get-SolutionProjectPaths -Solution $SolutionPath
+    }
+    $activePackageRoot = $env:NUGET_PACKAGES
+    if (-not [string]::IsNullOrWhiteSpace($activePackageRoot)) {
+        $activePackageRoot = [System.IO.Path]::GetFullPath($activePackageRoot).TrimEnd('\', '/')
+    }
+
     $records = [System.Collections.Generic.List[object]]::new()
     foreach ($assetsFile in $assetsFiles) {
         $assets = Get-Content -LiteralPath $assetsFile.FullName -Raw | ConvertFrom-Json -Depth 100
+        # With -SolutionPath, ignore graphs left behind by projects outside the
+        # solution or by a previous NUGET_PACKAGES root; they are not this restore.
+        if ($null -ne $solutionProjects) {
+            $projectPath = $assets.project.restore.projectPath
+            if ([string]::IsNullOrWhiteSpace($projectPath) -or
+                -not $solutionProjects.Contains([System.IO.Path]::GetFullPath($projectPath))) {
+                continue
+            }
+            if (-not [string]::IsNullOrWhiteSpace($activePackageRoot)) {
+                $folders = @($assets.packageFolders.PSObject.Properties.Name | ForEach-Object {
+                    [System.IO.Path]::GetFullPath($_).TrimEnd('\', '/')
+                })
+                if ($folders -notcontains $activePackageRoot) {
+                    continue
+                }
+            }
+        }
         $libraries = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
         foreach ($library in $assets.libraries.PSObject.Properties.Name) {

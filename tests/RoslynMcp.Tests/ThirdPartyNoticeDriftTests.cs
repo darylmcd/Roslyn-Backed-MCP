@@ -86,6 +86,79 @@ public sealed class ThirdPartyNoticeDriftTests
         }
     }
 
+    [TestMethod]
+    [TestCategory("Process")]
+    [Timeout(90_000, CooperativeCancellation = true)]
+    public async Task VerifyMode_WithSolutionPath_IgnoresStaleAssetGraphFromForeignPackageRoot()
+    {
+        var cancellationToken = TestContext.CancellationToken;
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var packages = ReadCentralPackages(repositoryRoot);
+        var restoredPackagesRoot = FindRestoredPackagesRoot(repositoryRoot, packages);
+        var fixtureRoot = Path.Combine(TestTempRoot.Current, "ThirdPartyNotices", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+
+        try
+        {
+            File.Copy(Path.Combine(repositoryRoot, "Directory.Packages.props"), Path.Combine(fixtureRoot, "Directory.Packages.props"));
+            File.Copy(Path.Combine(repositoryRoot, "THIRD-PARTY-NOTICES.md"), Path.Combine(fixtureRoot, "THIRD-PARTY-NOTICES.md"));
+
+            var currentRoot = Path.Combine(fixtureRoot, "current-packages");
+            var staleRoot = Path.Combine(fixtureRoot, "stale-packages");
+            foreach (var package in packages)
+            {
+                foreach (var root in new[] { currentRoot, staleRoot })
+                {
+                    var target = GetNuspecPath(root, package);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(GetNuspecPath(restoredPackagesRoot, package), target);
+                }
+            }
+
+            var currentProject = Path.Combine(fixtureRoot, "Current", "Current.csproj");
+            var staleProject = Path.Combine(fixtureRoot, "Stale", "Stale.csproj");
+            WriteAssetsFile(currentProject, currentRoot, packages);
+            WriteAssetsFile(staleProject, staleRoot, packages);
+            var solutionPath = Path.Combine(fixtureRoot, "Fixture.slnx");
+            await File.WriteAllTextAsync(
+                solutionPath,
+                "<Solution><Project Path=\"Current/Current.csproj\" /></Solution>",
+                cancellationToken);
+
+            var ambiguous = await RunVerifierAsync(repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken);
+            Assert.AreNotEqual(0, ambiguous.ExitCode, "Without -SolutionPath the stale graph must still be ambiguous.");
+            StringAssert.Contains(ambiguous.AllOutput, "Ambiguous restored package metadata");
+
+            var scoped = await RunVerifierAsync(
+                repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken, solutionPath);
+            Assert.AreEqual(0, scoped.ExitCode, scoped.AllOutput);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    private static void WriteAssetsFile(string projectPath, string packagesRoot, IReadOnlyCollection<CentralPackage> packages)
+    {
+        var objDirectory = Path.Combine(Path.GetDirectoryName(projectPath)!, "obj");
+        Directory.CreateDirectory(objDirectory);
+        var libraries = packages.ToDictionary(
+            package => $"{package.Id}/{package.Version}",
+            _ => new Dictionary<string, string> { ["type"] = "package" });
+        var assets = new Dictionary<string, object>
+        {
+            ["version"] = 3,
+            ["libraries"] = libraries,
+            ["packageFolders"] = new Dictionary<string, object> { [packagesRoot] = new { } },
+            ["project"] = new
+            {
+                restore = new { projectPath },
+            },
+        };
+        File.WriteAllText(Path.Combine(objDirectory, "project.assets.json"), JsonSerializer.Serialize(assets));
+    }
+
     private static CentralPackage[] ReadCentralPackages(string repositoryRoot)
     {
         var packages = System.Xml.Linq.XDocument.Load(Path.Combine(repositoryRoot, "Directory.Packages.props"));
@@ -126,22 +199,35 @@ public sealed class ThirdPartyNoticeDriftTests
     private static Task<PwshScriptResult> RunVerifierAsync(
         string repositoryRoot,
         string fixtureRoot,
-        string packageMetadataRoot,
-        CancellationToken cancellationToken)
+        string? packageMetadataRoot,
+        CancellationToken cancellationToken,
+        string? solutionPath = null)
     {
+        var arguments = new List<string>
+        {
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            Path.Combine(repositoryRoot, "eng", "update-third-party-notices.ps1"),
+            "-RepoRoot",
+            fixtureRoot,
+        };
+        if (packageMetadataRoot is not null)
+        {
+            arguments.Add("-PackageMetadataRoot");
+            arguments.Add(packageMetadataRoot);
+        }
+
+        if (solutionPath is not null)
+        {
+            arguments.Add("-SolutionPath");
+            arguments.Add(solutionPath);
+        }
+
+        arguments.Add("-Verify");
+        arguments.Add("-VerifyRestoredLicenses");
         return PwshScriptRunner.RunAsync(
-            [
-                "-NoProfile",
-                "-NonInteractive",
-                "-File",
-                Path.Combine(repositoryRoot, "eng", "update-third-party-notices.ps1"),
-                "-RepoRoot",
-                fixtureRoot,
-                "-PackageMetadataRoot",
-                packageMetadataRoot,
-                "-Verify",
-                "-VerifyRestoredLicenses",
-            ],
+            arguments,
             timeout: TimeSpan.FromSeconds(30),
             cancellationToken: cancellationToken,
             description: "third-party notice verifier");
