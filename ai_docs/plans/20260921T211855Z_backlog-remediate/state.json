@@ -13,7 +13,7 @@
     {
       "id": "workspace-id-unknown-error-category",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-id-unknown-error-category"
       ],
@@ -47,10 +47,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-id-unknown-error-category",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1571",
+      "mergedAt": "2026-09-21T23:29:41Z",
       "notes": null,
       "fileSetHash": "95f38373296faadb971b5d71bc741c35758e1f30cc5c92efa55a0a7160833fc5",
       "stanzaHash": "32bcae26870957e541f9fed5e11e6513da94765ee30da0a615f005f491b03c21",
@@ -59,7 +59,7 @@
     {
       "id": "readme-stable-callable-count-ungated",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "readme-stable-callable-count-ungated"
       ],
@@ -85,10 +85,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/readme-stable-callable-count-ungated",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1568",
+      "mergedAt": "2026-09-21T22:35:55Z",
       "notes": null,
       "fileSetHash": "cefc3be3eec0200c405accf71ddc1a5607086d49f931f0fc7d863d9b9472e87b",
       "stanzaHash": "735e9ac574b5f7fadf850c82b2e3034c81f57aedb803f616dc5c217234634cf1",
@@ -97,7 +97,7 @@
     {
       "id": "actionlint-local-only-no-ci-gate",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "actionlint-local-only-no-ci-gate"
       ],
@@ -125,10 +125,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/actionlint-local-only-no-ci-gate",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1569",
+      "mergedAt": "2026-09-21T22:54:45Z",
       "notes": null,
       "fileSetHash": "750a498abba2383e49bc911a553349ff74db6cb3260e0b1d8fa0a0febb6a47b0",
       "stanzaHash": "aae0b8417f3ac795bb74678c7fa0fd975cedfc7d35284e064f6eaa043c132821",
@@ -180,7 +180,7 @@
     {
       "id": "verify-release-stale-package-cache-asset-graph",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "verify-release-stale-package-cache-asset-graph"
       ],
@@ -207,10 +207,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/verify-release-stale-package-cache-asset-graph",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1570",
+      "mergedAt": "2026-09-21T23:11:07Z",
       "notes": null,
       "fileSetHash": "8d45cd49fb8590a50b6a9d0ae83306866e5072257f3fb7111a9a7b9fc02a56e8",
       "stanzaHash": "d5fe8407e89bf9607cc85d09826027ec4147b577248b1e01d92e545e434e9664",
