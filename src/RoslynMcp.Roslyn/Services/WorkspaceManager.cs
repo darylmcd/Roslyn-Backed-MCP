@@ -1351,6 +1351,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             BuildRequired: session.BuildRequired);
     }
 
+    /// <inheritdoc />
+    public WorkspaceNotFoundException CreateWorkspaceNotFoundException(string workspaceId) =>
+        new(workspaceId,
+            $"Workspace '{workspaceId}' was not found. " +
+            $"There are {_sessions.Count} active session(s). " +
+            "The session may have been lost due to a server restart or process exit. " +
+            "Use workspace_list to see active sessions, then workspace_load to create a new one.");
+
     private WorkspaceSession GetRequiredSession(string workspaceId)
     {
         if (!_sessions.TryGetValue(workspaceId, out var session))
@@ -1400,11 +1408,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     "to rehydrate, then re-issue this call against the new workspaceId.");
             }
 
-            throw new KeyNotFoundException(
-                $"Workspace '{workspaceId}' was not found. " +
-                $"There are {activeCount} active session(s). " +
-                "The session may have been lost due to a server restart or process exit. " +
-                "Use workspace_load to create a new session.");
+            throw CreateWorkspaceNotFoundException(workspaceId);
         }
 
         session.TouchAccess();

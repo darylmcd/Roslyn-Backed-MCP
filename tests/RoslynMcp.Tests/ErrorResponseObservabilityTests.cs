@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
@@ -138,14 +139,14 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
         // PROPAGATES to ResourceReadResultFilter, which answers on the JSON-RPC error
         // channel (ResourceNotFound/InvalidParams by negotiated era) instead of
         // serializing an error envelope into a "successful" contents body.
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }
 
     [TestMethod]
     public async Task Resource_GetProjects_WithUnknownWorkspaceId_PropagatesNotFound()
     {
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             WorkspaceResources.GetProjects(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }
 

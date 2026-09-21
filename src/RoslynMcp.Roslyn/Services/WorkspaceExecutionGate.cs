@@ -206,8 +206,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
         if (!_workspaceManager.ContainsWorkspace(workspaceId))
         {
-            throw new KeyNotFoundException(
-                $"Workspace '{workspaceId}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
+            throw _workspaceManager.CreateWorkspaceNotFoundException(workspaceId);
         }
 
         // Provider-backed timeout source so the deadline (and the post-auto-reload reset via
@@ -523,8 +522,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     {
         if (!_workspaceManager.ContainsWorkspace(workspaceId))
         {
-            throw new KeyNotFoundException(
-                $"Workspace '{workspaceId}' was closed while waiting for the workspace lock.");
+            throw _workspaceManager.CreateWorkspaceNotFoundException(workspaceId);
         }
     }
 

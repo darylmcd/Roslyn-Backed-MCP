@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Resources;
 
 namespace RoslynMcp.Tests;
@@ -132,7 +133,7 @@ public sealed class FetchMcpResourceReadinessTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceStatusResource_UnknownWorkspace_PropagatesNotFound()
     {
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             WorkspaceResources.GetWorkspaceStatus(
                 WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None));
     }

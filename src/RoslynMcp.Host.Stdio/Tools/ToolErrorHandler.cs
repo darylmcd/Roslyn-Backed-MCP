@@ -46,6 +46,7 @@ internal static class ToolErrorHandler
         DirectoryNotFound,
         PermissionDenied,
         WorkspaceEvicted,
+        WorkspaceNotFound,
         InvalidArgument,
         InternalError,
         StaleWorkspaceTransition,
@@ -78,6 +79,7 @@ internal static class ToolErrorHandler
         public const ToolErrorCategory DirectoryNotFound = ToolErrorCategory.DirectoryNotFound;
         public const ToolErrorCategory PermissionDenied = ToolErrorCategory.PermissionDenied;
         public const ToolErrorCategory WorkspaceEvicted = ToolErrorCategory.WorkspaceEvicted;
+        public const ToolErrorCategory WorkspaceNotFound = ToolErrorCategory.WorkspaceNotFound;
         public const ToolErrorCategory InvalidArgument = ToolErrorCategory.InvalidArgument;
         public const ToolErrorCategory InternalError = ToolErrorCategory.InternalError;
         public const ToolErrorCategory StaleWorkspaceTransition = ToolErrorCategory.StaleWorkspaceTransition;
@@ -107,6 +109,12 @@ internal static class ToolErrorHandler
                 "The workspace session is no longer available because it was closed, evicted, or owned by a prior host process. " +
                 "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
+        // workspace-id-unknown-error-category: an unknown or never-loaded workspaceId, distinct
+        // from NotFound (symbol/file/metadata misses). Derives from KeyNotFoundException; the
+        // nearest-base lookup selects this handler before the generic KeyNotFoundException one.
+        [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.WorkspaceNotFound,
+            "The workspaceId is unknown to this server (never loaded, or lost after a restart). " +
+            "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId."),
         [typeof(FileNotFoundException)] = (_, _) => new(ErrorCategories.FileNotFound,
             "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
@@ -386,6 +394,7 @@ internal static class ToolErrorHandler
         // absent — not a stale-snapshot race — so fall through to the generic NotFound handler
         // rather than emitting the misleading WorkspaceReloadedDuringCall category.
         if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException &&
+            ex is not WorkspaceNotFoundException &&
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {

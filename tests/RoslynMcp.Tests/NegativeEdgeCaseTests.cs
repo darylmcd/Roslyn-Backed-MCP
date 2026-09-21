@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -21,7 +22,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     [TestMethod]
     public void InvalidWorkspaceId_ThrowsKeyNotFoundException()
     {
-        Assert.ThrowsExactly<KeyNotFoundException>(() =>
+        Assert.ThrowsExactly<WorkspaceNotFoundException>(() =>
             WorkspaceManager.GetStatus("nonexistent-workspace-id"));
     }
 

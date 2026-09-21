@@ -401,7 +401,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceExecutionGate_Rejects_Unknown_Workspace_Id()
     {
-        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+        await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(() =>
             WorkspaceExecutionGate.RunReadAsync(
                 "ffffffffffffffffffffffffffffffff",
                 _ => Task.FromResult("x"),

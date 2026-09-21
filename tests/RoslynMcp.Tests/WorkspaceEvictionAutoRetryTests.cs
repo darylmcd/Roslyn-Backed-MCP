@@ -158,8 +158,8 @@ public sealed class WorkspaceEvictionAutoRetryTests
             var root = doc.RootElement;
             Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
                 $"Without an IWorkspaceManager the pre-fix error envelope must survive unchanged. Actual: {json}");
-            Assert.AreEqual("NotFound", root.GetProperty("category").GetString(),
-                $"The gate's ContainsWorkspace precheck classifies as NotFound; the retry wiring must not change that when unwired. Actual: {json}");
+            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
+                $"The gate's ContainsWorkspace precheck classifies as WorkspaceNotFound; the retry wiring must not change that when unwired. Actual: {json}");
             Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
         }
         finally
@@ -186,7 +186,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
             // Pre-fix behaviour: the gate precheck's KeyNotFoundException escapes test_run's
             // inline envelope formatting and reaches the global filter as IsError=true. Pinning
             // it here so the retry wiring cannot silently downgrade a hard failure to content.
-            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
                 () => ValidationTools.RunTests(
                     gate,
                     runner,
@@ -246,7 +246,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
                 ToolDispatch.TryReclassifyAsEvicted(manager, bogusId),
                 "A never-loaded id carries no eviction record; the reclassification probe must return null.");
 
-            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
                 () => ValidationTools.RunTests(
                     gate,
                     runner,
@@ -308,7 +308,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
             // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
             TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
 
-            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
                 () => ValidationTools.RunTests(
                     gate,
                     runner,
@@ -457,7 +457,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
             var root = doc.RootElement;
             Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
                 $"A failed reload must still surface the original NotFound envelope unchanged. Actual: {json}");
-            Assert.AreEqual("NotFound", root.GetProperty("category").GetString(),
+            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
                 $"Fallback behaviour must be byte-for-byte preserved — only a log emission is added. Actual: {json}");
 
             Assert.AreEqual(1,
@@ -497,7 +497,7 @@ public sealed class WorkspaceEvictionAutoRetryTests
             // Make the recorded LoadedPath unloadable so the rehydration attempt fails.
             TestFixtureFileSystem.DeleteDirectoryIfExists(Path.GetDirectoryName(path1)!);
 
-            await Assert.ThrowsExactlyAsync<KeyNotFoundException>(
+            await Assert.ThrowsExactlyAsync<WorkspaceNotFoundException>(
                 () => ValidationTools.RunTests(
                     gate,
                     runner,
