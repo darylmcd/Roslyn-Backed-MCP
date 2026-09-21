@@ -55,6 +55,33 @@ public sealed class ReadmeSurfaceCountTests
         AssertDocumentSurfaceCountsMatchCatalog(readmePath, "README.md");
     }
 
+    private static readonly Regex StableCallableCountPattern = new(
+        @"currently\s+(?<count>\d+)\s+callable\s+tools",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    [TestMethod]
+    public void RootReadmeStableCallableToolCount_MatchesStableOnlyRegistrationSurface()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var text = File.ReadAllText(Path.Combine(repoRoot, "README.md"));
+        var matches = StableCallableCountPattern.Matches(text);
+
+        Assert.AreEqual(
+            1,
+            matches.Count,
+            "README.md must carry exactly one 'currently N callable tools' claim (ROSLYNMCP_TOOL_TIERS row); "
+            + $"if reworded, update {nameof(StableCallableCountPattern)}.");
+
+        var claimed = int.Parse(matches[0].Groups["count"].Value);
+        var live = ServerSurfaceCatalog.SelectTools(ToolTierSelection.Parse("stable")).Count;
+
+        Assert.AreEqual(
+            live,
+            claimed,
+            $"README.md stable-only callable tool count={claimed}, live stable-only surface={live} "
+            + $"(README is off by {claimed - live:+#;-#;0}).");
+    }
+
     [TestMethod]
     public void HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog()
     {
