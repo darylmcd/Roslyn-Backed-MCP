@@ -149,6 +149,9 @@ jobs:
               '${{ needs.route.outputs.docs_only }}' -eq 'true') {
             $parameters.TestShardOnly = $true
           }
+          if ('${{ needs.route.outputs.docs_only }}' -eq 'true') {
+            $parameters.DocsOnlyTestSelection = $true
+          }
           ./eng/verify-release.ps1 @parameters
 
       - name: Verify changed-file formatting
