@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-22T16:47:55.928Z",
+  "backlogSnapshot": "2026-09-22T03:01:57Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "passed",
+  "readyForExecute": true,
+  "initiatives": [
+    {
+      "id": "formatter-baseline-contended-nested-process-timeout-investigation",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "formatter-baseline-contended-nested-process-timeout-investigation"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "eng/generate-format-baseline.ps1"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FormatterBaselineContractTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "40c9368ad7a3aeff630065ff934ffd74a07dea6eb373c34dd091070388214c1c",
+      "stanzaHash": "be96e3db955d6fdab3a79ad75708c724ed733bba57554e10ead93920261e0bf8",
+      "reviewedStanzaHash": "be96e3db955d6fdab3a79ad75708c724ed733bba57554e10ead93920261e0bf8"
+    },
+    {
+      "id": "sanctioned-roots-cwd-default-undocumented",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "sanctioned-roots-cwd-default-undocumented"
+      ],
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "README.md"
+      ],
+      "testFilesAdded": 0,
+      "testFiles": [],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5",
+      "stanzaHash": "3e435b33ca837cd607488d5e95d25d0599c0e1fd5a20dadae3fdbbcd69690ae8",
+      "reviewedStanzaHash": "3e435b33ca837cd607488d5e95d25d0599c0e1fd5a20dadae3fdbbcd69690ae8"
+    },
+    {
+      "id": "donotparallelize-audit-wave-01",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-01"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AliasToolsTests.cs",
+        "tests/RoslynMcp.Tests/AnalysisToolsTests.cs",
+        "tests/RoslynMcp.Tests/AnalyzerInfoToolsTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "8d8b2eed7fa294c8d0cd777507faebbc291af6d4f7dac9d68204e1cef833672a",
+      "stanzaHash": "38b29b204eaf341b129dc4da8caef52e170efd53110cc6b9c78e48bad1c583d9",
+      "reviewedStanzaHash": "38b29b204eaf341b129dc4da8caef52e170efd53110cc6b9c78e48bad1c583d9"
+    },
+    {
+      "id": "donotparallelize-audit-wave-02",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-02"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs",
+        "tests/RoslynMcp.Tests/AuditFixesTests.cs",
+        "tests/RoslynMcp.Tests/AutoReloadCascadeHostCrashTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "a96fb04293b711a333e98b50d867168a18a0e869c702bcb4975a575e385c077f",
+      "stanzaHash": "b559439d83ec3e85f6a9b7c0fe46939a39898980848713bd1e5b587f77ba99dd",
+      "reviewedStanzaHash": "b559439d83ec3e85f6a9b7c0fe46939a39898980848713bd1e5b587f77ba99dd"
+    },
+    {
+      "id": "donotparallelize-audit-wave-03",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-03"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/BacklogFixTests.cs",
+        "tests/RoslynMcp.Tests/BuildTestToolsShimTests.cs",
+        "tests/RoslynMcp.Tests/BulkRefactoringTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "60edab0109fc919cd4651920e6bfa1345719a546cac88251c1d2a36a0b381754",
+      "stanzaHash": "eab3d196f1d637f8a23d4439dc1083254e616a569fe77965e889b65092651156",
+      "reviewedStanzaHash": "eab3d196f1d637f8a23d4439dc1083254e616a569fe77965e889b65092651156"
+    },
+    {
+      "id": "donotparallelize-audit-wave-04",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-04"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CodeActionServiceTests.cs",
+        "tests/RoslynMcp.Tests/CompileCheckZeroProjectsTests.cs",
+        "tests/RoslynMcp.Tests/ConsumerAnalysisTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "0eef52629e0af6f4afcc38cf2623c86dac7c2c3b34f052debe0a425ffe9ea315",
+      "stanzaHash": "698dc3d1c5f1f913dd861083036d93bbf9deee935a20dc79127b6b976af1a42f",
+      "reviewedStanzaHash": "698dc3d1c5f1f913dd861083036d93bbf9deee935a20dc79127b6b976af1a42f"
+    },
+    {
+      "id": "donotparallelize-audit-wave-05",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-05"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/CouplingAnalysisTests.cs",
+        "tests/RoslynMcp.Tests/DeadCodeIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/DiagnosticFixIntegrationTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "af7c7ca4a37b0e8d0d58804aa08e1d14c173125145570ad60697f2421e94ceb1",
+      "stanzaHash": "a5083f98f19bb7280ac5bfee0a43f5e2882edc14202806f9e9bb522ddd34222a",
+      "reviewedStanzaHash": "a5083f98f19bb7280ac5bfee0a43f5e2882edc14202806f9e9bb522ddd34222a"
+    },
+    {
+      "id": "donotparallelize-audit-wave-06",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-06"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs",
+        "tests/RoslynMcp.Tests/DiagnosticServicePerfTests.cs",
+        "tests/RoslynMcp.Tests/DiagnosticSourceGeneratorParityTests.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "9f53ac60bda53db4fea59a7c9b6fc2ab91f6c149e5f12b84cfbce41fd3835bbf",
+      "stanzaHash": "166a4cc46ae69b888afb005e6c52881a95fad23748b03e2da41bb66a3cea8415",
+      "reviewedStanzaHash": "166a4cc46ae69b888afb005e6c52881a95fad23748b03e2da41bb66a3cea8415"
+    },
+    {
+      "id": "donotparallelize-audit-wave-07",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-07"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/DocumentSymbolsSymbolHandleTests.cs",
+        "tests/RoslynMcp.Tests/DotnetCommandRunnerPipeLifetimeTests.cs",
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.CoverageProcess.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "bfc391140e7a49c3bd22300fb7bf4b01eb32fa80b6e0cac2f091f5bcd91daff6",
+      "stanzaHash": "cdd50e1a06ac37449059c5efa7ac956c60be38a5f61d99612739ce8ad399f2c8",
+      "reviewedStanzaHash": "cdd50e1a06ac37449059c5efa7ac956c60be38a5f61d99612739ce8ad399f2c8"
+    },
+    {
+      "id": "donotparallelize-audit-wave-08",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-08"
+      ],
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.RepoSolutionAnalysis.cs",
+        "tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.ToolContract.cs"
+      ],
+      "docFiles": [],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 0,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "1f6419ab15e096ecb9fbdcff04a064ad5211c49a8ab9cd89000d9711d0ccb8df",
+      "stanzaHash": "db1705b963543554a0442ef34a2eba68a85a25b6f4ace14f781cf24395261ac5",
+      "reviewedStanzaHash": "db1705b963543554a0442ef34a2eba68a85a25b6f4ace14f781cf24395261ac5"
+    }
+  ],
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ]
+  },
+  "selection": {
+    "requestedCount": 10,
+    "selectedCount": 10,
+    "skipped": [
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      }
+    ]
+  },
+  "reviewFindings": {
+    "findings": [],
+    "block": 0,
+    "warn": 0,
+    "info": 0,
+    "conflictGraphSeenOK": true,
+    "anchorVerification": "performed"
+  },
+  "lastReviewFindings": [],
+  "conflictGraphInputHash": "3caf16c88f2bcd26c570d0a121cdb71c136409cb7f8287b9ab094ce613bac138",
+  "planHash": "2655126e98eedafc7fe6fac2db06d2b10d3ffa1cf6d45419f05cbfc77f3128ba",
+  "backlogSnapshotHash": "48f897a01a702a65e3f5503f907682cdb57b7a17c13b3e01dba6bb01822e645e",
+  "reviewedPlanHash": "2655126e98eedafc7fe6fac2db06d2b10d3ffa1cf6d45419f05cbfc77f3128ba",
+  "reviewedBacklogSnapshotHash": "48f897a01a702a65e3f5503f907682cdb57b7a17c13b3e01dba6bb01822e645e"
+}
