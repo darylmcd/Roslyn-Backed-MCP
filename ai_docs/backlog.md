@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-21T23:30:18Z
+**updated_at:** 2026-09-22T00:07:54Z
 
 ## Agent contract
 
@@ -90,7 +90,6 @@
 | `tool-merge-apply-undo-revert` | Medium | tool-consolidation-adr-and-alias-machinery | BLOCKED: gated on `tool-consolidation-adr-and-alias-machinery`. **Merge 2 applies into `revert_apply`**, old names kept as deprecated aliases. Catalog hotspot. [type: refactor] [source: tool-consolidation-apply-merges-within-risk-buckets] | M | items/tool-merge-apply-undo-revert.md |
 | `formatter-baseline-contended-nested-process-timeout-investigation` | Medium | — | **Identify the formatter baseline contended child-process stall** — reproduce the unexplained nested-process timeout before changing behavior, then lock the proven cause. [type: chore] [source: PR #1473 validation cold review] | S | items/formatter-baseline-contended-nested-process-timeout-investigation.md |
 | `sanctioned-roots-cwd-default-undocumented` | Medium | boundary-rejection-redacted-to-generic-schema-error | **Document the cwd-relative sanctioned-root default and a supported override** — the shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` resolves to the session cwd, so a session rooted elsewhere can load no workspace and has no documented escape hatch. [type: docs] [source: 2026-09-18 zero-Roslyn triage] | S | items/sanctioned-roots-cwd-default-undocumented.md |
-| `docs-only-route-runs-full-test-suite` | Medium | — | **Run documentation-contract tests, not the full suite, on the docs-only route** — docs-only narrows the CI topology but still runs every sharded test class, so a one-line backlog edit cost 941s on PR #1545. [type: perf] [source: 2026-09-18 CI cost review] | M | items/docs-only-route-runs-full-test-suite.md |
 | `donotparallelize-audit-wave-01` | Medium | — | **Re-audit DoNotParallelize wave 01** — classify or remove the opt-outs in this bounded test-file slice with repeated evidence. [type: test-infrastructure] [source: test-assembly-donotparallelize-audit] | S | items/donotparallelize-audit-wave-01.md |
 | `donotparallelize-audit-wave-02` | Medium | — | **Re-audit DoNotParallelize wave 02** — classify or remove the opt-outs in this bounded test-file slice with repeated evidence. [type: test-infrastructure] [source: test-assembly-donotparallelize-audit] | S | items/donotparallelize-audit-wave-02.md |
 | `donotparallelize-audit-wave-03` | Medium | — | **Re-audit DoNotParallelize wave 03** — classify or remove the opt-outs in this bounded test-file slice with repeated evidence. [type: test-infrastructure] [source: test-assembly-donotparallelize-audit] | S | items/donotparallelize-audit-wave-03.md |
