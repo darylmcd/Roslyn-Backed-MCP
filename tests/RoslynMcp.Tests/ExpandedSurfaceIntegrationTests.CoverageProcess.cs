@@ -3,6 +3,13 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
+// TestCoverageTool_Returns_Structured_Response and TestCoverageTool_WhenCoverletMissing_ReturnsStructuredErrorBeforeRunning
+// both call TestCoverageTools.RunTestCoverage, which spawns a real out-of-process `dotnet test --collect "XPlat Code
+// Coverage"` build against the shared, non-isolated SampleLib.Tests project (LoadSharedSampleWorkspaceAsync), writing to
+// that project's own obj/bin. A concurrently running class that builds or tests the same physical project would race
+// this class on that shared output directory, so it must stay serialized against every other test class in the
+// assembly (same process-tree-global class as DotnetCommandRunnerPipeLifetimeTests).
+[DoNotParallelize]
 [TestClass]
 [TestCategory("Process")]
 public sealed class ExpandedSurfaceIntegrationTests_CoverageProcess : SharedWorkspaceTestBase
