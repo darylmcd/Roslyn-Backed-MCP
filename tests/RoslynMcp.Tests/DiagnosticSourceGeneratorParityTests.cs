@@ -2,6 +2,12 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-06: retained. The test method mutates its isolated workspace
+// mid-run — RestoreWorkspaceAsync spawns a real `dotnet restore` process, then
+// workspace.ReloadAsync forces WorkspaceManager to reload and recompile after the probe file
+// is rewritten — and asserts on the resulting diagnostics. Running concurrently with another
+// class's own dotnet restore/build/reload would contend for the same MSBuild/NuGet process
+// resources and risk flaking the source-generator diagnostic assertions.
 [DoNotParallelize]
 [TestClass]
 public sealed class DiagnosticSourceGeneratorParityTests : IsolatedWorkspaceTestBase

@@ -14,6 +14,11 @@ namespace RoslynMcp.Tests;
 /// race with other test classes that read from <see cref="SharedWorkspaceTestBase"/>.
 /// </para>
 /// </summary>
+// donotparallelize-audit-wave-06: retained. GetDiagnosticDetailsAsync_ColdPath_StaysUnderPerfBudget
+// calls WorkspaceManager.ReloadAsync mid-test on this class's own workspace to force a cold
+// diagnostic-analysis pass, then asserts a hard wall-clock budget (ColdPathPerfBudgetMs); a
+// concurrently-running class's MSBuild load/compile/reload would contend for the same process
+// CPU/IO and could push this timing assertion over budget, so it must stay serialized.
 [DoNotParallelize]
 [TestClass]
 public sealed class DiagnosticServicePerfTests : TestBase

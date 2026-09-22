@@ -8,7 +8,12 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-06: every test method here only reads through the
+// assembly-shared DiagnosticService (whose result cache is keyed by workspace version +
+// filter set) and through locally-scoped DiagnosticQueryService/CompilationCache instances.
+// No method calls WorkspaceManager.ReloadAsync, an *_apply tool, or writes any static/shared
+// mutable state, so [DoNotParallelize] was removed after a >=3x repeated run alongside its
+// wave siblings confirmed green every time.
 [TestClass]
 public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 {
