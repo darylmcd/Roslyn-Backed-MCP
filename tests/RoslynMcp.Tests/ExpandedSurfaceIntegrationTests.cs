@@ -11,6 +11,11 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-08: retained. EditTools.ApplyTextEdit / MultiFileEditTools.ApplyMultiFileEdit
+// tests apply real writes to per-test workspace copies loaded via WorkspaceManager.LoadAsync/Close (not the
+// synchronized WorkspaceIdCache), and the link-swap TOCTOU tests mutate shared on-disk directory links under
+// TestTempRoot.Current mid-test — a concurrent class racing the same physical link target is a hazard the
+// synchronized cache does not cover.
 [DoNotParallelize]
 [TestClass]
 public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
