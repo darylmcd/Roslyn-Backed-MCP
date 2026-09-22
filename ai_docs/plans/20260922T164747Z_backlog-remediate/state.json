@@ -1,0 +1,480 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-09-22T16:47:55.928Z",
+  "backlogSnapshot": "2026-09-22T03:01:57Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "completed": false,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "initiatives": [
+    {
+      "id": "formatter-baseline-contended-nested-process-timeout-investigation",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "formatter-baseline-contended-nested-process-timeout-investigation"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "sanctioned-roots-cwd-default-undocumented",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "sanctioned-roots-cwd-default-undocumented"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-01",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-01"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-02",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-02"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-03",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-03"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-04",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-04"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-05",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-05"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-06",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-06"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-07",
+      "order": 9,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-07"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "donotparallelize-audit-wave-08",
+      "order": 10,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "donotparallelize-audit-wave-08"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "testFiles": null,
+      "docFiles": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "dependsOn": [],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "selection": {
+    "requestedCount": 10,
+    "selectedCount": 10,
+    "skipped": [
+      {
+        "id": "coverlet-net10-session-end-crash-upgrade",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-scorecard-refresh-toplevel-run",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-analysis-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-editing-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-orchestration-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-1",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-2",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-3",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-refactoring-batch-4",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-symbols",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "promotion-tier-workspace",
+        "reason": "dep-blocked"
+      },
+      {
+        "id": "tool-merge-preview-project-mutation",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-file-operations",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-extract",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-scaffolding",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-replace",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-code-fix",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-remove",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-cross-project",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-signature",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-restructure",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-split-class",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-preview-move",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-formatting",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-text-edit",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-1",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-2",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-3",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-code-transform-4",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-file-lifecycle",
+        "reason": "execution-blocked"
+      },
+      {
+        "id": "tool-merge-apply-undo-revert",
+        "reason": "execution-blocked"
+      }
+    ]
+  }
+}
