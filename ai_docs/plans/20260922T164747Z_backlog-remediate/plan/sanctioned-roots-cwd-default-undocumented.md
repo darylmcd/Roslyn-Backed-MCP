@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | `direct` |
+| Diagnosis | `.claude-plugin/mcp.json` ships `"env": {"ROSLYNMCP_SANCTIONED_ROOTS": "."}` for the Claude Code plugin install path. `README.md:62` tells Option A readers "The Claude Code plugin and Desktop extension ship this default already; only hand-written configs need it" but never states what `.` resolves to for a plugin-launched server, nor that a session started outside the target repo loads nothing. Confirmed 2026-09-18 (row Evidence): a session with cwd `C:/Users/daryl/.claude` had `server_info.pathBoundary` report `{configuredRootCount: 1, enforcing: true, failOpen: false}` and refused a `workspace_load` under `C:/Code-Repo/` while a solution under the session cwd loaded — the "." default resolved to the session's own working directory, not the repo the operator meant to analyze. |
+| Approach | Row Acceptance verbatim: document that the shipped `"."` default resolves to the plugin-launched server's working directory (the session's cwd, chosen by the host, not by the operator); document a supported way to point a plugin-launched session at a different repo (start the session inside the target repo, override `ROSLYNMCP_SANCTIONED_ROOTS` via the host's own `.mcp.json`/env layering, or use `ROSLYNMCP_ALLOW_ROOT_EXPANSION` + `expandSanctionedRoots=true` for a sibling worktree) with its fail-closed trade-off stated; keep the default itself fail-closed and unchanged (Context guard: doc-only, no boundary redesign). |
+| Scope | Production files (1): `README.md` — add a callout under Option C (Claude Code Plugin, after the bundling paragraph) explaining the cwd resolution and the override paths, and tighten the `ROSLYNMCP_SANCTIONED_ROOTS` Configuration-table row to reference it. `.claude-plugin/mcp.json` is cited as evidence only, not edited (editing it is release-managed and out of this row's Context guard). No test files — doc-only row, nothing to regress-test. |
+| Tool policy | `edit-only` |
+| Estimated context cost | 18000 |
+| Risks | None — additive documentation, no behavior change. `.claude-plugin/mcp.json` stays untouched so the release-managed-files hook never engages. |
+| Validation | `./eng/verify-ai-docs.ps1` (doc-only PR: also skip `verify-changed-format`/`verify-nuget-audit` per addenda topology table, but run the full `ci_equivalent` list since this touches a top-level doc gated for surface-count claims). |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Maintenance |
+| CHANGELOG entry (draft) | Documented that the Claude Code plugin's shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` default resolves to the session's working directory, plus the supported ways to point a plugin-launched session at a different repo. |
+| Backlog sync | Close rows: [sanctioned-roots-cwd-default-undocumented]. Mark obsolete: []. |
