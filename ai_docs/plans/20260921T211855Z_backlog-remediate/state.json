@@ -137,7 +137,7 @@
     {
       "id": "docs-only-route-runs-full-test-suite",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "docs-only-route-runs-full-test-suite"
       ],
@@ -168,10 +168,10 @@
         "actionlint-local-only-no-ci-gate",
         "verify-release-stale-package-cache-asset-graph"
       ],
-      "branch": null,
+      "branch": "remediation/docs-only-route-runs-full-test-suite",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1573",
+      "mergedAt": "2026-09-22T00:07:42Z",
       "notes": null,
       "fileSetHash": "1c346910ed4e79b411011d7398ca4d4e4b8b5d797c5a0175e43d135b77fea351",
       "stanzaHash": "894b3731cd13efd896e831945e14f2b7876c009f50b4e38701d56dc69d3e2f11",
