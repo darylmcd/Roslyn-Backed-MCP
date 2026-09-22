@@ -1,0 +1,18 @@
+# Docs-only CI route test allowlist (consumed by eng/verify-release.ps1 -DocsOnlyTestSelection).
+# One exact, namespace-qualified test class name per line; '#' starts a comment; keep the list sorted (ordinal).
+# Scope: classes that read repository documentation, workflow or eng/ contract files a docs-only PR
+# (*.md and ai_docs/*.json, excluding CHANGELOG.md and skills/agents/prompts) can change.
+# A name that is absent from the compiled test assembly fails the run; the dispatch/schedule
+# and coverage paths never pass the switch and keep running the full suite.
+RoslynMcp.Tests.ActionlintGateContractTests
+RoslynMcp.Tests.CiRunnerParityContractTests
+RoslynMcp.Tests.CiTopologyDecisionContractTests
+RoslynMcp.Tests.PackageFamilyContractTests
+RoslynMcp.Tests.PluginInstallDocumentationContractTests
+RoslynMcp.Tests.PublishWorkflowContractTests
+RoslynMcp.Tests.ReadmeSurfaceCountTests
+RoslynMcp.Tests.ReleaseManagedFileGuardDocumentationTests
+RoslynMcp.Tests.Skills.IssueTemplateAndLabelSeedTests
+RoslynMcp.Tests.Skills.ShippedSkillBacklogCitationTests
+RoslynMcp.Tests.SurfaceSnapshotFreshnessGateTests
+RoslynMcp.Tests.ThirdPartyNoticeDriftTests

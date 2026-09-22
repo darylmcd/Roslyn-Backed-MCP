@@ -262,6 +262,101 @@ public sealed class CiTopologyDecisionContractTests
             "The same inputs must produce byte-identical JSON so downstream fromJSON consumption never drifts.");
     }
 
+    private static readonly string[] _expectedDocsOnlyAllowlist =
+    [
+        "RoslynMcp.Tests.ActionlintGateContractTests",
+        "RoslynMcp.Tests.CiRunnerParityContractTests",
+        "RoslynMcp.Tests.CiTopologyDecisionContractTests",
+        "RoslynMcp.Tests.PackageFamilyContractTests",
+        "RoslynMcp.Tests.PluginInstallDocumentationContractTests",
+        "RoslynMcp.Tests.PublishWorkflowContractTests",
+        "RoslynMcp.Tests.ReadmeSurfaceCountTests",
+        "RoslynMcp.Tests.ReleaseManagedFileGuardDocumentationTests",
+        "RoslynMcp.Tests.Skills.IssueTemplateAndLabelSeedTests",
+        "RoslynMcp.Tests.Skills.ShippedSkillBacklogCitationTests",
+        "RoslynMcp.Tests.SurfaceSnapshotFreshnessGateTests",
+        "RoslynMcp.Tests.ThirdPartyNoticeDriftTests",
+    ];
+
+    [TestMethod]
+    public void DocsOnlyAllowlist_IsSortedExactAndEveryClassExists()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var entries = File.ReadAllLines(Path.Combine(repositoryRoot, "eng", "docs-only-test-classes.txt"))
+            .Select(static line => line.Trim())
+            .Where(static line => line.Length > 0 && !line.StartsWith('#'))
+            .ToArray();
+
+        CollectionAssert.AreEqual(_expectedDocsOnlyAllowlist, entries, "Docs-only allowlist drifted; update this contract deliberately.");
+        CollectionAssert.AreEqual(
+            entries.OrderBy(static name => name, StringComparer.Ordinal).ToArray(),
+            entries,
+            "Docs-only allowlist must stay sorted (ordinal).");
+
+        var assembly = typeof(CiTopologyDecisionContractTests).Assembly;
+        foreach (var name in entries)
+        {
+            var type = assembly.GetType(name, throwOnError: false);
+            Assert.IsNotNull(type, $"Allowlisted class '{name}' does not exist in the test assembly.");
+            Assert.IsTrue(
+                type.GetCustomAttributes(typeof(TestClassAttribute), inherit: true).Length > 0,
+                $"Allowlisted class '{name}' is not a [TestClass].");
+        }
+    }
+
+    [TestMethod]
+    public void DocsOnlyTestSelectionSwitch_IsPassedOnlyByTheDocsOnlyPullRequestBranch()
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "ci.yml")).Replace("\r\n", "\n");
+
+        Assert.AreEqual(
+            1,
+            CountOccurrences(workflow, "DocsOnlyTestSelection"),
+            "ci.yml must reference the docs-only selection switch exactly once.");
+
+        const string PullRequestStepName = "- name: Verify release build (pull request)";
+        const string DispatchStepName = "- name: Verify release build (dispatch / schedule)";
+        var prStart = workflow.IndexOf(PullRequestStepName, StringComparison.Ordinal);
+        Assert.IsTrue(prStart >= 0, "Pull-request verify step not found.");
+        var prEnd = workflow.IndexOf("\n      - name:", prStart + PullRequestStepName.Length, StringComparison.Ordinal);
+        var prStep = workflow[prStart..prEnd];
+        StringAssert.Contains(
+            prStep,
+            "if ('${{ needs.route.outputs.docs_only }}' -eq 'true') {\n            $parameters.DocsOnlyTestSelection = $true\n          }");
+
+        var dispatchStart = workflow.IndexOf(DispatchStepName, StringComparison.Ordinal);
+        Assert.IsTrue(dispatchStart >= 0, "Dispatch/schedule verify step not found.");
+        var dispatchEnd = workflow.IndexOf("\n      - name:", dispatchStart + DispatchStepName.Length, StringComparison.Ordinal);
+        Assert.IsFalse(
+            workflow[dispatchStart..dispatchEnd].Contains("DocsOnlyTestSelection", StringComparison.Ordinal),
+            "Dispatch/schedule (full suite and coverage) must never pass the docs-only switch.");
+
+        foreach (var other in new[] { "justfile", Path.Combine(".github", "workflows", "publish.yml") })
+        {
+            var path = Path.Combine(repositoryRoot, other);
+            if (File.Exists(path))
+            {
+                Assert.IsFalse(
+                    File.ReadAllText(path).Contains("DocsOnlyTestSelection", StringComparison.Ordinal),
+                    $"{other} must never pass the docs-only switch.");
+            }
+        }
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        var count = 0;
+        for (var index = text.IndexOf(value, StringComparison.Ordinal);
+             index >= 0;
+             index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
     private static void AssertExactCodePullRequestMatrix(CiTopologyLeg[] matrix)
     {
         var expected = new (string Name, string RunsOn, bool ArtifactOwner, int TimeoutMinutes, int ShardIndex, int ShardCount)[]
