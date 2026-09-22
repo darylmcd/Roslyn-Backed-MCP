@@ -15,7 +15,6 @@ namespace RoslynMcp.Tests;
 /// FLAG-007 (analyze_snippet returnExpression kind), tool: "unknown" propagation,
 /// and the P3 per-response _meta diagnostics summary.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class AuditFixesTests : SharedWorkspaceTestBase
 {
