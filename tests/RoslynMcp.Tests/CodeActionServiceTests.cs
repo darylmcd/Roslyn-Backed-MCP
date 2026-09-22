@@ -22,7 +22,6 @@ namespace RoslynMcp.Tests;
 /// zero-width selection at the caret when the column is past EOL and preserving the
 /// remainder-of-line default when the column is in range.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class CodeActionServiceTests : SharedWorkspaceTestBase
 {
