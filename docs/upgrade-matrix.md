@@ -46,7 +46,7 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `Microsoft.Build` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Tasks.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
 | `Microsoft.Build.Utilities.Core` | `17.14.28` | `Directory.Packages.props` | Microsoft.Build compile family; group all updates including majors |
-| `Microsoft.NET.Test.Sdk` | `18.10.0` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
+| `Microsoft.NET.Test.Sdk` | `18.10.1` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
 | `MSTest.TestAdapter` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with framework including majors |
 | `MSTest.TestFramework` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
 | `coverlet.collector` | `10.0.1` | `Directory.Packages.props` | Coverage-only |
