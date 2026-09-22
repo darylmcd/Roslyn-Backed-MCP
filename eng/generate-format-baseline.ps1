@@ -33,11 +33,11 @@ Both are success here; any other exit code is fatal.
 
 Phase-marker contract:
   The restore and format phases are bracketed by `$formatPhaseMarkerPrefix` lines written
-  to STDERR with the elapsed milliseconds since script start. They exist so a caller that
-  has to kill this script on a timeout can tell a genuine generator hang from host-wide
-  MSBuild/dotnet-format contention, and so successful runs accumulate the phase timings
-  that would justify any future change to that timeout. STDOUT is the byte-compared
-  determinism payload and never carries a marker.
+  to STDERR with the elapsed milliseconds since script start and the owned dotnet process ID.
+  They exist so a caller that has to kill this script on a timeout can tell a genuine generator
+  hang from host-wide MSBuild/dotnet-format contention, prove the owned child was torn down,
+  and accumulate the phase timings that would justify any future change to that timeout.
+  STDOUT is the byte-compared determinism payload and never carries a marker.
 
 .PARAMETER Check
 Regenerate the inventory in memory and compare it against the tracked artifact
@@ -78,11 +78,15 @@ function Write-FormatPhaseMarker {
 
         [Parameter(Mandatory)]
         [ValidateSet('start', 'end')]
-        [string]$Transition
+        [string]$Transition,
+
+        [Parameter(Mandatory)]
+        [int]$ChildProcessId
     )
 
     $elapsedMs = [int]$phaseStopwatch.Elapsed.TotalMilliseconds
-    [System.Console]::Error.WriteLine("$formatPhaseMarkerPrefix $Phase $Transition elapsedMs=$elapsedMs")
+    [System.Console]::Error.WriteLine(
+        "$formatPhaseMarkerPrefix $Phase $Transition elapsedMs=$elapsedMs childPid=$ChildProcessId")
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath '..'))
@@ -94,6 +98,91 @@ if (-not (Test-Path -LiteralPath $solutionPath -PathType Leaf)) {
 # Fixed artifact location, resolved from the script's own directory so the script
 # behaves identically no matter which directory it is invoked from.
 $OutputPath = Join-Path -Path $PSScriptRoot -ChildPath 'format-baseline.json'
+
+function ConvertTo-ProcessOutputLines {
+    param(
+        [AllowEmptyString()]
+        [string]$Text
+    )
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return @()
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $reader = [System.IO.StringReader]::new($Text)
+    try {
+        while (($line = $reader.ReadLine()) -ne $null) {
+            $lines.Add($line)
+        }
+    }
+    finally {
+        $reader.Dispose()
+    }
+
+    return $lines.ToArray()
+}
+
+function Invoke-OwnedDotNetProcess {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('restore', 'format')]
+        [string]$Phase,
+
+        [Parameter(Mandatory)]
+        [string[]]$Arguments,
+
+        [switch]$MergeStandardError
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = 'dotnet'
+    $startInfo.WorkingDirectory = $repositoryRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Failed to start dotnet for the $Phase phase."
+        }
+
+        $childProcessId = $process.Id
+        Write-FormatPhaseMarker -Phase $Phase -Transition 'start' -ChildProcessId $childProcessId
+        $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+        $standardErrorTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $standardOutput = $standardOutputTask.GetAwaiter().GetResult()
+        $standardError = $standardErrorTask.GetAwaiter().GetResult()
+        $exitCode = $process.ExitCode
+        Write-FormatPhaseMarker -Phase $Phase -Transition 'end' -ChildProcessId $childProcessId
+
+        $output = [System.Collections.Generic.List[string]]::new()
+        $standardOutputLines = [string[]]@(ConvertTo-ProcessOutputLines -Text $standardOutput)
+        $output.AddRange($standardOutputLines)
+        if ($MergeStandardError) {
+            $standardErrorLines = [string[]]@(ConvertTo-ProcessOutputLines -Text $standardError)
+            $output.AddRange($standardErrorLines)
+        }
+        elseif (-not [string]::IsNullOrEmpty($standardError)) {
+            [System.Console]::Error.Write($standardError)
+        }
+
+        return [pscustomobject]@{
+            ExitCode = $exitCode
+            Output = $output.ToArray()
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
 
 function ConvertTo-RepositoryRelativePath {
     param(
@@ -113,22 +202,17 @@ function ConvertTo-RepositoryRelativePath {
 Push-Location -LiteralPath $repositoryRoot
 try {
     if (-not $NoRestore) {
-        Write-FormatPhaseMarker -Phase 'restore' -Transition 'start'
-        $global:LASTEXITCODE = 0
-        $restoreOutput = @(& dotnet restore $solutionFileName)
-        $restoreExitCode = $global:LASTEXITCODE
-        # Emitted before the exit-code check so a failing restore still reports its duration.
-        Write-FormatPhaseMarker -Phase 'restore' -Transition 'end'
+        $restoreResult = Invoke-OwnedDotNetProcess -Phase 'restore' -Arguments @('restore', $solutionFileName)
+        $restoreOutput = $restoreResult.Output
+        $restoreExitCode = $restoreResult.ExitCode
         if ($restoreExitCode -ne 0) {
             throw "dotnet restore failed with exit code ${restoreExitCode}:`n$($restoreOutput -join [System.Environment]::NewLine)"
         }
     }
 
-    Write-FormatPhaseMarker -Phase 'format' -Transition 'start'
-    $global:LASTEXITCODE = 0
-    $formatOutput = @(& dotnet @formatArguments 2>&1 | ForEach-Object { $_.ToString() })
-    $formatExitCode = $global:LASTEXITCODE
-    Write-FormatPhaseMarker -Phase 'format' -Transition 'end'
+    $formatResult = Invoke-OwnedDotNetProcess -Phase 'format' -Arguments $formatArguments -MergeStandardError
+    $formatOutput = $formatResult.Output
+    $formatExitCode = $formatResult.ExitCode
 }
 finally {
     Pop-Location
