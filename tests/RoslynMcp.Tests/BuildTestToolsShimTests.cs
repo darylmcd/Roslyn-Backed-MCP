@@ -15,8 +15,14 @@ namespace RoslynMcp.Tests;
 /// (<see cref="SecurityDiagnosticService"/>, <see cref="SuppressionService"/>,
 /// <see cref="TestReferenceMapService"/>) are constructed in-test from already-exposed
 /// members plus a fresh <see cref="CompilationCache"/>, avoiding any shared-fixture edit.
+/// donotparallelize-audit-wave-03: every tool invocation here is a <c>ReadOnly = true</c>
+/// preview/verify/get shim dispatched through <c>ToolDispatch.ReadByWorkspaceIdAsync</c>, which
+/// runs under <c>WorkspaceExecutionGate.RunReadAsync</c> — a per-workspace
+/// <c>AsyncReaderWriterLock</c> that explicitly allows concurrent readers against the same
+/// workspace. No test method here calls <c>WorkspaceManager.LoadAsync</c>/<c>.Close</c> or any
+/// <c>*_apply</c> tool, so <c>[DoNotParallelize]</c> was removed after a >=3x repeated
+/// alongside-siblings run stayed green.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class BuildTestToolsShimTests : SharedWorkspaceTestBase
 {
