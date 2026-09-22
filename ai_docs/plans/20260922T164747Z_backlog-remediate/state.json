@@ -13,7 +13,7 @@
     {
       "id": "formatter-baseline-contended-nested-process-timeout-investigation",
       "order": 1,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "formatter-baseline-contended-nested-process-timeout-investigation"
       ],
@@ -39,8 +39,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/formatter-baseline-contended-nested-process-timeout-investigation",
+      "worktreePath": ".worktrees/formatter-baseline-contended-nested-process-timeout-investigation",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -51,7 +51,7 @@
     {
       "id": "sanctioned-roots-cwd-default-undocumented",
       "order": 2,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "sanctioned-roots-cwd-default-undocumented"
       ],
@@ -75,8 +75,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/sanctioned-roots-cwd-default-undocumented",
+      "worktreePath": ".worktrees/sanctioned-roots-cwd-default-undocumented",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -87,7 +87,7 @@
     {
       "id": "donotparallelize-audit-wave-01",
       "order": 3,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-01"
       ],
@@ -113,8 +113,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-01",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-01",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -125,7 +125,7 @@
     {
       "id": "donotparallelize-audit-wave-02",
       "order": 4,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-02"
       ],
@@ -151,8 +151,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-02",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-02",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -163,7 +163,7 @@
     {
       "id": "donotparallelize-audit-wave-03",
       "order": 5,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-03"
       ],
@@ -189,8 +189,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-03",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-03",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -201,7 +201,7 @@
     {
       "id": "donotparallelize-audit-wave-04",
       "order": 6,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-04"
       ],
@@ -227,8 +227,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-04",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-04",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -239,7 +239,7 @@
     {
       "id": "donotparallelize-audit-wave-05",
       "order": 7,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-05"
       ],
@@ -265,8 +265,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-05",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-05",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -277,7 +277,7 @@
     {
       "id": "donotparallelize-audit-wave-06",
       "order": 8,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-06"
       ],
@@ -303,8 +303,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-06",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-06",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -315,7 +315,7 @@
     {
       "id": "donotparallelize-audit-wave-07",
       "order": 9,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-07"
       ],
@@ -341,8 +341,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-07",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-07",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
@@ -353,7 +353,7 @@
     {
       "id": "donotparallelize-audit-wave-08",
       "order": 10,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-08"
       ],
@@ -379,8 +379,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-08",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-08",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
