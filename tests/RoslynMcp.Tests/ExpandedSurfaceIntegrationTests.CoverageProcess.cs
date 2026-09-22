@@ -3,7 +3,6 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
 [TestClass]
 [TestCategory("Process")]
 public sealed class ExpandedSurfaceIntegrationTests_CoverageProcess : SharedWorkspaceTestBase
