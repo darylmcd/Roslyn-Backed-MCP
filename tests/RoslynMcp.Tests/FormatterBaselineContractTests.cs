@@ -497,6 +497,138 @@ public sealed class FormatterBaselineContractTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task SuccessfulExit_WithHandleInheritingGrandchildStillAlive_DegradesToBoundedDiagnosticAsync()
+    {
+        // Reproduces the SUCCESS path (the generator process itself exits well inside
+        // processTimeout), where a grandchild spawned by its immediate child inherited the
+        // redirected pipe handles and outlives both of them — mirroring an MSBuild worker node
+        // reused by `dotnet restore`/`dotnet format` under host contention. Pre-fix, the
+        // unbounded `await stdoutCapture.Completion` / `stderrCapture.Completion` would hang the
+        // harness forever waiting for EOF the grandchild never releases.
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(FormatterBaselineContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        var grandchildPidPath = Path.Combine(fixtureRoot, "grandchild.pid");
+        var releasePath = Path.Combine(fixtureRoot, "release");
+        Process? outerProcess = null;
+        try
+        {
+            var grandchildScript = Path.Combine(fixtureRoot, "grandchild-hold-handles.ps1");
+            await File.WriteAllTextAsync(grandchildScript, """
+                param([string]$ReleasePath, [string]$GrandchildPidPath)
+                [IO.File]::WriteAllText($GrandchildPidPath + '.tmp', [string]$PID)
+                [IO.File]::Move($GrandchildPidPath + '.tmp', $GrandchildPidPath)
+                $deadline = [DateTime]::UtcNow.AddMinutes(1)
+                while (!(Test-Path -LiteralPath $ReleasePath) -and [DateTime]::UtcNow -lt $deadline) {
+                    Start-Sleep -Milliseconds 50
+                }
+                """);
+            var childScript = Path.Combine(fixtureRoot, "spawn-grandchild-and-exit.ps1");
+            await File.WriteAllTextAsync(childScript, """
+                param([string]$GrandchildScript, [string]$ReleasePath, [string]$GrandchildPidPath)
+                $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+                $info.UseShellExecute = $false
+                $info.CreateNoWindow = $true
+                foreach ($argument in @('-NoProfile', '-File', $GrandchildScript, $ReleasePath, $GrandchildPidPath)) {
+                    $info.ArgumentList.Add($argument)
+                }
+                $grandchild = [Diagnostics.Process]::Start($info)
+                $grandchild.Dispose()
+                """);
+            var outerScript = Path.Combine(fixtureRoot, "spawn-child-then-exit.ps1");
+            await File.WriteAllTextAsync(outerScript, """
+                param([string]$ChildScript, [string]$GrandchildScript, [string]$ReleasePath, [string]$GrandchildPidPath)
+                $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+                $info.UseShellExecute = $false
+                $info.CreateNoWindow = $true
+                foreach ($argument in @('-NoProfile', '-File', $ChildScript, $GrandchildScript, $ReleasePath, $GrandchildPidPath)) {
+                    $info.ArgumentList.Add($argument)
+                }
+                $child = [Diagnostics.Process]::Start($info)
+                $child.WaitForExit()
+                """);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+            {
+                "-NoProfile", "-File", outerScript, childScript, grandchildScript, releasePath, grandchildPidPath,
+            })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            outerProcess = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start inherited-pipe fixture.");
+
+            Assert.IsTrue(
+                await WaitForFileAsync(grandchildPidPath, TimeSpan.FromSeconds(10)),
+                "The grandchild did not publish its handshake.");
+
+            var stopwatch = Stopwatch.StartNew();
+            var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
+                RunGeneratorCheckAsync(
+                    executionSeam: new GeneratorExecutionSeam(
+                        outerProcess,
+                        TimeSpan.FromMinutes(5),
+                        () => [])));
+            stopwatch.Stop();
+
+            StringAssert.Contains(
+                timeout.Message,
+                "did not reach EOF",
+                "The success-path drain failure must be reported as a bounded diagnostic, not silently "
+                + "hang forever.");
+            Assert.IsTrue(
+                stopwatch.Elapsed < _drainTimeout + TimeSpan.FromSeconds(30),
+                $"The bounded drain must degrade to a diagnostic near {_drainTimeout} after the generator's "
+                + $"own exit rather than hanging on the grandchild's inherited handles; took {stopwatch.Elapsed}.");
+
+            var grandchildProcessId = int.Parse(
+                await File.ReadAllTextAsync(grandchildPidPath),
+                System.Globalization.CultureInfo.InvariantCulture);
+            using var grandchild = Process.GetProcessById(grandchildProcessId);
+            Assert.IsFalse(
+                grandchild.HasExited,
+                "The bounded success-path drain only turns the hang into a diagnostic — it must not "
+                + "itself terminate the lingering descendant, matching the fix's scope.");
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(releasePath, string.Empty);
+            if (outerProcess is not null)
+            {
+                if (!outerProcess.HasExited)
+                {
+                    try
+                    {
+                        outerProcess.Kill(entireProcessTree: true);
+                    }
+                    catch (InvalidOperationException) when (outerProcess.HasExited)
+                    {
+                        // The fixture exited between the state check and the cleanup request.
+                    }
+                }
+
+                await WaitForProcessExitAsync(outerProcess, _drainTimeout);
+            }
+
+            await StopFixtureChildAsync(grandchildPidPath);
+            outerProcess?.Dispose();
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task Generator_IsDeterministicAndTheTrackedInventoryCoversTheLiveRunAsync()
     {
         var firstRun = await RunGeneratorCheckAsync();
@@ -978,8 +1110,32 @@ public sealed class FormatterBaselineContractTests
             }
 
             elapsed.Stop();
-            var stdOut = await stdoutCapture.Completion;
-            var stdErr = await stderrCapture.Completion;
+
+            // The generator itself exited, but a descendant that inherited the redirected pipe
+            // handles (see Invoke-OwnedDotNetProcess's MSBUILDDISABLENODEREUSE comment) can keep
+            // their write ends open indefinitely. Awaiting Completion unconditionally would hang
+            // the harness on exactly that shape instead of the timeout above ever firing — bound
+            // the drain the same way the timeout path already bounds its own teardown, so a
+            // lingering descendant degrades to a diagnostic instead of a hang.
+            var successDrains = await Task.WhenAll(
+                DrainAsync(stdoutCapture, "stdout", _drainTimeout),
+                DrainAsync(stderrCapture, "stderr", _drainTimeout));
+            var stdOutDrain = successDrains[0];
+            var stdErrDrain = successDrains[1];
+            if (!stdOutDrain.Drained || !stdErrDrain.Drained)
+            {
+                throw new TimeoutException(
+                    $"Formatter baseline generator exited (pid={process.Id}, exitCode={process.ExitCode}) "
+                    + $"but its output pipes did not reach EOF within {_drainTimeout.TotalSeconds:0} seconds "
+                    + "of the exit — a descendant process likely inherited the redirected handles and is "
+                    + $"still holding them open. stdoutDrained={stdOutDrain.Drained}; "
+                    + $"stderrDrained={stdErrDrain.Drained}; "
+                    + $"partialStdOut={DescribeDrainedLength(stdOutDrain)}; "
+                    + $"partialStdErr={DescribeDrainedLength(stdErrDrain)}");
+            }
+
+            var stdOut = stdOutDrain.Text;
+            var stdErr = stdErrDrain.Text;
             var ownedChildProcessIds = ExtractOwnedChildProcessIds(ExtractPhaseMarkers(stdErr));
             Assert.IsTrue(
                 await WaitForOwnedChildrenExitAsync(ownedChildProcessIds, _drainTimeout),

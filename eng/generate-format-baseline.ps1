@@ -142,6 +142,12 @@ function Invoke-OwnedDotNetProcess {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    # Reusable MSBuild worker nodes inherit this process's redirected pipe handles and can idle
+    # holding them open well past this one-shot child's own exit (see
+    # DotnetCommandRunner.CreateStartInfo, which disables node reuse for the same reason). These
+    # restore/format children gain nothing from node reuse, so disable it to avoid a lingering
+    # descendant hanging the caller's drain of this process's output.
+    $startInfo.Environment['MSBUILDDISABLENODEREUSE'] = '1'
     foreach ($argument in $Arguments) {
         $startInfo.ArgumentList.Add($argument)
     }
