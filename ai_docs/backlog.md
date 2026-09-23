@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-23T18:53:14Z
+**updated_at:** 2026-09-23T19:43:54Z
 
 ## Agent contract
 
@@ -123,6 +123,7 @@
 | `donotparallelize-audit-wave-40` | Medium | donotparallelize-audit-wave-01,donotparallelize-audit-wave-02,donotparallelize-audit-wave-03,donotparallelize-audit-wave-04,donotparallelize-audit-wave-05,donotparallelize-audit-wave-06,donotparallelize-audit-wave-07,donotparallelize-audit-wave-08,donotparallelize-audit-wave-09,donotparallelize-audit-wave-10,donotparallelize-audit-wave-11,donotparallelize-audit-wave-12,donotparallelize-audit-wave-13,donotparallelize-audit-wave-14,donotparallelize-audit-wave-15,donotparallelize-audit-wave-16,donotparallelize-audit-wave-17,donotparallelize-audit-wave-18,donotparallelize-audit-wave-19,donotparallelize-audit-wave-20,donotparallelize-audit-wave-21,donotparallelize-audit-wave-22,donotparallelize-audit-wave-23,donotparallelize-audit-wave-24,donotparallelize-audit-wave-25,donotparallelize-audit-wave-26,donotparallelize-audit-wave-27,donotparallelize-audit-wave-28,donotparallelize-audit-wave-29,donotparallelize-audit-wave-30,donotparallelize-audit-wave-31,donotparallelize-audit-wave-32,donotparallelize-audit-wave-33,donotparallelize-audit-wave-34,donotparallelize-audit-wave-35,donotparallelize-audit-wave-36,donotparallelize-audit-wave-37,donotparallelize-audit-wave-38,donotparallelize-audit-wave-39 | **Re-audit DoNotParallelize wave 40** — classify or remove the opt-outs in this bounded test-file slice with repeated evidence. [type: test-infrastructure] [source: test-assembly-donotparallelize-audit] | S | items/donotparallelize-audit-wave-40.md |
 | `docs-only-allowlist-throws-instead-of-fallback` | Medium | — | **Docs-only allowlist fail-closed path throws instead of falling back to full suite** — missing/empty/unknown-class allowlist should run the full suite on shard 0, not hard-fail CI. [type: bug] [source: cold review of 20260921T211855Z_backlog-remediate] | S | items/docs-only-allowlist-throws-instead-of-fallback.md |
 | `security-md-supported-versions-and-roots-stale` | Medium | — | **Refresh SECURITY.md** — supported-versions table lists 1.26.x (product is 4.x) and the boundary text describes client-roots validation that ADR 0002 replaced with the server-owned sanctioned-root boundary. [type: docs] [source: doc-audit 2026-09-23] | S | items/security-md-supported-versions-and-roots-stale.md |
+| `v5-major-release-contract-prereqs` | Medium | — | **Write ADR + product-contract entries for the 2 pending BREAKING fragments before the 5.0.0 cut** — server_info updateAvailable bool→bool? and WorkspaceNotFound category lack the ADR/migration docs release-policy requires. [type: docs] | S | items/v5-major-release-contract-prereqs.md |
 
 ## Low
 

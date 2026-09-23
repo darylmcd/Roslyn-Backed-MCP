@@ -75,7 +75,7 @@ guarded set:
 | 10 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
 | 11 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
 
-Files 1 and 3-8 are the seven version sources enumerated by `eng/verify-version-drift.ps1`; files 2 and 9-11 are extra release-critical infrastructure. `eng/guard-release-managed-files.ps1` is the canonical path list.
+Files 1 and 3-8 are the seven version sources enumerated by `eng/verify-version-drift.ps1`; files 2 and 9-11 are extra release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1` as the canonical path list.
 
 **Bypass mechanism.** The guard checks only `tool_input.file_path` and allows the edit while the gitignored sentinel `.release-managed-edit-allowed` at the repo root is younger than the TTL (default 1800 s, override via `RELEASE_SENTINEL_TTL_SECONDS`); otherwise it exits 2. `/bump`, `/release-cut`, and `/ship` create and remove the sentinel themselves; for an intentional ad-hoc edit, create it, then edit:
 
