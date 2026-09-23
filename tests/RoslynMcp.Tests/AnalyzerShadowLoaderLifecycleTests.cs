@@ -28,6 +28,14 @@ namespace RoslynMcp.Tests;
 /// forever, so the retry loop times out and the assertion still fails deterministically.
 /// </para>
 /// </summary>
+// [DoNotParallelize] retained: every test method here drives analyzer shadow-copy loading
+// through AnalyzerReferenceIsolation, whose lease root is Path.Combine(Path.GetTempPath(),
+// ShadowRootDirectoryName) — a machine-global directory OUTSIDE TestTempRoot.Current, shared
+// by every WorkspaceManager load in the process (WorkspaceSessionLoader.CreateAndOpenAsync
+// calls RetargetFileReferencesToShadowLoader on every load, including the assembly-shared
+// Fixture WorkspaceManager other test classes use concurrently). SweepAbandonedRoots also
+// enumerates that same shared parent directly. Concurrent runs would race the shared
+// filesystem tree and the collectible-ALC file-lock reclamation this class asserts.
 [DoNotParallelize]
 [TestClass]
 public sealed class AnalyzerShadowLoaderLifecycleTests

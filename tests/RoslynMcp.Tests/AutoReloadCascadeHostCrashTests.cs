@@ -36,6 +36,11 @@ namespace RoslynMcp.Tests;
 /// <c>category="StaleWorkspaceTransition"</c> envelope with an explicit retry hint.
 /// </para>
 /// </summary>
+// [DoNotParallelize] retained: TwoWriters_Plus_Reader_InSameTurn_DoesNotCrashHost and
+// ConcurrentReload_And_Reads_Never_Throw_DisposedException call WorkspaceManager.ReloadAsync
+// and FileWatcher.MarkStale on the assembly-shared sample workspace (LoadSharedSampleWorkspaceAsync
+// -> TestBase's cached WorkspaceIdCache entry), mutating state every other test class that reads
+// that same shared workspace id can observe.
 [DoNotParallelize]
 [TestClass]
 public sealed class AutoReloadCascadeHostCrashTests : SharedWorkspaceTestBase
