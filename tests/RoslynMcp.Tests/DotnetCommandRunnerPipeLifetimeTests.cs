@@ -11,6 +11,14 @@ namespace RoslynMcp.Tests;
 /// job-timeout kills. <see cref="DotnetCommandRunner"/> now (a) disables node reuse for
 /// spawned commands and (b) bounds the post-exit stream drain.
 /// </summary>
+// donotparallelize-audit-wave-07: ClassInit/ClassCleanup call ShutdownBuildServersAsync,
+// which runs `dotnet build-server shutdown` — a machine-global operation that kills every
+// warm MSBuild worker node AND VBCSCompiler process on the host, not just this class's own.
+// A concurrently running class whose build relies on a warm build server would see it
+// vanish mid-run, and RunAsync_Returns_Promptly_When_Build_Server_Descendants_Hold_The_Pipe
+// deliberately spawns `-nodeReuse:true` MSBuild worker nodes that outlive the test. Both are
+// process-tree-global side effects outside the synchronized WorkspaceIdCache, so this class
+// must stay serialized against every other test class in the assembly.
 [DoNotParallelize]
 [TestClass]
 public class DotnetCommandRunnerPipeLifetimeTests
