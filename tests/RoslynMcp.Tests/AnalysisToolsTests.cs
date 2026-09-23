@@ -11,7 +11,6 @@ namespace RoslynMcp.Tests;
 /// (parameter shape, aliasing, error envelopes) — service-level semantics are
 /// exercised by <see cref="DiagnosticFixIntegrationTests"/>.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
 {

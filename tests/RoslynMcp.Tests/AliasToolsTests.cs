@@ -17,7 +17,6 @@ namespace RoslynMcp.Tests;
 ///   2. The <c>deprecation</c> field is always present in the schema. It is
 ///      a catalog-owned lifecycle declaration on the alias and JSON <c>null</c> on the canonical.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class AliasToolsTests : SharedWorkspaceTestBase
 {
