@@ -1,5 +1,10 @@
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-08: retained. Both test methods call WorkspaceManager.LoadAsync directly on the
+// real repository solution (RoslynMcp.slnx) and WorkspaceManager.Close in a finally block — a fresh workspace
+// load/evict cycle outside the synchronized WorkspaceIdCache, not a read through it. Concurrent full-solution
+// MSBuildWorkspace loads from this class racing other DoNotParallelize-eligible classes' own loads is the
+// resource-contention hazard the addenda's parallel_safety note already documents for full-gate runs.
 [DoNotParallelize]
 [TestClass]
 [TestCategory("RepoSolution")]

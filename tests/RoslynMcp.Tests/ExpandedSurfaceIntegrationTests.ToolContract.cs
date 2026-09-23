@@ -7,7 +7,11 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-08: [DoNotParallelize] removed. Every test method here only reads through the
+// assembly-shared, already-synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync / WorkspaceId) or a
+// local in-memory fake (FakeCodeActionService) — no EditTools/MultiFileEditTools writes, no direct
+// WorkspaceManager.LoadAsync/Close, no shared filesystem mutation. Verified with a repeated (3x) run of this
+// class alongside its donotparallelize-audit-wave-08 siblings, green every time.
 [TestClass]
 public sealed class ExpandedSurfaceIntegrationTests_ToolContract : SharedWorkspaceTestBase
 {
