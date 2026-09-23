@@ -6,7 +6,13 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-05: [DoNotParallelize] removed. Every test method here either
+// reads through the already-synchronized WorkspaceIdCache/shared WorkspaceId, or loads and
+// closes its own isolated per-test copy via WorkspaceManager (backed by a ConcurrentDictionary
+// of sessions + SemaphoreSlim slot limiter — WorkspaceManager.cs:95,109), and none of them call
+// an *_apply tool or touch any other assembly-shared mutable state (UndoService, ChangeTracker,
+// PreviewStore). Validated by a bounded repeated concurrent run alongside parallel-enabled
+// sibling classes (see PR validation notes).
 [TestClass]
 public sealed class CouplingAnalysisTests : SharedWorkspaceTestBase
 {

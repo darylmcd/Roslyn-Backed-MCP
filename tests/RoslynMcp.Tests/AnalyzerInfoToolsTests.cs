@@ -20,7 +20,6 @@ namespace RoslynMcp.Tests;
 /// visible only from other projects' language contexts. The fix accumulates rules from all
 /// projects before the DistinctBy step runs.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class AnalyzerInfoToolsTests : SharedWorkspaceTestBase
 {

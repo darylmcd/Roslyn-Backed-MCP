@@ -3,6 +3,13 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-03: retained. ReplaceInvocation_Preview_TagsTokenWithTheSameSharedKind
+// and BulkReplaceType_Parameters_RewritesGenericArg_In_ImplementedInterface call
+// WorkspaceManager.LoadAsync/.Close directly on the assembly-shared WorkspaceManager instance
+// (Fixture.Services.WorkspaceManager) instead of going through the synchronized WorkspaceIdCache —
+// mutating its ConcurrentDictionary<string, WorkspaceSession> session table and consuming a slot
+// from its capacity-limited _workspaceSlots SemaphoreSlim, both shared across every test class in
+// the assembly.
 [DoNotParallelize]
 [TestClass]
 public sealed class BulkRefactoringTests : SharedWorkspaceTestBase

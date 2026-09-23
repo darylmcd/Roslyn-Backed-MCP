@@ -9,7 +9,6 @@ namespace RoslynMcp.Tests;
 /// <c>get_symbol_outline</c> accept a <c>symbolHandle</c> (or <c>metadataName</c>) in place of a
 /// <c>filePath</c>, returning the same outline as the equivalent filePath-driven invocation.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class DocumentSymbolsSymbolHandleTests : SharedWorkspaceTestBase
 {
