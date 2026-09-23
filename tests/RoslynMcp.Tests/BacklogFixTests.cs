@@ -10,8 +10,15 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Tests covering P0-P2 backlog fixes: error handling, defensive wrapping, and refactored services.
+/// donotparallelize-audit-wave-03: every test method here either calls pure/static logic
+/// (<see cref="RoslynMcp.Host.Stdio.Tools.ToolErrorHandler"/>,
+/// <c>SnippetAnalysisService.AnalyzeAsync</c>) or reads through the assembly-shared
+/// <c>WorkspaceManager</c>'s <c>ConcurrentDictionary</c>-backed session table (<c>ListWorkspaces</c>,
+/// <c>GetCurrentSolution</c>, <c>HasSession</c>) and the synchronized <c>WorkspaceIdCache</c>
+/// (<c>GetOrLoadWorkspaceIdAsync</c>). No test method here calls <c>WorkspaceManager.LoadAsync</c>
+/// or <c>.Close</c> directly, so <c>[DoNotParallelize]</c> was removed after a >=3x repeated
+/// alongside-siblings run stayed green.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class BacklogFixTests : SharedWorkspaceTestBase
 {
