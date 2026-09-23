@@ -24,14 +24,14 @@ body:
     id: version
     attributes:
       label: RoslynMcp Version
-      placeholder: "0.9.0-beta.1"
+      placeholder: "4.2.1"
     validations:
       required: true
   - type: input
     id: dotnet-version
     attributes:
       label: .NET SDK Version
-      placeholder: "9.0.x"
+      placeholder: "10.0.x"
   - type: dropdown
     id: os
     attributes:

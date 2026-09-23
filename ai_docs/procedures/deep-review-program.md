@@ -22,7 +22,7 @@ Use this flow when the audited C# repository is outside this workspace.
 
 1. Run `/mcp-server-stress` (or the canonical prompt at `skills/mcp-server-surface-test/prompts/full.md`) in the external repo.
 2. Let the prompt write its raw file into that repo's `ai_docs/audit-reports/` (or copy into Roslyn-Backed-MCP when this workspace is the audit root).
-3. **Operator step:** from the Roslyn-Backed-MCP repo root, invoke the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill (`/backlog-intake`). It discovers sibling checkouts under the parent folder (e.g. `C:\Code-Repo\*`) via `eng/stage-review-inbox.ps1`, stages every `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` into `review-inbox/`, then extracts / dedupes / anchor-verifies / ranks / splits and merges new rows into `ai_docs/backlog.md`. See [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md).
+3. **Operator step:** from the Roslyn-Backed-MCP repo root, invoke the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill (`/backlog-intake`). Staging (recognized shapes: `eng/stage-review-inbox.ps1` `.DESCRIPTION` "Recognized shapes"), move/copy semantics, and the full pipeline: [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md).
 
 ## Repo coverage matrix
 
@@ -45,9 +45,10 @@ If no repo matches a bucket, record that gap in the rollup rather than inventing
 |------|-------------|-----|
 | Full-surface client | Can read MCP resources and invoke prompts | Required for release candidates, support-tier changes, and any audit claiming prompt/resource coverage. |
 | Constrained client | Cannot invoke some prompt/resource families | Optional secondary lane to capture `blocked` rows and client UX gaps. |
-| Plugin-skills lane | Filesystem access to the Roslyn-Backed-MCP repo for Phase 16b | Required whenever skills change, a new skill ships, or a tool is renamed/removed. May be folded into the full-surface lane when that client is already running in the Roslyn-Backed-MCP workspace. |
 
-At least one full-surface client lane must run before treating prompt/resource families as adequately covered. At least one plugin-skills lane must run whenever the `skills/` directory is modified or the live catalog's tool names change.
+At least one full-surface client lane must run before treating prompt/resource families as adequately covered.
+
+The static skills audit (SKILL.md frontmatter parity + tool-reference resolution) is not part of this run; `/surface-audit` owns it. Run it whenever `skills/` changes or the live catalog's tool names change.
 
 ## Concurrency model
 
@@ -87,16 +88,14 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
 | Operator diagnostic access | `yes` / `no` — whether the run can capture RoslynMcp stderr. Protocol `notifications/message` is not an observability channel. |
 | Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
-| Plugin skills repo reachable | yes / blocked. If blocked, `docs/experimental-promotion-analysis.md` cannot treat the skills as exercised. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |
 | Concurrency probe wall-clocks | Required when Phase 8b ran. Pulled from the raw audit's *Concurrency matrix → Sequential baseline* and *Parallel fan-out* tables; needed by the rollup to compare wall-clocks across repos. |
 | Performance baseline snapshot | Pulled from the raw audit's *Performance baseline (`_meta.elapsedMs`)* table. Needed by rollups and by the promotion analysis to track p50/p90 across runs. |
 | Promotion scorecard counts | Per-run totals of `promote` / `keep-experimental` / `needs-more-evidence` / `deprecate` recommendations, broken down by kind (tool / resource / prompt). Feeds `docs/experimental-promotion-analysis.md` directly. |
 | Prompt verification counts | From the raw audit's *Prompt verification* table: exercised/blocked/hallucinated-tools counts. |
-| Skills audit counts | From the raw audit's *Skills audit* table: frontmatter_ok / tool_refs_valid / dry_run pass counts per skill. |
 | New issue count / candidate closure count | Support rollup triage. |
 
-Use these fields as the manifest schema for manual review. Rollup scaffolding is no longer automated — author a rollup by hand under `ai_docs/reports/<timestamp>_deep-review-rollup.md` when a release-gate sign-off requires the narrative artifact. For routine batches, the `review-inbox/` staging folder (populated by `eng/stage-review-inbox.ps1`) plus the backlog commit produced by `/backlog-intake` together serve as the evidence trail.
+Use these fields as the manifest schema for manual review. Author a rollup by hand under `ai_docs/reports/<timestamp>_deep-review-rollup.md` when a release-gate sign-off requires the narrative artifact; for routine batches, `review-inbox/` plus the `/backlog-intake` backlog commit is the evidence trail.
 
 ## Rollup contents
 
@@ -112,7 +111,6 @@ Each batch rollup in `ai_docs/reports/` should include:
 | Performance baseline rollup | Aggregated p50/p90 `_meta.elapsedMs` per tool across repos. Drives "is tool X within budget on real-world solutions" decisions. |
 | Experimental promotion rollup | Per-experimental-entry recommendation aggregated across repos. When the same entry gets `promote` in ≥2 independent runs with no FAIL findings, it is a candidate for the next promotion pass (feeds `docs/experimental-promotion-analysis.md`). When any run returns `deprecate`, the rollup must capture the raw evidence and open a backlog row. |
 | Prompt verification rollup | Aggregated prompt-verification counts across repos: exercised, blocked, hallucinated tools, idempotency failures. |
-| Skills audit rollup | Required when any input audit ran Phase 16b. Aggregate `tool_refs_valid` failures — any invalid reference is a plugin ship blocker. |
 | Unique issues | Deduped findings table keyed by tool + symptom + catalog version + client family. |
 | Blocked-by-client summary | Prompt/resource or client-surface limitations that are not server defects by default. |
 | Candidate closures | Prior issues that no longer reproduce, with raw evidence links. |
@@ -120,21 +118,21 @@ Each batch rollup in `ai_docs/reports/` should include:
 
 ## Backlog intake rules
 
-Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest remediation plan, fixes service / tool anchors, splits heroic rows per `~/.claude/prompts/backlog-remediate-rules.md`, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
+Default intake is driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill (`/backlog-intake`); pipeline and tiers (`Critical` / `High` / `Medium` / `Low` / `Defer`): [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md).
 
 - Dedupe key (human triage): `tool + symptom + catalog-version + client-family`.
-- Narrative-only sources (test-suite audits, manual retros without a matching filename pattern) still need a by-hand row in `ai_docs/backlog.md`.
-- Pure client limitations usually stay out of the backlog unless covered by existing doc rows (`mcp-client-surface-notifications`, etc.).
+- Narrative-only sources (test-suite audits, manual retros without a matching filename pattern) still need a row, added via `node ~/.claude/scripts/backlog.mjs add`, never by editing `backlog.md` directly.
+- Pure client limitations usually stay out of the backlog unless an existing row already covers them.
 
 ## Related
 
-- `deep-review-backlog-intake.md` — automation switches and manual follow-up
+- `deep-review-backlog-intake.md` — intake pipeline, staging semantics, flags
 - `skills/mcp-server-surface-test/prompts/full.md` — canonical audit prompt run by `/mcp-server-stress`
 - `deep-review-command-reference.md` — concrete shell command examples for the workflow
 - `../audit-reports/README.md` — raw audit output location
 - `../reports/README.md` — synthesized rollup location
-- `../eng/stage-review-inbox.ps1` — discover + copy audit/retro/promotion files from sibling repos into `review-inbox/` (default copy preserves the canonical source; `-Move` clears it)
-- `../.claude/skills/backlog-intake/SKILL.md` — `/backlog-intake` skill that consumes `review-inbox/` and produces backlog rows
-- `docs/release-policy.md` — release-gate requirements that consume audit evidence
-- `docs/experimental-promotion-analysis.md` — promotion decisions that use rollup-backed operational evidence
-- `docs/large-solution-profiling-baseline.md` — large-solution lane methodology
+- `../../eng/stage-review-inbox.ps1` — stages deep-review artifacts into `review-inbox/` (semantics: `deep-review-backlog-intake.md#staging-semantics`)
+- `../../.claude/skills/backlog-intake/SKILL.md` — `/backlog-intake` skill that consumes `review-inbox/` and produces backlog rows
+- `../../docs/release-policy.md` — release-gate requirements that consume audit evidence
+- `../../docs/experimental-promotion-analysis.md` — promotion decisions that use rollup-backed operational evidence
+- `../../docs/large-solution-profiling-baseline.md` — large-solution lane methodology

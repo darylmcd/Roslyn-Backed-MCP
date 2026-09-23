@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/SymbolTools`
+- `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs`
 - `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Symbols.cs`
 
 ## Acceptance

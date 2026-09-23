@@ -32,7 +32,8 @@ See `ai_docs/workflow.md` for the canonical branch, worktree, and pull-request p
 
 - All existing tests must pass.
 - New features and bug fixes should include test coverage.
-- The CI pipeline (`./eng/verify-release.ps1`) must succeed.
+- Run the local CI mirror before opening the PR: `just ci` (requires [`just`](https://github.com/casey/just)), which runs the doc, skill, format, workflow-lint, release-PR, and vulnerability-audit gates. `./eng/verify-release.ps1` runs the full build/test/publish verification.
+- Add a changelog fragment at `changelog.d/<row-id>.md` for any shipped, test, build, workflow, skill, or public-documentation change (CI enforces this). Use the YAML-frontmatter format described in [`changelog.d/README.md`](changelog.d/README.md); do not edit `CHANGELOG.md` directly.
 - Follow the existing code style and patterns.
 
 ## Coding Conventions
@@ -47,11 +48,23 @@ See `ai_docs/workflow.md` for the canonical branch, worktree, and pull-request p
 
 ## CI Validation
 
-See `CI_POLICY.md` for merge-gating expectations. The CI workflow runs:
+[`CI_POLICY.md`](CI_POLICY.md) is the canonical contract for what CI runs and what gates a merge. It varies by change type: documentation-only pull requests take a lighter route, while code-bearing pull requests run the sharded Windows and Linux release build/test matrix plus an exact-SDK-floor probe. Gates include AI-doc validation, the changelog-fragment contract, workflow linting, the changed-file format check, and the vulnerable-package audit. `just ci` mirrors the local subset.
 
-1. AI-doc validation (`./eng/verify-ai-docs.ps1`)
-2. Release build verification (`./eng/verify-release.ps1 -Configuration Release`)
-3. Vulnerable package audit
+## Filing Surface-Test Findings
+
+If you find a bug or behaviour gap while running [`/mcp-server-surface-test`](skills/mcp-server-surface-test/README.md) against your own C# repo, share it back via the [Surface-test finding](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/new?template=mcp-server-surface-test-finding.yml) issue template. The shipped skill renders findings into a copy-paste body block by default; pass `--auto-file` and the skill calls `gh issue create` for you.
+
+P0 / `area: security` findings are refused for public filing; see [SECURITY.md](SECURITY.md) for the private-disclosure path.
+
+## Building And Running From Source
+
+```bash
+dotnet build RoslynMcp.slnx --nologo
+dotnet test RoslynMcp.slnx --nologo
+dotnet run --project src/RoslynMcp.Host.Stdio
+```
+
+`dotnet run` starts the stdio host, which then waits silently on stdin for MCP frames. To use a source build from an MCP client, point the client at that command and set `ROSLYNMCP_SANCTIONED_ROOTS` (see [`docs/setup.md`](docs/setup.md#configure-the-filesystem-boundary)).
 
 ## Reporting Issues
 

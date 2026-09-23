@@ -1,6 +1,6 @@
 # retired-root-mcp-doc-index-audit-sync — Synchronize current documentation after root registration retirement
 
-**row:** `retired-root-mcp-doc-index-audit-sync` · **pri:** `Low` · **size:** `M`
+**row:** `retired-root-mcp-doc-index-audit-sync` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

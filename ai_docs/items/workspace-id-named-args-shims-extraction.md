@@ -1,6 +1,6 @@
 # workspace-id-named-args-shims-extraction — Name workspace-sensitive shim and extraction arguments
 
-**row:** `workspace-id-named-args-shims-extraction` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-id-named-args-shims-extraction` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

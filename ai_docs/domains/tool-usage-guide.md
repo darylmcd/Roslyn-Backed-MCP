@@ -2,8 +2,12 @@
 
 <!-- purpose: Help agents pick Roslyn MCP tools and preview/apply workflows. -->
 
-This document helps AI agents choose the right tools and workflows for common tasks.
-Call `recommend_workflow` with the task for focused tool guidance. For category guidance, use `get_prompt_text` with `promptName: "discover_capabilities"` and `parametersJson` containing `taskCategory`, or retrieve that prompt through `prompts/get`. Use `server_info` for the server overview. Workspace-scoped calls auto-reload stale state by default; pre-emptive `workspace_reload` calls are unnecessary.
+Tool and workflow selection for common tasks.
+
+- Focused guidance: `recommend_workflow` with the task.
+- Category guidance: `get_prompt_text` with `promptName: "discover_capabilities"` and `parametersJson` containing `taskCategory` (or `prompts/get`).
+- Server overview: `server_info`.
+- Workspace-scoped calls auto-reload stale state by default; pre-emptive `workspace_reload` is unnecessary.
 
 **Policy:** Use the Roslyn MCP server for C# **refactoring** as well as discovery—see [`runtime.md`](../runtime.md) (*Roslyn MCP client policy*).
 
@@ -41,11 +45,10 @@ navigation plus `compile_check`.
 
 ## Verification workflow (post-edit default)
 
-After any C# edit — `Edit`, `Write`, or `*_apply` — the canonical verify for
-**multi-file semantic edits** is the `validate_workspace` bundle, scoped to the
-touched-file set. Prefer the auto-scoped companion `validate_recent_git_changes`
-when you have uncommitted edits in a git working tree; it derives the touched-file
-set from `git status --porcelain` so you don't need to enumerate paths by hand.
+After any C# edit (`Edit`, `Write`, or `*_apply`):
+
+- Multi-file semantic edits: the `validate_workspace` bundle, scoped to the touched-file set.
+- Uncommitted edits in a git working tree: prefer `validate_recent_git_changes`; it derives the touched-file set from `git status --porcelain`.
 
 **Single call, scoped verify (preferred):**
 
@@ -58,15 +61,11 @@ validate_recent_git_changes(workspaceId)
     (all values + caller actions: see the verdict table below)
 ```
 
-Falls back to full-workspace scope with a `Warnings` entry when git is not
-available on PATH, the solution directory is not inside a git repository, or
-`git status` exits non-zero. In that case callers should trust
-`OverallStatus` as usual — the bundle still runs — but know the scope is wider
-than the touched-file set. The exception is a `git status` **timeout** (a
-fourth fallback cause, distinct from the three above): that path returns
-`overallStatus = git-status-unknown` specifically so callers do NOT trust a
-`clean` verdict computed over an unverified fallback scope — see the
-[verdict table](#overallstatus-verdict-table).
+Fallback to full-workspace scope (with a `Warnings` entry):
+
+- Causes: git not on PATH, solution directory not in a git repository, or `git status` exits non-zero.
+- Trust `OverallStatus` as usual; the scope is just wider than the touched-file set.
+- Exception: a `git status` **timeout** returns `overallStatus = git-status-unknown` so callers do not trust a `clean` computed over an unverified scope. See the [verdict table](#overallstatus-verdict-table).
 
 **Explicit file list (when not in a git repo or for targeted verify):**
 
@@ -84,8 +83,7 @@ for an arbitrary filter):
 2. `test_related_files` → `test_run(workspaceId, filter: "<filter>")` — derive the test filter from
    the touched-file set, then run only the relevant subset. Returns in seconds instead
    of the minutes a full `dotnet test` takes.
-3. `format_check` — confirm `dotnet format`-equivalent whitespace / using-ordering is
-   clean on the touched files only.
+3. `format_check(workspaceId, projectName?)` — experimental, workspace-wide in-memory `dotnet format --verify-no-changes` equivalent; reports violations and per-file change counts. It has no `filePaths` parameter; scope with `projectName`.
 
 Example (after editing `src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs`):
 
@@ -94,22 +92,21 @@ compile_check(workspaceId, projectName: "RoslynMcp.Roslyn")
 test_related_files(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
   → returns filter "FullyQualifiedName~SymbolSearch"
 test_run(workspaceId, filter: "FullyQualifiedName~SymbolSearch")
-format_check(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
+format_check(workspaceId, projectName: "RoslynMcp.Roslyn")
 ```
 
-**Rule of thumb:** for multi-file edits, reach for `validate_recent_git_changes`
-first — one call, scoped to touched files, aggregate pass/fail. Drop to the
-primitive triple only when the bundle's shape doesn't fit (e.g. you need
-compile-only verify without test discovery, or want to run a custom test filter).
+**Rule of thumb:**
+
+- Multi-file edits: `validate_recent_git_changes` first (one call, scoped to touched files, aggregate pass/fail).
+- Drop to the primitive triple only when the bundle's shape does not fit (compile-only verify, custom test filter).
 
 ### `overallStatus` verdict table
 
-**Canonical source for the `overallStatus` verdict set.** Every other surface in
-this repo (skills, prompts, phase files) points here instead of restating the
-list — a restated list goes stale the moment a value is added. The values below
-are authoritative against `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs`
-(the `validate_workspace` / `validate_recent_git_changes` tool `Description`
-strings). Treat **only** `clean` as passing; every other value is non-passing.
+**Canonical source for the `overallStatus` verdict set.**
+
+- Other surfaces (skills, prompts, phase files) point here instead of restating the list.
+- Authoritative against `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs` (tool `Description` strings) and `IWorkspaceValidationService.cs`.
+- Treat **only** `clean` as passing; every other value is non-passing.
 
 | Value | Reachable from | Caller action |
 |---|---|---|
@@ -118,6 +115,7 @@ strings). Treat **only** `clean` as passing; every other value is non-passing.
 | `analyzer-error` | both | Stop. Read `errorDiagnostics` for retained Error-severity diagnostics beyond the authoritative compiler count: analyzer/workspace errors or uncorroborated compiler-category errors when compilation is incomplete. Fix before re-running. |
 | `test-failure` | both | Stop. Read `testRunResult.failures` and fix before re-running. |
 | `test-zero-run` | both | `runTests=true` but the discovered filter matched zero tests. Re-run `test_run` standalone against the surfaced filter; the zero-match is almost always a working-directory/filter-resolution race, not a real pass. |
+| `compile-incomplete` | both | Compilation was cancelled or fewer projects completed than were selected, with no higher-priority diagnostic or test failure. Retry compilation before treating validation as passing. |
 | `timeout` | both | A validation phase exceeded the 25-second internal cap. The response carries `compileResult.cancelled=true` plus a `warnings` entry naming the phase and a synthetic `testRunResult.failureEnvelope` with `errorKind: "Timeout"`, even with `runTests=false`; safe to retry. |
 | `git-status-unknown` | `validate_recent_git_changes` only | The `git status` scope-collection itself timed out, so a would-be `clean` verdict was computed over an untrustworthy fallback scope instead of the real working tree. Retry, or raise `ROSLYNMCP_GIT_STATUS_TIMEOUT_SECONDS` (see [`runtime.md`](../runtime.md)) if `git status` is slow on this repo. |
 
@@ -127,10 +125,7 @@ tool derives its scope from `git status --porcelain`.
 
 ### Shell fallbacks — CI-parity only
 
-Reach for these **only** when you need byte-identical CI parity (e.g., the final
-`verify-release.ps1` check before cutting a release), or when the MCP server is
-disconnected and the [fallback column in the primer](../bootstrap-read-tool-primer.md#pattern--tool-read-side--always-safe)
-applies:
+Use **only** for byte-identical CI parity (e.g. the final `verify-release.ps1` before a release) or when the MCP server is disconnected (see the [fallback column in the primer](../bootstrap-read-tool-primer.md#pattern--tool-read-side--always-safe)):
 
 - `Bash: dotnet build <sln> -c Release -p:TreatWarningsAsErrors=true` — full MSBuild
   cycle, ~5–30s; matches CI exactly.
@@ -138,9 +133,7 @@ applies:
   CI exactly.
 - `Bash: dotnet format --verify-no-changes` — full-solution formatter check.
 
-Routine post-edit verify should **not** use the shell commands. The MCP triple returns
-the same signal 5–30× faster and with structured output the caller can inspect without
-re-parsing stdout.
+Routine post-edit verify does **not** use the shell commands; the MCP triple returns the same signal faster, as structured output.
 
 ## Tool Categories
 
@@ -201,7 +194,7 @@ The recommended workflow for Single Responsibility Principle refactoring:
 5. APPLY:    extract_type_apply    → Execute the extraction
 6. ABSTRACT: extract_interface_preview → Create interface for the new type (optional)
 7. MIGRATE:  bulk_replace_type_preview → Update consumers to use interface (optional)
-8. VERIFY:   build_workspace       → Check compilation
+8. VERIFY:   compile_check         → Check compilation
 9. TEST:     test_related_files    → Run affected tests
 ```
 
@@ -212,33 +205,24 @@ Use the `cohesion_analysis` prompt for a guided version of this workflow.
 Most write operations follow a two-step pattern:
 
 1. **Preview** (`*_preview`) — Returns a diff and a `previewToken`. Inspect the changes.
-2. **Apply** (`*_apply`) — Pass the `previewToken` to commit changes. Tokens expire after ~15 minutes.
+2. **Apply** (`*_apply`) — Pass the `previewToken` to commit changes. Tokens expire after 5 minutes by default (`ROSLYNMCP_PREVIEW_TTL_MINUTES`; see [environment-variables.md](../references/environment-variables.md)).
 
-If the workspace changes between preview and apply, the token becomes stale and the apply will fail.
-Always call `build_workspace` after applying changes.
+- If the workspace changes between preview and apply, the token is stale and the apply fails.
+- After applying, verify with the [post-edit workflow](#verification-workflow-post-edit-default) (`validate_recent_git_changes` or `compile_check`); `build_workspace` is for process-level build parity.
 
 ## Undo
 
-`revert_last_apply(workspaceId)` rolls back the **most recent** `*_apply`
-operation on a workspace. Coverage includes renames, code fixes, format,
-organize usings, `apply_text_edit` / `apply_multi_file_edit`, and the
-file-level apply tools (`create_file_apply`, `delete_file_apply`,
-`move_file_apply`, `extract_interface_apply`, `extract_type_apply`,
-`move_type_to_file_apply`). A second `revert_last_apply` call in the same
-session does **not** undo the one before it — the history is depth-1.
+`revert_last_apply(workspaceId)` rolls back the **most recent** `*_apply` on a workspace.
+
+- Coverage: renames, code fixes, format, organize usings, `apply_text_edit` / `apply_multi_file_edit`, and the file-level apply tools (`create_file_apply`, `delete_file_apply`, `move_file_apply`, `extract_interface_apply`, `extract_type_apply`, `move_type_to_file_apply`).
+- History is single-slot: a second call does **not** undo the one before it (reports `No operation to revert`).
+- Earlier applies: `revert_apply_by_sequence(workspaceId, sequenceNumber)` with the sequence from `workspace_changes`. It refuses when a later apply touched the same file; revert the blocking sequences first.
 
 ### revert_last_apply — side-effect cleanup
 
-`revert_last_apply` reverts **text edits** from the last `*_apply`. It does
-**NOT** remove files created as a side effect of that apply. Specifically,
-the extracted file that `extract_type_apply`, `extract_method_apply`, or
-`extract_interface_apply` wrote to disk stays on disk after the revert —
-the extracted symbol is restored to its original location, but the new
-file is now an orphan. Any other `*_apply` that creates new files has the
-same shape.
-
-**Canonical follow-up:** call `delete_file_apply` on the extracted file to
-finish the undo.
+- `revert_last_apply` reverts **text edits** only; it does **NOT** remove files created as a side effect.
+- `extract_type_apply`, `extract_method_apply`, `extract_interface_apply` (and any `*_apply` that creates files) leave the new file on disk as an orphan after the revert.
+- **Canonical follow-up:** call `delete_file_apply` on the created file to finish the undo.
 
 **Worked example:**
 
@@ -253,13 +237,9 @@ delete_file_apply(workspaceId, filePath: ".../Foo.cs")
   → removes Foo.cs. Workspace is now byte-identical to the pre-extract state.
 ```
 
-The same pattern applies to `extract_method_apply` (if the method lands in
-a new partial file) and `extract_interface_apply` (the new interface file
-on disk).
-
 ## Error Recovery
 
-- **"Preview token is stale"** — The workspace changed since the preview. Re-run the preview.
-- **"Workspace is not loaded"** — Call `workspace_load` first.
-- **"Symbol not found"** — Verify file path and line/column. Use `symbol_search` to find the correct location.
+- **"Preview token is invalid, expired, or stale ..."** — The workspace changed since the preview, or the TTL elapsed. Re-run the preview.
+- **"Workspace '<id>' was not found ..."** — Call `workspace_load` (again) and use the returned `workspaceId`.
+- **"No symbol found at <file>:<line>:<col>"** — Verify file path and line/column. Use `symbol_search` to find the correct location.
 - **Build failures after refactoring** — Check `project_diagnostics` for the specific errors, then use `code_fix_preview` for automated fixes.

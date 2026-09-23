@@ -1,5 +1,7 @@
 # sourcefileencoding-core-relocation — encoding consolidation is structurally incomplete
 
+**row:** `sourcefileencoding-core-relocation` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Helpers/SourceFileEncoding.cs`

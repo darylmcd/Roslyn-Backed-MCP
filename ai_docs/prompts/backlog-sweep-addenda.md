@@ -29,29 +29,16 @@ worktreeLockRelease: dotnet build-server shutdown
 skipCiToken: ""   # NONE — see CI gate note below
 ```
 
-`ci_equivalent` mirrors the PR leg of `.github/workflows/ci.yml`, in order. `verify-release.ps1` alone is **not** the gate: `verify-changed-format` (changed-file formatter findings) and `verify-nuget-audit` fail PRs that a release build passes, and `verify-ai-docs` runs *before* the SDK is even set up. CI shards `verify-release.ps1` across matrix legs (`-NoCoverage -ExcludeNetworkTests` plus `-TestShardIndex/-TestShardCount`, and `-TestShardOnly` on every non-artifact-owner leg); locally, run it unsharded. Skip steps only when context-tight; `fallback_compile` + targeted `mcp__roslyn__test_run` is the documented minimum substitute.
-
-**`verify-changelog-fragments.ps1` is doubly covered — do not read the standalone CI step as the only run.** On a *code* PR the standalone step is skipped (`ci.yml:111` gates it on `docs_only == 'true'`); the fragment check still executes as a `verify-release.ps1` child step (`eng/verify-release.ps1:296-299`, inside the `-not $TestShardOnly` block that only the artifact-owner leg reaches). On a *docs-only* PR every leg is forced `-TestShardOnly`, that whole child block is skipped, and the standalone step is the sole coverage. Running it explicitly first, as `ci_equivalent` does, is correct on both paths.
-
-**One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list above for consumers that must run or skip individual gates; `just ci` passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
-
-**Topology split — `ci_equivalent` is the code-PR shape.** The `route` job runs `eng/resolve-ci-topology.ps1`, which classifies a PR as **docs-only** when every changed path matches `^(.*\.md|ai_docs/.*\.json)$` *and* none matches the behavior-bearing carve-out (`CHANGELOG.md`, or anything under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, `.github/prompts/`). A partial or over-capped files-API enumeration fails closed to the full matrix.
-
-| | Code PR | Docs-only PR |
-|---|---|---|
-| Matrix | 4 hosted Windows + 2 Linux shards | 2 Linux shards (`docs-linux-{1,2}-of-2`) |
-| `verify-ai-docs` | runs (artifact-owner leg) | runs (artifact-owner leg) |
-| `verify-changelog-fragments` (standalone step) | **skipped** — covered by the `verify-release.ps1` child step instead | runs (artifact-owner leg); sole coverage on this path |
-| `verify-release.ps1` | runs; artifact-owner leg packages and runs the full policy-child block | **runs**, but every leg is forced `-TestShardOnly` — tests shard, and the entire child-script block is skipped (package-family parity, version drift, skills-generic, plugin-package allowlist, changelog fragments, breaking-version, registry readiness, third-party notices) |
-| `verify-changed-format` | runs on the artifact-owner leg | skipped |
-| `verify-nuget-audit` | runs on the artifact-owner leg | skipped |
-| `sdk-floor (10.0.400)` | runs | skipped |
-
-So a docs-only initiative running `ci_equivalent` verbatim executes two scripts CI will skip. That is the safe direction — over-validating locally never lets a red PR through — so run the full list by default and drop those two only when you have confirmed the PR is docs-only by the rule above. Never assume the reverse: a row that touches a skill, agent, prompt, or `CHANGELOG.md` is a **code** PR no matter how markdown-shaped it looks.
-
-**Required check + no skip token.** The `Default Branch Ruleset` requires exactly one status context: `validate`. That context is produced by `ci.yml`'s **`validate-gate`** job (not the job keyed `validate`, whose legs report as `validate-leg (<name>)`), which fans in `route` + every `validate-leg` + `sdk_floor` and names itself `validate` only on `pull_request` events (`validate-informational` otherwise, so a dispatch run can never satisfy the gate). A `[skip ci]` token in a commit subject leaves that check never-reported, so the PR is permanently BLOCKED — including on no-code state-flip/reconcile commits. `skipCiToken` is therefore **empty**: never put a skip token in any commit on a PR branch here.
-
-`dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. The parent `/ship` owner invokes it when its canonical cleanup needs it; this addendum must never prescribe branch or worktree deletion. Its informational stdout is not an error, so cleanup checks must use its exit status rather than treat output as failure.
+- `ci_equivalent` mirrors the PR leg of `.github/workflows/ci.yml`, in order.
+- `verify-release.ps1` alone is **not** the gate: `verify-changed-format` and `verify-nuget-audit` fail PRs a release build passes, and `verify-ai-docs` runs before the SDK is set up.
+- CI shards `verify-release.ps1` across matrix legs; locally, run it unsharded.
+- Skip steps only when context-tight; `fallback_compile` + targeted `mcp__roslyn__test_run` is the documented minimum substitute.
+- Code-PR vs docs-only-PR topology (leg matrix, which gates are skipped, fail-closed classification, `validate-gate` / `validate` naming): [CI_POLICY.md](../../CI_POLICY.md) and `eng/resolve-ci-topology.ps1`. `ci_equivalent` is the code-PR shape; running it verbatim on a docs-only PR only over-validates.
+- A row that touches a skill, agent, prompt, or `CHANGELOG.md` is a **code** PR however markdown-shaped it looks.
+- `verify-changelog-fragments.ps1` runs standalone on docs-only PRs and as a `verify-release.ps1` child step on code PRs; running it explicitly first (as `ci_equivalent` does) is correct on both.
+- **One-command local equivalent: `just ci`.** Its measured cost, timeout/background mode, hook runtime, exact filter, regeneration companions, flake registry, and `parallelSafe` value live in [AGENTS.md § Validation runtime](../../AGENTS.md#validation-runtime). Keep the machine-readable `ci_equivalent` list for consumers that must run or skip individual gates; `just ci` passes `-NoCoverage -ExcludeNetworkTests` through `verify-release-pr`.
+- **Required check, no skip token.** The ruleset requires one status context, `validate`, produced by `validate-gate` on `pull_request` events. A `[skip ci]` token in any commit subject leaves it never-reported and the PR permanently BLOCKED, so `skipCiToken` is **empty**: never put a skip token in a commit on a PR branch here.
+- `dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/`. The parent `/ship` owner invokes it when its cleanup needs it; this addendum must never prescribe branch or worktree deletion. Check its exit status, not its stdout.
 
 ## Read-side tool primer
 
@@ -66,7 +53,7 @@ The full pattern→tool table lives in [ai_docs/bootstrap-read-tool-primer.md](.
 | Enumerate file public surface | `mcp__roslyn__document_symbols` | `Grep public ` |
 | Full-file diagnostics | `mcp__roslyn__project_diagnostics` | full build output parse |
 
-5–30× faster and structurally accurate vs textual matching.
+Faster and structurally accurate vs textual matching.
 
 **Tool-name prefix is session-dependent — resolve it, never hardcode it.** The `mcp__roslyn__*` names above are the bare-server form. When the server is loaded as the Claude Code *plugin* (the default here — `roslyn-mcp@roslyn-mcp-marketplace`), every tool is exposed as `mcp__plugin_roslyn-mcp_roslyn__<tool>` and the bare names do not resolve. `.claude/settings.json` carries both prefixes in its allowlist for the same reason. A subagent briefing that pastes `preferred_read_side_tools` verbatim must resolve the live prefix first (call each `*server_info` candidate until one returns a Roslyn-shaped response, then pin that prefix) rather than assuming either form.
 
@@ -114,31 +101,32 @@ parallel_safety:
 
 ## Hotspot files (parallel-mode wave rule: ≤1 per wave)
 
-These files are touched by many initiatives by structural inevitability. The global executor's parallel-mode picker enforces ≤ 1 hotspot-touching initiative per wave.
+These files are touched by many initiatives by structural inevitability. The global executor's parallel-mode picker enforces ≤ 1 hotspot-touching initiative per wave. Re-measure citation pressure with `rg -l <file> ai_docs/items` when refreshing this section.
 
-Citation counts below are open-row counts measured over `ai_docs/items/*.md` on 2026-09-15; re-measure when this section is refreshed.
+| File | Why it's a hotspot |
+|---|---|
+| `README.md` | **The repo's single biggest collision surface.** Its "**N tools** (X stable / Y experimental)" surface-count paragraph and the stable-only "currently N callable tools" sentence move on every tool add, rename, or tier promotion. Two initiatives editing it in one wave conflict on the same lines. |
+| `src/RoslynMcp.Host.Stdio/README.md` | **Every tool-surface row edits it.** `HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog` asserts the identical surface-count paragraph. Rows historically forgot to cite it, but its edit frequency equals `README.md`'s; treat it as a same-wave collision surface with `README.md`. |
+| `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs` | Largest catalog partial. Every refactoring-tool registration/description/tier change lands here. |
+| `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs` | Same shape, orchestration surface. |
+| `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs` | Wrapper file paired with the Refactoring partial; `[McpToolMetadata]` tier/name strings live here and must agree with the partial (RMCP001/RMCP002). |
+| `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` | The Roslyn-service DI file, touched by every new Roslyn service. Not `src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs` (host-local plumbing only); there is no `src/RoslynMcp.Host.Stdio/Extensions/` directory. |
+| `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs` | Carries the whole `parameter_object_preview` pipeline (target validation, call-site binding, DTO emission, rewrite). Rows against it form a complete conflict graph: plan them as their own sequential conflict generations; do NOT expect a parallel wave. |
+| `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` | Shared workspace state. Rows that share state without sharing a code path still do NOT bundle (Rule 1) and should not parallel-execute against this file in the same wave. |
 
-| File | Open rows citing | Why it's a hotspot |
-|---|---|---|
-| `README.md` | 39 | **The repo's single biggest collision surface.** Its surface-count line (`README.md:239`) and the stable-only callable count (`README.md:186`) move on every tool add, rename, or tier promotion. Two initiatives editing it in one wave conflict on the same line. |
-| `src/RoslynMcp.Host.Stdio/README.md` | 1 cited / **every tool-surface row edits it** | The second gated README — `HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog` asserts the identical paragraph at `src/RoslynMcp.Host.Stdio/README.md:88`. Citation count is near zero only because rows historically forgot it; the *edit* frequency equals `README.md`'s. Treat it as a same-wave collision surface with `README.md`. |
-| `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs` | 16 | Largest catalog partial. Every refactoring-tool registration/description/tier change lands here. |
-| `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs` | 9 | Same shape, orchestration surface. |
-| `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs` | 6 | Wrapper file paired with the Refactoring partial; `[McpToolMetadata]` tier/name strings live here and must agree with the partial (RMCP001/RMCP002). |
-| `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` | low | 88 service registrations — DI line touched by every new Roslyn service. **This is the DI file**, not `Host.Stdio/ServiceCollectionExtensions.cs` (14 registrations, host-local plumbing only). There is no `Host.Stdio/Extensions/` directory. |
-| `src/RoslynMcp.Roslyn/Services/ParameterObjectService.cs` | 5 | 1873 lines carrying the whole `parameter_object_preview` pipeline (target validation, call-site binding, DTO emission, rewrite). Sweep `20260818T211226Z` planned six rows against it and the conflict graph came back a complete K6 — zero parallelizable initiatives, six sequential PRs (#1263/#1265/#1267/#1269/#1271/#1273). Plan rows here as their own conflict generations; do NOT expect a parallel wave. |
-| `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` | 2 | 1558 lines of shared workspace state. Citation pressure has dropped, but rows that share state without sharing a code path still do NOT bundle (Rule 1) and should not parallel-execute against this file in the same wave. |
+**Heavily cited but NOT edited — do not schedule around these.** Both are *gates whose expectations are derived live*, so rows citing them never edit them:
 
-**Heavily cited but NOT edited — do not schedule around these.** Two files out-rank most of the table on raw citation count yet are never edited by the rows citing them, because both are *gates whose expectations are derived live*:
-
-| File | Open rows citing | Reality |
-|---|---|---|
-| `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` | 36 (34 of them co-cited with `ReadmeSurfaceCountTests.cs`) | Cited as the RMCP001/RMCP002 enforcement anchor. Only 2 rows actually target the analyzer itself. |
-| `tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs` | 34 | Asserts against `ServerSurfaceCatalog.Tools` **at run time** — a tool add or tier promotion moves no literal inside it. Verified: of the last 22 commits touching a `ServerSurfaceCatalog.*.cs` partial, **zero** edited this file, while every tool-add edited `README.md`. |
+| File | Reality |
+|---|---|
+| `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` | Cited as the RMCP001/RMCP002 enforcement anchor; almost no row targets the analyzer itself. |
+| `tests/RoslynMcp.Tests/ReadmeSurfaceCountTests.cs` | Asserts against `ServerSurfaceCatalog.Tools` **at run time** — a tool add or tier promotion moves no literal inside it. |
 
 Citing a gate is correct and useful; scheduling waves around it, or charging it a Rule 4 test slot, is not. Neither file is a merge-collision surface, because nothing writes to it.
 
-**The catalog partials are separate files.** `ServerSurfaceCatalog.{Refactoring,Orchestration,Editing,Symbols,Workspace,Analysis,Resources,Prompts}.cs` were split precisely so unrelated tool areas stop colliding. Two initiatives touching *different* partials do not conflict — apply the ≤1-per-wave rule **per partial**, not to the catalog family as a whole. `ServerSurfaceCatalog.cs` itself (the shared base, 3 citations) is the exception: treat it as one hotspot.
+**The catalog partials are separate files.** `ServerSurfaceCatalog.{Refactoring,Orchestration,Editing,Symbols,Workspace,Analysis,Resources,Prompts}.cs` were split so unrelated tool areas stop colliding.
+
+- Two initiatives touching *different* partials do not conflict: apply the ≤1-per-wave rule **per partial**, not to the catalog family as a whole.
+- `ServerSurfaceCatalog.cs` itself (the shared base) is the exception: treat it as one hotspot.
 
 ## Virtually-shared files (orchestrator-owned in parallel mode)
 
@@ -157,7 +145,7 @@ fragment_path: changelog.d/<row-id>.md
 fragment_skill: /draft-changelog-entry
 fragment_format: |
   YAML frontmatter is mandatory — the file MUST open with
-  ---\ncategory: <Added|Changed|Fixed|Removed|Maintenance>\n---
+  ---\ncategory: <Fixed|Changed|Changed — BREAKING|Added|Maintenance>\n---
   followed by the body. eng/verify-changelog-fragments.ps1 (first step of the
   PR gate) rejects a bare body.
 consumed_by: /bump (rolls fragments into CHANGELOG.md at version-bump time)
@@ -174,7 +162,7 @@ A new `[McpServerTool]` follows the Core+Roslyn+Host.Stdio three-layer pattern. 
 | Core contract | `src/RoslynMcp.Core/Services/I{Tool}Service.cs` + `src/RoslynMcp.Core/Models/{Tool}Result.cs` (+ optional request DTO) |
 | Roslyn implementation | `src/RoslynMcp.Roslyn/Services/{Tool}Service.cs` |
 | Host.Stdio tool surface | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs`, carrying the `[McpToolMetadata]` attribute (tier + name) |
-| Registration | matching `ServerSurfaceCatalog.{Area}.cs` partial entry — the attribute and the partial row MUST agree or RMCP001/RMCP002 fail the build (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs:72,87`) — plus the DI line in `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` |
+| Registration | matching `ServerSurfaceCatalog.{Area}.cs` partial entry — the attribute and the partial row MUST agree or RMCP001/RMCP002 fail the build (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs`) — plus the DI line in `src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs` |
 
 Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and cite the structural-unit exemption in Scope.
 
@@ -194,15 +182,22 @@ mandatory_companion_files:
     trigger_anchors: [src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs, src/RoslynMcp.Host.Stdio/Tools/*Tools.cs]
 ```
 
-The `ReadmeSurfaceCountTests` gate (PR #294) asserts that the "**N tools** (X stable / Y experimental)" paragraph matches `ServerSurfaceCatalog` in **two** documents — `README.md:239` (`RootReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog`) and `src/RoslynMcp.Host.Stdio/README.md:88` (`HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog`). A tool add moves `N` plus its tier's counter; a tier promotion moves `X` and `Y`. Both paragraphs must move together or the second test fails.
+`ReadmeSurfaceCountTests` gates surface counts in **two** documents; a tool add moves `N` plus its tier's counter, a tier promotion moves `X` and `Y`:
 
-**`ReadmeSurfaceCountTests.cs` is deliberately NOT a companion.** It derives every expectation from the live catalog, so a tool add or tier promotion changes nothing inside it — see the *cited but not edited* table above for the 22-commit evidence. Listing it here charged every tool-surface row a phantom Rule 4 test slot while hiding the real second companion.
+- `RootReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog` — the "**N tools** (X stable / Y experimental)" paragraph in `README.md`.
+- `HostStdioReadmeSurfaceCounts_MatchLiveServerSurfaceCatalog` — the identical paragraph in `src/RoslynMcp.Host.Stdio/README.md`.
+- Both paragraphs must move together or the second test fails.
 
-**The stable-only callable count at `README.md:186` is NOT gated.** `CountPattern` requires the bolded `**N tools**` form; the prose "currently 94 callable tools" matches nothing and no other test asserts it. Re-derive it by hand on any tier change — nothing will fail if you forget. (Tracked: `readme-stable-callable-count-ungated`.)
+**`ReadmeSurfaceCountTests.cs` is deliberately NOT a companion.** It derives every expectation from the live catalog, so a tool add or tier promotion changes nothing inside it (see the *cited but not edited* table above). Listing it charged every tool-surface row a phantom Rule 4 test slot while hiding the real second companion.
 
-Two further assertions in the same test class fire on a different trigger — an edit under `skills/`, not the catalog: `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` requires the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md:70`, **and** `.claude-plugin/plugin.json`'s description to match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks), so a shipped-skill add/remove cannot be completed by a plain subagent — it must route through `/bump`, `/release-cut`, or `/ship`, or create the sentinel explicitly. And `BacklogPlanningSurfaceCountClaims_MatchLiveServerSurfaceCatalog` sweeps every planning/backlog `ai_docs/**/*.md` for "`<N>` tools is approaching" and `server_info.surface.registered.tools <from> -> <to>` claims, so a stale tool count in a backlog item or in this file fails the build too.
+**The stable-only callable count is gated too.** `RootReadmeStableCallableToolCount_MatchesStableOnlyRegistrationSurface` requires exactly one "currently N callable tools" claim in `README.md` and compares it with the live stable-only registration surface. A tier change or tool add that alters the stable-only count fails it, so update that sentence with the surface-count paragraph.
 
-**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: cite that exemption and drop both companions from the stanza, with the reason stated in Scope. Over-triggering is the deliberate default — the prior failure mode was rows that silently *under*-counted the gate and blew their Rule 3 budget at validation time (case study PR #323).
+Further assertions in the same test class fire on a different trigger:
+
+- `ReadmePackageAndPluginSkillCounts_MatchShippedSkillDirectory` fires on an edit under `skills/`: the "N bundled agent skills" claim in `README.md`, `src/RoslynMcp.Host.Stdio/README.md`, **and** `.claude-plugin/plugin.json`'s description must match the shipped `skills/` directory. `.claude-plugin/plugin.json` is a **hard-blocked release-managed path** (see Hooks): a shipped-skill add/remove routes through `/bump`, `/release-cut`, or `/ship`, or creates the sentinel explicitly.
+- `BacklogPlanningSurfaceCountClaims_MatchLiveServerSurfaceCatalog` sweeps every planning/backlog `ai_docs/**/*.md` for "`<N>` tools is approaching" and `server_info.surface.registered.tools <from> -> <to>` claims, so a stale tool count in a backlog item or in this file fails the build too.
+
+**Known over-trigger.** Description-, envelope-, and parameter-text-only edits touch those anchors without moving any count. Such rows are the `tool_surface_only` shape below: cite that exemption and drop both companions from the stanza, with the reason stated in Scope. Over-triggering is the deliberate default; the failure mode it prevents is a row that under-counts the gate and blows its Rule 3 budget at validation time.
 
 ## Tool-surface-only exemption (Rule 3)
 
@@ -215,11 +210,11 @@ Initiatives that ONLY change response-shape, error envelope, description text, o
 
 `toolPolicy` MUST be `"edit-only"`. Rule 4 still applies. Cite in Scope: *"Rule 3 exemption: tool-surface-only, 2 files."*
 
-Session evidence: 11 of 29 P3 rows in the 2026-04-24 intake are envelope/error-wrapper fixes. The 3-layer pattern would over-spec them; the 2-file cap captures them honestly.
+The 3-layer pattern would over-spec envelope/error-wrapper fixes; the 2-file cap captures them honestly.
 
 ## Hooks that block subagent tool calls
 
-There is **no** `PreToolUse` gate on `mcp__roslyn__*_apply` in this repo. The historical "apply requires same-conversation preview evidence" hook (and the PR #230 `apply_composite_preview` redemption widening) is gone; `toolPolicy` here is driven by the self-edit caveat below, not by a hook. What actually exists:
+There is **no** `PreToolUse` gate on `mcp__roslyn__*_apply` in this repo; `toolPolicy` here is driven by the self-edit caveat below, not by a hook. What exists:
 
 ```yaml
 hooks:
@@ -314,30 +309,16 @@ These are the preferred-path skills the global commands reference. All resolve; 
 
 The global Rules 1–5 ceilings apply unmodified. Should this repo ever need to lower a cap (e.g. tighten Rule 3 from 4 to 3 files for a stretch), record it here as `overrides:` with rationale.
 
-## Case studies (session evidence)
-
-Compact pointer list — full retros live in `review-inbox/archive/<batch-ts>/` and the linked PR descriptions.
-
-| Topic | PR / Date | Lesson |
-|---|---|---|
-| Three-layer Rule 3 under-estimate | PR #239 (2026-04-17) | New-tool initiatives ship 5–7 files; structural-unit exemption added in planner v3. |
-| Catalog-touching parallel rebase | PRs #258, #260 (2026-04-18) | Two catalog-touching PRs in one wave forced second-to-merge into UNSTABLE → re-validate. ≤1 catalog-touching per wave. |
-| README surface-count gate | PR #294 (2026-04) | Surface count assertion enforced — addenda counts README in file budget. |
-| Compilation prewarm addenda missed | PR #323 (2026-04-22) | Plan missed the 3 mandatory addenda; all surfaced at validation time. Addenda list is now in this file. |
-| WorkspaceManager hotspot family | PR #362 + 2026-04-22 retro | Multiple P3 rows citing `WorkspaceManager.cs` share state but not code path. Don't bundle; don't parallel-wave. |
-| `heroic-last` → defer-at-closeout | 2026-04-22 orders 15/16 | Heroic rows often go obsolete by closeout. Prefer `status: "deferred"` from the outset if planner already suspects this. |
-
 ---
 
 ## Maintenance
 
 - Update `Build / validation commands` when `.github/workflows/ci.yml`'s PR leg changes which `eng/*.ps1` scripts it runs — the addenda mirrors the workflow, not `verify-release.ps1` alone.
-- Update `Hotspot files` when a partial split or refactor changes the parallel-merge friction surface. Re-measure the citation counts (`grep -rl <file> ai_docs/items/*.md`) and restamp the measurement date rather than carrying old numbers forward.
+- Update `Hotspot files` when a partial split or refactor changes the parallel-merge friction surface. Do not record citation counts; they go stale immediately.
 - Update `Structural-unit shape` if a new layer (e.g. `RoslynMcp.Host.Http`) is added.
-- Update `Hooks that block subagent tool calls` against `.claude/settings.json` **and** `hooks/hooks.json` whenever either changes. Removing a hook without removing its addenda entry is the failure this section has already made once.
-- Keep `## mandatory_companion_files` as a top-level `##` heading with the key inside a fenced block. `backlog.mjs audit` matches the heading literally (`_anchor-classify.mjs:442`); demoting it to `###` or converting it back to a prose table silently disables mechanical companion expansion.
+- Update `Hooks that block subagent tool calls` against `.claude/settings.json` **and** `hooks/hooks.json` whenever either changes. Remove a hook's addenda entry in the same PR that removes the hook.
+- Keep `## mandatory_companion_files` as a top-level `##` heading with the key inside a fenced block. `backlog.mjs audit` matches the heading literally (`mandatoryCompanionSection()` in `~/.claude/scripts/_anchor-classify.mjs`); demoting it to `###` or converting it back to a prose table silently disables mechanical companion expansion.
 - Re-derive a companion entry from the gate's *source*, not from what rows habitually cite. A gate that asserts against live state (`ReadmeSurfaceCountTests` reading `ServerSurfaceCatalog.Tools`) is never a companion; only a file carrying a literal that must move is. Check with `git log --name-only` over the last ~20 commits touching the trigger anchor: a file no such commit edits is not a companion.
 - Re-verify the tool-name prefix aliases whenever the install shape changes. Keep the hooks' exact dual-prefix matcher contract, `.claude/settings.json` allowlist parity, and the read-side primer's live-prefix resolution guidance synchronized.
-- Append to `Case studies` whenever a sweep retro produces a quotable new lesson — keep this section append-only; old entries are evidence.
 
-The addenda file should hover around 150–250 lines. If it grows past 400, it's becoming a second planner — extract overflow to dedicated `ai_docs/` topics and link from here.
+Keep this file to repo facts: when a section becomes explanation rather than a parser-consumed fact, move it to a dedicated `ai_docs/` topic and link from here.

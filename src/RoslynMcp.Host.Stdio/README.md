@@ -28,6 +28,8 @@ dotnet tool update -g Darylmcd.RoslynMcp
 
 The server speaks MCP over **stdio**. Point any stdio-capable MCP client at the `roslynmcp` command.
 
+> **Set a filesystem boundary.** An unset `ROSLYNMCP_SANCTIONED_ROOTS` is fail-closed: every path-taking tool rejects its input. The snippets below set it to `.`, which resolves against the server process's working directory (chosen by your MCP client); use an absolute path to pin it. Multiple roots use `;` on Windows and `:` on macOS/Linux.
+
 ### Cursor
 
 Add to `.cursor/mcp.json` (project) or your user MCP settings:
@@ -36,7 +38,8 @@ Add to `.cursor/mcp.json` (project) or your user MCP settings:
 {
   "mcpServers": {
     "roslyn-mcp": {
-      "command": "roslynmcp"
+      "command": "roslynmcp",
+      "env": { "ROSLYNMCP_SANCTIONED_ROOTS": "." }
     }
   }
 }
@@ -50,7 +53,8 @@ Add to your Claude Code MCP settings:
 {
   "mcpServers": {
     "roslyn-mcp": {
-      "command": "roslynmcp"
+      "command": "roslynmcp",
+      "env": { "ROSLYNMCP_SANCTIONED_ROOTS": "." }
     }
   }
 }
@@ -58,26 +62,27 @@ Add to your Claude Code MCP settings:
 
 ### Claude Code (plugin — recommended)
 
-Claude Code also supports installing this server as a **plugin** with curated skills and safety hooks. The plugin is a thin layer on top of the same `roslynmcp` global tool — install the global tool first, then add the plugin:
+Claude Code also supports installing this server as a **plugin** with curated skills and safety hooks. The plugin launches the release-matched `Darylmcd.RoslynMcp` package through `dnx` (no global `roslynmcp` shim needed; .NET 10 SDK 10.0.100+ and NuGet access on first launch):
 
 ```
 /plugin marketplace add darylmcd/Roslyn-Backed-MCP
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-No further configuration is required; the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values — see [`docs/mcp-json-examples/`](https://github.com/darylmcd/Roslyn-Backed-MCP/tree/main/docs/mcp-json-examples) for copy-ready templates.
+No further configuration is required; the plugin ships `ROSLYNMCP_SANCTIONED_ROOTS="."` and the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values — see [`docs/mcp-json-examples/`](https://github.com/darylmcd/Roslyn-Backed-MCP/tree/main/docs/mcp-json-examples) for copy-ready templates.
 
-The plugin adds **32 bundled agent skills** — including `/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`, `/roslyn-mcp:impact-assessment`, `/roslyn-mcp:refactor-loop`, `/roslyn-mcp:modernize`, `/roslyn-mcp:trace-flow`, `/roslyn-mcp:inheritance-explorer`, and more — plus pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill catalogue.
+The plugin adds **32 bundled agent skills** — including `/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`, `/roslyn-mcp:impact-assessment`, `/roslyn-mcp:refactor-loop`, `/roslyn-mcp:modernize`, `/roslyn-mcp:trace-flow`, `/roslyn-mcp:inheritance-explorer`, and more — plus safety hooks that remind the agent to run a compile check after `*_apply` calls (preview-token enforcement itself is server-side). See the [plugin setup guide](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/setup.md#claude-code-plugin) for the full skill catalogue.
 
 ### VS Code (and other stdio MCP clients)
 
-Any stdio-capable MCP client uses the same command:
+Any stdio-capable MCP client uses the same command (VS Code's `.vscode/mcp.json` uses a top-level `"servers"` key instead of `"mcpServers"`):
 
 ```json
 {
   "mcpServers": {
     "roslyn-mcp": {
-      "command": "roslynmcp"
+      "command": "roslynmcp",
+      "env": { "ROSLYNMCP_SANCTIONED_ROOTS": "." }
     }
   }
 }
@@ -103,11 +108,11 @@ Every reader and writer response carries `_meta.elapsedMs`, `_meta.queuedMs`, an
 
 ## Configuration
 
-All variables below are **optional**. The server starts with the defaults listed when no value is set — no per-user or per-install configuration step is required. Override by adding an `env` block to a project-scope `.mcp.json` at your repo root (see [`docs/mcp-json-examples/with-overrides.mcp.json`](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/mcp-json-examples/with-overrides.mcp.json) for a copy-ready template) or to your MCP client's server config.
+Apart from `ROSLYNMCP_SANCTIONED_ROOTS` (empty default = deny all path access; see above), all variables below are **optional**: the server starts with the defaults listed when no value is set. Override by adding an `env` block to a project-scope `.mcp.json` at your repo root (see [`docs/mcp-json-examples/with-overrides.mcp.json`](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/mcp-json-examples/with-overrides.mcp.json) for a copy-ready template) or to your MCP client's server config.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ROSLYNMCP_MAX_WORKSPACES` | `8` | Maximum concurrent workspace sessions |
+| `ROSLYNMCP_MAX_WORKSPACES` | `16` | Maximum concurrent workspace sessions |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout |
 | `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `120` | NuGet vulnerability scan timeout |
@@ -133,6 +138,7 @@ Example MCP client config with overrides:
     "roslyn-mcp": {
       "command": "roslynmcp",
       "env": {
+        "ROSLYNMCP_SANCTIONED_ROOTS": ".",
         "ROSLYNMCP_MAX_WORKSPACES": "4",
         "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "120"
       }
@@ -147,7 +153,7 @@ Example MCP client config with overrides:
 
 - **Only load solutions you trust.** A malicious `.csproj` can execute arbitrary code with the permissions of the server process.
 - **Run in a sandbox for untrusted code.** If you need to analyze untrusted repositories, run the server inside a container, VM, or other isolation boundary.
-- Path validation is enforced against MCP client roots when available, including symlink/junction resolution — but this is defense-in-depth, not a substitute for trusting the workspace content.
+- Path validation is enforced against the operator-configured `ROSLYNMCP_SANCTIONED_ROOTS` boundary (client-advertised MCP Roots can only narrow it), including symlink/junction resolution — but this is defense-in-depth, not a substitute for trusting the workspace content.
 
 See [SECURITY.md](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/SECURITY.md) for the vulnerability disclosure policy.
 

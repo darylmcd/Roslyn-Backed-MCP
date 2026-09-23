@@ -1,13 +1,10 @@
 # promotion-tier-orchestration-batch-2 — Promote qualifying experimental tools in the Orchestration catalog partial (batch 2 of 2)
 
-**row:** `promotion-tier-orchestration-batch-2` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-orchestration-batch-2` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/PromptShimTools`
-- `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools`
-- `src/RoslynMcp.Host.Stdio/Tools/WorkflowRecommendationTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/PromptShimTools.cs`
 
 ## Acceptance
 

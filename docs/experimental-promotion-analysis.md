@@ -18,6 +18,8 @@ This document tracks promotion history and criteria, not the live surface totals
 
 Operational evidence for promotion decisions should come from the latest deep-review rollup in `ai_docs/reports/`, backed by immutable raw audits in `ai_docs/audit-reports/`.
 
+**Current state (server 4.2.1):** the tool surface is 113 stable / 62 experimental (see [README](../README.md#live-surface)). Most of the tools named in the historical tiers below have since been promoted; the Tier 1 sections after v1.9.0 and the "Next promotion pass" section reflect that. Verify any individual tool's tier against the live catalog before relying on this document.
+
 ## Tier 1 — promoted (v1.6.0)
 
 The following were promoted to **stable** in v1.6.0 per `docs/release-policy.md` (catalog + contract + semver).
@@ -55,17 +57,27 @@ The following were promoted to **stable** in v1.9.0: `semantic_search` (backlog 
 | `analyze_control_flow` | advanced-analysis | Read-only flow analysis; expression-bodied member support. |
 | `evaluate_csharp` | scripting | Timeout budget, infinite-loop safety, abandoned-cap, cancellation — all integration-tested. |
 
+## Tier 1 — promoted (v1.11.0)
+
+`get_code_actions`, `preview_code_action`, and `apply_code_action` were promoted to **stable** in v1.11.0 after selection-range refactorings were verified working in v1.10.0.
+
+## Tier 1 — promoted (v1.12.0)
+
+Seven tools were promoted to **stable** in v1.12.0 on multi-repo deep-review audit evidence: `get_syntax_tree`, `workspace_changes`, `suggest_refactorings`, `get_operations`, `get_editorconfig_options`, `evaluate_msbuild_property`, `evaluate_msbuild_items`. `get_msbuild_properties`, `apply_text_edit`, and `set_editorconfig_option` are also stable in the current catalog (promoted in later releases; see `CHANGELOG.md`).
+
 ## Next promotion pass
 
-Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions. Likely candidates still experimental: `get_operations`, `get_syntax_tree`, configuration/MSBuild helpers (`get_editorconfig_options`, `evaluate_msbuild_property`, `evaluate_msbuild_items`, `get_msbuild_properties`) — each gated by `docs/release-policy.md`.
+Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions. The earlier "likely candidates" list (`get_operations`, `get_syntax_tree`, and the configuration/MSBuild helpers) has been fully promoted, so the next candidates must be chosen from the live catalog's remaining experimental tools (read-only analysis tools are the easiest to stabilize; mutation tools need stronger preview/apply evidence) — each gated by `docs/release-policy.md`.
 
 ## Tier 2 — needs stronger evidence before promotion
 
+Rows for tools that are now stable are marked **promoted**; only the still-experimental entries remain open.
+
 | Bucket | Examples | Blocker |
 |--------|----------|---------|
-| Direct file / project mutation | `apply_text_edit`, `set_editorconfig_option`, `apply_project_mutation` | Requires documented preview/apply + negative tests for path safety. |
-| Code actions | `get_code_actions`, `preview_code_action`, `apply_code_action` | Large Roslyn surface; schema stability and idempotency need explicit policy. |
-| Orchestration / cross-project | `migrate_package_preview`, `move_type_to_project_preview` | Multi-step previews; need characterization tests per workflow. |
+| Direct file / project mutation | ~~`apply_text_edit`~~ (**promoted**), ~~`set_editorconfig_option`~~ (**promoted**), `apply_project_mutation` (experimental) | Requires documented preview/apply + negative tests for path safety. |
+| Code actions | ~~`get_code_actions`, `preview_code_action`, `apply_code_action`~~ (**promoted in v1.11.0**) | None remaining. |
+| Orchestration / cross-project | `migrate_package_preview`, `move_type_to_project_preview` (both still experimental) | Multi-step previews; need characterization tests per workflow. |
 
 ## Tier 3 — intentionally long-tail experimental
 

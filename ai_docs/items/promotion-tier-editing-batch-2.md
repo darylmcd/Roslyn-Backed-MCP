@@ -1,11 +1,10 @@
 # promotion-tier-editing-batch-2 — Promote qualifying experimental tools in the Editing catalog partial (batch 2 of 2)
 
-**row:** `promotion-tier-editing-batch-2` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-editing-batch-2` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/RemoveInterfaceMemberTool`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Editing.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/RemoveInterfaceMemberTool.cs`
 
 ## Acceptance
 

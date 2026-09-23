@@ -4,6 +4,8 @@
 
 This document walks **`docs/parity-gap-matrix.md`** and records **what is already implemented**, **what to verify before a release**, and **what remains product roadmap** (not a bug).
 
+> **Dated snapshot.** The status and evidence below were recorded on **2026-04-04 (v1.6.0)** and the verification log ends at the v1.9.0 promotion (2026-04-11). Test counts, tier counts, and promotion status are frozen as of those dates and are **not** current. For the live surface, use `server_info` / `roslyn://server/catalog` (see the [README](../README.md#live-surface)); for the current release line, see [`CHANGELOG.md`](../CHANGELOG.md).
+
 ## How to use this file
 
 | Column | Meaning |
@@ -22,7 +24,7 @@ This document walks **`docs/parity-gap-matrix.md`** and records **what is alread
 | `server_info` + tiers | Done | `ServerTools`, `ServerSurfaceCatalog` stable/experimental labels. **Release check 2026-04-04:** `SurfaceCatalogTests.ServerInfo_IncludesSurfaceSupportSummary` passes; `eng/verify-release.ps1 -Configuration Release` green (209 tests; v1.6.0). |
 | Explicit stable vs experimental surface | Done | `docs/product-contract.md`, `ServerSurfaceCatalog`, catalog JSON. **Release check 2026-04-04:** no drift; promotion remains gated by `docs/release-policy.md` + release notes. |
 | Wrapper/integration tests for under-tested tool families | Done | `WorkspaceToolsIntegrationTests`, `RefactoringToolsIntegrationTests`, `ValidationToolsIntegrationTests`, `WorkspaceResourceTests`, `PromptSmokeTests`; `SurfaceCatalogTests` for catalog parity. **Release check 2026-04-04:** full `dotnet test` via `verify-release` — 209 passed (includes `HighValueCoverageIntegrationTests`, `BoundedStoreEvictionTests`, `ServiceCollectionExtensionsTests`). |
-| Workspace/session limits and failed-load cleanup | Done | `WorkspaceManagerOptions` (defaults 8 / 500), `WorkspaceManager`, `WorkspaceExecutionGate`. **Release check 2026-04-04:** env defaults in `ai_docs/runtime.md` verified against `Program.cs` + `WorkspaceManagerOptions` / `ValidationServiceOptions` / `PreviewStoreOptions` / `ExecutionGateOptions` / `SecurityOptions`. |
+| Workspace/session limits and failed-load cleanup | Done | `WorkspaceManagerOptions` (defaults 16 / 500; the workspace cap was 8 when this snapshot was recorded), `WorkspaceManager`, `WorkspaceExecutionGate`. **Release check 2026-04-04:** env defaults in `ai_docs/runtime.md` verified against `Program.cs` + `WorkspaceManagerOptions` / `ValidationServiceOptions` / `PreviewStoreOptions` / `ExecutionGateOptions` / `SecurityOptions`. |
 | Bounded related-test scans and command timeouts | Done | `ValidationServiceOptions` (5 min build / 10 min test / 25 related files default), `WorkspaceExecutionGate`, `TestRunnerService`, `TestDiscoveryService`. **Release check 2026-04-04:** defaults documented in `ai_docs/runtime.md` match code. |
 | Canonical CI and publish verification path | Done | `.github/workflows/ci.yml`, `eng/verify-release.ps1`, `eng/verify-ai-docs.ps1` (see `CI_POLICY.md`). **Release check 2026-04-04:** local `verify-release` produced `artifacts/publish/host-stdio` and `artifacts/manifests/host-stdio-sha256.txt`; CI uploads `host-stdio-publish` and `release-manifests` on green runs. |
 | Documented compatibility, deprecation, release policy | Done | `docs/release-policy.md`, `README.md`, `AGENTS.md`. **Release check 2026-04-04:** policy unchanged; `CHANGELOG.md` [1.5.0] documents current release line. |

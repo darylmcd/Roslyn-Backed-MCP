@@ -1,6 +1,6 @@
-# AGENTS Bootstrap
+# Agent Guidelines
 
-Use this file as the stable AI bootstrap entry point for this repository.
+Stable AI bootstrap entry point for the Roslyn-Backed-MCP repository (C# MCP server, published as `roslyn-mcp@roslyn-mcp-marketplace`).
 
 ## File Purpose (Critical)
 
@@ -14,7 +14,7 @@ Restated from `~/.claude/CLAUDE.md` (canonical source). These eight directive **
 
 2. **Optimize for AI consumption by default.** 99% of files in this repo are AI-facing: `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `.github/prompts/**`, `ai_docs/**`, planning docs, runtime references, audit reports. Optimize them for fast, dense parsing: tables over prose, structured data over paragraphs, pointers over duplication, short imperative sentences over narrative. Human-facing files (`README.md` at landing-page level, `docs/**`) get human prose. Everywhere else, AI-optimized.
 
-3. **Bad code is never silent — this rule fires in EVERY coding session.** Not just doc-audit. Not just code review. Every session where you read, edit, fix, refactor, debug, navigate, or otherwise touch code. When you observe bad code — dead code paths, swallowed exceptions, hardcoded values that should be config, hardcoded credentials/secrets, commented-out blocks, TODO/FIXME/HACK/XXX markers without a tracking row, obvious anti-patterns, security smells, broken naming, suspiciously stale comments, copy-paste duplication, god classes, layering violations, sync-over-async, untested critical paths — you MUST (a) call it out in your response and (b) recommend an appropriately-sized backlog row (≤4 production files, ≤3 test files, one regression shape). **Applies whether the bad code is the file you were sent to edit, an adjacent file you opened for context, an import target, a test file, or anything you read in the course of solving the task.** Critically: if you are FIXING a code section and it is bad/poorly-written/incorrect, surfacing it is mandatory even if the fix is "in scope" — the act of editing does not absolve the obligation to flag. The right *time* to fix the bad code is when the row's priority demands it, not when you happen to be in the file — but **the row MUST exist**. Silently editing around bad code, polishing a bad pattern without flagging, or "I'll mention it if asked" all count as misses.
+3. **Bad code is never silent.** This rule fires in EVERY coding session — not just doc-audit or code review; every session where you read, edit, fix, refactor, debug, navigate, or otherwise touch code. When you observe bad code — dead code paths, swallowed exceptions, hardcoded values that should be config, hardcoded credentials/secrets, commented-out blocks, TODO/FIXME/HACK/XXX markers without a tracking row, obvious anti-patterns, security smells, broken naming, suspiciously stale comments, copy-paste duplication, god classes, layering violations, sync-over-async, untested critical paths — you MUST (a) call it out in your response and (b) recommend an appropriately-sized backlog row (~4 production / ~3 test files, one regression shape - advisory target, never a gate on filing the row). **Applies whether the bad code is the file you were sent to edit, an adjacent file you opened for context, an import target, a test file, or anything you read in the course of solving the task.** Critically: if you are FIXING a code section and it is bad/poorly-written/incorrect, surfacing it is mandatory even if the fix is "in scope" — the act of editing does not absolve the obligation to flag. The right *time* to fix the bad code is when the row's priority demands it, not when you happen to be in the file — but **the row MUST exist**. Silently editing around bad code, polishing a bad pattern without flagging, or "I'll mention it if asked" all count as misses.
 
 4. **Private repos accept breaking changes.** For private repos (everything under `C:/Code-Repo/` EXCEPT this one), breaking changes and large refactors are ALWAYS acceptable when pursuing rule #1 or #3. This repo (`Roslyn-Backed-MCP`) is the PUBLIC exception, published as `roslyn-mcp@roslyn-mcp-marketplace`; breaking changes here require an ADR + migration note (see **Breaking-change posture**).
 
@@ -70,7 +70,7 @@ After the required reads, use `ai_docs/planning_index.md` for next-step routing 
 
 ## Breaking-change posture
 
-This is a **public repo** (per `.ai-doc-audit.md` `repo_class: public`), published as `roslyn-mcp@roslyn-mcp-marketplace`. Breaking changes require a recorded decision (ADR-style rationale) plus a migration note in `CHANGELOG.md`; compatibility and deprecation rules are defined in `docs/release-policy.md`. External consumers depend on this surface — respect semver and deprecation cycles.
+This is a **public repo** (per `.ai-doc-audit.md` `repo_class: public`), published as `roslyn-mcp@roslyn-mcp-marketplace`. Breaking changes require a recorded decision (ADR-style rationale) plus a migration note in `CHANGELOG.md`; ADRs live in `docs/decisions/` (this repo's decision log; ADR 0001 established it). Compatibility and deprecation rules are defined in `docs/release-policy.md`. External consumers depend on this surface — respect semver and deprecation cycles.
 
 ## Validation runtime
 

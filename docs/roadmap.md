@@ -61,15 +61,14 @@ Delivered after release-1 (in-process):
 - per-workspace diagnostic cache in `DiagnosticService` — solution-wide diagnostics reused by `GetDiagnosticDetailsAsync` instead of recompiling
 - bounded-semaphore parallelism for reference materialization (`ReferenceLocationMaterializer`), reused by `ReferenceService`, `MutationAnalysisService`, and `ConsumerAnalysisService`
 - bounded-semaphore parallelism for `UnusedCodeAnalyzer` Phase 2 (`SymbolFinder.FindReferencesAsync` per candidate)
-- parallel `FindDiagnosticAsync` via `Task.WhenAll` over per-project compilations
 - parallel outer loop in `MutationAnalysisService.FindTypeMutationsAsync` (per mutating member) backed by `ConcurrentDictionary` document caches
 - per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` so concurrent reads on the same workspace overlap (bounded only by the global throttle) while writes remain exclusive against in-flight reads
+- opt-in warmup for enterprise solutions — the experimental `workspace_warm` tool, and `workspace_load(prewarm: true)` (applied automatically to solutions with more than 50 projects unless `prewarm: false`), prime a workspace's compilations
 
 Post-release candidates:
 
 - persistent (cross-session) symbol/index cache
 - incremental background indexing
-- opt-in warmup for enterprise solutions
 - separate performance profile for remote hosting
 
 ## Claude Code Plugin Distribution
@@ -81,17 +80,17 @@ Reason:
 - plugin bundles curated skills + safety hooks and launches the release-matched NuGet server through `dnx`
 - lowers barrier to entry for Claude Code users (two-command install)
 - skills compose the current MCP surface into guided workflows for common tasks
-- hooks enforce safety patterns (preview-before-apply, post-refactoring compile-check)
+- hooks remind the agent to verify after refactoring (post-apply compile-check); preview-before-apply is enforced server-side by required preview tokens
 
 Delivered:
 
 - `.claude-plugin/plugin.json` and `marketplace.json` for distribution via GitHub
 - 32 bundled skills spanning analysis, refactoring, search, testing, workspace/session, documentation, and release workflows
-- Safety hooks: PreToolUse apply guard, PostToolUse compile-check reminder
+- PostToolUse hooks: compile-check reminder after applies and a server-update notice after `server_info`
+- MCP Registry publication as `io.github.darylmcd/roslyn-mcp` (manifest `.claude-plugin/server.json`, republished by the `publish-nuget` workflow on each release tag)
 
 Future direction:
 
-- publish to the MCP Registry for broader discoverability beyond GitHub
 - add skills as the MCP tool surface grows (e.g., architecture analysis, migration planning)
 
 ## Execution Tracks And Primary Touchpoints

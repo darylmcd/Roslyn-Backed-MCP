@@ -1,3 +1,7 @@
+# semantic-grep-sentinel-compile-tracked-coupling — Bind the regex-guidance arm to `SemanticGrepService.InvalidRegexSentinel`
+
+**row:** `semantic-grep-sentinel-compile-tracked-coupling` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:523` — the hand-copied literal

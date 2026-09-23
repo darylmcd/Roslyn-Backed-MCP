@@ -1,13 +1,10 @@
 # promotion-tier-refactoring-batch-2 — Promote qualifying experimental tools in the Refactoring catalog partial (batch 2 of 4)
 
-**row:** `promotion-tier-refactoring-batch-2` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-refactoring-batch-2` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/ExtractMethodTools`
-- `src/RoslynMcp.Host.Stdio/Tools/FixAllTools`
-- `src/RoslynMcp.Host.Stdio/Tools/InterfaceExtractionTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/ExtractMethodTools.cs`
 
 ## Acceptance
 

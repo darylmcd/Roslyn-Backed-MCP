@@ -3,10 +3,10 @@
 <!-- purpose: Run repeatable Roslyn MCP large-solution profiling against a 50+ project solution. -->
 <!-- scope: in-repo -->
 
-Use this prompt when the repo needs measured evidence for `workspace-process-pool-or-daemon` or any other large-solution performance decision. The current preferred local target is:
+Use this prompt when the repo needs measured evidence for `workspace-process-pool-or-daemon` or any other large-solution performance decision. The preferred target is a local OrchardCore checkout; below, `<orchardcore>` is its root and `<roslyn-mcp>` is this repo's root:
 
 ```text
-C:\Code-Repo\OrchardCore\OrchardCore.slnx
+<orchardcore>\OrchardCore.slnx
 ```
 
 ## Preconditions
@@ -14,16 +14,14 @@ C:\Code-Repo\OrchardCore\OrchardCore.slnx
 1. Confirm the target repo exists and is clean:
 
    ```powershell
-   git -C C:\Code-Repo\OrchardCore status --short --branch
+   git -C <orchardcore> status --short --branch
    ```
 
-2. Confirm the solution is still large enough:
+2. Confirm the solution is still large (target: 50+ projects):
 
    ```powershell
-   Select-String -Path C:\Code-Repo\OrchardCore\OrchardCore.slnx -Pattern '\.csproj' | Measure-Object
+   Select-String -Path <orchardcore>\OrchardCore.slnx -Pattern '\.csproj' | Measure-Object
    ```
-
-   Expected as of 2026-04-26: 227 projects in the `.slnx`.
 
 3. Confirm the installed MCP command resolves:
 
@@ -33,11 +31,11 @@ C:\Code-Repo\OrchardCore\OrchardCore.slnx
 
 ## Run
 
-From `C:\Code-Repo\Roslyn-Backed-MCP`:
+From `<roslyn-mcp>`:
 
 ```powershell
 .\eng\profile-large-solution.ps1 `
-  -SolutionPath C:\Code-Repo\OrchardCore\OrchardCore.slnx `
+  -SolutionPath <orchardcore>\OrchardCore.slnx `
   -Iterations 5 `
   -SymbolQuery ContentItem
 ```

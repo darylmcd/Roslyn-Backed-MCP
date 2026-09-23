@@ -1,13 +1,10 @@
 # promotion-tier-analysis-batch-1 — Promote qualifying experimental tools in the Analysis catalog partial (batch 1 of 3)
 
-**row:** `promotion-tier-analysis-batch-1` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-analysis-batch-1` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools`
-- `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools`
-- `src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Analysis.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs`
 
 ## Acceptance
 

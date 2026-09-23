@@ -75,33 +75,11 @@ guarded set:
 | 10 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
 | 11 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
 
-Files 1 and 3 through 8 are the seven version-source locations enumerated by
-`eng/verify-version-drift.ps1`. Files 2 and 9 through 11 are additional
-release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1`
-as the canonical path list; this table documents that executable contract.
+Files 1 and 3-8 are the seven version sources enumerated by `eng/verify-version-drift.ps1`; files 2 and 9-11 are extra release-critical infrastructure. `eng/guard-release-managed-files.ps1` is the canonical path list.
 
-**Bypass mechanism.** The guard is command-based — `eng/guard-release-managed-files.ps1`
-inspects only `tool_input.file_path` (deterministic) and looks for an override
-sentinel at the repo root: `.release-managed-edit-allowed` (gitignored). If the
-sentinel exists and its mtime is within the TTL (default 1800 s, override via
-`RELEASE_SENTINEL_TTL_SECONDS`), the edit is allowed. Otherwise the edit is
-blocked with exit code 2 and a message pointing back here.
-
-To bypass for an intentional ad-hoc edit, `touch` the sentinel:
+**Bypass mechanism.** The guard checks only `tool_input.file_path` and allows the edit while the gitignored sentinel `.release-managed-edit-allowed` at the repo root is younger than the TTL (default 1800 s, override via `RELEASE_SENTINEL_TTL_SECONDS`); otherwise it exits 2. `/bump`, `/release-cut`, and `/ship` create and remove the sentinel themselves; for an intentional ad-hoc edit, create it, then edit:
 
     New-Item -ItemType File -Force .release-managed-edit-allowed | Out-Null
-
-…then perform the edit. The sentinel is gitignored and stale-cleaned by the
-TTL. Skills that mutate release-managed files (`/bump`, `/release-cut`,
-`/ship`) create the sentinel before mutating and remove it at end of flow, so
-the override is invisible to normal release workflows.
-
-**History note.** The original guard (1.32.x and earlier) was prompt-based and
-required the literal phrase `ack: release-managed` in the agent's reasoning
-prose. In practice the judge LLM did not reliably receive that prose — it
-either denied legitimate `/bump` flows or hallucinated rule matches against
-unrelated new files. The sentinel-based replacement landed in 1.33.1 (see
-CHANGELOG).
 
 **Canonical workflows that don't need to touch the sentinel manually:**
 

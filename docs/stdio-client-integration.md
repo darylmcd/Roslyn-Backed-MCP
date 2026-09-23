@@ -76,13 +76,17 @@ Every tool-call parameter uses the exact names shown in `tools/list`. A few that
 
 This dependency-free sample intentionally demonstrates the initialize-capable compatibility era. New clients should use an official MCP SDK for `server/discover`, per-request metadata, and automatic fallback.
 
+The server's filesystem boundary is fail-closed: a harness that spawns `roslynmcp` must set `ROSLYNMCP_SANCTIONED_ROOTS` in the child's environment (both samples below do), or `workspace_load` and every other path-taking tool reject their input. See [Configure the filesystem boundary](setup.md#configure-the-filesystem-boundary).
+
 ```python
 import json
+import os
 import subprocess
 import sys
 
 proc = subprocess.Popen(
     ["roslynmcp"],
+    env={**os.environ, "ROSLYNMCP_SANCTIONED_ROOTS": r"C:\path\to"},
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=sys.stderr,
@@ -142,6 +146,8 @@ var psi = new ProcessStartInfo("roslynmcp")
     RedirectStandardOutput = true,
     UseShellExecute = false,
 };
+// Fail-closed boundary: the workspace path below must live under a sanctioned root.
+psi.Environment["ROSLYNMCP_SANCTIONED_ROOTS"] = @"C:\path\to";
 using var proc = Process.Start(psi)!;
 
 void Send(object msg)
@@ -166,7 +172,7 @@ JsonElement ReadResponse(int expectedId)
 // 1. initialize
 Send(new { jsonrpc = "2.0", id = 1, method = "initialize",
     @params = new {
-        protocolVersion = "2024-11-05",
+        protocolVersion = "2025-11-25",
         capabilities = new { },
         clientInfo = new { name = "my-client", version = "0.1" },
     } });
@@ -186,7 +192,7 @@ Console.WriteLine(ReadResponse(2));
 
 ## Session lifetime
 
-- Sessions live only for the stdio process lifetime — there's **no inactivity TTL**. A `KeyNotFoundException` on `workspaceId` means the host died (Cursor/Claude Code may transparently restart it between conversations), `workspace_close` was called, or the concurrent-workspace cap (`ROSLYNMCP_MAX_WORKSPACES`, default 8) evicted the session.
+- Sessions live only for the stdio process lifetime — there's **no inactivity TTL**. A `KeyNotFoundException` on `workspaceId` means the host died (Cursor/Claude Code may transparently restart it between conversations), `workspace_close` was called, or the concurrent-workspace cap (`ROSLYNMCP_MAX_WORKSPACES`, default 16) evicted the session.
 - Recovery: call `workspace_load` again with the same path. It's idempotent — repeat loads of the same path return the existing `workspaceId`.
 
 ## When things go wrong

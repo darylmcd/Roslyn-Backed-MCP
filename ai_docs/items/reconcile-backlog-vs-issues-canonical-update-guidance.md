@@ -1,6 +1,6 @@
 # reconcile-backlog-vs-issues-canonical-update-guidance — Use canonical backlog updates during issue reconciliation
 
-**row:** `reconcile-backlog-vs-issues-canonical-update-guidance` · **pri:** `Low` · **size:** `M`
+**row:** `reconcile-backlog-vs-issues-canonical-update-guidance` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

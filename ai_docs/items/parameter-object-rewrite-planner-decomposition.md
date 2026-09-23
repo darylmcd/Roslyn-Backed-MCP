@@ -1,6 +1,6 @@
 # parameter-object-rewrite-planner-decomposition — Decompose parameter-object rewrite planning
 
-**row:** `parameter-object-rewrite-planner-decomposition` · **pri:** `Low` · **size:** `M` · **deps:** `parameter-object-callsite-semantic-argument-binding,parameter-object-target-method-contract-validation,parameter-object-value-type-mutation-semantics,parameter-object-declaration-metadata-preservation,parameter-object-generic-dto-type-validity,parameter-object-dto-reference-qualification,parameter-object-dto-output-boundary-validation`
+**row:** `parameter-object-rewrite-planner-decomposition` · **pri:** `Low` · **size:** `S` · **deps:** `parameter-object-callsite-semantic-argument-binding,parameter-object-target-method-contract-validation,parameter-object-value-type-mutation-semantics,parameter-object-declaration-metadata-preservation,parameter-object-generic-dto-type-validity,parameter-object-dto-reference-qualification,parameter-object-dto-output-boundary-validation`
 
 ## Anchors
 

@@ -20,8 +20,15 @@
 | Host / Transport | `src/RoslynMcp.Host.Stdio/` | `Program`, `StructuredCallToolFilter`, `*Tools.cs` partials | `tests/RoslynMcp.Tests/` (host/filter tests) |
 | Core Contracts | `src/RoslynMcp.Core/` | DTOs, preview store, gate contracts | `tests/RoslynMcp.Tests/` |
 | Roslyn Services | `src/RoslynMcp.Roslyn/` | `WorkspaceManager`, analysis/refactor services | `tests/RoslynMcp.Tests/` |
-| Plugin Skills (shipped) | `skills/` | `skills/*/SKILL.md` workflows | `eng/verify-skills` (genericity guard) |
+| Plugin Skills (shipped) | `skills/` | `skills/*/SKILL.md` workflows | `eng/verify-skills-are-generic.ps1` (genericity guard), `tests/RoslynMcp.Tests/Skills/` |
 | Release/CI Automation | `eng/` | `verify-registry-readiness.ps1`, `aggregate-promotion-scorecards.ps1`, `process-audit-reports.ps1`, `verify-*.ps1` | `tests/RoslynMcp.Tests/Skills/` |
+| Roslyn analyzers | `analyzers/ServerSurfaceCatalogAnalyzer/` | `ServerSurfaceCatalogAnalyzer` (catalog vs `[McpServer*]` parity), `StdoutWriteAnalyzer` (RMCP010) | `tests/RoslynMcp.Tests/` |
+| Repo agents | `agents/` | `audit-phase-runner.md` | `tests/RoslynMcp.Tests/Skills/AuditPhaseRunnerHandoffTests.cs` |
+| Fixture solutions | `samples/` | `SampleSolution/`, `BuildFailureSolution/`, `GeneratedDocumentSolution/`, `SecurityTestProject/` | Loaded by `tests/RoslynMcp.Tests/` |
+| Repo scripts | `scripts/` | `seed-issue-labels.ps1` | — |
+| Plugin runtime | `hooks/`, `.claude-plugin/` | `hooks/hooks.json`, `plugin.json`, `marketplace.json`, `mcp.json` | See Claude Code Plugin Layer |
+| Codex publication boundary | `.codex/` | `.codex/hooks.json`, `.codex/hooks/pre-publish-changelog.ps1` | — |
+| Shard-discovery fixtures | `tests/RoslynMcp.ShardDiscoveryFixtures/` | `DiscoveryFixtures.cs` | Exercised by `tests/RoslynMcp.Tests/TestShardPlanContractTests.cs` |
 
 ## Layer Map
 
@@ -98,15 +105,15 @@ The server is also distributed as a Claude Code plugin. Plugin artifacts live ou
 | `hooks/` | `hooks.json` with safety hooks (preview-before-apply guard, post-refactoring compile-check reminder) |
 | User/session MCP client config | External registration for the `roslynmcp` stdio host; not shipped from this repository |
 
-The shipped `.claude-plugin/mcp.json` descriptor is distinct from external user/session-scoped registrations; the repository does not ship a root `.mcp.json` registration. The plugin layer is a pure orchestration concern — it adds no code to the C# projects. Skills reference tools by MCP name and compose them into multi-step workflows; hooks enforce safety patterns (preview before apply, compile after refactor).
+The shipped `.claude-plugin/mcp.json` descriptor is distinct from external user/session-scoped registrations; the repository ships no root `.mcp.json`. The plugin layer is pure orchestration (no C# code): skills compose tools by MCP name into workflows, and hooks enforce preview-before-apply and compile-after-refactor.
 
 ## Known Gaps
 
 - IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21).
-- **`Host.Stdio.Middleware` ↔ `Host.Stdio.Tools` namespace cycle (accepted).** The two namespaces have a bidirectional reference: `Host.Stdio.Middleware` types (e.g. `StructuredCallToolFilter`) inspect tool metadata declared in `Host.Stdio.Tools`, and `Host.Stdio.Tools` types declare middleware-relevant attributes that the middleware then dispatches against. Surfaced by `get_namespace_dependencies(circularOnly=true)`.
-  - **Why we live with it.** The cycle does not block feature work in practice — both sides ship in the same `Host.Stdio` assembly, and the coupling is metadata-only (middleware reads attributes; tools declare them; no behavioral dependency).
-  - **Cost of fix.** Introduce a tool-dispatch envelope abstraction (a layered shim between Middleware and Tools), at the cost of one indirection on every tool call and ~3 net new files.
-  - **Trigger for action.** A middleware-side feature that requires a new tool *category* (not merely a new tool of an existing category) would force the envelope refactor. Until then the cycle is documented but accepted.
+- **`Host.Stdio.Middleware` ↔ `Host.Stdio.Tools` namespace cycle (accepted).** Middleware types (e.g. `StructuredCallToolFilter`) read tool metadata declared in `Host.Stdio.Tools`, and tool types declare the attributes middleware dispatches on (found via `get_namespace_dependencies(circularOnly=true)`).
+  - **Why accepted.** Both sides ship in one `Host.Stdio` assembly and the coupling is metadata-only (no behavioral dependency).
+  - **Cost of fix.** A tool-dispatch envelope shim: one indirection per tool call, ~3 net new files.
+  - **Trigger.** A middleware feature needing a new tool *category* (not just a new tool) forces the envelope refactor.
 
 ## Deep Material
 
