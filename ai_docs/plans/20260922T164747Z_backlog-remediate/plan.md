@@ -60,3 +60,18 @@ Stanza: `plan/donotparallelize-audit-wave-07.md`
 ### 10. donotparallelize-audit-wave-08
 
 Stanza: `plan/donotparallelize-audit-wave-08.md`
+
+## Retrospective
+
+**Result:** 10 of 10 initiatives merged (PRs #1578-#1587), 10 backlog rows closed. Route mix: 1 deepen, 9 direct. Mode: parallel, one generation (2 waves of 5). Selection skipped 36 Medium rows ahead of the first eligible one (1 upstream-blocked, 13 dep-blocked, 22 execution-blocked).
+
+**Review outcomes:** 9 first-pass, 1 hold. `donotparallelize-audit-wave-07` failed cold review (HIGH): the executor removed `[DoNotParallelize]` from `ExpandedSurfaceIntegrationTests_CoverageProcess` although its tests spawn a real `dotnet test` build against the shared `SampleLib.Tests`. Orchestrator restored the attribute with a mechanism comment, corrected the changelog fragment, re-review passed (cycle 1 of 2). One low stale-comment note on `BuildTestToolsShimTests.cs:9` (class doc lumps `ScriptingTools.EvaluateCSharp` under `RunReadAsync`) was not filed as a row (cosmetic).
+
+**Deviations:**
+- Plan review first failed on the 5120-byte stanza cap (deepener stanza 7395 bytes); trimmed to 4499 and re-reviewed.
+- Windows MAX_PATH broke `gate-chain` worktree creation; operator approved `git config core.longpaths true` (repo-local).
+- `gate-chain` default `ci_equivalent` parse takes only the first line of a YAML block scalar (`ci_equivalent: |` became the command `|`); ran with `--ci-cmd "just ci"`.
+- Orchestrator error: first `gate-chain` run used the PRIMARY checkout's plan dir instead of the plan worktree's; chainGate evidence landed in the primary's `state.json`. Reverted with `git checkout` on that file, re-ran against the plan worktree (cost one extra ~2 h gate pass).
+- `land-queue` requires later chain branches to be pushed first (PR head tree == gated tree) and races GitHub check registration; every push spawns two CI runs and the workflow's `cancel-in-progress` cancels one, leaving a stale FAILURE `validate` that blocked #1586 until the cancelled run was re-run.
+
+**Spin-off:** global-tooling rows (ci_equivalent block-scalar parse, land-queue check-registration race, plan-dir path footgun) belong in `~/.claude/ai_docs/backlog.md`, not this repo.
