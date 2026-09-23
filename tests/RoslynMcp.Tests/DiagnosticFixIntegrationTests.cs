@@ -7,6 +7,10 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
+// Code_Fix_Preview_And_Apply_Removes_Unused_Using_In_Isolated_Copy calls
+// RefactoringService.ApplyRefactoringAsync, which records into the assembly-shared UndoService
+// and ChangeTracker singletons (RefactoringService.cs:349,370) — state outside the synchronized
+// WorkspaceIdCache — so this class must stay serialized against sibling classes.
 [DoNotParallelize]
 [TestClass]
 public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
