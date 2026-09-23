@@ -109,6 +109,26 @@ A copy-paste config also lives at [`docs/mcp-json-examples/dnx.mcp.json`](docs/m
 
 The plugin bundles 32 skills and safety hooks, then launches the exact release-matched `Darylmcd.RoslynMcp` package through `dnx`; it does not require a global `roslynmcp` shim. The first launch requires NuGet access unless the package is already cached. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
 
+> **The bundled `"."` default resolves to the session's working directory, chosen by the host — not
+> by you.** `.claude-plugin/mcp.json` ships `ROSLYNMCP_SANCTIONED_ROOTS: "."` so a plugin-launched
+> server works out of the box, but `.` still means "the server process's cwd," and for a
+> plugin-launched server that cwd is wherever your Claude Code session started — not necessarily the
+> repo you want to analyze. A session started outside the target repo (e.g. `~/.claude` or your home
+> directory) has `.` resolve there instead: every path-taking tool then fails closed, and
+> `server_info.pathBoundary` reports the boundary that does not cover your repo. Three supported ways
+> to point a plugin-launched session at a different repo, each with its own trade-off:
+>
+> 1. **Start the session inside the target repo.** `.` then resolves correctly with no config
+>    change — the common case, and the only one with no fail-closed edge to reason about.
+> 2. **Override `ROSLYNMCP_SANCTIONED_ROOTS` via the host's own config layering.** Add a
+>    project-scope `.mcp.json` in the target repo (see [Per-Client Config](#per-client-config)) with
+>    an absolute-path `env.ROSLYNMCP_SANCTIONED_ROOTS` for the `roslyn` server — the boundary then
+>    stays fail-closed and pinned regardless of session cwd.
+> 3. **Reach a sibling worktree without changing roots.** Set
+>    `ROSLYNMCP_ALLOW_ROOT_EXPANSION=true` (server-owned) and pass `expandSanctionedRoots=true` on
+>    the individual request; both opt-ins are required and the boundary stays fail-closed otherwise
+>    — see [Configuration](#configuration) and [Security](#security).
+
 ### Build And Run From Source
 
 ```bash
@@ -175,7 +195,7 @@ remain optional literal `env` overrides.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ROSLYNMCP_SANCTIONED_ROOTS` | empty (deny path access) | Server-owned path-validation and solution-discovery boundary |
+| `ROSLYNMCP_SANCTIONED_ROOTS` | empty (deny path access) | Server-owned path-validation and solution-discovery boundary; `.` resolves against the server process's cwd, which for a plugin-launched server is the session's own working directory — see the [Claude Code Plugin](#option-c--claude-code-plugin) callout for what that means and the supported overrides |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `false` | Temporary compatibility escape hatch for the **empty**-boundary case only: allows path access when no roots are configured. It never bypasses a non-empty boundary. Prefer configuring roots |
 | `ROSLYNMCP_ALLOW_ROOT_EXPANSION` | `false` | Allows a request with `expandSanctionedRoots=true` to reach sibling worktrees under each sanctioned root's immediate parent; both opt-ins are required |
 | `ROSLYNMCP_MAX_WORKSPACES` | `8` | Concurrent workspace cap |
