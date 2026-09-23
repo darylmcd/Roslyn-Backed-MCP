@@ -13,7 +13,7 @@
     {
       "id": "formatter-baseline-contended-nested-process-timeout-investigation",
       "order": 1,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "formatter-baseline-contended-nested-process-timeout-investigation"
       ],
@@ -41,17 +41,27 @@
       "dependsOn": [],
       "branch": "remediation/formatter-baseline-contended-nested-process-timeout-investigation",
       "worktreePath": ".worktrees/formatter-baseline-contended-nested-process-timeout-investigation",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1582",
+      "mergedAt": "2026-09-23T15:10:58Z",
       "notes": null,
       "fileSetHash": "40c9368ad7a3aeff630065ff934ffd74a07dea6eb373c34dd091070388214c1c",
       "stanzaHash": "be96e3db955d6fdab3a79ad75708c724ed733bba57554e10ead93920261e0bf8",
-      "reviewedStanzaHash": "be96e3db955d6fdab3a79ad75708c724ed733bba57554e10ead93920261e0bf8"
+      "reviewedStanzaHash": "be96e3db955d6fdab3a79ad75708c724ed733bba57554e10ead93920261e0bf8",
+      "chainGate": {
+        "predecessor": null,
+        "baseOid": "ea8f2ad950eadc5a5b6bd1eb96085c914e668f69",
+        "headOid": "6210eabfce5025ded589fac58fcd036734428c82",
+        "gatedTree": "38b9d84635d19593730406b13c2e3a099569ed82",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-formatter-baseline-contended-nested-process-timeout-investigation-20260923T125555801Z-19592-a1.log",
+        "gatedAt": "2026-09-23T13:09:51.948Z"
+      }
     },
     {
       "id": "sanctioned-roots-cwd-default-undocumented",
       "order": 2,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "sanctioned-roots-cwd-default-undocumented"
       ],
@@ -77,17 +87,27 @@
       "dependsOn": [],
       "branch": "remediation/sanctioned-roots-cwd-default-undocumented",
       "worktreePath": ".worktrees/sanctioned-roots-cwd-default-undocumented",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1578",
+      "mergedAt": "2026-09-23T15:23:06Z",
       "notes": null,
       "fileSetHash": "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5",
       "stanzaHash": "3e435b33ca837cd607488d5e95d25d0599c0e1fd5a20dadae3fdbbcd69690ae8",
-      "reviewedStanzaHash": "3e435b33ca837cd607488d5e95d25d0599c0e1fd5a20dadae3fdbbcd69690ae8"
+      "reviewedStanzaHash": "3e435b33ca837cd607488d5e95d25d0599c0e1fd5a20dadae3fdbbcd69690ae8",
+      "chainGate": {
+        "predecessor": "formatter-baseline-contended-nested-process-timeout-investigation",
+        "baseOid": "6210eabfce5025ded589fac58fcd036734428c82",
+        "headOid": "fb72e159551ef7916a92d8200119231bf1329ea4",
+        "gatedTree": "2c2ac89702c9ba2ca24369d5d89d3186318eb76e",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-sanctioned-roots-cwd-default-undocumented-20260923T130951990Z-19592-a1.log",
+        "gatedAt": "2026-09-23T13:22:55.785Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-01",
       "order": 3,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-01"
       ],
@@ -115,17 +135,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-01",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-01",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1580",
+      "mergedAt": "2026-09-23T15:39:28Z",
       "notes": null,
       "fileSetHash": "8d8b2eed7fa294c8d0cd777507faebbc291af6d4f7dac9d68204e1cef833672a",
       "stanzaHash": "38b29b204eaf341b129dc4da8caef52e170efd53110cc6b9c78e48bad1c583d9",
-      "reviewedStanzaHash": "38b29b204eaf341b129dc4da8caef52e170efd53110cc6b9c78e48bad1c583d9"
+      "reviewedStanzaHash": "38b29b204eaf341b129dc4da8caef52e170efd53110cc6b9c78e48bad1c583d9",
+      "chainGate": {
+        "predecessor": "sanctioned-roots-cwd-default-undocumented",
+        "baseOid": "fb72e159551ef7916a92d8200119231bf1329ea4",
+        "headOid": "92a70ffef93b73fe34a37dfb1c6d67b9b5c24f05",
+        "gatedTree": "d25debea86776efb1318da8b8fa3e70f68cd2c58",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-01-20260923T132255832Z-19592-a1.log",
+        "gatedAt": "2026-09-23T13:35:47.534Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-02",
       "order": 4,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-02"
       ],
@@ -153,17 +183,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-02",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-02",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1581",
+      "mergedAt": "2026-09-23T15:59:11Z",
       "notes": null,
       "fileSetHash": "a96fb04293b711a333e98b50d867168a18a0e869c702bcb4975a575e385c077f",
       "stanzaHash": "b559439d83ec3e85f6a9b7c0fe46939a39898980848713bd1e5b587f77ba99dd",
-      "reviewedStanzaHash": "b559439d83ec3e85f6a9b7c0fe46939a39898980848713bd1e5b587f77ba99dd"
+      "reviewedStanzaHash": "b559439d83ec3e85f6a9b7c0fe46939a39898980848713bd1e5b587f77ba99dd",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-01",
+        "baseOid": "92a70ffef93b73fe34a37dfb1c6d67b9b5c24f05",
+        "headOid": "b97a8031a35f40755a756329201c556b61bbf25f",
+        "gatedTree": "57323aa3bcf4f9c77161ac04fdb20882dba65383",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-02-20260923T133547562Z-19592-a1.log",
+        "gatedAt": "2026-09-23T13:49:58.627Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-03",
       "order": 5,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-03"
       ],
@@ -191,17 +231,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-03",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-03",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1579",
+      "mergedAt": "2026-09-23T16:14:07Z",
       "notes": null,
       "fileSetHash": "60edab0109fc919cd4651920e6bfa1345719a546cac88251c1d2a36a0b381754",
       "stanzaHash": "eab3d196f1d637f8a23d4439dc1083254e616a569fe77965e889b65092651156",
-      "reviewedStanzaHash": "eab3d196f1d637f8a23d4439dc1083254e616a569fe77965e889b65092651156"
+      "reviewedStanzaHash": "eab3d196f1d637f8a23d4439dc1083254e616a569fe77965e889b65092651156",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-02",
+        "baseOid": "b97a8031a35f40755a756329201c556b61bbf25f",
+        "headOid": "5dbfe80ba335e562f80c75dc12949fdbf1e89ae1",
+        "gatedTree": "eb3689680df837ccc77799abd43a57776b56d6cf",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-03-20260923T134958781Z-19592-a1.log",
+        "gatedAt": "2026-09-23T14:02:54.953Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-04",
       "order": 6,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-04"
       ],
@@ -229,17 +279,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-04",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-04",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1587",
+      "mergedAt": "2026-09-23T16:30:05Z",
       "notes": null,
       "fileSetHash": "0eef52629e0af6f4afcc38cf2623c86dac7c2c3b34f052debe0a425ffe9ea315",
       "stanzaHash": "698dc3d1c5f1f913dd861083036d93bbf9deee935a20dc79127b6b976af1a42f",
-      "reviewedStanzaHash": "698dc3d1c5f1f913dd861083036d93bbf9deee935a20dc79127b6b976af1a42f"
+      "reviewedStanzaHash": "698dc3d1c5f1f913dd861083036d93bbf9deee935a20dc79127b6b976af1a42f",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-03",
+        "baseOid": "5dbfe80ba335e562f80c75dc12949fdbf1e89ae1",
+        "headOid": "35da2ec26108da0a6832fcd29518d73f50dce6ce",
+        "gatedTree": "cdc7aa62fa2a9c81c13a2ec44475113f3f40d4be",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-04-20260923T140254980Z-19592-a1.log",
+        "gatedAt": "2026-09-23T14:16:09.627Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-05",
       "order": 7,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-05"
       ],
@@ -267,17 +327,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-05",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-05",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1585",
+      "mergedAt": "2026-09-23T16:46:22Z",
       "notes": null,
       "fileSetHash": "af7c7ca4a37b0e8d0d58804aa08e1d14c173125145570ad60697f2421e94ceb1",
       "stanzaHash": "a5083f98f19bb7280ac5bfee0a43f5e2882edc14202806f9e9bb522ddd34222a",
-      "reviewedStanzaHash": "a5083f98f19bb7280ac5bfee0a43f5e2882edc14202806f9e9bb522ddd34222a"
+      "reviewedStanzaHash": "a5083f98f19bb7280ac5bfee0a43f5e2882edc14202806f9e9bb522ddd34222a",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-04",
+        "baseOid": "35da2ec26108da0a6832fcd29518d73f50dce6ce",
+        "headOid": "d4d9ebdd2c15d17300281df80bbd52e516676349",
+        "gatedTree": "1c4e2c3492e872aa2facf09ccd112323249c0e8a",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-05-20260923T141609653Z-19592-a1.log",
+        "gatedAt": "2026-09-23T14:29:15.769Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-06",
       "order": 8,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-06"
       ],
@@ -305,17 +375,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-06",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-06",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1583",
+      "mergedAt": "2026-09-23T17:02:23Z",
       "notes": null,
       "fileSetHash": "9f53ac60bda53db4fea59a7c9b6fc2ab91f6c149e5f12b84cfbce41fd3835bbf",
       "stanzaHash": "166a4cc46ae69b888afb005e6c52881a95fad23748b03e2da41bb66a3cea8415",
-      "reviewedStanzaHash": "166a4cc46ae69b888afb005e6c52881a95fad23748b03e2da41bb66a3cea8415"
+      "reviewedStanzaHash": "166a4cc46ae69b888afb005e6c52881a95fad23748b03e2da41bb66a3cea8415",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-05",
+        "baseOid": "d4d9ebdd2c15d17300281df80bbd52e516676349",
+        "headOid": "ff1b9744054e70ac6e35588e3a0b3bceac2d9c15",
+        "gatedTree": "79c951c26eaf303e294204eda9924fd8079800af",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-06-20260923T142915809Z-19592-a1.log",
+        "gatedAt": "2026-09-23T14:42:11.907Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-07",
       "order": 9,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-07"
       ],
@@ -343,17 +423,27 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-07",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-07",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1584",
+      "mergedAt": "2026-09-23T17:18:24Z",
       "notes": null,
       "fileSetHash": "bfc391140e7a49c3bd22300fb7bf4b01eb32fa80b6e0cac2f091f5bcd91daff6",
       "stanzaHash": "cdd50e1a06ac37449059c5efa7ac956c60be38a5f61d99612739ce8ad399f2c8",
-      "reviewedStanzaHash": "cdd50e1a06ac37449059c5efa7ac956c60be38a5f61d99612739ce8ad399f2c8"
+      "reviewedStanzaHash": "cdd50e1a06ac37449059c5efa7ac956c60be38a5f61d99612739ce8ad399f2c8",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-06",
+        "baseOid": "ff1b9744054e70ac6e35588e3a0b3bceac2d9c15",
+        "headOid": "3a9d1690b1c42a5b9e51d7f56fb481e65f6ee84f",
+        "gatedTree": "be5b6d79e3bd25ba2f2710e39ab45094977103f7",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-07-20260923T144211932Z-19592-a1.log",
+        "gatedAt": "2026-09-23T14:55:09.514Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-08",
       "order": 10,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-08"
       ],
@@ -381,12 +471,22 @@
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-08",
       "worktreePath": ".worktrees/donotparallelize-audit-wave-08",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1586",
+      "mergedAt": "2026-09-23T17:47:43Z",
       "notes": null,
       "fileSetHash": "1f6419ab15e096ecb9fbdcff04a064ad5211c49a8ab9cd89000d9711d0ccb8df",
       "stanzaHash": "db1705b963543554a0442ef34a2eba68a85a25b6f4ace14f781cf24395261ac5",
-      "reviewedStanzaHash": "db1705b963543554a0442ef34a2eba68a85a25b6f4ace14f781cf24395261ac5"
+      "reviewedStanzaHash": "db1705b963543554a0442ef34a2eba68a85a25b6f4ace14f781cf24395261ac5",
+      "chainGate": {
+        "predecessor": "donotparallelize-audit-wave-07",
+        "baseOid": "3a9d1690b1c42a5b9e51d7f56fb481e65f6ee84f",
+        "headOid": "ac285d7dd724d706b156e95d5fc808f38918f9d7",
+        "gatedTree": "3acafbafe71dfc9250e3dfd5acf8b5c57d90d530",
+        "exit": 0,
+        "attempts": 1,
+        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-08-20260923T145509540Z-19592-a1.log",
+        "gatedAt": "2026-09-23T15:07:45.492Z"
+      }
     }
   ],
   "anchorVerification": "performed",
