@@ -1,6 +1,6 @@
 # apply-composite-shipped-skill-migration — Migrate shipped skills to the canonical composite-apply name
 
-**row:** `apply-composite-shipped-skill-migration` · **pri:** `Low` · **size:** `M` · **deps:** `apply-composite-canonical-alias-surface`
+**row:** `apply-composite-shipped-skill-migration` · **pri:** `Low` · **size:** `S` · **deps:** `apply-composite-canonical-alias-surface`
 
 ## Anchors
 

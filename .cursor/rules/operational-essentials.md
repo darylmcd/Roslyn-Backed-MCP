@@ -10,7 +10,7 @@ All commands are available as `just` recipes (`just --list` for the full menu).
 |--------|--------|-------------|
 | Build | `just build` | `dotnet build RoslynMcp.slnx --nologo` |
 | Test | `just test` | `dotnet test RoslynMcp.slnx --nologo` |
-| Full validation | `just ci` | `./eng/verify-release.ps1` + docs + vuln audit |
+| Full validation | `just ci` | docs, shipped skills, changed-file formatter gate, actionlint, PR-equivalent release validation, vulnerability audit (see `CI_POLICY.md`) |
 | AI-doc validation | `just verify-docs` | `./eng/verify-ai-docs.ps1` |
 | Run host | `just run` | `dotnet run --project src/RoslynMcp.Host.Stdio` |
 
@@ -22,7 +22,7 @@ All commands are available as `just` recipes (`just --list` for the full menu).
 ## Commit Format
 
 - Imperative subject line, ≤72 chars
-- Reference backlog item IDs in body when applicable (e.g., `BUG-08`, `FEAT-01`)
+- Reference backlog item IDs in body when applicable (kebab-case row ids, e.g., `http-streamable-host-project`)
 
 ## Roslyn MCP (C#)
 

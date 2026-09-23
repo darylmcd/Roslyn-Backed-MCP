@@ -1,5 +1,7 @@
 # deep-review-program-shape-list-duplication — a seventh site the single-sourcing pass did not cover
 
+**row:** `deep-review-program-shape-list-duplication` · **pri:** `Low` · **size:** `S`
+
 ## Anchors
 
 - `ai_docs/procedures/deep-review-program.md`

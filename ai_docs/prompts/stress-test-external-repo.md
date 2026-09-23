@@ -2,7 +2,7 @@
 
 <!-- purpose: Run against a large external C# repo to capture tool-level performance baselines, identify bottlenecks, and stress recovery paths. Results are written back to the Roslyn-Backed-MCP repo for consumption by the development team. -->
 
-> **This prompt is a null-op without the Roslyn MCP server.** If `mcp__roslyn__server_info` is not callable in your current tool list, stop and ask the user to start the server. Phase -1 verifies this as a hard gate.
+> **This prompt is a null-op without the Roslyn MCP server.** If no tool whose name ends in `server_info` returns a Roslyn-shaped response, stop and ask the user to start the server. Phase -1 verifies this as a hard gate.
 
 > Use this prompt with an AI coding agent that has an MCP client connected to the Roslyn MCP server.
 > **Run from the external repo's directory** (e.g., `C:\Code-Repo\jellyfin`), not from the Roslyn-Backed-MCP repo.
@@ -75,15 +75,15 @@ Performance budgets:
 
 This prompt exercises the Roslyn MCP server end-to-end. Without it, nothing below is meaningful.
 
-1. **Check the tool list.** Verify `mcp__roslyn__server_info` appears in your current tool surface. If not, STOP and tell the user:
+1. **Resolve the server prefix.** The client-assigned prefix varies (`mcp__roslyn__`, `mcp__plugin_roslyn-mcp_roslyn__`, ...). Call each tool whose name ends in `server_info` until one returns a Roslyn-shaped response (`connection.state`, `catalogVersion`, `surface.*`), then pin that prefix for every later call (see [bootstrap-read-tool-primer.md](../bootstrap-read-tool-primer.md#when-the-roslyn-mcp-server-is-disconnected)). If none does, STOP and tell the user:
 
-   > *"This prompt requires the Roslyn MCP server (mcp__roslyn__* tools must be callable). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in `.mcp.json` / `settings.json` — confirm `mcp__roslyn__server_info` is available, then rerun."*
+   > *"This prompt requires the Roslyn MCP server (Roslyn tools ending in `server_info` etc. must be callable). Start the server — for example `dotnet tool run roslynmcp`, or activate the plugin's stdio entry — confirm `server_info` responds, then rerun."*
 
    Do **not** substitute `Bash: dotnet build`, `Read`, `Grep`, or other host-side fallbacks. The entire point of this run is MCP-server performance; a run without the server produces no baseline.
 
 2. **Call `server_info`.** Record `version`, `catalogVersion`, `runtime`, `os`, `surface.*` counts, `surface.registered.parityOk`, and `connection.state`. If `state != "ready"`, call `server_heartbeat` once. If it never becomes `ready`, halt.
 
-3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog`; compare per-category counts against `server_info.surface`. A mismatch here is a P2 finding.
+3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog`; compare per-category counts against `server_info.surface`. A mismatch here is a finding.
 
 **Hard-gate checkpoint:** `server_info` callable? `connection.state == "ready"`? `parityOk == true`? Catalog resource matches `server_info`? Any `no` is a halt, not a silent proceed.
 
@@ -93,7 +93,7 @@ This prompt exercises the Roslyn MCP server end-to-end. Without it, nothing belo
 
 1. `workspace_load(path=<sln>, verbose=false)`. Record `_meta.elapsedMs`.
 2. `workspace_health` — record `isReady`, error counts, `restoreHint`.
-3. **`workspace_warm(workspaceId)` (v1.28+).** Prime `GetCompilationAsync` + semantic models so downstream timings are cache-hit-dominated and reproducible. Record `projectsWarmed`, `coldCompilationCount`, `elapsedMs`. This is the recommended post-load step for every run; state `warm-up: yes` in the header.
+3. **`workspace_warm(workspaceId)`.** Prime `GetCompilationAsync` + semantic models so downstream timings are cache-hit-dominated and reproducible. Record `projectsWarmed`, `coldCompilationCount`, `elapsedMs`. This is the recommended post-load step for every run; state `warm-up: yes` in the header.
 4. `project_graph` — project count, dependency depth.
 5. If `restoreHint` is non-null, run `dotnet restore` and reload. If the host cannot shell out, record the limitation in the header.
 
@@ -158,14 +158,14 @@ Run each against the full solution (or largest project where solution-wide is to
 2. `get_cohesion_metrics(limit=20)` — timing, worst LCOM4.
 3. `find_unused_symbols(limit=20)` — timing, count.
 4. `find_duplicated_methods` — timing, top-N cluster size.
-5. `find_duplicate_helpers` — timing; note false-positive ratio on BCL wrappers (backlog `find-duplicate-helpers-framework-wrapper-false-positive`).
+5. `find_duplicate_helpers` — timing; note false-positive ratio on BCL wrappers.
 6. `suggest_refactorings(limit=10)` — timing, suggestion count.
 7. `get_namespace_dependencies(circularOnly=true)` — timing, cycle count.
 8. `get_di_registrations` — timing, registration count.
 9. `get_nuget_dependencies` — timing, package count.
 10. `list_analyzers(limit=50)` — analyzer count, timing.
 
-### Phase 4b: v1.17–v1.28 composites
+### Phase 4b: composites
 
 Composites dispatch multiple sub-queries internally; record end-to-end timing vs the sum of their constituents.
 
@@ -194,9 +194,9 @@ Pick targets from Phase 2/3 findings:
 7. `format_document_preview` — largest file.
 8. `organize_usings_preview` — 3 different files, record average.
 
-### Phase 5b: v1.17–v1.28 previews
+### Phase 5b: additional previews
 
-9. `preview_multi_file_edit` — simulate a small cross-file edit spanning 3+ files. Compare timing against `apply_text_edit` serially on the same files (preview should be faster — single-snapshot validation).
+9. `preview_multi_file_edit` — simulate a small cross-file edit spanning 3+ files (preview only; never apply). Record timing.
 10. `restructure_preview` — run a simple pattern (e.g. `__x__?.ToString() ?? ""` → `__x__ as string ?? ""`) project-wide. Match count and timing.
 11. `change_signature_preview` — pick a method with 10+ callsites, `op=add` with a default value. Record timing.
 12. `symbol_refactor_preview` — compose 3 operations (rename + edit + restructure). Timing; confirm the 25-op / 500-file cap.

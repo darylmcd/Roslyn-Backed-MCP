@@ -28,6 +28,8 @@ will read the diff for line-level detail. -->
 - [ ] Added or updated unit/integration tests covering the change
 - [ ] `dotnet build RoslynMcp.slnx` succeeds
 - [ ] `dotnet test RoslynMcp.slnx` passes
+- [ ] `just ci` passes locally (or the equivalent gates in `CI_POLICY.md`)
+- [ ] Added a `changelog.d/<row-id>.md` fragment (see `changelog.d/README.md`) if this changes shipped code, tests, build, workflows, skills, or public docs
 - [ ] Manually verified the behavior (describe below)
 
 <!-- Optional: paste a short repro / before-after snippet here. -->

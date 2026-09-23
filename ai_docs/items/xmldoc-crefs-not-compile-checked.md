@@ -1,5 +1,7 @@
 # xmldoc-crefs-not-compile-checked — dangling crefs cannot fail the build today
 
+**row:** `xmldoc-crefs-not-compile-checked` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `Directory.Build.props`

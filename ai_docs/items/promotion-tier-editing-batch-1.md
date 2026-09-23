@@ -1,13 +1,10 @@
 # promotion-tier-editing-batch-1 — Promote qualifying experimental tools in the Editing catalog partial (batch 1 of 2)
 
-**row:** `promotion-tier-editing-batch-1` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-editing-batch-1` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools`
-- `src/RoslynMcp.Host.Stdio/Tools/FileOperationTools`
-- `src/RoslynMcp.Host.Stdio/Tools/MultiFileEditTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Editing.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools.cs`
 
 ## Acceptance
 

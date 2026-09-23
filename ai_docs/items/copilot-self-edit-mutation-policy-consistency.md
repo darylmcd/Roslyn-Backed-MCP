@@ -1,6 +1,6 @@
 # copilot-self-edit-mutation-policy-consistency — Make self-edit mutation policy session-aware
 
-**row:** `copilot-self-edit-mutation-policy-consistency` · **pri:** `Low` · **size:** `M`
+**row:** `copilot-self-edit-mutation-policy-consistency` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

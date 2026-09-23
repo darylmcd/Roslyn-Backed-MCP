@@ -60,7 +60,7 @@ body:
     attributes:
       label: server-version
       description: "The Roslyn MCP server version captured at Phase -1 of the audit (`server_info.version`)."
-      placeholder: "1.36.0"
+      placeholder: "4.2.1"
     validations:
       required: true
 

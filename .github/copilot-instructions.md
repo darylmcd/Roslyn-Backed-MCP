@@ -64,9 +64,9 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 The server ships as a Claude Code plugin with 32 skills and safety hooks. When modifying plugin artifacts:
 
 - **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
-- **Hooks** (`hooks/hooks.json`): Matchers use regex against tool names prefixed with `mcp__roslyn__`. Keep matchers in sync when tools are renamed or added.
-- **Plugin manifest** (`.claude-plugin/plugin.json`): For skill or hook changes, add a valid `changelog.d/` fragment; `/bump` advances the manifest with every other version source at release-cut time. Keep `userConfig` entries in sync with env vars documented in `ai_docs/runtime.md`.
-- **Marketplace** (`.claude-plugin/marketplace.json`): Bump `version` to match `plugin.json`.
+- **Hooks** (`hooks/hooks.json`): Matchers are regexes over tool names of the form `mcp__(?:plugin_roslyn-mcp_)?roslyn__<tool>` (covers plugin and standalone registrations). Keep matchers in sync when tools are renamed or added.
+- **Plugin manifest** (`.claude-plugin/plugin.json`): For skill or hook changes, add a valid `changelog.d/` fragment; `/bump` advances the manifest with every other version source at release-cut time.
+- **Marketplace** (`.claude-plugin/marketplace.json`): release-managed; `/bump` keeps `version` aligned with `plugin.json` (do not hand-edit; see `ai_docs/workflow.md` release-managed file guard).
 
 ## Safety Guardrails
 

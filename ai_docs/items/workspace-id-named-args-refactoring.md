@@ -1,6 +1,6 @@
 # workspace-id-named-args-refactoring — Name workspace-sensitive refactoring arguments
 
-**row:** `workspace-id-named-args-refactoring` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-id-named-args-refactoring` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

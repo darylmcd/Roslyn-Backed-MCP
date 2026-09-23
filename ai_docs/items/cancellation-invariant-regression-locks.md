@@ -1,5 +1,7 @@
 # cancellation-invariant-regression-locks — the audit's "no gap" conclusions rest on untested invariants
 
+**row:** `cancellation-invariant-regression-locks` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/ScriptExecutionSupervisor.cs`

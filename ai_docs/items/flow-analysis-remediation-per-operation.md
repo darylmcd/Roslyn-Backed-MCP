@@ -1,3 +1,7 @@
+# flow-analysis-remediation-per-operation — Give each flow-analysis operation accurate remediation text
+
+**row:** `flow-analysis-remediation-per-operation` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/FlowAnalysisFailurePolicy.cs:13` — the single shared `Remediation` const

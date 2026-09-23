@@ -1,6 +1,6 @@
 # items-gate-forced-companion-prose-dedupe — Drop the duplicated gate-forced-companion paragraph from 34 items files
 
-**row:** `items-gate-forced-companion-prose-dedupe` · **pri:** `Low` · **size:** `M`
+**row:** `items-gate-forced-companion-prose-dedupe` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

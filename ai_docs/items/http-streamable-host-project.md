@@ -1,10 +1,10 @@
 # http-streamable-host-project — sibling MCP Streamable HTTP host (parked)
 
-**row:** `http-streamable-host-project` · **pri:** `Defer` · **size:** `—` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `http-streamable-host-project` · **pri:** `Defer` · **size:** `S` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 
-- new `src/RoslynMcp.Host.Http/` project; `Core` + `Roslyn` boundaries are already transport-agnostic per `ai_docs/architecture.md`
+- (new) new `src/RoslynMcp.Host.Http/` project; `Core` + `Roslyn` boundaries are already transport-agnostic per `ai_docs/architecture.md`
 
 ## Acceptance
 

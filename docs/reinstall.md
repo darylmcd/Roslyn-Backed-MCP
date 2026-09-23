@@ -11,7 +11,7 @@ skills, and hooks are loaded.
 ## Optional standalone layer — `roslynmcp` global .NET tool
 
 **Where to run:** any OS terminal (Git Bash, PowerShell, cmd) at the repo root
-`C:\Code-Repo\Roslyn-Backed-MCP`. **Not** inside the Claude Code chat input.
+`<repo-root>` (your clone of this repository). **Not** inside the Claude Code chat input.
 
 **Command:**
 
@@ -29,10 +29,11 @@ This single command:
 
 After it finishes, `roslynmcp` on your `PATH` points at the new build.
 
-> **Git Bash on Windows note:** the README shows `/p:ReinstallTool=true`. On
-> Git Bash, the leading `/` is mangled into a path and MSBuild errors out with
-> `MSB1008: Only one project can be specified.` Use `-p:ReinstallTool=true`
-> instead. PowerShell and cmd accept either form.
+> **Git Bash on Windows note:** use the `-p:` switch form shown above. The
+> `/p:ReinstallTool=true` form is also valid MSBuild syntax, but on Git Bash the
+> leading `/` is mangled into a path and MSBuild errors out with
+> `MSB1008: Only one project can be specified.` PowerShell and cmd accept either
+> form.
 
 On Windows, an active global-tool process can lock the install directory. Supply
 the PID and round-trip UTC start time only for the server instance owned by this
@@ -182,9 +183,10 @@ NuGet; retry the first plugin launch after indexing completes.
 - **The global-tool uninstall reports that files are in use.** Close the owning
   session, or rerun with the exact owned PID and start-time identity shown above.
   Do not use name-wide `taskkill` or `killall`; unrelated MCP sessions may be active.
-- **Hooks block `*_apply` calls unexpectedly.** That's the pre-apply guard
-  doing its job; you must call the matching `*_preview` first. This is
-  documented in `README.md` § *Plugin Hooks*.
+- **An `*_apply` call is rejected.** Preview-token enforcement is server-side:
+  call the matching `*_preview` first and pass its unexpired token. The plugin
+  hooks only remind you to run a compile check after applies (see
+  [`product-contract.md`](product-contract.md)).
 
 ## Related docs
 

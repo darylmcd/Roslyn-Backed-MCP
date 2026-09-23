@@ -1,5 +1,7 @@
 # editservice-dead-validateeditrange-references — three comments name a symbol that was never created
 
+**row:** `editservice-dead-validateeditrange-references` · **pri:** `Low` · **size:** `S`
+
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/EditService.cs`

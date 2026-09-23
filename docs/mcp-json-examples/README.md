@@ -21,10 +21,13 @@ Earlier plugin releases shipped a `.mcp.json` that referenced
 Code's plugin enable-time prompt. That substitution throws a hard error on any
 install flow that skips the prompt (automation, `bypassPermissions`,
 pre-existing installs) — the MCP server never starts and no error surfaces to
-the user. Fixed in v1.18.2 by dropping the `env` block from the plugin-shipped
-files; the server now starts with compiled-in operational defaults and accepts literal
-overrides via project-scope `.mcp.json` as shown here. The sanctioned-root security boundary is
-intentionally explicit rather than a permissive compiled-in default.
+the user. Fixed in v1.18.2 by dropping the `${user_config.*}` placeholders from the
+plugin-shipped files. The plugin now ships the literal
+`env.ROSLYNMCP_SANCTIONED_ROOTS` value `"."` so a plugin-launched server starts with a
+working boundary; every other operational setting uses compiled-in defaults and accepts
+literal overrides via project-scope `.mcp.json` as shown here. The sanctioned-root boundary is
+intentionally explicit rather than a permissive compiled-in default, so hand-written configs
+must set it themselves.
 
-See `ai_docs/runtime.md` for the full list of `ROSLYNMCP_*` environment
-variables and their defaults.
+See [`../setup.md`](../setup.md#environment-variables) for the full list of `ROSLYNMCP_*`
+environment variables and their defaults.

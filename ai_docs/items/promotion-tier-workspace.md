@@ -1,12 +1,10 @@
 # promotion-tier-workspace — Promote qualifying experimental tools in the Workspace catalog partial
 
-**row:** `promotion-tier-workspace` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-workspace` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/WorkspaceDriftTool`
-- `src/RoslynMcp.Host.Stdio/Tools/WorkspaceWarmTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Workspace.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/WorkspaceDriftTool.cs`
 
 ## Acceptance
 

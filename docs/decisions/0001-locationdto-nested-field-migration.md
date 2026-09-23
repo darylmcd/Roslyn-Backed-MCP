@@ -42,7 +42,7 @@ An earlier execute-time public-contract review proposed a third path — expose 
 
 **Add a serialized, optional, nested `Location` field alongside the existing flat fields. Do not replace them in a major-version break.**
 
-The operator resolved this on 2026-08-06 (via `/defer-unblock`, recorded in `ai_docs/items/core-dto-location-quartet-consolidation-primary.md`). The additive path was chosen over a breaking major bump because it avoids forcing every consumer to migrate on this repository's timeline, while still satisfying Directive #4's ADR-plus-migration-note requirement for a published repository — additive sidesteps the break entirely for the duration of the deprecation window.
+The operator resolved this on 2026-08-06 (via `/defer-unblock`, recorded in backlog row `core-dto-location-quartet-consolidation-primary`, since closed; see `CHANGELOG.md`). The additive path was chosen over a breaking major bump because it avoids forcing every consumer to migrate on this repository's timeline, while still satisfying Directive #4's ADR-plus-migration-note requirement for a published repository — additive sidesteps the break entirely for the duration of the deprecation window.
 
 A `[JsonIgnore]`-only computed view is explicitly insufficient and is not an acceptable implementation of this decision. `Location` must be serialized.
 
@@ -181,7 +181,7 @@ The specific field name `Location`, its `LocationDto?` nullability, and the flat
 
 ## References
 
-- `ai_docs/items/core-dto-location-quartet-consolidation-primary.md` — originating backlog item, operator decision, acceptance criteria
+- `core-dto-location-quartet-consolidation-primary` — originating backlog row, operator decision, acceptance criteria (row closed; its detail file was removed with it — see `CHANGELOG.md`)
 - `docs/release-policy.md` — compatibility policy, versioning and deprecation rules
 - `docs/product-contract.md` — stable vs. experimental surface tiers
 - `src/RoslynMcp.Core/Models/LocationDto.cs` — the target shared type

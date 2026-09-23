@@ -1,5 +1,7 @@
 # genericity-guard-nonmarkdown-shipped-files — shipped .ps1 files are outside the gate
 
+**row:** `genericity-guard-nonmarkdown-shipped-files` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `eng/verify-skills-are-generic.ps1`

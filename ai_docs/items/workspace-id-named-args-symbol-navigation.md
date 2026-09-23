@@ -1,6 +1,6 @@
 # workspace-id-named-args-symbol-navigation — Name workspace-sensitive navigation arguments
 
-**row:** `workspace-id-named-args-symbol-navigation` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-id-named-args-symbol-navigation` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

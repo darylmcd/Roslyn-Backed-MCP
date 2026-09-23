@@ -4,9 +4,7 @@
 
 ## Anchors
 
-- New `tests/RoslynMcp.Tests/Helpers/RawJsonRpcTranscriptAssertions.cs`.
-- `tests/RoslynMcp.Tests/ServerDiscoveryWireTests.cs`
-- `tests/RoslynMcp.Tests/StructuredContentWireContractTests.cs`
+- (new) New `tests/RoslynMcp.Tests/Helpers/RawJsonRpcTranscriptAssertions.cs`.
 
 ## Acceptance
 

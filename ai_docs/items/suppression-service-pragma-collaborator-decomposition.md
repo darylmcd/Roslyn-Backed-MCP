@@ -1,5 +1,7 @@
 # suppression-service-pragma-collaborator-decomposition — separate pragma parsing and mutation from the suppression facade
 
+**row:** `suppression-service-pragma-collaborator-decomposition` · **pri:** `Low` · **size:** `M`
+
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/SuppressionService.cs`

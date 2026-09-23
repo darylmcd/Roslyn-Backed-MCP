@@ -2,15 +2,15 @@
 
 <!-- purpose: Canonical reference for designing error handling, dispatcher hooks, and protocol hygiene in this repo's MCP server. Cites authoritative sources (spec, Anthropic governance, .NET SDK docs, community guides) and records this repo's applied decisions. Read before proposing changes to Program.cs, ToolErrorHandler, tool-call dispatch, or anything that shapes error envelopes. -->
 
-This document consolidates external best-practice guidance for MCP (Model Context Protocol) servers and records the design decisions this repo applies. Cite this file when reviewing changes that touch the tool-call pipeline, error shapes, or the filter/middleware surface.
+External MCP best-practice guidance plus this repo's applied decisions. Cite when reviewing changes to the tool-call pipeline, error shapes, or the filter surface.
 
-Governance changes faster than stable releases; when the evidence links below disagree with this file, trust the linked source and PR an update here.
+- When the evidence links below disagree with this file, trust the linked source and update this file.
 
 ---
 
 ## 1. Spec-level error model
 
-The MCP specification defines **two distinct error channels** for `tools/call`, and they reach different audiences. Getting this distinction right is the single most important design principle in this document.
+The MCP specification defines **two distinct error channels** for `tools/call`; they reach different audiences.
 
 | Channel | Shape | Who sees it | Use for |
 |---|---|---|---|
@@ -25,9 +25,10 @@ Reference: [MCP spec — tools](https://modelcontextprotocol.io/specification/20
 
 > "Language models can learn from tool input validation error messages and retry a tools/call with corrected parameters accordingly, but only if they receive the error feedback in their context window."
 
-Concretely: if a caller omits a required parameter or supplies an unknown parameter name, the MCP client hides `-32602` protocol errors from the LLM. The LLM retries blind. Returning the same problem as `isError: true` feeds the diagnosis into the model's next turn and closes the loop.
+- A missing required parameter or unknown parameter name surfaced as `-32602` is hidden from the LLM by the client, so it retries blind.
+- The same problem returned as `isError: true` feeds the diagnosis into the model's next turn.
 
-**This repo's rule:** everything the LLM could plausibly correct on retry goes through the tool-execution channel. Reserve protocol errors for problems the human operator or client must fix.
+**This repo's rule:** everything the LLM could plausibly correct on retry goes through the tool-execution channel; protocol errors are for problems the operator or client must fix.
 
 ---
 
@@ -62,16 +63,16 @@ Canonical example from the [Microsoft SDK filters docs](https://csharp.sdk.model
 });
 ```
 
-### 2.1 Filters see pre-binding exceptions (as of SDK 0.4.0-preview.3+)
+### 2.1 Filters see pre-binding exceptions
 
-The SDK originally swallowed reflection-binding exceptions inside the invocation wrapper, returning a bare `"An error occurred invoking '<tool>'."` string. That defect is tracked in [csharp-sdk#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820) and [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830), and fixed in [PR #844 "Propagate tool call exceptions through filters"](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (shipped 0.4.0-preview.3 and retained through 2.2.0). Filters observe:
+Since [csharp-sdk PR #844](https://github.com/modelcontextprotocol/csharp-sdk/pull/844) (see also [#820](https://github.com/modelcontextprotocol/csharp-sdk/issues/820), [#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830)), tool-call exceptions propagate through filters. Filters observe:
 
 - `ArgumentException` / `ArgumentNullException` from parameter binding (missing or unknown required argument)
 - `JsonException` from `arguments` deserialization
 - `FormatException` from per-parameter conversion
 - Any exception thrown inside the tool body itself
 
-This means a single `AddCallToolFilter` is the **only place in the repo** that needs to know about exceptions during tool calls. Per-handler wrappers become redundant.
+A single `AddCallToolFilter` is the **only place in the repo** that needs to know about exceptions during tool calls; per-handler wrappers are redundant.
 
 ### 2.2 Why filters, not generic middleware
 
@@ -93,7 +94,7 @@ Don't invent middleware; use the filter slots the SDK provides (`AddCallToolFilt
 | Metrics / `_meta` injection | The same filter (cross-cutting, not per-tool) | Prevents per-tool duplication; guarantees coverage |
 | Validation of domain inputs (file paths, symbol handles, etc.) | Inside the tool body, throwing typed exceptions that the filter classifies | Keeps business logic local; the filter provides the envelope |
 
-**Anti-pattern:** wrapping tool bodies with `ToolErrorHandler.ExecuteAsync(...)` as the primary error boundary. This is the pre-filter legacy pattern that misses pre-binding failures entirely. All legacy usages have been retired; do not reintroduce it.
+**Anti-pattern:** wrapping tool bodies in a per-handler error wrapper (the former `ToolErrorHandler.ExecuteAsync`, now deleted) as the primary error boundary; it misses pre-binding failures. Do not reintroduce it.
 
 ---
 
@@ -101,7 +102,7 @@ Don't invent middleware; use the filter slots the SDK provides (`AddCallToolFilt
 
 ### 4.1 Swallowing exceptions inside tool bodies
 
-Bare `catch (Exception) { return ""; }` or "log and return null" inside tool methods hides information the LLM needs to self-correct. Let exceptions propagate to the filter, which owns the envelope. Guidance from the [Microsoft SDK docs on `McpServerTool`](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.Server.McpServerTool.html):
+Bare `catch (Exception) { return ""; }` or "log and return null" inside tool methods hides what the LLM needs to self-correct; let exceptions propagate to the filter, which owns the envelope. Guidance from the [Microsoft SDK docs on `McpServerTool`](https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.Server.McpServerTool.html):
 
 > "When a tool throws an `McpException`, its Message is included in the error result sent to the client. Throwing any other exception type also results in an error `CallToolResult`, but with a generic error message (to avoid leaking sensitive information). Alternatively, a tool can declare a return type of `CallToolResult` to have full control over both success and error responses. The tool method is responsible for validating its own input arguments."
 
@@ -121,17 +122,21 @@ From the [.NET SDK v1.0 release blog](https://devblogs.microsoft.com/dotnet/rele
 
 > "The MCP HTTP handler may flush response headers before invoking the tool. By the time the tool call method is invoked, it is too late to set the response status code or headers."
 
-Authorization, rate-limiting, metrics, request-body transformation → **filter or transport layer**, never the tool body. Applies to stdio too by convention; this repo runs stdio-only today but the rule still stands.
+Authorization, rate-limiting, metrics, request-body transformation → **filter or transport layer**, never the tool body (also by convention on stdio).
 
 ### 4.4 Logging to stdout on stdio transport
 
-Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC messages. Any other byte corrupts the client's parser. [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) clears default providers and configures the console provider to write every level to stderr. Structured unexpected-failure diagnostics are an opt-in local stderr sink, independent of MCP capabilities and protocol versions. See the [Stainless guide](https://www.stainless.com/mcp/error-handling-and-debugging-mcp-servers) for background.
+Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC messages; any other byte corrupts the client's parser.
+
+- [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) clears default providers and writes every log level to stderr.
+- Structured unexpected-failure diagnostics are an opt-in local stderr sink, independent of MCP capabilities.
+- Background: [Stainless guide](https://www.stainless.com/mcp/error-handling-and-debugging-mcp-servers).
 
 ---
 
 ## 5. Observability and message discipline
 
-- **Separate public and server diagnostic projections.** Unexpected failures use `PublicExceptionDetailPolicy`: clients receive a stable remediation and correlation reference, while the optional sink receives only exception-type topology and stack depth. Expected-error message redaction remains tracked by `tool-error-envelope-sensitive-detail-disclosure`.
+- **Separate public and server diagnostic projections.** Unexpected failures use `PublicExceptionDetailPolicy`: clients receive a stable remediation and correlation reference, while the optional sink receives only exception-type topology and stack depth. Expected-error message redaction is not covered by this policy.
 - **Include a `_meta` block** on every response carrying gate-metrics snapshot (queue time, hold time, elapsed, stale-reload timing). Enables concurrency audits from inside the agent loop. The filter opens the scope and calls `ToolErrorHandler.InjectMetaIfPossible` on both success and error paths.
 - **Do not use MCP `notifications/message` for server observability.** Operational logs and the opt-in structured sink use stderr; `server_info` reports `logging: false`.
 
@@ -148,12 +153,12 @@ Stdio-transport MCP servers **must not** write to stdout except framed JSON-RPC 
 
 ## 7. Applied decisions in this repo
 
-This section is the live log of decisions derived from the above principles. Update with PR numbers on ship.
+Decisions derived from the principles above; each row points at its implementation and tests.
 
 | Decision | Source principle | Implementation |
 |---|---|---|
 | Single `AddCallToolFilter` is the sole error boundary for tool calls | § 1.1, § 2.1, § 3 | [`StructuredCallToolFilter`](../../src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs) registered in [`Program.cs`](../../src/RoslynMcp.Host.Stdio/Program.cs) via `WithRequestFilters(b => b.AddCallToolFilter(...))`. Opens the `AmbientGateMetrics` scope, classifies every exception through `ToolErrorHandler.ClassifyAndFormat`, and returns `CallToolResult { IsError = true, Content = [TextContentBlock { Text = envelope }] }` on failure. Filter-level regressions in [`StructuredCallToolFilterTests`](../../tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs). |
-| Per-handler `ToolErrorHandler.ExecuteAsync` wrapper is retired after the filter lands | § 3 anti-pattern | Swept from all 50 tool files in `src/RoslynMcp.Host.Stdio/Tools/` (174 call sites removed); `ToolErrorHandler.ExecuteAsync` method deleted. Unit tests that exercised the classifier through the legacy wrapper now call [`ToolExecutionTestHarness.RunAsync`](../../tests/RoslynMcp.Tests/Helpers/ToolExecutionTestHarness.cs) — an in-process mirror of the filter's control flow that lives only in the test project. |
+| No per-handler error wrapper in tool bodies | § 3 anti-pattern | Tool files under `src/RoslynMcp.Host.Stdio/Tools/` carry no wrapper. Classifier unit tests call [`ToolExecutionTestHarness.RunAsync`](../../tests/RoslynMcp.Tests/Helpers/ToolExecutionTestHarness.cs), an in-process mirror of the filter's control flow that lives only in the test project. |
 | `ClassifyError` handles pre-binding failures in BOTH shapes: wrapped in `TargetInvocationException` / `InvalidOperationException` AND raw-unwrapped as the SDK filter pipeline delivers them | § 4.1 | [`ToolErrorHandler.TryClassifyBindingLike`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) — single helper invoked against both the inner exception (wrapped) and the exception itself (unwrapped). Resolves [csharp-sdk#830](https://github.com/modelcontextprotocol/csharp-sdk/issues/830) for this repo's filter path. Regression coverage: [`ToolErrorHandlerParameterValidationTests`](../../tests/RoslynMcp.Tests/ToolErrorHandlerParameterValidationTests.cs), [`StructuredCallToolFilterTests.BuildErrorResult_MissingRequiredParameter_*`](../../tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs). |
 | `_meta` block on every response with gate-metrics snapshot | § 5 | The filter opens the [`AmbientGateMetrics`](../../src/RoslynMcp.Core/Services/AmbientGateMetrics.cs) scope on entry and injects the snapshot via [`ToolErrorHandler.InjectMetaIfPossible`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) on both success (into the first `TextContentBlock` of the returned `CallToolResult`) and error (into the envelope text). Array-rooted responses pass through unchanged — see `StructuredCallToolFilter.InjectMetaIntoContent`. |
 | Stdio transport writes framed JSON-RPC only; operational and opt-in structured diagnostics use stderr | § 4.4, § 5 | [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs), [`ServerObservability`](../../src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs), [`McpLoggingLifecycleWireTests`](../../tests/RoslynMcp.Tests/McpLoggingLifecycleWireTests.cs) |

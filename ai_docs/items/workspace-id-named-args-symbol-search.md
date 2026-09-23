@@ -1,6 +1,6 @@
 # workspace-id-named-args-symbol-search — Name workspace-sensitive symbol-search arguments
 
-**row:** `workspace-id-named-args-symbol-search` · **pri:** `Low` · **size:** `M`
+**row:** `workspace-id-named-args-symbol-search` · **pri:** `Low` · **size:** `S`
 
 ## Anchors
 

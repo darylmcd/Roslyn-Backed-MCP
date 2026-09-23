@@ -1,13 +1,10 @@
 # promotion-tier-refactoring-batch-1 — Promote qualifying experimental tools in the Refactoring catalog partial (batch 1 of 4)
 
-**row:** `promotion-tier-refactoring-batch-1` · **pri:** `Medium` · **size:** `M` · **deps:** `promotion-scorecard-refresh-toplevel-run`
+**row:** `promotion-tier-refactoring-batch-1` · **pri:** `Medium` · **size:** `S` · **deps:** `promotion-scorecard-refresh-toplevel-run`
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool`
-- `src/RoslynMcp.Host.Stdio/Tools/BulkRefactoringTools`
-- `src/RoslynMcp.Host.Stdio/Tools/ChangeSignatureTools`
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs`
 
 ## Acceptance
 
