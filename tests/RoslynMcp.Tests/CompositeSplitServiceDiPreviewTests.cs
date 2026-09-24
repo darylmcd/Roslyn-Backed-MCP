@@ -294,6 +294,90 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Facade_Injects_Retained_Constructor_Assigned_Field()
+    {
+        // A field used by both a migrated and a retained method stays on the facade. The original
+        // constructor that assigned it is dropped, so the facade constructor must inject it —
+        // otherwise the retained method reads a never-assigned (null) field at runtime.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "LoggedService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n" +
+            "\n" +
+            "public sealed class LoggedService\n" +
+            "{\n" +
+            "    private readonly System.IO.TextWriter _log;\n" +
+            "\n" +
+            "    public LoggedService(System.IO.TextWriter log)\n" +
+            "    {\n" +
+            "        _log = log;\n" +
+            "    }\n" +
+            "\n" +
+            "    public void Moved() => _log.WriteLine(\"moved\");\n" +
+            "\n" +
+            "    public void Kept() => _log.WriteLine(\"kept\");\n" +
+            "}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "LoggedService",
+            new[] { new SplitServicePartition("MovedService", new[] { "Moved" }) },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        StringAssert.Contains(facadeContents, "public LoggedService(MovedService movedService, System.IO.TextWriter log)",
+            $"The facade constructor must inject the retained field its dropped constructor assigned.\n--- facade ---\n{facadeContents}");
+        StringAssert.Contains(facadeContents, "_log = log;",
+            "The facade constructor must assign the retained field.");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Refuses_Primary_Or_Chained_Constructors()
+    {
+        // The facade constructor cannot carry a primary constructor or a chained base/this
+        // initializer; refuse up front instead of emitting a facade that fails CS8862/CS7036.
+        var cases = new (string TypeName, string Source, string ExpectedFragment)[]
+        {
+            ("PrimaryService",
+                "namespace SampleLib;\n\npublic sealed class PrimaryService(int seed)\n{\n    public int A() => seed;\n    public int B() => seed + 1;\n}\n",
+                "primary constructor"),
+            ("ChainedService",
+                "namespace SampleLib;\n\npublic abstract class ChainedBase\n{\n    protected ChainedBase(int seed) { }\n}\n\n" +
+                "public sealed class ChainedService : ChainedBase\n{\n    public ChainedService() : base(1) { }\n    public int A() => 1;\n    public int B() => 2;\n}\n",
+                "base(1)"),
+        };
+
+        foreach (var (typeName, source, expectedFragment) in cases)
+        {
+            await using var workspace = CreateIsolatedWorkspaceCopy();
+            var serviceFilePath = workspace.GetPath("SampleLib", typeName + ".cs");
+            await File.WriteAllTextAsync(serviceFilePath, source, CancellationToken.None);
+            await workspace.LoadAsync(CancellationToken.None);
+
+            var service = CreateSymbolRefactorService(new CompositePreviewStore());
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.PreviewSplitServiceWithDiAsync(
+                workspace.WorkspaceId,
+                serviceFilePath,
+                typeName,
+                new[] { new SplitServicePartition(typeName + "Part", new[] { "A" }) },
+                hostRegistrationFile: null,
+                CancellationToken.None));
+            StringAssert.Contains(ex.Message, expectedFragment, $"Refusal for '{typeName}' must explain the unsupported constructor shape.");
+        }
+    }
+
+    [TestMethod]
     public async Task Split_Service_With_Di_Preview_Returns_Warning_When_Registration_Not_Found()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

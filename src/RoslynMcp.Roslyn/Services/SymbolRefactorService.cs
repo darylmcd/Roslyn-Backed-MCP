@@ -352,6 +352,26 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 $"Method(s) not found on '{sourceType}': {string.Join(", ", missingMembers)}");
         }
 
+        // The facade replaces every instance constructor with the partition-injecting one. A
+        // primary constructor or a chained `: base(...)` / `: this(...)` initializer cannot be
+        // carried over faithfully, so refuse instead of emitting a facade that fails CS8862/CS7036.
+        if (typeDeclaration.ParameterList is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{sourceType}' declares a primary constructor, which split_service_with_di_preview does not support. " +
+                "Convert it to a regular constructor, then split.");
+        }
+
+        var chainedConstructor = typeDeclaration.Members.OfType<ConstructorDeclarationSyntax>()
+            .FirstOrDefault(ctor => !IsStatic(ctor.Modifiers) && ctor.Initializer is { } initializer &&
+                (initializer.IsKind(SyntaxKind.ThisConstructorInitializer) || initializer.ArgumentList.Arguments.Count > 0));
+        if (chainedConstructor is not null)
+        {
+            throw new InvalidOperationException(
+                $"A constructor of '{sourceType}' chains to '{chainedConstructor.Initializer}', which split_service_with_di_preview " +
+                "cannot carry onto the facade constructor. Remove the chained initializer, then split.");
+        }
+
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)
             ?? throw new InvalidOperationException($"Source file '{sourceFilePath}' must have a parent directory.");
 
@@ -808,7 +828,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     /// events, nested types). Changes to its members:
     /// <list type="bullet">
     /// <item>partitioned methods become forwarding stubs in their original positions;</item>
-    /// <item>instance constructors are replaced by the partition-injecting facade constructor;</item>
+    /// <item>instance constructors are replaced by the partition-injecting facade constructor, which
+    /// also injects every retained field the dropped constructors assigned;</item>
     /// <item>private instance fields migrated to a partition are dropped when no retained member
     /// still references them (state belongs to the partitions).</item>
     /// </list>
@@ -843,8 +864,34 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             .Select(identifier => identifier.Identifier.ValueText)
             .ToHashSet(StringComparer.Ordinal);
 
+        bool IsDroppedField(FieldDeclarationSyntax field) =>
+            IsDroppableFacadeField(field) && field.Declaration.Variables.All(declarator =>
+                migratedFieldNames.Contains(declarator.Identifier.ValueText) &&
+                !identifiersInRetainedMembers.Contains(declarator.Identifier.ValueText));
+
+        // Instance fields that stay on the facade without an initializer were assigned by the
+        // dropped constructor(s); inject them through the facade constructor exactly as
+        // BuildPartitionConstructor does for partitions, or they would stay null at runtime.
+        var ctorAssignedNames = originalDeclaration.Members.OfType<ConstructorDeclarationSyntax>()
+            .Where(ctor => !IsStatic(ctor.Modifiers))
+            .SelectMany(ctor => ctor.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+            .Select(assignment => assignment.Left switch
+            {
+                IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+                MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText,
+                _ => null,
+            })
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        var retainedCtorFields = context.FieldDeclarations
+            .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.ConstKeyword)) &&
+                !IsDroppedField(field) &&
+                field.Declaration.Variables.Any(declarator =>
+                    declarator.Initializer is null && ctorAssignedNames.Contains(declarator.Identifier.ValueText)))
+            .ToArray();
+
         var facadeMembers = new List<MemberDeclarationSyntax>();
-        facadeMembers.AddRange(BuildFacadeInjectionMembers(sourceType, partitions));
+        facadeMembers.AddRange(BuildFacadeInjectionMembers(sourceType, partitions, retainedCtorFields));
         foreach (var member in originalDeclaration.Members)
         {
             switch (member)
@@ -860,10 +907,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 case ConstructorDeclarationSyntax ctor when !IsStatic(ctor.Modifiers):
                     // Replaced by the partition-injecting facade constructor.
                     break;
-                case FieldDeclarationSyntax field
-                    when IsDroppableFacadeField(field) && field.Declaration.Variables.All(declarator =>
-                        migratedFieldNames.Contains(declarator.Identifier.ValueText) &&
-                        !identifiersInRetainedMembers.Contains(declarator.Identifier.ValueText)):
+                case FieldDeclarationSyntax field when IsDroppedField(field):
                     break;
                 default:
                     facadeMembers.Add(member);
@@ -886,7 +930,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
     private static IEnumerable<MemberDeclarationSyntax> BuildFacadeInjectionMembers(
         string sourceType,
-        IReadOnlyList<SplitServicePartition> partitions)
+        IReadOnlyList<SplitServicePartition> partitions,
+        IReadOnlyList<FieldDeclarationSyntax> retainedCtorFields)
     {
         // Private readonly field per partition, injected via constructor.
         var fieldMembers = partitions
@@ -909,10 +954,23 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                     SyntaxKind.SimpleAssignmentExpression,
                     SyntaxFactory.IdentifierName($"_{LowerFirst(partition.TypeName)}"),
                     SyntaxFactory.IdentifierName(LowerFirst(partition.TypeName))))));
+        // Retained fields reuse the partition constructor's parameter/assignment synthesis.
+        var retainedInjection = BuildPartitionConstructor(sourceType, retainedCtorFields);
+        var partitionParameterNames = ctorParameters.Select(parameter => parameter.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+        var collision = retainedInjection.ParameterList.Parameters
+            .FirstOrDefault(parameter => partitionParameterNames.Contains(parameter.Identifier.ValueText));
+        if (collision is not null)
+        {
+            throw new InvalidOperationException(
+                $"Facade constructor parameter '{collision.Identifier.ValueText}' would be declared twice: a retained field and a " +
+                "partition map to the same name. Rename the partition type or the field, then split.");
+        }
+
         var constructor = SyntaxFactory.ConstructorDeclaration(sourceType)
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
             .AddParameterListParameters(ctorParameters)
-            .WithBody(ctorBody);
+            .AddParameterListParameters(retainedInjection.ParameterList.Parameters.ToArray())
+            .WithBody(ctorBody.AddStatements(retainedInjection.Body!.Statements.ToArray()));
 
         return fieldMembers
             .Append<MemberDeclarationSyntax>(constructor)
