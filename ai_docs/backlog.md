@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-24T15:33:16Z
+**updated_at:** 2026-09-24T15:43:15Z
 
 ## Agent contract
 
@@ -145,6 +145,7 @@
 | `build-output-parser-drops-locationless-errors` | Medium | — | **Parse location-less MSBuild/NuGet errors in DotnetOutputParser** — accept 'project.csproj : error NU1201: …' lines so a failed build never reports errorCount 0. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/build-output-parser-drops-locationless-errors.md |
 | `netanalyzers-package-duplicates-sdk-analyzers` | Medium | — | **Drop the redundant Microsoft.CodeAnalysis.NetAnalyzers package reference** — the SDK already injects the identical 10.0.401 analyzers, so every CA diagnostic is reported twice. [type: chore] [source: mcp-surface-audit 20260924-1305] | S | items/netanalyzers-package-duplicates-sdk-analyzers.md |
 | `surface-test-skill-prompt-drift` | Medium | — | **Fix drift in the shipped mcp-server-surface-test skill** — ready-state gate, wrong apply route, mis-described get_test_coverage_map, and a --full dispatch agent the plugin never ships. [type: docs] [source: mcp-surface-audit 20260924-1305] | S | items/surface-test-skill-prompt-drift.md |
+| `local-user-path-leaks-sanitize-and-guard` | Medium | — | **Sanitize local user-profile paths from tracked files and gate new ones** — replace the maintainer profile path in 9 files and add a verify-ai-docs guard that rejects non-placeholder user paths. [type: security] [source: post-#1607 leak scan] | S | items/local-user-path-leaks-sanitize-and-guard.md |
 
 ## Low
 
