@@ -1,6 +1,14 @@
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-21: [DoNotParallelize] removed. The two positional/non-positional
+// tests write fixture files only into their own per-test CreateSampleSolutionCopy() directory
+// (under TestTempRoot.Current), then load and close that isolated copy via WorkspaceManager, whose
+// session map is a ConcurrentDictionary guarded by a SemaphoreSlim slot limiter — the same pattern
+// CouplingAnalysisTests already runs in parallel (donotparallelize-audit-wave-05). The two throw
+// tests only read through the synchronized WorkspaceIdCache. RecordFieldAdditionService is a
+// read-only preview (no PreviewStore, TryApplyChanges, UndoService, or ChangeTracker use).
+// Validated by a repeated (3x) concurrent run alongside parallel-enabled sibling classes, green
+// every time.
 [TestClass]
 public sealed class RecordFieldAdditionImpactTests : SharedWorkspaceTestBase
 {
