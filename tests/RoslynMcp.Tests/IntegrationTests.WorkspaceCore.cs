@@ -3,7 +3,11 @@ using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-15: [DoNotParallelize] removed. Every test method here only reads the shared
+// SampleSolution workspace through the assembly-shared, already-synchronized WorkspaceIdCache
+// (GetOrLoadWorkspaceIdAsync) via WorkspaceManager.GetStatus/GetProjectGraph; ReloadAsync is only invoked
+// against an unknown id and throws before touching any session. No writes, no direct LoadAsync/Close, no
+// static/environment/process state. Verified with a repeated (3x) run alongside its wave-15 siblings.
 [TestClass]
 public class IntegrationTests_WorkspaceCore : SharedWorkspaceTestBase
 {

@@ -15,7 +15,11 @@ namespace RoslynMcp.Tests;
 /// <c>find_unused_symbols</c>, etc.) had to fall back to <c>Grep</c> because the resolver
 /// path was hard-disabled by the tool schema. Tests below replicate that agent flow.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-15: [DoNotParallelize] removed. Every test method only issues read-only tool
+// calls (find_references, find_overrides, type_hierarchy, callers_callees, go_to_definition,
+// symbol_signature_help) against the shared SampleSolution workspace obtained through the assembly-shared,
+// already-synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync). No writes, no direct LoadAsync/Close,
+// no static/environment/process state. Verified with a repeated (3x) run alongside its wave-15 siblings.
 [TestClass]
 public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
 {
