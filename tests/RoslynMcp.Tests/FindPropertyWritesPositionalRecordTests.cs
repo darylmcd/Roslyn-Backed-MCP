@@ -10,7 +10,12 @@ namespace RoslynMcp.Tests;
 /// synthesized property. Each <c>new T(value)</c> call must now surface as a
 /// <c>PrimaryConstructorBind</c> bucket in the result list.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-10: [DoNotParallelize] removed. ClassInit writes its fixture file only into
+// a private CreateSampleSolutionCopy() directory (unique GUID under TestTempRoot.Current) and loads/closes
+// that copy through WorkspaceManager (ConcurrentDictionary-backed sessions + slot limiter), the same shape
+// cleared in donotparallelize-audit-wave-05. Test methods are read-only MutationAnalysisService queries; no
+// *_apply tool, shared-workspace reload, or static/shared mutable state. Verified with a repeated (3x)
+// concurrent run alongside its wave siblings.
 [TestClass]
 public sealed class FindPropertyWritesPositionalRecordTests : SharedWorkspaceTestBase
 {

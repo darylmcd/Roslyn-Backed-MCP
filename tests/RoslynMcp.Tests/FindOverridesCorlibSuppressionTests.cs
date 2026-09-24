@@ -15,7 +15,11 @@ namespace RoslynMcp.Tests;
 /// the <c>find_overrides</c> tool wrapper emits an explanatory hint. <c>member_hierarchy.overrides</c>
 /// silently benefits from the same guard via its shared <c>FindOverridesAsync</c> code path.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-10: [DoNotParallelize] removed. Every test method here only reads the
+// shared SampleSolution through the assembly-shared, already-synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync) via ReferenceService.FindOverridesAsync / SymbolTools.FindOverrides.
+// No method calls WorkspaceManager.LoadAsync/Close/ReloadAsync, an *_apply tool, or writes files or any
+// static/shared mutable state. Verified with a repeated (3x) concurrent run alongside its wave siblings.
 [TestClass]
 public sealed class FindOverridesCorlibSuppressionTests : SharedWorkspaceTestBase
 {
