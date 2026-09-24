@@ -131,7 +131,7 @@
     {
       "id": "split-service-with-di-facade-drops-sibling-types",
       "order": 4,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": [
         "split-service-with-di-facade-drops-sibling-types"
       ],
@@ -157,11 +157,11 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/split-service-with-di-facade-drops-sibling-types",
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "held: review cap (2 fix cycles) reached. PR #1616 closed unmerged; branch remediation/split-service-with-di-facade-drops-sibling-types kept at b4f9b43c (sibling types/base list/constants preserved; primary/chained ctors, ctor logic, shared mutable fields, param collisions refused). Open: HIGH ctor copy into a field WITH an initializer (SymbolRefactorService.cs:899/965) accepted but never injected - refuse it; MEDIUM non-private mutable field used only by a moved method duplicated on facade+partition (:874/:993); LOW multi-declarator over-injection (:1024); LOW ctor-overload collapse undocumented.",
       "fileSetHash": "78f2d493e33b6f56c7e2deb5f75f278b4109eafad3eb386f552c32b23fb3d6c3",
       "stanzaHash": "d2f9643fe0dbe942e9e7f6b2f31c936313ff9e1059871e4dfbff5ea015a8db34",
       "reviewedStanzaHash": "d2f9643fe0dbe942e9e7f6b2f31c936313ff9e1059871e4dfbff5ea015a8db34"
