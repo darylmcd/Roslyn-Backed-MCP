@@ -186,6 +186,90 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             $"Expected `+using A.B.Child;` in consumer diff (regression: ancestor-consumer ambient mis-classification). Diff:\n{consumerChange.UnifiedDiff}");
     }
 
+    /// <summary>
+    /// Regression (change-type-namespace-emits-invalid-syntax): when the relocated type stays in a
+    /// file that keeps sibling types, the appended namespace declaration was emitted trivia-free
+    /// (<c>namespaceShapes.Moved{</c>) and, for a file-scoped source, mixed a block namespace with
+    /// the file-scoped one (CS8955). Both source styles must now produce a file that compiles
+    /// with the relocated type in the destination namespace.
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, DisplayName = "file-scoped source namespace")]
+    [DataRow(false, DisplayName = "block-scoped source namespace")]
+    public async Task Preview_Keeps_Siblings_In_Same_File_And_Emits_Compilable_Namespace_Syntax(bool fileScoped)
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixtureDir = Path.Combine(workspace.GetPath("SampleLib"), "SameFileSiblingFixture");
+        Directory.CreateDirectory(fixtureDir);
+        var shapesPath = Path.Combine(fixtureDir, "Shapes.cs");
+        var source = fileScoped
+            ? "namespace Shapes.Source;\n\n" +
+              "public sealed class Circle\n" +
+              "{\n" +
+              "    public double Radius { get; set; }\n" +
+              "}\n\n" +
+              "/// <summary>Square shape.</summary>\n" +
+              "public sealed class Square\n" +
+              "{\n" +
+              "    public double Side { get; set; }\n" +
+              "}\n"
+            : "namespace Shapes.Source\n" +
+              "{\n" +
+              "    public sealed class Circle\n" +
+              "    {\n" +
+              "        public double Radius { get; set; }\n" +
+              "    }\n\n" +
+              "    /// <summary>Square shape.</summary>\n" +
+              "    public sealed class Square\n" +
+              "    {\n" +
+              "        public double Side { get; set; }\n" +
+              "    }\n" +
+              "}\n";
+        await File.WriteAllTextAsync(shapesPath, source, CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var service = CreateService();
+        var preview = await service.PreviewChangeTypeNamespaceAsync(
+            wsId,
+            typeName: "Square",
+            fromNamespace: "Shapes.Source",
+            toNamespace: "Shapes.Moved",
+            newFilePath: null,
+            CancellationToken.None);
+
+        var retrieved = PreviewStore.Retrieve(preview.PreviewToken);
+        Assert.IsNotNull(retrieved, "the preview token must be redeemable immediately after the preview");
+        var document = retrieved.Value.ModifiedSolution.Projects
+            .SelectMany(p => p.Documents)
+            .Single(d => d.FilePath is not null && d.FilePath.EndsWith(
+                Path.Combine("SameFileSiblingFixture", "Shapes.cs"), StringComparison.OrdinalIgnoreCase));
+        var text = (await document.GetTextAsync(CancellationToken.None)).ToString();
+
+        Assert.IsFalse(text.Contains("namespaceShapes", StringComparison.Ordinal), $"Keyword glued to name:\n{text}");
+        Assert.IsFalse(text.Contains("Moved{", StringComparison.Ordinal), $"Name glued to brace:\n{text}");
+
+        var compilation = await document.Project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var tree = await document.GetSyntaxTreeAsync(CancellationToken.None);
+        var errors = compilation.GetDiagnostics(CancellationToken.None)
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error && d.Location.SourceTree == tree)
+            .ToList();
+        Assert.AreEqual(0, errors.Count, $"Rewritten file must compile. Errors:\n{string.Join("\n", errors)}\n{text}");
+
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Shapes.Moved.Square"), $"Square must move to Shapes.Moved:\n{text}");
+        Assert.IsNotNull(compilation.GetTypeByMetadataName("Shapes.Source.Circle"), $"Circle must stay in Shapes.Source:\n{text}");
+        Assert.IsNull(compilation.GetTypeByMetadataName("Shapes.Source.Square"), $"Square must leave Shapes.Source:\n{text}");
+        StringAssert.Contains(text, "        public double Side { get; set; }", $"Relocated member must be indented inside the block namespace:\n{text}");
+        StringAssert.Contains(text, "    /// <summary>Square shape.</summary>", $"Relocated type must keep its doc comment:\n{text}");
+        Assert.AreEqual(
+            text.IndexOf("Square shape.", StringComparison.Ordinal),
+            text.LastIndexOf("Square shape.", StringComparison.Ordinal),
+            $"The doc comment must move with the type, not be duplicated:\n{text}");
+        Assert.IsTrue(text.EndsWith('\n'), $"Rewritten file must end with a newline:\n{text}");
+    }
+
     [TestMethod]
     public async Task Preview_Rejects_Mismatched_Namespaces()
     {
