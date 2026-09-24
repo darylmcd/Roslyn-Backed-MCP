@@ -251,7 +251,13 @@ public sealed class PreviewRouteBindingEditingTests
 /// while the shim-level tests above still pass. These cases mint a real token through the real
 /// producer and read the kind back off the real store.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-20: [DoNotParallelize] removed. Both methods only read the shared
+// SampleSolution through the synchronized WorkspaceIdCache and mint a preview token into the
+// thread-safe shared PreviewStore — PreviewMultiFileTextEditsAsync / PreviewCodeActionAsync are
+// in-memory previews with no apply, no disk write, no reload/version bump — then PeekKind and
+// Invalidate only their OWN token. No direct WorkspaceManager.LoadAsync/Close, no InvalidateAll,
+// no static or environment state. Verified with a repeated (3x) run of this class alongside its
+// donotparallelize-audit-wave-20 siblings, green every time.
 [TestClass]
 public sealed class PreviewRouteBindingEditingProducerTests : SharedWorkspaceTestBase
 {

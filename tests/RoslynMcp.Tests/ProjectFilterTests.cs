@@ -18,7 +18,12 @@ namespace RoslynMcp.Tests;
 /// the SampleSolution layout (<c>SampleLib</c>, <c>SampleApp</c>, <c>SampleLib.Tests</c>),
 /// so a project-name filter is observable.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-20: [DoNotParallelize] removed. Every test method only reads the
+// shared SampleSolution through the assembly-shared, synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync) via ReferenceService.FindReferencesAsync /
+// ConsumerAnalysisService.FindConsumersAsync — no *_apply, no direct WorkspaceManager.LoadAsync/Close
+// or reload, no preview-store, static, environment, or on-disk mutation. Verified with a repeated
+// (3x) run of this class alongside its donotparallelize-audit-wave-20 siblings, green every time.
 [TestClass]
 public sealed class ProjectFilterTests : SharedWorkspaceTestBase
 {
