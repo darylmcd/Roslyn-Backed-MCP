@@ -13,7 +13,13 @@ namespace RoslynMcp.Tests;
 /// that drops expensive per-symbol fields (documentation, parameters, baseTypes, interfaces,
 /// modifiers, returnType) to keep broad-query payloads under the MCP inline transport cap.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-29: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync)
+// and only calls SymbolTools.SearchSymbols, which runs under WorkspaceExecutionGate.RunReadAsync —
+// no *_apply, no reload, no disk writes, no UndoService/ChangeTracker/PreviewStore writes.
+// ToolExecutionTestHarness scopes its metrics through AsyncLocal (AmbientGateMetrics), so there is
+// no cross-class static or environment mutation. Validated by a bounded repeated (3x) concurrent
+// run alongside its wave-29 sibling and parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
 {
