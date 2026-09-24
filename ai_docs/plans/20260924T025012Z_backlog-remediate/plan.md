@@ -85,3 +85,19 @@ Stanza: `plan/donotparallelize-audit-wave-22.md`
 ### 15. donotparallelize-audit-wave-23
 
 Stanza: `plan/donotparallelize-audit-wave-23.md`
+
+## Retrospective
+
+**Result:** 15 of 15 initiatives merged (PRs #1591-#1605), 15 backlog rows closed. Route: all `direct`. Mode: parallel, one generation (3 waves of 5). Selection skipped `coverlet-net10-session-end-crash-upgrade` (execution-blocked: upstream PR 1987 merged, no stable `coverlet.collector` after 10.0.1) plus the static skip set (35 execution-blocked, 10 dep-blocked, 5 defer-band).
+
+**Executor outcomes:** 10 landable first pass. 5 (waves 10, 12, 14, 18, 19) cut off: the aggregate CI lock (`serializeFullCi: true`) serialized 5 concurrent executor gates and later legs hit the 3600 s `ci-lock-acquire` timeout before their gate started (wave-18 was mislabelled `work-failure`; same cause). Orchestrator committed their finished uncommitted work verbatim, opened PRs #1601-#1605, and dispatched cold reviewers that also ran the affected classes (2-5x, including concurrent sibling runs) since the executor gate never ran.
+
+**Review outcomes:** all 15 pass. Two medium stale-comment findings fixed before landing, each re-reviewed: wave-11 (`FindReflectionUsagesPaginationTests` claimed full per-test isolation; `InvalidPagination` reads the shared workspace) and wave-14 (`HighValueCoverageIntegrationTests` claimed a private BuildFailureSolution session; `LoadAsync` dedups by path, shared with `ValidationIntegrationTests`). The wave-14 changelog fragment wording was corrected to the reviewer's suggested text. Low findings (run-history sentences in rationale comments) not filed.
+
+**Landing:** `gate-chain` (09-23, `--ci-cmd "just ci"`) passed 09-12 and failed wave-13 on `FormatterBaselineContractTests.TimedOutCapture_RetainsPhaseMarkerAndTerminatesRecordedNestedChildAsync` (nested pwsh 10 s handshake under full-suite load; passed 3/3 isolated). `land-queue` then refused wave-10 (PR head tree != gated tree: chain branches were rebased locally but not pushed); the manual force-push of the gated heads was denied by the auto-mode classifier. Fell back to strict per-PR landing: wave-09 via single-id `land-queue`, then `integration-gate` + `land` for 10-23 in order — all 14 gates green first attempt, no flake retry used.
+
+**Deviations:** cut-off legs finished by the orchestrator without an executor gate (cold review ran targeted tests; per-PR integration gate ran full `just ci`). Orchestrator once cd'd into an executor worktree during review triage (read-only; moved out immediately).
+
+**Spin-off rows:** `formatter-baseline-nested-child-handshake-flake` (Medium), `test-preview-store-cross-class-eviction` (Low). Note appended to `donotparallelize-audit-wave-34` (ValidationIntegrationTests ↔ HighValueCoverageIntegrationTests BuildFailureSolution session coupling).
+
+**Global-tooling observations (belong in `~/.claude/ai_docs/backlog.md`):** aggregate CI lock + 5-wide executor waves guarantees lock-wait cut-offs when each `just ci` is ~13-15 min; `land-queue` still requires later chain branches pre-pushed at gated heads (a force-push the classifier blocks), so `gate-chain` → `land-queue` is not usable end-to-end in auto mode.
