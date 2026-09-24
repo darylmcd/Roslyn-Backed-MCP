@@ -110,6 +110,10 @@ public sealed class PromptCallErrorFilterTests
 
             var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
             Assert.AreEqual(_invalidParamsCode, error.GetProperty("code").GetInt32());
+            StringAssert.Contains(
+                error.GetProperty("message").GetString(), "'target'", StringComparison.Ordinal);
+            StringAssert.Contains(
+                error.GetProperty("message").GetString(), "Missing required argument", StringComparison.Ordinal);
             var serializedResponses = string.Join('\n', rawMessages);
             Assert.IsFalse(serializedResponses.Contains(_secretSentinel, StringComparison.Ordinal));
 
@@ -161,11 +165,107 @@ public sealed class PromptCallErrorFilterTests
 
             var (error, rawMessages) = FindSingleNewError(harness.RawServerMessages, priorMessageCount);
             Assert.AreEqual(_invalidParamsCode, error.GetProperty("code").GetInt32());
-            StringAssert.Contains(error.GetProperty("message").GetString(), "Invalid parameters for prompt");
+            var message = error.GetProperty("message").GetString();
+            StringAssert.Contains(message, "Invalid value for argument 'count'", StringComparison.Ordinal);
+            StringAssert.Contains(message, "'integer_prompt'", StringComparison.Ordinal);
             Assert.IsFalse(string.Join('\n', rawMessages).Contains(_secretSentinel, StringComparison.Ordinal));
             Assert.IsEmpty(sink.Events);
         }
     }
+
+    [TestMethod]
+    public async Task SpecStringIntegerPromptArgument_BindsLikeTheSdkBinder()
+    {
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-string-int-wire-{expectedVersion}", sink, requestedVersion);
+            Assert.AreEqual(expectedVersion, harness.Client.NegotiatedProtocolVersion);
+
+            // MCP models prompt arguments as strings; "19" must reach an int parameter as 19.
+            var result = await harness.Client.GetPromptAsync(
+                "integer_prompt",
+                new Dictionary<string, object?> { ["count"] = "19" },
+                cancellationToken: CancellationToken.None);
+
+            Assert.AreEqual("count=19", RenderText(result));
+            Assert.IsEmpty(sink.Events);
+        }
+    }
+
+    [TestMethod]
+    public async Task SpecStringNullableIntegerPromptArgument_BindsLikeTheSdkBinder()
+    {
+        foreach (var (requestedVersion, expectedVersion) in _protocolEras)
+        {
+            var sink = new CapturingSink();
+            await using var harness = await CreateHarnessAsync(
+                $"prompt-string-nullable-int-wire-{expectedVersion}", sink, requestedVersion);
+
+            var result = await harness.Client.GetPromptAsync(
+                "nullable_integer_prompt",
+                new Dictionary<string, object?> { ["limit"] = "7" },
+                cancellationToken: CancellationToken.None);
+            Assert.AreEqual("limit=7", RenderText(result));
+
+            var omitted = await harness.Client.GetPromptAsync(
+                "nullable_integer_prompt",
+                cancellationToken: CancellationToken.None);
+            Assert.AreEqual("limit=none", RenderText(omitted));
+            Assert.IsEmpty(sink.Events);
+        }
+    }
+
+    [TestMethod]
+    public void Validate_RealIntegerPrompts_AcceptSpecStringArguments()
+    {
+        var adapter = PromptBindingStageAdapter.Default;
+        (string Prompt, string[] IntArguments)[] cases =
+        [
+            ("consumer_impact", ["line", "column"]),
+            ("explain_error", ["line", "column"]),
+            ("guided_extract_method", ["startLine", "startColumn", "endLine", "endColumn"]),
+            ("refactor_and_validate", ["startLine", "startColumn", "endLine", "endColumn"]),
+            ("suggest_refactoring", ["startLine", "endLine"]),
+        ];
+
+        foreach (var (prompt, intArguments) in cases)
+        {
+            var arguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            {
+                ["workspaceId"] = JsonSerializer.SerializeToElement("ws"),
+                ["filePath"] = JsonSerializer.SerializeToElement("C:/src/File.cs"),
+                ["diagnosticId"] = JsonSerializer.SerializeToElement("CS0001"),
+                ["methodName"] = JsonSerializer.SerializeToElement("Extracted"),
+            };
+            foreach (var name in intArguments)
+            {
+                arguments[name] = JsonSerializer.SerializeToElement("19");
+            }
+
+            adapter.Validate(new GetPromptRequestParams { Name = prompt, Arguments = arguments });
+        }
+
+        // Non-numeric strings are still rejected, naming the argument.
+        var invalid = Assert.ThrowsExactly<McpProtocolException>(() => adapter.Validate(new GetPromptRequestParams
+        {
+            Name = "consumer_impact",
+            Arguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            {
+                ["workspaceId"] = JsonSerializer.SerializeToElement("ws"),
+                ["filePath"] = JsonSerializer.SerializeToElement("C:/src/File.cs"),
+                ["line"] = JsonSerializer.SerializeToElement("nineteen"),
+                ["column"] = JsonSerializer.SerializeToElement("21"),
+            },
+        }));
+        Assert.AreEqual(McpErrorCode.InvalidParams, invalid.ErrorCode);
+        StringAssert.Contains(invalid.Message, "'line'", StringComparison.Ordinal);
+        Assert.IsFalse(invalid.Message.Contains("nineteen", StringComparison.Ordinal));
+    }
+
+    private static string RenderText(GetPromptResult result) =>
+        string.Concat(result.Messages.Select(static m => (m.Content as TextContentBlock)?.Text));
 
     [TestMethod]
     public async Task HandlerJsonException_UsesSanitizedInternalErrorContract()
@@ -356,6 +456,12 @@ public sealed class PromptCallErrorFilterTests
         public static IEnumerable<PromptMessage> IntegerPrompt(
             [Description("Required integer used to exercise SDK JSON conversion.")] int count) =>
             [PromptMessageBuilder.CreatePromptMessage($"count={count}")];
+
+        [McpServerPrompt(Name = "nullable_integer_prompt")]
+        [Description("Test prompt with an optional nullable integer parameter.")]
+        public static IEnumerable<PromptMessage> NullableIntegerPrompt(
+            [Description("Optional integer used to exercise nullable numeric binding.")] int? limit = null) =>
+            [PromptMessageBuilder.CreatePromptMessage($"limit={(limit?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none")}")];
 
         [McpServerPrompt(Name = "json_throwing_prompt")]
         [Description("Test prompt whose handler throws a secret-bearing JsonException.")]
