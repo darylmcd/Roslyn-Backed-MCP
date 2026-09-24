@@ -10,7 +10,11 @@ namespace RoslynMcp.Tests;
 /// when true, only the compact per-package <c>NuGetPackageSummaryDto</c> list is
 /// populated and the verbose Packages + Projects arrays are emitted as empty.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-17: [DoNotParallelize] removed. Every test only reads the assembly-shared
+// sample workspace through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) via
+// NuGetDependencyService / AdvancedAnalysisTools.GetNuGetDependencies — MSBuild item evaluation and a
+// Directory.Packages.props read, no workspace reload/apply, no child dotnet process, no static or
+// environment mutation. Verified with a repeated (3x) run of this class alongside its wave-17 siblings.
 [TestClass]
 public sealed class NuGetDependencySummaryTests : SharedWorkspaceTestBase
 {
