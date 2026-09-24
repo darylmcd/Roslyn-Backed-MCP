@@ -129,6 +129,10 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
             watcher.RaiseRootMissing(status.WorkspaceId);
 
             await gate.Succeeded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // Production calls RemoveGate strictly AFTER RunWriteAsync returns, while Succeeded fires
+            // inside RunWriteAsync. Await the RemoveGate signal itself instead of reading the counter
+            // in that window (a race that surfaced once the class began running in parallel).
+            await gate.GateRemoved.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.IsTrue(gate.Attempts >= 2,
                 "A transient write-gate failure must retain and retry the lifecycle signal.");
@@ -227,6 +231,9 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         public TaskCompletionSource Succeeded { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource GateRemoved { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Task<T> RunReadAsync<T>(
             string workspaceId,
             Func<CancellationToken, Task<T>> action,
@@ -251,7 +258,11 @@ public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBas
         public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
             action(ct);
 
-        public void RemoveGate(string workspaceId) => Interlocked.Increment(ref _removeGateCalls);
+        public void RemoveGate(string workspaceId)
+        {
+            Interlocked.Increment(ref _removeGateCalls);
+            GateRemoved.TrySetResult();
+        }
     }
 
     private sealed class BlockingGate : IWorkspaceExecutionGate
