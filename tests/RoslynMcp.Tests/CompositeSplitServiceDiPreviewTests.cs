@@ -343,10 +343,12 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
     }
 
     [TestMethod]
-    public async Task Split_Service_With_Di_Preview_Refuses_Primary_Or_Chained_Constructors()
+    public async Task Split_Service_With_Di_Preview_Refuses_Constructor_Shapes_The_Facade_Cannot_Reproduce()
     {
-        // The facade constructor cannot carry a primary constructor or a chained base/this
-        // initializer; refuse up front instead of emitting a facade that fails CS8862/CS7036.
+        // The facade replaces every instance constructor with a generated one, so any shape it
+        // cannot reproduce faithfully must be refused rather than silently emitted: primary or
+        // chained constructors (CS8862/CS7036), constructor logic beyond parameter-to-field
+        // copies, shared mutable state, and constructor parameter-name collisions.
         var cases = new (string TypeName, string Source, string ExpectedFragment)[]
         {
             ("PrimaryService",
@@ -356,6 +358,28 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 "namespace SampleLib;\n\npublic abstract class ChainedBase\n{\n    protected ChainedBase(int seed) { }\n}\n\n" +
                 "public sealed class ChainedService : ChainedBase\n{\n    public ChainedService() : base(1) { }\n    public int A() => 1;\n    public int B() => 2;\n}\n",
                 "base(1)"),
+            // Retained get-only property assigned by the dropped constructor would stay unset.
+            ("PropertyService",
+                "namespace SampleLib;\n\npublic sealed class PropertyService\n{\n    public PropertyService(string name) { Name = name; }\n" +
+                "    public string Name { get; }\n    public int A() => 1;\n    public int B() => Name.Length;\n}\n",
+                "does more than copy parameters"),
+            // A computed (non-parameter) assignment cannot become a DI constructor parameter.
+            ("ComputedService",
+                "namespace SampleLib;\n\npublic sealed class ComputedService\n{\n    private readonly System.Collections.Generic.List<int> _items;\n" +
+                "    public ComputedService() { _items = new System.Collections.Generic.List<int>(); }\n" +
+                "    public int A() => _items.Count;\n    public int B() => _items.Count + 1;\n}\n",
+                "does more than copy parameters"),
+            // Mutable state used by a moved and a kept method would be duplicated.
+            ("CounterService",
+                "namespace SampleLib;\n\npublic sealed class CounterService\n{\n    private int _count;\n" +
+                "    public void A() => _count++;\n    public int B() => _count;\n}\n",
+                "_count"),
+            // Retained field and partition map to the same facade constructor parameter.
+            ("CollidingService",
+                "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _collidingServicePart;\n" +
+                "    public CollidingService(string collidingServicePart) { _collidingServicePart = collidingServicePart; }\n" +
+                "    public int A() => 1;\n    public int B() => _collidingServicePart.Length;\n}\n",
+                "declared twice"),
         };
 
         foreach (var (typeName, source, expectedFragment) in cases)
