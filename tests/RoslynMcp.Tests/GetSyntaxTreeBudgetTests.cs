@@ -8,7 +8,11 @@ namespace RoslynMcp.Tests;
 /// `maxNodes` caps total node count; `maxTotalBytes` caps estimated total response
 /// size. The walker stops at whichever cap is hit first and emits a TruncationNotice.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-12: [DoNotParallelize] removed. All three tests are read-only
+// SyntaxService.GetSyntaxTreeAsync calls against the shared SampleSolution obtained through the
+// assembly-shared, synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) — no apply, reload,
+// direct WorkspaceManager.LoadAsync/Close, static state, or filesystem write. Verified with a repeated
+// (3x) concurrent run alongside its wave-12 siblings and other parallel classes, green every time.
 [TestClass]
 public sealed class GetSyntaxTreeBudgetTests : SharedWorkspaceTestBase
 {
