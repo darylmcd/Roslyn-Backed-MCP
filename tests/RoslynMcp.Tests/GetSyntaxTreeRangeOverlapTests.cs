@@ -8,7 +8,10 @@ namespace RoslynMcp.Tests;
 /// start before <c>startLine</c> but end within the range (or start within the range
 /// but end after <c>endLine</c>) are correctly included.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-13: [DoNotParallelize] removed. Both methods only read SyntaxService output over the
+// assembly-shared sample workspace obtained through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync);
+// no *_apply, no WorkspaceManager.LoadAsync/Close/Reload, no static or on-disk mutation. ClassCleanup's
+// DisposeServices is a no-op (TestBase). Verified with a repeated (3x) run alongside wave-13 siblings, green every time.
 [TestClass]
 public sealed class GetSyntaxTreeRangeOverlapTests : SharedWorkspaceTestBase
 {

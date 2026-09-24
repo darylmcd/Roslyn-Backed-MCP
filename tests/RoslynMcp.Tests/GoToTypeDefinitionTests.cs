@@ -10,7 +10,11 @@ namespace RoslynMcp.Tests;
 /// type is a constructed generic from metadata (e.g. <c>List&lt;IAnimal&gt;</c>) lands on the
 /// in-source type argument (<c>IAnimal</c>) rather than failing with "No type definition found."
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-13: [DoNotParallelize] removed. Every method only reads navigation results over the
+// assembly-shared sample workspace from the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync); the
+// tool-path test runs under ToolExecutionTestHarness, whose AmbientGateMetrics scope is per-request, not a shared
+// static. No *_apply, no WorkspaceManager.LoadAsync/Close/Reload, no on-disk mutation. Verified with a repeated
+// (3x) run alongside wave-13 siblings, green every time.
 [TestClass]
 public sealed class GoToTypeDefinitionTests : SharedWorkspaceTestBase
 {

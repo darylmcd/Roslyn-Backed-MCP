@@ -7,6 +7,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-13: retained. WorkspaceLoad_InvalidPath_DoesNotLeakSession asserts a before/after
+// delta of WorkspaceManager.ListWorkspaces().Count on the assembly-shared WorkspaceManager (TestAssemblyFixture).
+// Any concurrently running class that loads or closes a workspace through that same manager (a first
+// WorkspaceIdCache load, or a direct LoadAsync/Close of a sample copy) between the two reads changes the count
+// and fails this test for an unrelated reason. The window is narrow: a 5x run of this class with the opt-out
+// removed, alongside 7 parallel-eligible loader classes, stayed green, so the race is a code-level hazard, not
+// an observed flake. Lifting the opt-out requires scoping that assertion to missingPath rather than the global count.
 [DoNotParallelize]
 [TestClass]
 public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
