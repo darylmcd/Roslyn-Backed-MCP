@@ -11,7 +11,12 @@ namespace RoslynMcp.Tests;
 /// a summary mode that replaces per-file UnifiedDiff with one-line summaries while the
 /// stored Solution still carries every real edit.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-22: [DoNotParallelize] removed. The two summary/full-diff methods
+// only call rename_preview on the shared sample workspace from the synchronized
+// WorkspaceIdCache, and the preview never mutates it. The apply method loads, applies to and
+// closes its own GUID-unique copy under TestTempRoot.Current. Undo/change-tracking state is
+// keyed by that copy's workspaceId. Verified with 3x repeated concurrent runs alongside
+// wave-22 siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
 {
