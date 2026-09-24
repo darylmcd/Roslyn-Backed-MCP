@@ -1,0 +1,874 @@
+Analyze the architecture and dependency structure of this .NET solution.
+
+**Project Dependency Graph:**
+```json
+[
+  {
+    "name": "ServerSurfaceCatalogAnalyzer",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\analyzers\\ServerSurfaceCatalogAnalyzer\\ServerSurfaceCatalogAnalyzer.csproj",
+    "assemblyName": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "netstandard2.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Core",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\RoslynMcp.Core.csproj",
+    "assemblyName": "RoslynMcp.Core",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Host.Stdio",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\RoslynMcp.Host.Stdio.csproj",
+    "assemblyName": "RoslynMcp.Host.Stdio",
+    "isTestProject": false,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "name": "RoslynMcp.Roslyn",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\RoslynMcp.Roslyn.csproj",
+    "assemblyName": "RoslynMcp.Roslyn",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core"
+    ]
+  },
+  {
+    "name": "RoslynMcp.ShardDiscoveryFixtures",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\RoslynMcp.ShardDiscoveryFixtures.csproj",
+    "assemblyName": "RoslynMcp.ShardDiscoveryFixtures",
+    "isTestProject": true,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Tests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\RoslynMcp.Tests.csproj",
+    "assemblyName": "RoslynMcp.Tests",
+    "isTestProject": true,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "ServerSurfaceCatalogAnalyzer"
+    ]
+  }
+]
+```
+
+**Namespace Dependencies:**
+```json
+{
+  "nodes": [
+    {
+      "namespace": "DiffPlex",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "DiffPlex.DiffBuilder",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "DiffPlex.DiffBuilder.Model",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Build.Evaluation",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Build.Evaluation.Project",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Build.Locator",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CSharp",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CSharp.Scripting",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CSharp.Syntax",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CSharp.Testing",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CodeActions",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CodeFixes",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.CodeRefactorings",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Completion",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Diagnostics",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Emit",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.FindSymbols",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Formatting",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Host",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Host.Mef",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.MSBuild",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Operations",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Project",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Rename",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Scripting",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Simplification",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Testing",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.CodeAnalysis.Text",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.DependencyInjection",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.DependencyInjection.Extensions",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.Hosting",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.Logging",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.Logging.Abstractions",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.Options",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.Extensions.Time.Testing",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Microsoft.VisualStudio.TestTools.UnitTesting",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "ModelContextProtocol",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "ModelContextProtocol.Client",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "ModelContextProtocol.Protocol",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "ModelContextProtocol.Server",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "ModelContextProtocol.Server.McpServer",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "Nito.AsyncEx",
+      "typeCount": 0,
+      "project": null
+    },
+    {
+      "namespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "typeCount": 6,
+      "project": "ServerSurfaceCatalogAnalyzer"
+    },
+    {
+      "namespace": "RoslynMcp.Core.Models",
+      "typeCount": 193,
+      "project": "RoslynMcp.Core"
+    },
+    {
+      "namespace": "RoslynMcp.Core.Services",
+      "typeCount": 131,
+      "project": "RoslynMcp.Core"
+    },
+    {
+      "namespace": "RoslynMcp.Host.Stdio",
+      "typeCount": 5,
+      "project": "RoslynMcp.Host.Stdio"
+    },
+    {
+      "namespace": "RoslynMcp.Host.Stdio.Catalog",
+      "typeCount": 38,
+      "project": "RoslynMcp.Host.Stdio"
+    },
+    {
+      "namespace": "RoslynMcp.Host.Stdio.Configuration",
+      "typeCount": 1,
+      "project": "RoslynMcp.Host.Stdio"
+    },
+    {
+      "namespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "typeCount": 27,
+      "project": "RoslynMcp.Host.Stdio"
+    }
+  ],
+  "edges": [
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System.Collections.Concurrent",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System.Collections.Generic",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System.Collections.Immutable",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System.Linq",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "System.Threading",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "Microsoft.CodeAnalysis",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "Microsoft.CodeAnalysis.CSharp",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "Microsoft.CodeAnalysis.CSharp.Syntax",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+      "toNamespace": "Microsoft.CodeAnalysis.Diagnostics",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Models",
+      "toNamespace": "System.Text.Json.Serialization",
+      "referenceCount": 3
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Models",
+      "toNamespace": "RoslynMcp.Core.Services",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "System.Diagnostics",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "RoslynMcp.Core.Models",
+      "referenceCount": 72
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "System.Collections.Concurrent",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "System.Text.RegularExpressions",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "System.Collections.Immutable",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Core.Services",
+      "toNamespace": "System.Text",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Reflection",
+      "referenceCount": 5
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.ComponentModel",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "ModelContextProtocol.Server",
+      "referenceCount": 5
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Diagnostics.CodeAnalysis",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Text.Json",
+      "referenceCount": 3
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Text.Json.Nodes",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "Microsoft.Extensions.DependencyInjection",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Text.Json.Schema",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Text.Json.Serialization.Metadata",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "RoslynMcp.Core.Models",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "toNamespace": "System.Collections.Frozen",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Configuration",
+      "toNamespace": "System.Globalization",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Configuration",
+      "toNamespace": "RoslynMcp.Roslyn.Services",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "System.Globalization",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "System.Text.Json",
+      "referenceCount": 3
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "System.Text.Json.Serialization",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "Microsoft.Extensions.Logging",
+      "referenceCount": 5
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "System.Text",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "ModelContextProtocol.Server",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "RoslynMcp.Roslyn.Services",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "RoslynMcp.Core.Services",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "System.Reflection",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "Microsoft.Extensions.DependencyInjection",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "Microsoft.Extensions.Options",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Diagnostics",
+      "toNamespace": "RoslynMcp.Host.Stdio.Catalog",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "System.Text.Json",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "Microsoft.Extensions.DependencyInjection",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "Microsoft.Extensions.Logging",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "ModelContextProtocol",
+      "referenceCount": 1
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "ModelContextProtocol.Protocol",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "ModelContextProtocol.Server",
+      "referenceCount": 2
+    },
+    {
+      "fromNamespace": "RoslynMcp.Host.Stdio.Elicitation",
+      "toNamespace": "RoslynMcp.Host.Stdio.ProtocolCompatibility",
+      "referenceCount": 2
+    }
+  ],
+  "circularDependencies": [
+    {
+      "cycle": [
+        "RoslynMcp.Core.Models",
+        "RoslynMcp.Core.Services",
+        "RoslynMcp.Core.Models"
+      ]
+    },
+    {
+      "cycle": [
+        "RoslynMcp.Host.Stdio.Elicitation",
+        "RoslynMcp.Host.Stdio.ProtocolCompatibility",
+        "RoslynMcp.Host.Stdio.Tools",
+        "RoslynMcp.Host.Stdio.Elicitation"
+      ]
+    },
+    {
+      "cycle": [
+        "RoslynMcp.Host.Stdio.ProtocolCompatibility",
+        "RoslynMcp.Host.Stdio.Tools",
+        "RoslynMcp.Host.Stdio.ProtocolCompatibility"
+      ]
+    },
+    {
+      "cycle": [
+        "RoslynMcp.Tests.Helpers",
+        "RoslynMcp.Tests.Support",
+        "RoslynMcp.Tests.Helpers"
+      ]
+    }
+  ],
+  "analyzedProjectCount": 6,
+  "totalNamespacesScanned": 31
+}
+[Showing 50 of 113 nodes]
+[Showing 50 of 380 edges]
+```
+
+*Note:* nodes, edges, and circular dependencies are capped above. Call
+`get_namespace_dependencies` (optionally with a project filter) to inspect
+the full graph or to drill into a specific namespace cluster.
+
+**NuGet Dependencies:**
+```json
+[
+  {
+    "packageId": "Microsoft.CodeAnalysis.NetAnalyzers",
+    "version": "10.0.401",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer",
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.BannedApiAnalyzers",
+    "version": "5.6.0",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer",
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "Microsoft.SourceLink.GitHub",
+    "version": "10.0.401",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer",
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "NETStandard.Library",
+    "version": "2.0.3",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.CSharp",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.Analyzers",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "ServerSurfaceCatalogAnalyzer"
+    ]
+  },
+  {
+    "packageId": "ModelContextProtocol",
+    "version": "2.2.0",
+    "usedByProjects": [
+      "RoslynMcp.Host.Stdio"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Extensions.Hosting",
+    "version": "10.0.12",
+    "usedByProjects": [
+      "RoslynMcp.Host.Stdio"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Extensions.Http",
+    "version": "10.0.12",
+    "usedByProjects": [
+      "RoslynMcp.Host.Stdio"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Extensions.Logging.Console",
+    "version": "10.0.12",
+    "usedByProjects": [
+      "RoslynMcp.Host.Stdio"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.CSharp.Workspaces",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.CSharp.Features",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.Features",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.Workspaces.MSBuild",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Build.Locator",
+    "version": "1.11.2",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Extensions.Logging",
+    "version": "10.0.12",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "DiffPlex",
+    "version": "1.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.CSharp.Scripting",
+    "version": "5.9.0",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Nito.AsyncEx",
+    "version": "5.1.2",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Build.Framework",
+    "version": "17.14.28",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Build",
+    "version": "17.14.28",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Build.Tasks.Core",
+    "version": "17.14.28",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Build.Utilities.Core",
+    "version": "17.14.28",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "System.Security.Cryptography.Xml",
+    "version": "10.0.12",
+    "usedByProjects": [
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "packageId": "Microsoft.NET.Test.Sdk",
+    "version": "18.10.1",
+    "usedByProjects": [
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "MSTest.TestAdapter",
+    "version": "4.4.1",
+    "usedByProjects": [
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "MSTest.TestFramework",
+    "version": "4.4.1",
+    "usedByProjects": [
+      "RoslynMcp.ShardDiscoveryFixtures",
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "coverlet.collector",
+    "version": "10.0.1",
+    "usedByProjects": [
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "Microsoft.Extensions.TimeProvider.Testing",
+    "version": "10.10.0",
+    "usedByProjects": [
+      "RoslynMcp.Tests"
+    ]
+  },
+  {
+    "packageId": "Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest",
+    "version": "1.1.2",
+    "usedByProjects": [
+      "RoslynMcp.Tests"
+    ]
+  }
+]
+```
+
+Please analyze:
+1. **Architecture**: Identify the layering strategy and assess if it follows clean architecture / onion architecture principles
+2. **Circular Dependencies**: Flag any circular namespace or project dependencies and suggest how to break them
+3. **Coupling**: Identify tightly coupled components and suggest decoupling strategies
+4. **NuGet Health**: Flag outdated, redundant, or conflicting package versions
+5. **Dependency Direction**: Verify that dependencies flow in the correct direction (e.g., UI → Domain, not Domain → UI)
+6. **Modularity**: Suggest opportunities to extract shared libraries or consolidate projects

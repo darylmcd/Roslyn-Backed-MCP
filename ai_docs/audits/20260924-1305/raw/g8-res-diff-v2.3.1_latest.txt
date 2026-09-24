@@ -1,0 +1,3939 @@
+{
+  "fromVersion": "2.3.1",
+  "toVersion": "4.2.1",
+  "fromCatalogVersion": "2026.04",
+  "toCatalogVersion": "2026.04",
+  "snapshotSources": {
+    "from": {
+      "sourceKind": "git-tag",
+      "sourceRef": "v2.3.1",
+      "sourceCommit": "e147875"
+    },
+    "to": {
+      "sourceKind": "current",
+      "sourceRef": "current",
+      "sourceCommit": "current"
+    }
+  },
+  "tools": {
+    "added": [
+      {
+        "kind": "tool",
+        "name": "find_overloads",
+        "category": "symbols",
+        "supportTier": "experimental",
+        "readOnly": true,
+        "destructive": false,
+        "summary": "Enumerate all overloads of a member by type \u002B name.",
+        "uriTemplate": null,
+        "parameters": null,
+        "outputSchema": null,
+        "deprecation": null
+      },
+      {
+        "kind": "tool",
+        "name": "workspace_readiness_report",
+        "category": "workspace",
+        "supportTier": "stable",
+        "readOnly": true,
+        "destructive": false,
+        "summary": "First-run workspace readiness report with verdict, limitations, and next workflows.",
+        "uriTemplate": null,
+        "parameters": null,
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "reportKind": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "generatedAtUtc": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "requestedWorkspaceId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "loadedWorkspaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
+                  "loadedPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "workspaceVersion": {
+                    "type": "integer"
+                  },
+                  "snapshotToken": {
+                    "type": "string"
+                  },
+                  "loadedAtUtc": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "projectCount": {
+                    "type": "integer"
+                  },
+                  "documentCount": {
+                    "type": "integer"
+                  },
+                  "isLoaded": {
+                    "type": "boolean"
+                  },
+                  "isStale": {
+                    "type": "boolean"
+                  },
+                  "workspaceDiagnosticCount": {
+                    "type": "integer"
+                  },
+                  "workspaceErrorCount": {
+                    "type": "integer"
+                  },
+                  "workspaceWarningCount": {
+                    "type": "integer"
+                  },
+                  "isReady": {
+                    "type": "boolean"
+                  },
+                  "analyzersReady": {
+                    "type": "boolean"
+                  },
+                  "restoreRequired": {
+                    "type": "boolean"
+                  },
+                  "buildRequired": {
+                    "type": "boolean"
+                  },
+                  "restoreHint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "solutionFileName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "loadedPath",
+                  "workspaceVersion",
+                  "snapshotToken",
+                  "loadedAtUtc",
+                  "projectCount",
+                  "documentCount",
+                  "isLoaded",
+                  "isStale",
+                  "workspaceDiagnosticCount",
+                  "workspaceErrorCount",
+                  "workspaceWarningCount",
+                  "isReady",
+                  "analyzersReady",
+                  "restoreRequired",
+                  "buildRequired",
+                  "restoreHint",
+                  "solutionFileName"
+                ]
+              }
+            },
+            "workspace": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verdict": {
+                  "type": "string"
+                },
+                "readinessSummary": {
+                  "type": "object",
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "loadedPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "workspaceVersion": {
+                      "type": "integer"
+                    },
+                    "snapshotToken": {
+                      "type": "string"
+                    },
+                    "loadedAtUtc": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "documentCount": {
+                      "type": "integer"
+                    },
+                    "isLoaded": {
+                      "type": "boolean"
+                    },
+                    "isStale": {
+                      "type": "boolean"
+                    },
+                    "workspaceDiagnosticCount": {
+                      "type": "integer"
+                    },
+                    "workspaceErrorCount": {
+                      "type": "integer"
+                    },
+                    "workspaceWarningCount": {
+                      "type": "integer"
+                    },
+                    "isReady": {
+                      "type": "boolean"
+                    },
+                    "analyzersReady": {
+                      "type": "boolean"
+                    },
+                    "restoreRequired": {
+                      "type": "boolean"
+                    },
+                    "buildRequired": {
+                      "type": "boolean"
+                    },
+                    "restoreHint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "solutionFileName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspaceId",
+                    "loadedPath",
+                    "workspaceVersion",
+                    "snapshotToken",
+                    "loadedAtUtc",
+                    "projectCount",
+                    "documentCount",
+                    "isLoaded",
+                    "isStale",
+                    "workspaceDiagnosticCount",
+                    "workspaceErrorCount",
+                    "workspaceWarningCount",
+                    "isReady",
+                    "analyzersReady",
+                    "restoreRequired",
+                    "buildRequired",
+                    "restoreHint",
+                    "solutionFileName"
+                  ]
+                },
+                "projectCount": {
+                  "type": "integer"
+                },
+                "documentCount": {
+                  "type": "integer"
+                },
+                "testProjectCount": {
+                  "type": "integer"
+                },
+                "sourceGeneratedDocumentCount": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "verdict",
+                "readinessSummary",
+                "projectCount",
+                "documentCount",
+                "testProjectCount",
+                "sourceGeneratedDocumentCount",
+                "signals"
+              ]
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nextRecommendedWorkflows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "workflow": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "workflow",
+                  "reason"
+                ]
+              }
+            }
+          },
+          "required": [
+            "reportKind",
+            "status",
+            "generatedAtUtc",
+            "requestedWorkspaceId",
+            "loadedWorkspaces",
+            "workspace",
+            "limitations",
+            "nextRecommendedWorkflows"
+          ]
+        },
+        "deprecation": null
+      },
+      {
+        "kind": "tool",
+        "name": "workspace_support_bundle",
+        "category": "workspace",
+        "supportTier": "stable",
+        "readOnly": true,
+        "destructive": false,
+        "summary": "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.",
+        "uriTemplate": null,
+        "parameters": null,
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "bundleKind": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "generatedAtUtc": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "requestedWorkspaceId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "loadedWorkspaces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
+                  "loadedPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "workspaceVersion": {
+                    "type": "integer"
+                  },
+                  "snapshotToken": {
+                    "type": "string"
+                  },
+                  "loadedAtUtc": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "projectCount": {
+                    "type": "integer"
+                  },
+                  "documentCount": {
+                    "type": "integer"
+                  },
+                  "isLoaded": {
+                    "type": "boolean"
+                  },
+                  "isStale": {
+                    "type": "boolean"
+                  },
+                  "workspaceDiagnosticCount": {
+                    "type": "integer"
+                  },
+                  "workspaceErrorCount": {
+                    "type": "integer"
+                  },
+                  "workspaceWarningCount": {
+                    "type": "integer"
+                  },
+                  "isReady": {
+                    "type": "boolean"
+                  },
+                  "analyzersReady": {
+                    "type": "boolean"
+                  },
+                  "restoreRequired": {
+                    "type": "boolean"
+                  },
+                  "buildRequired": {
+                    "type": "boolean"
+                  },
+                  "restoreHint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "solutionFileName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "loadedPath",
+                  "workspaceVersion",
+                  "snapshotToken",
+                  "loadedAtUtc",
+                  "projectCount",
+                  "documentCount",
+                  "isLoaded",
+                  "isStale",
+                  "workspaceDiagnosticCount",
+                  "workspaceErrorCount",
+                  "workspaceWarningCount",
+                  "isReady",
+                  "analyzersReady",
+                  "restoreRequired",
+                  "buildRequired",
+                  "restoreHint",
+                  "solutionFileName"
+                ]
+              }
+            },
+            "workspace": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readinessSummary": {
+                  "type": "object",
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "loadedPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "workspaceVersion": {
+                      "type": "integer"
+                    },
+                    "snapshotToken": {
+                      "type": "string"
+                    },
+                    "loadedAtUtc": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "documentCount": {
+                      "type": "integer"
+                    },
+                    "isLoaded": {
+                      "type": "boolean"
+                    },
+                    "isStale": {
+                      "type": "boolean"
+                    },
+                    "workspaceDiagnosticCount": {
+                      "type": "integer"
+                    },
+                    "workspaceErrorCount": {
+                      "type": "integer"
+                    },
+                    "workspaceWarningCount": {
+                      "type": "integer"
+                    },
+                    "isReady": {
+                      "type": "boolean"
+                    },
+                    "analyzersReady": {
+                      "type": "boolean"
+                    },
+                    "restoreRequired": {
+                      "type": "boolean"
+                    },
+                    "buildRequired": {
+                      "type": "boolean"
+                    },
+                    "restoreHint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "solutionFileName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspaceId",
+                    "loadedPath",
+                    "workspaceVersion",
+                    "snapshotToken",
+                    "loadedAtUtc",
+                    "projectCount",
+                    "documentCount",
+                    "isLoaded",
+                    "isStale",
+                    "workspaceDiagnosticCount",
+                    "workspaceErrorCount",
+                    "workspaceWarningCount",
+                    "isReady",
+                    "analyzersReady",
+                    "restoreRequired",
+                    "buildRequired",
+                    "restoreHint",
+                    "solutionFileName"
+                  ]
+                },
+                "drift": {
+                  "type": "object",
+                  "properties": {
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "totalDriftedFiles": {
+                      "type": "integer"
+                    },
+                    "returnedDriftedFiles": {
+                      "type": "integer"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "filesDrifted": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "recommended": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "stale",
+                    "totalDriftedFiles",
+                    "returnedDriftedFiles",
+                    "hasMore",
+                    "filesDrifted",
+                    "recommended"
+                  ]
+                },
+                "version": {
+                  "type": "object",
+                  "properties": {
+                    "workspaceVersion": {
+                      "type": "integer"
+                    },
+                    "snapshotToken": {
+                      "type": "string"
+                    },
+                    "serverVersion": {
+                      "type": "string"
+                    },
+                    "catalogVersion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "workspaceVersion",
+                    "snapshotToken",
+                    "serverVersion",
+                    "catalogVersion"
+                  ]
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "readinessSummary",
+                "drift",
+                "version"
+              ]
+            },
+            "diagnosticsTotals": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "totalErrors": {
+                  "type": "integer"
+                },
+                "totalWarnings": {
+                  "type": "integer"
+                },
+                "totalInfo": {
+                  "type": "integer"
+                },
+                "compilerErrors": {
+                  "type": "integer"
+                },
+                "analyzerErrors": {
+                  "type": "integer"
+                },
+                "workspaceErrors": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "totalErrors",
+                "totalWarnings",
+                "totalInfo",
+                "compilerErrors",
+                "analyzerErrors",
+                "workspaceErrors"
+              ]
+            },
+            "changeLedger": {
+              "type": "object",
+              "properties": {
+                "totalChanges": {
+                  "type": "integer"
+                },
+                "returnedChanges": {
+                  "type": "integer"
+                },
+                "hasMore": {
+                  "type": "boolean"
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sequenceNumber": {
+                        "type": "integer"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "affectedFiles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "toolName": {
+                        "type": "string"
+                      },
+                      "appliedAtUtc": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "sequenceNumber",
+                      "description",
+                      "affectedFiles",
+                      "toolName",
+                      "appliedAtUtc"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "totalChanges",
+                "returnedChanges",
+                "hasMore",
+                "changes"
+              ]
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "maxChangeEntries": {
+                  "type": "integer"
+                },
+                "maxDriftedFiles": {
+                  "type": "integer"
+                },
+                "sourceSnippetsIncluded": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "maxChangeEntries",
+                "maxDriftedFiles",
+                "sourceSnippetsIncluded"
+              ]
+            },
+            "nextActions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "bundleKind",
+            "status",
+            "generatedAtUtc",
+            "requestedWorkspaceId",
+            "loadedWorkspaces",
+            "workspace",
+            "diagnosticsTotals",
+            "changeLedger",
+            "limits",
+            "nextActions"
+          ]
+        },
+        "deprecation": null
+      }
+    ],
+    "removed": [],
+    "promoted": [],
+    "changed": [
+      {
+        "name": "apply_composite_preview",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "apply_composite_preview",
+          "category": "orchestration",
+          "supportTier": "experimental",
+          "readOnly": false,
+          "destructive": true,
+          "summary": "DESTRUCTIVE \u2014 applies a previously-previewed orchestration operation to disk. The _preview suffix names the redeemed preview token; name kept for API stability. Pair with a *_preview call in the same session.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "summary",
+            "before": "DESTRUCTIVE \u2014 applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session.",
+            "after": "DESTRUCTIVE \u2014 applies a previously-previewed orchestration operation to disk. The _preview suffix names the redeemed preview token; name kept for API stability. Pair with a *_preview call in the same session."
+          }
+        ]
+      },
+      {
+        "name": "bulk_replace_type_apply",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "bulk_replace_type_apply",
+          "category": "refactoring",
+          "supportTier": "experimental",
+          "readOnly": false,
+          "destructive": true,
+          "summary": "Apply a previewed bulk type replacement or invocation rewrite. Redeems tokens from bulk_replace_type_preview and replace_invocation_preview.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "summary",
+            "before": "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed.",
+            "after": "Apply a previewed bulk type replacement or invocation rewrite. Redeems tokens from bulk_replace_type_preview and replace_invocation_preview."
+          }
+        ]
+      },
+      {
+        "name": "find_duplicated_code",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "find_duplicated_code",
+          "category": "advanced-analysis",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Alias for find_duplicated_methods (cross-MCP-server name compatibility).",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": {
+            "aliasName": "find_duplicated_code",
+            "canonicalName": "find_duplicated_methods",
+            "reason": "alias for cross-MCP-server name compatibility",
+            "riskBucket": null,
+            "introducedRelease": "1.33.0",
+            "earliestRemovalMajor": 2
+          }
+        },
+        "changedFields": [
+          {
+            "field": "deprecation",
+            "before": null,
+            "after": {
+              "aliasName": "find_duplicated_code",
+              "canonicalName": "find_duplicated_methods",
+              "reason": "alias for cross-MCP-server name compatibility",
+              "riskBucket": null,
+              "introducedRelease": "1.33.0",
+              "earliestRemovalMajor": 2
+            }
+          }
+        ]
+      },
+      {
+        "name": "get_completions",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "get_completions",
+          "category": "symbols",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Return IntelliSense-style completion items at the member/token position, not the literal dot column; use probe_position when uncertain.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "summary",
+            "before": "Return IntelliSense-style completion items at a position.",
+            "after": "Return IntelliSense-style completion items at the member/token position, not the literal dot column; use probe_position when uncertain."
+          }
+        ]
+      },
+      {
+        "name": "get_symbol_outline",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "get_symbol_outline",
+          "category": "symbols",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Alias for document_symbols (cross-MCP-server name compatibility).",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": {
+            "aliasName": "get_symbol_outline",
+            "canonicalName": "document_symbols",
+            "reason": "alias for cross-MCP-server name compatibility",
+            "riskBucket": null,
+            "introducedRelease": "1.33.0",
+            "earliestRemovalMajor": 2
+          }
+        },
+        "changedFields": [
+          {
+            "field": "deprecation",
+            "before": null,
+            "after": {
+              "aliasName": "get_symbol_outline",
+              "canonicalName": "document_symbols",
+              "reason": "alias for cross-MCP-server name compatibility",
+              "riskBucket": null,
+              "introducedRelease": "1.33.0",
+              "earliestRemovalMajor": 2
+            }
+          }
+        ]
+      },
+      {
+        "name": "get_test_coverage_map",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "get_test_coverage_map",
+          "category": "validation",
+          "supportTier": "stable",
+          "readOnly": false,
+          "destructive": false,
+          "summary": "Alias for test_coverage (cross-MCP-server name compatibility).",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": {
+            "aliasName": "get_test_coverage_map",
+            "canonicalName": "test_coverage",
+            "reason": "alias for cross-MCP-server name compatibility",
+            "riskBucket": null,
+            "introducedRelease": "1.33.0",
+            "earliestRemovalMajor": 2
+          }
+        },
+        "changedFields": [
+          {
+            "field": "deprecation",
+            "before": null,
+            "after": {
+              "aliasName": "get_test_coverage_map",
+              "canonicalName": "test_coverage",
+              "reason": "alias for cross-MCP-server name compatibility",
+              "riskBucket": null,
+              "introducedRelease": "1.33.0",
+              "earliestRemovalMajor": 2
+            }
+          }
+        ]
+      },
+      {
+        "name": "replace_invocation_preview",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "replace_invocation_preview",
+          "category": "refactoring",
+          "supportTier": "experimental",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Redeem the token with bulk_replace_type_apply.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": null,
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "summary",
+            "before": "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Takes two FQ signatures and disambiguates overloads by parameter-type list.",
+            "after": "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Redeem the token with bulk_replace_type_apply."
+          }
+        ]
+      },
+      {
+        "name": "server_info",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "server_info",
+          "category": "server",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Inspect server capabilities, versions, and support tiers.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "productShape": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string"
+              },
+              "os": {
+                "type": "string"
+              },
+              "roslynVersion": {
+                "type": "string"
+              },
+              "workspaceCount": {
+                "type": "integer"
+              },
+              "workspaceCountHint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "connection": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string"
+                  },
+                  "loadedWorkspaceCount": {
+                    "type": "integer"
+                  },
+                  "stdioPid": {
+                    "type": "integer"
+                  },
+                  "serverStartedAt": {
+                    "type": "string"
+                  },
+                  "previousStdioPid": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "default": null
+                  },
+                  "previousExitedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "default": null
+                  },
+                  "previousRecycleReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "default": null
+                  }
+                },
+                "required": [
+                  "state",
+                  "loadedWorkspaceCount",
+                  "stdioPid",
+                  "serverStartedAt"
+                ]
+              },
+              "catalogVersion": {
+                "type": "string"
+              },
+              "surface": {
+                "type": "object",
+                "properties": {
+                  "tools": {
+                    "type": "object",
+                    "properties": {
+                      "stable": {
+                        "type": "integer"
+                      },
+                      "experimental": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "stable",
+                      "experimental"
+                    ]
+                  },
+                  "resources": {
+                    "type": "object",
+                    "properties": {
+                      "stable": {
+                        "type": "integer"
+                      },
+                      "experimental": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "stable",
+                      "experimental"
+                    ]
+                  },
+                  "prompts": {
+                    "type": "object",
+                    "properties": {
+                      "stable": {
+                        "type": "integer"
+                      },
+                      "experimental": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "stable",
+                      "experimental"
+                    ]
+                  },
+                  "registered": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "tools": {
+                        "type": "integer"
+                      },
+                      "resources": {
+                        "type": "integer"
+                      },
+                      "prompts": {
+                        "type": "integer"
+                      },
+                      "parityOk": {
+                        "type": "boolean"
+                      },
+                      "identityDrift": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "properties": {
+                          "toolsMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "toolsUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "toolsReflectionMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "toolsReflectionUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resourcesMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resourcesUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resourcesReflectionMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "resourcesReflectionUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "promptsMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "promptsUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "promptsReflectionMissing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "promptsReflectionUnexpected": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "toolsMissing",
+                          "toolsUnexpected",
+                          "toolsReflectionMissing",
+                          "toolsReflectionUnexpected",
+                          "resourcesMissing",
+                          "resourcesUnexpected",
+                          "resourcesReflectionMissing",
+                          "resourcesReflectionUnexpected",
+                          "promptsMissing",
+                          "promptsUnexpected",
+                          "promptsReflectionMissing",
+                          "promptsReflectionUnexpected"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "tools",
+                      "resources",
+                      "prompts",
+                      "parityOk"
+                    ]
+                  }
+                },
+                "required": [
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "registered"
+                ]
+              },
+              "resourceServerNames": {
+                "type": "object",
+                "properties": {
+                  "canonical": {
+                    "type": "string"
+                  },
+                  "aliases": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "probeGuidance": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "canonical",
+                  "aliases",
+                  "probeGuidance"
+                ]
+              },
+              "productBoundaries": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "tools": {
+                    "type": "boolean"
+                  },
+                  "resources": {
+                    "type": "boolean"
+                  },
+                  "prompts": {
+                    "type": "boolean"
+                  },
+                  "logging": {
+                    "type": "boolean"
+                  },
+                  "progress": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "logging",
+                  "progress"
+                ]
+              },
+              "update": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "current": {
+                    "type": "string"
+                  },
+                  "latest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "updateAvailable": {
+                    "type": "boolean"
+                  },
+                  "command": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "checkStatus": {
+                    "type": "string"
+                  },
+                  "lastCheckedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "current",
+                  "latest",
+                  "updateAvailable",
+                  "command",
+                  "checkStatus",
+                  "lastCheckedAt"
+                ]
+              },
+              "pathBoundary": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "configuredRootCount": {
+                    "type": "integer"
+                  },
+                  "failOpen": {
+                    "type": "boolean"
+                  },
+                  "enforcing": {
+                    "type": "boolean"
+                  },
+                  "hint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "configuredRootCount",
+                  "failOpen",
+                  "enforcing",
+                  "hint"
+                ]
+              }
+            },
+            "required": [
+              "server",
+              "version",
+              "productShape",
+              "runtime",
+              "os",
+              "roslynVersion",
+              "workspaceCount",
+              "workspaceCountHint",
+              "connection",
+              "catalogVersion",
+              "surface",
+              "resourceServerNames",
+              "productBoundaries",
+              "capabilities",
+              "update",
+              "pathBoundary"
+            ]
+          },
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "outputSchema",
+            "before": {
+              "type": "object",
+              "properties": {
+                "server": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "productShape": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "os": {
+                  "type": "string"
+                },
+                "roslynVersion": {
+                  "type": "string"
+                },
+                "workspaceCount": {
+                  "type": "integer"
+                },
+                "workspaceCountHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "connection": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string"
+                    },
+                    "loadedWorkspaceCount": {
+                      "type": "integer"
+                    },
+                    "stdioPid": {
+                      "type": "integer"
+                    },
+                    "serverStartedAt": {
+                      "type": "string"
+                    },
+                    "previousStdioPid": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "previousExitedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "previousRecycleReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "loadedWorkspaceCount",
+                    "stdioPid",
+                    "serverStartedAt"
+                  ]
+                },
+                "catalogVersion": {
+                  "type": "string"
+                },
+                "surface": {
+                  "type": "object",
+                  "properties": {
+                    "tools": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "resources": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "prompts": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "registered": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "tools": {
+                          "type": "integer"
+                        },
+                        "resources": {
+                          "type": "integer"
+                        },
+                        "prompts": {
+                          "type": "integer"
+                        },
+                        "parityOk": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "tools",
+                        "resources",
+                        "prompts",
+                        "parityOk"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tools",
+                    "resources",
+                    "prompts",
+                    "registered"
+                  ]
+                },
+                "resourceServerNames": {
+                  "type": "object",
+                  "properties": {
+                    "canonical": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "probeGuidance": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "canonical",
+                    "aliases",
+                    "probeGuidance"
+                  ]
+                },
+                "productBoundaries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "capabilities": {
+                  "type": "object",
+                  "properties": {
+                    "tools": {
+                      "type": "boolean"
+                    },
+                    "resources": {
+                      "type": "boolean"
+                    },
+                    "prompts": {
+                      "type": "boolean"
+                    },
+                    "logging": {
+                      "type": "boolean"
+                    },
+                    "progress": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "tools",
+                    "resources",
+                    "prompts",
+                    "logging",
+                    "progress"
+                  ]
+                },
+                "update": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "string"
+                    },
+                    "latest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updateAvailable": {
+                      "type": "boolean"
+                    },
+                    "command": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "current",
+                    "latest",
+                    "updateAvailable",
+                    "command"
+                  ]
+                }
+              },
+              "required": [
+                "server",
+                "version",
+                "productShape",
+                "runtime",
+                "os",
+                "roslynVersion",
+                "workspaceCount",
+                "workspaceCountHint",
+                "connection",
+                "catalogVersion",
+                "surface",
+                "resourceServerNames",
+                "productBoundaries",
+                "capabilities",
+                "update"
+              ]
+            },
+            "after": {
+              "type": "object",
+              "properties": {
+                "server": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "productShape": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "type": "string"
+                },
+                "os": {
+                  "type": "string"
+                },
+                "roslynVersion": {
+                  "type": "string"
+                },
+                "workspaceCount": {
+                  "type": "integer"
+                },
+                "workspaceCountHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "connection": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string"
+                    },
+                    "loadedWorkspaceCount": {
+                      "type": "integer"
+                    },
+                    "stdioPid": {
+                      "type": "integer"
+                    },
+                    "serverStartedAt": {
+                      "type": "string"
+                    },
+                    "previousStdioPid": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "previousExitedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "previousRecycleReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "loadedWorkspaceCount",
+                    "stdioPid",
+                    "serverStartedAt"
+                  ]
+                },
+                "catalogVersion": {
+                  "type": "string"
+                },
+                "surface": {
+                  "type": "object",
+                  "properties": {
+                    "tools": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "resources": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "prompts": {
+                      "type": "object",
+                      "properties": {
+                        "stable": {
+                          "type": "integer"
+                        },
+                        "experimental": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "stable",
+                        "experimental"
+                      ]
+                    },
+                    "registered": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "tools": {
+                          "type": "integer"
+                        },
+                        "resources": {
+                          "type": "integer"
+                        },
+                        "prompts": {
+                          "type": "integer"
+                        },
+                        "parityOk": {
+                          "type": "boolean"
+                        },
+                        "identityDrift": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "toolsMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "toolsUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "toolsReflectionMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "toolsReflectionUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "resourcesMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "resourcesUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "resourcesReflectionMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "resourcesReflectionUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "promptsMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "promptsUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "promptsReflectionMissing": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "promptsReflectionUnexpected": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "toolsMissing",
+                            "toolsUnexpected",
+                            "toolsReflectionMissing",
+                            "toolsReflectionUnexpected",
+                            "resourcesMissing",
+                            "resourcesUnexpected",
+                            "resourcesReflectionMissing",
+                            "resourcesReflectionUnexpected",
+                            "promptsMissing",
+                            "promptsUnexpected",
+                            "promptsReflectionMissing",
+                            "promptsReflectionUnexpected"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tools",
+                        "resources",
+                        "prompts",
+                        "parityOk"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tools",
+                    "resources",
+                    "prompts",
+                    "registered"
+                  ]
+                },
+                "resourceServerNames": {
+                  "type": "object",
+                  "properties": {
+                    "canonical": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "probeGuidance": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "canonical",
+                    "aliases",
+                    "probeGuidance"
+                  ]
+                },
+                "productBoundaries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "capabilities": {
+                  "type": "object",
+                  "properties": {
+                    "tools": {
+                      "type": "boolean"
+                    },
+                    "resources": {
+                      "type": "boolean"
+                    },
+                    "prompts": {
+                      "type": "boolean"
+                    },
+                    "logging": {
+                      "type": "boolean"
+                    },
+                    "progress": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "tools",
+                    "resources",
+                    "prompts",
+                    "logging",
+                    "progress"
+                  ]
+                },
+                "update": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "string"
+                    },
+                    "latest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updateAvailable": {
+                      "type": "boolean"
+                    },
+                    "command": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "checkStatus": {
+                      "type": "string"
+                    },
+                    "lastCheckedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "current",
+                    "latest",
+                    "updateAvailable",
+                    "command",
+                    "checkStatus",
+                    "lastCheckedAt"
+                  ]
+                },
+                "pathBoundary": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "configuredRootCount": {
+                      "type": "integer"
+                    },
+                    "failOpen": {
+                      "type": "boolean"
+                    },
+                    "enforcing": {
+                      "type": "boolean"
+                    },
+                    "hint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "configuredRootCount",
+                    "failOpen",
+                    "enforcing",
+                    "hint"
+                  ]
+                }
+              },
+              "required": [
+                "server",
+                "version",
+                "productShape",
+                "runtime",
+                "os",
+                "roslynVersion",
+                "workspaceCount",
+                "workspaceCountHint",
+                "connection",
+                "catalogVersion",
+                "surface",
+                "resourceServerNames",
+                "productBoundaries",
+                "capabilities",
+                "update",
+                "pathBoundary"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "workspace_health",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "workspace_health",
+          "category": "workspace",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Lean workspace readiness summary (alias of workspace_status verbose=false).",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "workspaceId": {
+                "type": "string"
+              },
+              "loadedPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "workspaceVersion": {
+                "type": "integer"
+              },
+              "snapshotToken": {
+                "type": "string"
+              },
+              "loadedAtUtc": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "projectCount": {
+                "type": "integer"
+              },
+              "documentCount": {
+                "type": "integer"
+              },
+              "isLoaded": {
+                "type": "boolean"
+              },
+              "isStale": {
+                "type": "boolean"
+              },
+              "workspaceDiagnosticCount": {
+                "type": "integer"
+              },
+              "workspaceErrorCount": {
+                "type": "integer"
+              },
+              "workspaceWarningCount": {
+                "type": "integer"
+              },
+              "isReady": {
+                "type": "boolean"
+              },
+              "analyzersReady": {
+                "type": "boolean"
+              },
+              "restoreRequired": {
+                "type": "boolean"
+              },
+              "buildRequired": {
+                "type": "boolean"
+              },
+              "restoreHint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "solutionFileName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "workspaceId",
+              "loadedPath",
+              "workspaceVersion",
+              "snapshotToken",
+              "loadedAtUtc",
+              "projectCount",
+              "documentCount",
+              "isLoaded",
+              "isStale",
+              "workspaceDiagnosticCount",
+              "workspaceErrorCount",
+              "workspaceWarningCount",
+              "isReady",
+              "analyzersReady",
+              "restoreRequired",
+              "buildRequired",
+              "restoreHint",
+              "solutionFileName"
+            ]
+          },
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "outputSchema",
+            "before": {
+              "type": "object",
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "workspaceVersion": {
+                  "type": "integer"
+                },
+                "snapshotToken": {
+                  "type": "string"
+                },
+                "loadedAtUtc": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "projectCount": {
+                  "type": "integer"
+                },
+                "documentCount": {
+                  "type": "integer"
+                },
+                "isLoaded": {
+                  "type": "boolean"
+                },
+                "isStale": {
+                  "type": "boolean"
+                },
+                "workspaceDiagnosticCount": {
+                  "type": "integer"
+                },
+                "workspaceErrorCount": {
+                  "type": "integer"
+                },
+                "workspaceWarningCount": {
+                  "type": "integer"
+                },
+                "isReady": {
+                  "type": "boolean"
+                },
+                "analyzersReady": {
+                  "type": "boolean"
+                },
+                "restoreRequired": {
+                  "type": "boolean"
+                },
+                "restoreHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "solutionFileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "workspaceVersion",
+                "snapshotToken",
+                "loadedAtUtc",
+                "projectCount",
+                "documentCount",
+                "isLoaded",
+                "isStale",
+                "workspaceDiagnosticCount",
+                "workspaceErrorCount",
+                "workspaceWarningCount",
+                "isReady",
+                "analyzersReady",
+                "restoreRequired",
+                "restoreHint",
+                "solutionFileName"
+              ]
+            },
+            "after": {
+              "type": "object",
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "workspaceVersion": {
+                  "type": "integer"
+                },
+                "snapshotToken": {
+                  "type": "string"
+                },
+                "loadedAtUtc": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "projectCount": {
+                  "type": "integer"
+                },
+                "documentCount": {
+                  "type": "integer"
+                },
+                "isLoaded": {
+                  "type": "boolean"
+                },
+                "isStale": {
+                  "type": "boolean"
+                },
+                "workspaceDiagnosticCount": {
+                  "type": "integer"
+                },
+                "workspaceErrorCount": {
+                  "type": "integer"
+                },
+                "workspaceWarningCount": {
+                  "type": "integer"
+                },
+                "isReady": {
+                  "type": "boolean"
+                },
+                "analyzersReady": {
+                  "type": "boolean"
+                },
+                "restoreRequired": {
+                  "type": "boolean"
+                },
+                "buildRequired": {
+                  "type": "boolean"
+                },
+                "restoreHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "solutionFileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "workspaceVersion",
+                "snapshotToken",
+                "loadedAtUtc",
+                "projectCount",
+                "documentCount",
+                "isLoaded",
+                "isStale",
+                "workspaceDiagnosticCount",
+                "workspaceErrorCount",
+                "workspaceWarningCount",
+                "isReady",
+                "analyzersReady",
+                "restoreRequired",
+                "buildRequired",
+                "restoreHint",
+                "solutionFileName"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "workspace_list",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "workspace_list",
+          "category": "workspace",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "List active workspace sessions.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": {
+            "type": "object",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "workspaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "loadedPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "workspaceVersion": {
+                          "type": "integer"
+                        },
+                        "snapshotToken": {
+                          "type": "string"
+                        },
+                        "loadedAtUtc": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "documentCount": {
+                          "type": "integer"
+                        },
+                        "isLoaded": {
+                          "type": "boolean"
+                        },
+                        "isStale": {
+                          "type": "boolean"
+                        },
+                        "workspaceDiagnosticCount": {
+                          "type": "integer"
+                        },
+                        "workspaceErrorCount": {
+                          "type": "integer"
+                        },
+                        "workspaceWarningCount": {
+                          "type": "integer"
+                        },
+                        "isReady": {
+                          "type": "boolean"
+                        },
+                        "analyzersReady": {
+                          "type": "boolean"
+                        },
+                        "restoreRequired": {
+                          "type": "boolean"
+                        },
+                        "buildRequired": {
+                          "type": "boolean"
+                        },
+                        "restoreHint": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "solutionFileName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "loadedPath",
+                        "workspaceVersion",
+                        "snapshotToken",
+                        "loadedAtUtc",
+                        "projectCount",
+                        "documentCount",
+                        "isLoaded",
+                        "isStale",
+                        "workspaceDiagnosticCount",
+                        "workspaceErrorCount",
+                        "workspaceWarningCount",
+                        "isReady",
+                        "analyzersReady",
+                        "restoreRequired",
+                        "buildRequired",
+                        "restoreHint",
+                        "solutionFileName"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "count",
+                  "workspaces"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "workspaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "loadedPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "workspaceVersion": {
+                          "type": "integer"
+                        },
+                        "snapshotToken": {
+                          "type": "string"
+                        },
+                        "loadedAtUtc": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "documentCount": {
+                          "type": "integer"
+                        },
+                        "projects": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "filePath": {
+                                "type": "string"
+                              },
+                              "documentCount": {
+                                "type": "integer"
+                              },
+                              "projectReferences": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "targetFrameworks": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "isTestProject": {
+                                "type": "boolean"
+                              },
+                              "assemblyName": {
+                                "type": "string"
+                              },
+                              "outputType": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "filePath",
+                              "documentCount",
+                              "projectReferences",
+                              "targetFrameworks",
+                              "isTestProject",
+                              "assemblyName",
+                              "outputType"
+                            ]
+                          }
+                        },
+                        "isLoaded": {
+                          "type": "boolean"
+                        },
+                        "isStale": {
+                          "type": "boolean"
+                        },
+                        "workspaceDiagnostics": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "category": {
+                                "type": "string"
+                              },
+                              "filePath": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "startLine": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "startColumn": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "endLine": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "endColumn": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "location": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "filePath": {
+                                    "type": "string"
+                                  },
+                                  "startLine": {
+                                    "type": "integer"
+                                  },
+                                  "startColumn": {
+                                    "type": "integer"
+                                  },
+                                  "endLine": {
+                                    "type": "integer"
+                                  },
+                                  "endColumn": {
+                                    "type": "integer"
+                                  },
+                                  "containingMember": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "previewText": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "classification": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "default": null
+                                  }
+                                },
+                                "required": [
+                                  "filePath",
+                                  "startLine",
+                                  "startColumn",
+                                  "endLine",
+                                  "endColumn",
+                                  "containingMember",
+                                  "previewText"
+                                ],
+                                "default": null
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "message",
+                              "severity",
+                              "category",
+                              "filePath",
+                              "startLine",
+                              "startColumn",
+                              "endLine",
+                              "endColumn"
+                            ]
+                          }
+                        },
+                        "staleReason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
+                        },
+                        "restoreRequired": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "buildRequired": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "loadedPath",
+                        "workspaceVersion",
+                        "snapshotToken",
+                        "loadedAtUtc",
+                        "projectCount",
+                        "documentCount",
+                        "projects",
+                        "isLoaded",
+                        "isStale",
+                        "workspaceDiagnostics"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "count",
+                  "workspaces"
+                ]
+              }
+            ]
+          },
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "outputSchema",
+            "before": {
+              "type": "object",
+              "properties": {
+                "count": {
+                  "type": "integer"
+                },
+                "workspaces": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "workspaceId": {
+                        "type": "string"
+                      },
+                      "loadedPath": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "workspaceVersion": {
+                        "type": "integer"
+                      },
+                      "snapshotToken": {
+                        "type": "string"
+                      },
+                      "loadedAtUtc": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "projectCount": {
+                        "type": "integer"
+                      },
+                      "documentCount": {
+                        "type": "integer"
+                      },
+                      "isLoaded": {
+                        "type": "boolean"
+                      },
+                      "isStale": {
+                        "type": "boolean"
+                      },
+                      "workspaceDiagnosticCount": {
+                        "type": "integer"
+                      },
+                      "workspaceErrorCount": {
+                        "type": "integer"
+                      },
+                      "workspaceWarningCount": {
+                        "type": "integer"
+                      },
+                      "isReady": {
+                        "type": "boolean"
+                      },
+                      "analyzersReady": {
+                        "type": "boolean"
+                      },
+                      "restoreRequired": {
+                        "type": "boolean"
+                      },
+                      "restoreHint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "solutionFileName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "workspaceId",
+                      "loadedPath",
+                      "workspaceVersion",
+                      "snapshotToken",
+                      "loadedAtUtc",
+                      "projectCount",
+                      "documentCount",
+                      "isLoaded",
+                      "isStale",
+                      "workspaceDiagnosticCount",
+                      "workspaceErrorCount",
+                      "workspaceWarningCount",
+                      "isReady",
+                      "analyzersReady",
+                      "restoreRequired",
+                      "restoreHint",
+                      "solutionFileName"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "count",
+                "workspaces"
+              ]
+            },
+            "after": {
+              "type": "object",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workspaceId": {
+                            "type": "string"
+                          },
+                          "loadedPath": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "workspaceVersion": {
+                            "type": "integer"
+                          },
+                          "snapshotToken": {
+                            "type": "string"
+                          },
+                          "loadedAtUtc": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "projectCount": {
+                            "type": "integer"
+                          },
+                          "documentCount": {
+                            "type": "integer"
+                          },
+                          "isLoaded": {
+                            "type": "boolean"
+                          },
+                          "isStale": {
+                            "type": "boolean"
+                          },
+                          "workspaceDiagnosticCount": {
+                            "type": "integer"
+                          },
+                          "workspaceErrorCount": {
+                            "type": "integer"
+                          },
+                          "workspaceWarningCount": {
+                            "type": "integer"
+                          },
+                          "isReady": {
+                            "type": "boolean"
+                          },
+                          "analyzersReady": {
+                            "type": "boolean"
+                          },
+                          "restoreRequired": {
+                            "type": "boolean"
+                          },
+                          "buildRequired": {
+                            "type": "boolean"
+                          },
+                          "restoreHint": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "solutionFileName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "workspaceId",
+                          "loadedPath",
+                          "workspaceVersion",
+                          "snapshotToken",
+                          "loadedAtUtc",
+                          "projectCount",
+                          "documentCount",
+                          "isLoaded",
+                          "isStale",
+                          "workspaceDiagnosticCount",
+                          "workspaceErrorCount",
+                          "workspaceWarningCount",
+                          "isReady",
+                          "analyzersReady",
+                          "restoreRequired",
+                          "buildRequired",
+                          "restoreHint",
+                          "solutionFileName"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "count",
+                    "workspaces"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "workspaceId": {
+                            "type": "string"
+                          },
+                          "loadedPath": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "workspaceVersion": {
+                            "type": "integer"
+                          },
+                          "snapshotToken": {
+                            "type": "string"
+                          },
+                          "loadedAtUtc": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "projectCount": {
+                            "type": "integer"
+                          },
+                          "documentCount": {
+                            "type": "integer"
+                          },
+                          "projects": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "filePath": {
+                                  "type": "string"
+                                },
+                                "documentCount": {
+                                  "type": "integer"
+                                },
+                                "projectReferences": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "targetFrameworks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "isTestProject": {
+                                  "type": "boolean"
+                                },
+                                "assemblyName": {
+                                  "type": "string"
+                                },
+                                "outputType": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "filePath",
+                                "documentCount",
+                                "projectReferences",
+                                "targetFrameworks",
+                                "isTestProject",
+                                "assemblyName",
+                                "outputType"
+                              ]
+                            }
+                          },
+                          "isLoaded": {
+                            "type": "boolean"
+                          },
+                          "isStale": {
+                            "type": "boolean"
+                          },
+                          "workspaceDiagnostics": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "severity": {
+                                  "type": "string"
+                                },
+                                "category": {
+                                  "type": "string"
+                                },
+                                "filePath": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "startLine": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "startColumn": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "endLine": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "endColumn": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "location": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "properties": {
+                                    "filePath": {
+                                      "type": "string"
+                                    },
+                                    "startLine": {
+                                      "type": "integer"
+                                    },
+                                    "startColumn": {
+                                      "type": "integer"
+                                    },
+                                    "endLine": {
+                                      "type": "integer"
+                                    },
+                                    "endColumn": {
+                                      "type": "integer"
+                                    },
+                                    "containingMember": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "previewText": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "classification": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "default": null
+                                    }
+                                  },
+                                  "required": [
+                                    "filePath",
+                                    "startLine",
+                                    "startColumn",
+                                    "endLine",
+                                    "endColumn",
+                                    "containingMember",
+                                    "previewText"
+                                  ],
+                                  "default": null
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "message",
+                                "severity",
+                                "category",
+                                "filePath",
+                                "startLine",
+                                "startColumn",
+                                "endLine",
+                                "endColumn"
+                              ]
+                            }
+                          },
+                          "staleReason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "default": null
+                          },
+                          "restoreRequired": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "buildRequired": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        },
+                        "required": [
+                          "workspaceId",
+                          "loadedPath",
+                          "workspaceVersion",
+                          "snapshotToken",
+                          "loadedAtUtc",
+                          "projectCount",
+                          "documentCount",
+                          "projects",
+                          "isLoaded",
+                          "isStale",
+                          "workspaceDiagnostics"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "count",
+                    "workspaces"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "workspace_status",
+        "kind": "tool",
+        "current": {
+          "kind": "tool",
+          "name": "workspace_status",
+          "category": "workspace",
+          "supportTier": "stable",
+          "readOnly": true,
+          "destructive": false,
+          "summary": "Inspect status, diagnostics, and stale-state information for a workspace.",
+          "uriTemplate": null,
+          "parameters": null,
+          "outputSchema": {
+            "type": "object",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
+                  "loadedPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "workspaceVersion": {
+                    "type": "integer"
+                  },
+                  "snapshotToken": {
+                    "type": "string"
+                  },
+                  "loadedAtUtc": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "projectCount": {
+                    "type": "integer"
+                  },
+                  "documentCount": {
+                    "type": "integer"
+                  },
+                  "isLoaded": {
+                    "type": "boolean"
+                  },
+                  "isStale": {
+                    "type": "boolean"
+                  },
+                  "workspaceDiagnosticCount": {
+                    "type": "integer"
+                  },
+                  "workspaceErrorCount": {
+                    "type": "integer"
+                  },
+                  "workspaceWarningCount": {
+                    "type": "integer"
+                  },
+                  "isReady": {
+                    "type": "boolean"
+                  },
+                  "analyzersReady": {
+                    "type": "boolean"
+                  },
+                  "restoreRequired": {
+                    "type": "boolean"
+                  },
+                  "buildRequired": {
+                    "type": "boolean"
+                  },
+                  "restoreHint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "solutionFileName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "loadedPath",
+                  "workspaceVersion",
+                  "snapshotToken",
+                  "loadedAtUtc",
+                  "projectCount",
+                  "documentCount",
+                  "isLoaded",
+                  "isStale",
+                  "workspaceDiagnosticCount",
+                  "workspaceErrorCount",
+                  "workspaceWarningCount",
+                  "isReady",
+                  "analyzersReady",
+                  "restoreRequired",
+                  "buildRequired",
+                  "restoreHint",
+                  "solutionFileName"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string"
+                  },
+                  "loadedPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "workspaceVersion": {
+                    "type": "integer"
+                  },
+                  "snapshotToken": {
+                    "type": "string"
+                  },
+                  "loadedAtUtc": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "projectCount": {
+                    "type": "integer"
+                  },
+                  "documentCount": {
+                    "type": "integer"
+                  },
+                  "projects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "filePath": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "integer"
+                        },
+                        "projectReferences": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "targetFrameworks": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "isTestProject": {
+                          "type": "boolean"
+                        },
+                        "assemblyName": {
+                          "type": "string"
+                        },
+                        "outputType": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "filePath",
+                        "documentCount",
+                        "projectReferences",
+                        "targetFrameworks",
+                        "isTestProject",
+                        "assemblyName",
+                        "outputType"
+                      ]
+                    }
+                  },
+                  "isLoaded": {
+                    "type": "boolean"
+                  },
+                  "isStale": {
+                    "type": "boolean"
+                  },
+                  "workspaceDiagnostics": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "filePath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "startLine": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "startColumn": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "endLine": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "endColumn": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "location": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "filePath": {
+                              "type": "string"
+                            },
+                            "startLine": {
+                              "type": "integer"
+                            },
+                            "startColumn": {
+                              "type": "integer"
+                            },
+                            "endLine": {
+                              "type": "integer"
+                            },
+                            "endColumn": {
+                              "type": "integer"
+                            },
+                            "containingMember": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "previewText": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "classification": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "default": null
+                            }
+                          },
+                          "required": [
+                            "filePath",
+                            "startLine",
+                            "startColumn",
+                            "endLine",
+                            "endColumn",
+                            "containingMember",
+                            "previewText"
+                          ],
+                          "default": null
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "message",
+                        "severity",
+                        "category",
+                        "filePath",
+                        "startLine",
+                        "startColumn",
+                        "endLine",
+                        "endColumn"
+                      ]
+                    }
+                  },
+                  "staleReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "default": null
+                  },
+                  "restoreRequired": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "buildRequired": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "loadedPath",
+                  "workspaceVersion",
+                  "snapshotToken",
+                  "loadedAtUtc",
+                  "projectCount",
+                  "documentCount",
+                  "projects",
+                  "isLoaded",
+                  "isStale",
+                  "workspaceDiagnostics"
+                ]
+              }
+            ]
+          },
+          "deprecation": null
+        },
+        "changedFields": [
+          {
+            "field": "outputSchema",
+            "before": {
+              "type": "object",
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "workspaceVersion": {
+                  "type": "integer"
+                },
+                "snapshotToken": {
+                  "type": "string"
+                },
+                "loadedAtUtc": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "projectCount": {
+                  "type": "integer"
+                },
+                "documentCount": {
+                  "type": "integer"
+                },
+                "isLoaded": {
+                  "type": "boolean"
+                },
+                "isStale": {
+                  "type": "boolean"
+                },
+                "workspaceDiagnosticCount": {
+                  "type": "integer"
+                },
+                "workspaceErrorCount": {
+                  "type": "integer"
+                },
+                "workspaceWarningCount": {
+                  "type": "integer"
+                },
+                "isReady": {
+                  "type": "boolean"
+                },
+                "analyzersReady": {
+                  "type": "boolean"
+                },
+                "restoreRequired": {
+                  "type": "boolean"
+                },
+                "restoreHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "solutionFileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "workspaceVersion",
+                "snapshotToken",
+                "loadedAtUtc",
+                "projectCount",
+                "documentCount",
+                "isLoaded",
+                "isStale",
+                "workspaceDiagnosticCount",
+                "workspaceErrorCount",
+                "workspaceWarningCount",
+                "isReady",
+                "analyzersReady",
+                "restoreRequired",
+                "restoreHint",
+                "solutionFileName"
+              ]
+            },
+            "after": {
+              "type": "object",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "loadedPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "workspaceVersion": {
+                      "type": "integer"
+                    },
+                    "snapshotToken": {
+                      "type": "string"
+                    },
+                    "loadedAtUtc": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "documentCount": {
+                      "type": "integer"
+                    },
+                    "isLoaded": {
+                      "type": "boolean"
+                    },
+                    "isStale": {
+                      "type": "boolean"
+                    },
+                    "workspaceDiagnosticCount": {
+                      "type": "integer"
+                    },
+                    "workspaceErrorCount": {
+                      "type": "integer"
+                    },
+                    "workspaceWarningCount": {
+                      "type": "integer"
+                    },
+                    "isReady": {
+                      "type": "boolean"
+                    },
+                    "analyzersReady": {
+                      "type": "boolean"
+                    },
+                    "restoreRequired": {
+                      "type": "boolean"
+                    },
+                    "buildRequired": {
+                      "type": "boolean"
+                    },
+                    "restoreHint": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "solutionFileName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspaceId",
+                    "loadedPath",
+                    "workspaceVersion",
+                    "snapshotToken",
+                    "loadedAtUtc",
+                    "projectCount",
+                    "documentCount",
+                    "isLoaded",
+                    "isStale",
+                    "workspaceDiagnosticCount",
+                    "workspaceErrorCount",
+                    "workspaceWarningCount",
+                    "isReady",
+                    "analyzersReady",
+                    "restoreRequired",
+                    "buildRequired",
+                    "restoreHint",
+                    "solutionFileName"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "loadedPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "workspaceVersion": {
+                      "type": "integer"
+                    },
+                    "snapshotToken": {
+                      "type": "string"
+                    },
+                    "loadedAtUtc": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "documentCount": {
+                      "type": "integer"
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "filePath": {
+                            "type": "string"
+                          },
+                          "documentCount": {
+                            "type": "integer"
+                          },
+                          "projectReferences": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "targetFrameworks": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "isTestProject": {
+                            "type": "boolean"
+                          },
+                          "assemblyName": {
+                            "type": "string"
+                          },
+                          "outputType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "filePath",
+                          "documentCount",
+                          "projectReferences",
+                          "targetFrameworks",
+                          "isTestProject",
+                          "assemblyName",
+                          "outputType"
+                        ]
+                      }
+                    },
+                    "isLoaded": {
+                      "type": "boolean"
+                    },
+                    "isStale": {
+                      "type": "boolean"
+                    },
+                    "workspaceDiagnostics": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "filePath": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "startLine": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "startColumn": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "endLine": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "endColumn": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "location": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "filePath": {
+                                "type": "string"
+                              },
+                              "startLine": {
+                                "type": "integer"
+                              },
+                              "startColumn": {
+                                "type": "integer"
+                              },
+                              "endLine": {
+                                "type": "integer"
+                              },
+                              "endColumn": {
+                                "type": "integer"
+                              },
+                              "containingMember": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "previewText": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "classification": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "default": null
+                              }
+                            },
+                            "required": [
+                              "filePath",
+                              "startLine",
+                              "startColumn",
+                              "endLine",
+                              "endColumn",
+                              "containingMember",
+                              "previewText"
+                            ],
+                            "default": null
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "message",
+                          "severity",
+                          "category",
+                          "filePath",
+                          "startLine",
+                          "startColumn",
+                          "endLine",
+                          "endColumn"
+                        ]
+                      }
+                    },
+                    "staleReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "restoreRequired": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "buildRequired": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "required": [
+                    "workspaceId",
+                    "loadedPath",
+                    "workspaceVersion",
+                    "snapshotToken",
+                    "loadedAtUtc",
+                    "projectCount",
+                    "documentCount",
+                    "projects",
+                    "isLoaded",
+                    "isStale",
+                    "workspaceDiagnostics"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "resources": {
+    "added": [
+      {
+        "kind": "resource",
+        "name": "server_catalog_version_diff",
+        "category": "server",
+        "supportTier": "experimental",
+        "readOnly": true,
+        "destructive": false,
+        "summary": "Structured surface diff between supported released server catalog versions. Slots: fromVersion \u002B toVersion (v-prefix optional; toVersion also accepts current/latest).",
+        "uriTemplate": "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
+        "parameters": null,
+        "outputSchema": null,
+        "deprecation": null
+      }
+    ],
+    "removed": [],
+    "promoted": [],
+    "changed": []
+  },
+  "prompts": {
+    "added": [],
+    "removed": [],
+    "promoted": [],
+    "changed": []
+  },
+  "summary": {
+    "added": 4,
+    "removed": 0,
+    "promoted": 0,
+    "changed": 11
+  },
+  "_meta": {
+    "queuedMs": 0,
+    "heldMs": 0,
+    "elapsedMs": 3
+  }
+}

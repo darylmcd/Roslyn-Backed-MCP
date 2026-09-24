@@ -1,0 +1,36 @@
+import fs from 'node:fs';
+const S = process.argv[2];
+const L = process.argv[3] || 'head';
+const j = n => JSON.parse(fs.readFileSync(`${S}/raw/${L}-${n}`, 'utf8'));
+const tools = j('tools.json').items, lint = j('schema-lint.json'), neg = j('negative-probes.json');
+console.log(`== ${L}: tools=${tools.length} resources=${j('resources.json').items.length} templates=${j('templates.json').items.length} prompts=${j('prompts.json').items.length}`);
+const init = j('initialize.json');
+console.log('serverInfo', JSON.stringify(init.result.serverInfo), 'caps', JSON.stringify(init.result.capabilities), 'proto', init.result.protocolVersion, 'instructionsLen', (init.result.instructions||'').length);
+// lint histogram
+const hist = {};
+for (const l of lint) for (const i of l.issues) { const k = i.replace(/'[^']*'/g, "'*'"); (hist[k] ??= []).push(l.name); }
+console.log('\n-- schema lint histogram');
+for (const [k, v] of Object.entries(hist).sort((a, b) => b[1].length - a[1].length)) console.log(v.length.toString().padStart(4), k, v.length <= 12 ? '| ' + v.join(', ') : '');
+// specific param-level issues
+console.log('\n-- param issues detail (no description / prose enum)');
+for (const l of lint) for (const i of l.issues) if (/param/.test(i)) console.log(' ', l.name, ':', i);
+// negatives
+console.log('\n-- empty-arg probes that did NOT error');
+for (const n of neg) if (n.empty && !n.empty.skipped && !n.empty.isError) console.log(' ', n.name, `ro=${n.readOnly} req=${n.required}`, '|', n.empty.text.slice(0, 160).replace(/\s+/g, ' '));
+console.log('\n-- wrongType probes that did NOT error');
+for (const n of neg) if (n.wrongType && !n.wrongType.isError) console.log(' ', n.name, n.wrongType.param, '|', n.wrongType.text.slice(0, 160).replace(/\s+/g, ' '));
+console.log('\n-- unknownArg probes that did NOT error');
+for (const n of neg) if (n.unknownArg && !n.unknownArg.isError) console.log(' ', n.name, '|', n.unknownArg.text.slice(0, 160).replace(/\s+/g, ' '));
+// error text shape clustering
+const shape = t => t.replace(/[0-9a-f]{32}/g, '<id>').replace(/\d+/g, 'N').replace(/'[^']*'/g, "'*'").replace(/"[^"]*"/g, '"*"').slice(0, 140);
+const clusters = {};
+for (const n of neg) for (const k of ['empty', 'wrongType', 'unknownArg']) { const p = n[k]; if (p && !p.skipped && p.isError) (clusters[k + ' :: ' + shape(p.text)] ??= []).push(n.name); }
+console.log('\n-- error message clusters');
+for (const [k, v] of Object.entries(clusters).sort((a, b) => b[1].length - a[1].length)) console.log(v.length.toString().padStart(4), k, v.length <= 6 ? '| ' + v.join(', ') : '');
+// slow
+console.log('\n-- slow probes (>2000ms)');
+for (const n of neg) for (const k of ['empty', 'wrongType', 'unknownArg']) { const p = n[k]; if (p?.ms > 2000) console.log(' ', n.name, k, p.ms); }
+console.log('\n-- prompt negatives');
+for (const p of j('prompt-negative.json')) console.log(' ', p.name, 'req=', p.requiredArgs.join(','), p.error ? 'ERR ' + (p.error.message || '').slice(0, 140) : `OK messages=${p.messages}`);
+console.log('\n-- resource negatives');
+for (const r of j('resource-negative.json')) console.log(' ', r.uri, r.error ? 'ERR ' + r.error.code + ' ' + (r.error.message || '').slice(0, 160) : `OK mime=${r.mime} ${r.text.slice(0, 160).replace(/\s+/g, ' ')}`);

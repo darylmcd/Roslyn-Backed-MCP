@@ -1,0 +1,208 @@
+Extract an interface from `ChangeTracker` and update downstream consumers using preview-first operations.
+
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Roslyn/Services/ChangeTracker.cs
+**Target Project:** (same project unless the architecture suggests otherwise)
+
+**Document Symbols:**
+```json
+[
+  {
+    "name": "ChangeTracker",
+    "kind": "Class",
+    "modifiers": [
+      "public",
+      "sealed"
+    ],
+    "startLine": 12,
+    "endLine": 80,
+    "children": [
+      {
+        "name": "_changes",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "readonly"
+        ],
+        "startLine": 14,
+        "endLine": 14,
+        "children": null
+      },
+      {
+        "name": "_workspaceManager",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "readonly"
+        ],
+        "startLine": 15,
+        "endLine": 15,
+        "children": null
+      },
+      {
+        "name": "_logger",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "readonly"
+        ],
+        "startLine": 16,
+        "endLine": 16,
+        "children": null
+      },
+      {
+        "name": "_globalSequence",
+        "kind": "Field",
+        "modifiers": [
+          "private"
+        ],
+        "startLine": 17,
+        "endLine": 17,
+        "children": null
+      },
+      {
+        "name": "ChangeTracker",
+        "kind": "Constructor",
+        "modifiers": [
+          "public"
+        ],
+        "startLine": 21,
+        "endLine": 26,
+        "children": null
+      },
+      {
+        "name": "Dispose",
+        "kind": "Method",
+        "modifiers": [
+          "public"
+        ],
+        "startLine": 28,
+        "endLine": 31,
+        "children": null
+      },
+      {
+        "name": "RecordChange",
+        "kind": "Method",
+        "modifiers": [
+          "public"
+        ],
+        "startLine": 33,
+        "endLine": 63,
+        "children": null
+      },
+      {
+        "name": "GetChanges",
+        "kind": "Method",
+        "modifiers": [
+          "public"
+        ],
+        "startLine": 65,
+        "endLine": 74,
+        "children": null
+      },
+      {
+        "name": "Clear",
+        "kind": "Method",
+        "modifiers": [
+          "public"
+        ],
+        "startLine": 76,
+        "endLine": 79,
+        "children": null
+      }
+    ]
+  }
+]
+```
+
+**Project Graph (Projects):**
+```json
+[
+  {
+    "name": "ServerSurfaceCatalogAnalyzer",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\analyzers\\ServerSurfaceCatalogAnalyzer\\ServerSurfaceCatalogAnalyzer.csproj",
+    "assemblyName": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "netstandard2.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Core",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\RoslynMcp.Core.csproj",
+    "assemblyName": "RoslynMcp.Core",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Host.Stdio",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\RoslynMcp.Host.Stdio.csproj",
+    "assemblyName": "RoslynMcp.Host.Stdio",
+    "isTestProject": false,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Roslyn"
+    ]
+  },
+  {
+    "name": "RoslynMcp.Roslyn",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\RoslynMcp.Roslyn.csproj",
+    "assemblyName": "RoslynMcp.Roslyn",
+    "isTestProject": false,
+    "outputType": "Library",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core"
+    ]
+  },
+  {
+    "name": "RoslynMcp.ShardDiscoveryFixtures",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\RoslynMcp.ShardDiscoveryFixtures.csproj",
+    "assemblyName": "RoslynMcp.ShardDiscoveryFixtures",
+    "isTestProject": true,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": []
+  },
+  {
+    "name": "RoslynMcp.Tests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\RoslynMcp.Tests.csproj",
+    "assemblyName": "RoslynMcp.Tests",
+    "isTestProject": true,
+    "outputType": "Exe",
+    "targetFrameworks": [
+      "net10.0"
+    ],
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "ServerSurfaceCatalogAnalyzer"
+    ]
+  }
+]
+```
+
+Use this workflow:
+1. Locate the declaration span for `ChangeTracker` from the document-symbol output.
+        2. Prefer `extract_and_wire_interface_preview` if you want one orchestration preview that also updates DI registrations.
+        3. If you only need interface extraction, call `extract_interface_preview`, review the diff, then apply it with `extract_interface_apply`.
+        4. If no suitable dedicated flow exists, fall back to `get_code_actions`, `preview_code_action`, or manual scaffolding with `scaffold_type_preview`.
+        5. If the interface should live in another project, ensure the necessary project reference exists in the preview before applying.
+        6. Call `find_references` for `ChangeTracker` and update consumer type annotations or constructor parameters where interface-based dependencies are more appropriate.
+        7. Finish with `build_workspace`, then `test_related` or `test_run` for the affected components.
+
+Prefer preserving the concrete type while introducing the interface incrementally unless a broader dependency inversion is explicitly required.

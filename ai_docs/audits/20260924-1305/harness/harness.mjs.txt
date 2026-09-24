@@ -1,0 +1,163 @@
+// Raw JSON-RPC stdio harness for an MCP server. Usage:
+//   node harness.mjs <outDir> <label> <root> -- <command> [args...]
+// Phases: initialize -> list surfaces -> schema lint -> negative probes (no workspace loaded).
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const argv = process.argv.slice(2);
+const sep = argv.indexOf('--');
+const [outDir, label, root] = argv.slice(0, sep);
+const [cmd, ...cmdArgs] = argv.slice(sep + 1);
+fs.mkdirSync(outDir, { recursive: true });
+const out = (name, data) => fs.writeFileSync(path.join(outDir, `${label}-${name}`), typeof data === 'string' ? data : JSON.stringify(data, null, 2));
+
+const child = spawn(cmd, cmdArgs, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env } });
+const stderrChunks = [];
+child.stderr.on('data', d => stderrChunks.push(d));
+let buf = '';
+let nextId = 1;
+const pending = new Map();
+const transcript = [];
+const rootUri = 'file:///' + root.replace(/\\/g, '/').replace(/^\//, '');
+
+child.stdout.on('data', d => {
+  buf += d.toString('utf8');
+  let nl;
+  while ((nl = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    let msg;
+    try { msg = JSON.parse(line); } catch { transcript.push({ nonJsonStdout: line.slice(0, 500) }); continue; }
+    if (msg.method && msg.id !== undefined) {
+      // server -> client request
+      if (msg.method === 'roots/list') send({ jsonrpc: '2.0', id: msg.id, result: { roots: [{ uri: rootUri, name: 'audit-root' }] } });
+      else send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'harness: unsupported' } });
+      transcript.push({ serverRequest: msg.method });
+      continue;
+    }
+    if (msg.method) { transcript.push({ notification: msg.method }); continue; }
+    const p = pending.get(msg.id);
+    if (p) { pending.delete(msg.id); p(msg); }
+  }
+});
+
+function send(obj) { child.stdin.write(JSON.stringify(obj) + '\n'); }
+function rpc(method, params, timeoutMs = 60000) {
+  const id = nextId++;
+  const t0 = Date.now();
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { pending.delete(id); resolve({ timeout: true, ms: Date.now() - t0 }); }, timeoutMs);
+    pending.set(id, msg => { clearTimeout(timer); resolve({ ...msg, ms: Date.now() - t0 }); });
+    send({ jsonrpc: '2.0', id, method, params });
+  });
+}
+async function listAll(method, key) {
+  const items = []; let cursor;
+  do {
+    const r = await rpc(method, cursor ? { cursor } : {});
+    if (r.error || r.timeout) return { error: r.error || 'timeout', items };
+    items.push(...(r.result[key] || []));
+    cursor = r.result.nextCursor;
+  } while (cursor);
+  return { items };
+}
+
+const text = r => {
+  if (r.timeout) return `TIMEOUT after ${r.ms}ms`;
+  if (r.error) return `JSONRPC_ERROR ${r.error.code}: ${r.error.message}`;
+  const c = r.result?.content?.map(x => x.text ?? '').join('\n') ?? '';
+  return c;
+};
+
+function lintSchema(tool) {
+  const issues = [];
+  const s = tool.inputSchema;
+  if (!s || s.type !== 'object') issues.push('inputSchema not an object schema');
+  const props = s?.properties || {};
+  for (const [name, p] of Object.entries(props)) {
+    if (!p.description || !String(p.description).trim()) issues.push(`param '${name}' has no description`);
+    if (!p.type && !p.enum && !p.anyOf && !p.oneOf && !p.$ref) issues.push(`param '${name}' has no type`);
+    const d = String(p.description || '');
+    if (!p.enum && /\b(one of|either|must be|allowed values?|valid values?)\b.*['"`]/i.test(d)) issues.push(`param '${name}' lists fixed choices in prose but has no enum`);
+  }
+  for (const r of s?.required || []) if (!(r in props)) issues.push(`required '${r}' not in properties`);
+  if (s && s.additionalProperties !== false) issues.push('additionalProperties not false (unknown args not rejected by schema)');
+  const a = tool.annotations || {};
+  if (a.readOnlyHint === undefined) issues.push('no readOnlyHint annotation');
+  if (a.destructiveHint === undefined && a.readOnlyHint !== true) issues.push('no destructiveHint annotation on non-read-only tool');
+  const n = tool.name;
+  if (a.readOnlyHint === true && /_(apply)$|^apply_|^set_|^add_pragma|^revert_|^workspace_close$/.test(n)) issues.push('readOnlyHint=true on a name that implies mutation');
+  if (a.readOnlyHint === false && /_preview$/.test(n) && !/apply/.test(n)) issues.push('preview tool marked readOnlyHint=false');
+  if (!tool.description || tool.description.length < 20) issues.push('description missing/too short');
+  if (!tool.outputSchema) issues.push('no outputSchema');
+  return issues;
+}
+
+(async () => {
+  const init = await rpc('initialize', {
+    protocolVersion: '2025-06-18',
+    capabilities: { roots: { listChanged: false } },
+    clientInfo: { name: 'mcp-surface-audit-harness', version: '1.0' },
+  }, 120000);
+  out('initialize.json', init);
+  if (init.error || init.timeout) { out('stderr.txt', Buffer.concat(stderrChunks).toString()); child.kill(); process.exit(2); }
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+
+  const tools = await listAll('tools/list', 'tools');
+  const resources = await listAll('resources/list', 'resources');
+  const templates = await listAll('resources/templates/list', 'resourceTemplates');
+  const prompts = await listAll('prompts/list', 'prompts');
+  out('tools.json', tools); out('resources.json', resources); out('templates.json', templates); out('prompts.json', prompts);
+
+  const lint = tools.items.map(t => ({ name: t.name, annotations: t.annotations ?? null, required: t.inputSchema?.required ?? [], issues: lintSchema(t) }));
+  out('schema-lint.json', lint);
+
+  const neg = [];
+  for (const t of tools.items) {
+    const req = t.inputSchema?.required ?? [];
+    const ro = t.annotations?.readOnlyHint === true;
+    const row = { name: t.name, readOnly: ro, required: req };
+    // P1: missing required args. Skip mutating tools with no required args (an empty call could act).
+    if (req.length > 0 || ro) {
+      const r = await rpc('tools/call', { name: t.name, arguments: {} }, 90000);
+      row.empty = { isError: r.result?.isError ?? !!r.error, ms: r.ms, text: text(r).slice(0, 600) };
+    } else row.empty = { skipped: 'mutating tool with no required args' };
+    // P2: wrong type on the first required string param.
+    const firstStr = req.find(k => t.inputSchema.properties?.[k]?.type === 'string' || (Array.isArray(t.inputSchema.properties?.[k]?.type) && t.inputSchema.properties[k].type.includes('string')));
+    if (firstStr) {
+      const args = {}; for (const k of req) args[k] = 'x'; args[firstStr] = 12345;
+      const r = await rpc('tools/call', { name: t.name, arguments: args }, 90000);
+      row.wrongType = { param: firstStr, isError: r.result?.isError ?? !!r.error, ms: r.ms, text: text(r).slice(0, 600) };
+    }
+    // P3: unknown argument on a nonexistent workspace (read-only tools only).
+    if (ro && req.includes('workspaceId')) {
+      const args = {}; for (const k of req) args[k] = 'x'; args.workspaceId = '00000000000000000000000000000000'; args.__bogus_arg = 1;
+      const r = await rpc('tools/call', { name: t.name, arguments: args }, 90000);
+      row.unknownArg = { isError: r.result?.isError ?? !!r.error, ms: r.ms, text: text(r).slice(0, 600) };
+    }
+    neg.push(row);
+  }
+  out('negative-probes.json', neg);
+
+  // Prompts: get each with no args (missing-arg error quality).
+  const pneg = [];
+  for (const p of prompts.items) {
+    const r = await rpc('prompts/get', { name: p.name, arguments: {} }, 60000);
+    pneg.push({ name: p.name, requiredArgs: (p.arguments || []).filter(a => a.required).map(a => a.name), error: r.error ?? null, ms: r.ms, messages: r.result?.messages?.length ?? null });
+  }
+  out('prompt-negative.json', pneg);
+
+  // Resources: bad template substitutions.
+  const rneg = [];
+  for (const uri of ['roslyn://workspace/00000000000000000000000000000000/status', 'roslyn://workspace/x/file/does-not-exist.cs', 'roslyn://server/catalog/tools/-1/0', 'roslyn://server/catalog/tools/0/999', 'roslyn://server/catalog-diff/v0.0.1/current', 'roslyn://nope']) {
+    const r = await rpc('resources/read', { uri }, 60000);
+    rneg.push({ uri, error: r.error ?? null, ms: r.ms, mime: r.result?.contents?.[0]?.mimeType ?? null, text: (r.result?.contents?.[0]?.text ?? '').slice(0, 400) });
+  }
+  out('resource-negative.json', rneg);
+
+  out('transcript.json', transcript);
+  child.stdin.end();
+  setTimeout(() => { child.kill(); out('stderr.txt', Buffer.concat(stderrChunks).toString()); process.exit(0); }, 3000);
+})();

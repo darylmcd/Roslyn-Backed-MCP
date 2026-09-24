@@ -1,0 +1,33 @@
+Plan and execute a focused refactoring for the selected C# code using the server's preview/apply workflow.
+
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs
+**Selection:** 66:13 - 67:85
+
+**Source Context:**
+```csharp
+  63:             // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
+  64:             // doesn't expose intra-load progress and adding it would balloon scope past the
+  65:             // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
+  66:             var totalStages = prewarm == true ? 5 : 4;
+  67:             ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
+  68:             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+  69:                 server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
+  70:             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
+```
+
+**Available Code Actions:**
+No Roslyn code actions are currently available at this span.
+
+**Current Diagnostics In File:**
+No matching diagnostics. Totals: 0 errors, 0 warnings, 6 info.
+
+Use this workflow:
+1. Call `get_code_actions` for the same span and select the best action index from the list above.
+2. Call `preview_code_action` with that action index and inspect the returned diff carefully.
+3. If the diff is acceptable, call `apply_code_action` with the preview token.
+4. If no appropriate code action exists, fall back to `rename_preview`, `organize_usings_preview`, `format_document_preview`, `apply_text_edit`, or `apply_multi_file_edit` as needed.
+5. After applying changes, call `build_project` for the owning project if obvious from the path; otherwise call `build_workspace`.
+6. If tests are likely impacted, call `test_related_files` or `test_run` and confirm whether any failures were introduced.
+7. Finish by calling `project_diagnostics` or `diagnostic_details` to confirm the targeted issue was reduced or resolved.
+
+Prefer minimal diffs and explain why you chose the selected code action over the alternatives.

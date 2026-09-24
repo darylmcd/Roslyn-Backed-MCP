@@ -1,0 +1,60 @@
+Review code complexity for this workspace and identify refactoring opportunities.
+
+**Project Filter:** RoslynMcp.Core
+
+**Complexity Metrics:**
+```json
+[
+  {
+    "symbolName": "BuildRestoreHint",
+    "symbolKind": "Method",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\Models\\WorkspaceStatusSummaryDto.cs",
+    "line": 136,
+    "cyclomaticComplexity": 14,
+    "linesOfCode": 71,
+    "maxNestingDepth": 2,
+    "parameterCount": 7,
+    "containingType": "WorkspaceStatusSummaryDto",
+    "maintainabilityIndex": 40.63
+  },
+  {
+    "symbolName": "From",
+    "symbolKind": "Method",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\Models\\WorkspaceStatusSummaryDto.cs",
+    "line": 58,
+    "cyclomaticComplexity": 12,
+    "linesOfCode": 64,
+    "maxNestingDepth": 4,
+    "parameterCount": 1,
+    "containingType": "WorkspaceStatusSummaryDto",
+    "maintainabilityIndex": 42.36
+  },
+  {
+    "symbolName": "NormalizeCorrelationId",
+    "symbolKind": "Method",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\Services\\PublicExceptionDetailPolicy.cs",
+    "line": 55,
+    "cyclomaticComplexity": 6,
+    "linesOfCode": 17,
+    "maxNestingDepth": 2,
+    "parameterCount": 1,
+    "containingType": "PublicExceptionDetailPolicy",
+    "maintainabilityIndex": 60.6
+  }
+]
+```
+
+Use this workflow:
+1. Identify methods with cyclomatic complexity > 10 — these are prime refactoring candidates.
+2. Identify methods with nesting depth > 4 — consider guard clauses or early returns.
+3. Identify methods with parameter count > 5 — consider parameter objects or builder patterns.
+4. For each hotspot, call `get_code_actions` at the method declaration to see if Roslyn offers automated refactorings.
+5. If automated refactorings are available, use `preview_code_action` and `apply_code_action`.
+6. For manual refactoring:
+   - Use `callers_callees` to understand the method's call graph before changing its signature.
+   - Use `find_references` to identify all callers that would need updating.
+   - Use `impact_analysis` to estimate the blast radius of changes.
+7. After refactoring, call `build_workspace` to verify compilation.
+8. Call `test_related` or `test_related_files` to find and run affected tests.
+
+Prioritize methods that are both high-complexity AND high-reference-count, as these have the most impact on maintainability.

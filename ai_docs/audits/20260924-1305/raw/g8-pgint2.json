@@ -1,0 +1,27 @@
+{
+  "W": "39514cb0ecc943f3916d657c3b88bab0",
+  "strings": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'consumer_impact'. Provide every required argument using the advertised parameter types."
+  },
+  "numbers": {
+    "ok": true,
+    "len": 6577
+  },
+  "suggestStr": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'suggest_refactoring'. Provide every required argument using the advertised parameter types."
+  },
+  "suggestNum": {
+    "ok": true,
+    "len": 14450
+  },
+  "reviewFile": {
+    "ok": true,
+    "len": 45163
+  },
+  "suggestNoOpt": {
+    "ok": true,
+    "len": 50754
+  }
+}

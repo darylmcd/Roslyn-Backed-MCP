@@ -1,0 +1,795 @@
+Perform an SRP (Single Responsibility Principle) analysis using cohesion metrics.
+
+**Project Filter:** RoslynMcp.Roslyn
+
+**LCOM4 Cohesion Metrics (types with 3+ instance methods):**
+```json
+[
+  {
+    "typeName": "DiRegistrationService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.DiRegistrationService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\DiRegistrationService.cs",
+    "line": 16,
+    "methodCount": 5,
+    "fieldCount": 6,
+    "lcom4Score": 5,
+    "clusters": [
+      {
+        "methods": [
+          "GetDiRegistrationsAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "GetDiRegistrationsDetailedAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "GetDiRegistrationsWithOverridesAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "GetOrLoadSnapshotAsync"
+        ],
+        "sharedFields": [
+          "_scanCache",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "ScanProjectsAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache",
+          "_exceptionReporter",
+          "_logger",
+          "_rootLoader"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "DotnetCommandRunner",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.DotnetCommandRunner",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Helpers\\DotnetCommandRunner.cs",
+    "line": 27,
+    "methodCount": 4,
+    "fieldCount": 3,
+    "lcom4Score": 4,
+    "clusters": [
+      {
+        "methods": [
+          "RunAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "RunAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "RunAsync"
+        ],
+        "sharedFields": [
+          "_outputLimit"
+        ]
+      },
+      {
+        "methods": [
+          "TryKillProcessTree"
+        ],
+        "sharedFields": [
+          "_killProcessTree",
+          "_logger"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "ChangeSignatureService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.ChangeSignatureService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\ChangeSignatureService.cs",
+    "line": 17,
+    "methodCount": 7,
+    "fieldCount": 3,
+    "lcom4Score": 4,
+    "clusters": [
+      {
+        "methods": [
+          "BuildPreviewDto",
+          "PreviewChangeSignatureAsync"
+        ],
+        "sharedFields": [
+          "_previewStore",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "PreviewAddParameterAsync",
+          "PreviewRemoveParameterAsync",
+          "PreviewReorderParametersAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "PreviewRenameParameterAsync"
+        ],
+        "sharedFields": [
+          "_refactoringService"
+        ]
+      },
+      {
+        "methods": [
+          "ApplyAddRemoveAsync"
+        ],
+        "sharedFields": []
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CodeFixProviderRegistry",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CodeFixProviderRegistry",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CodeFixProviderRegistry.cs",
+    "line": 21,
+    "methodCount": 4,
+    "fieldCount": 3,
+    "lcom4Score": 4,
+    "clusters": [
+      {
+        "methods": [
+          "GetProvidersForDetailed"
+        ],
+        "sharedFields": [
+          "_staticProviders"
+        ]
+      },
+      {
+        "methods": [
+          "GetProvidersFor"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "FirstProviderFor"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "EnumerateProjectProviderResults"
+        ],
+        "sharedFields": [
+          "_analyzerProviderLoader",
+          "_byAssemblyPath"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CouplingAnalysisService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CouplingAnalysisService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CouplingAnalysisService.cs",
+    "line": 18,
+    "methodCount": 5,
+    "fieldCount": 4,
+    "lcom4Score": 4,
+    "clusters": [
+      {
+        "methods": [
+          "GetCouplingMetricsAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "GetCouplingMetricsResultAsync"
+        ],
+        "sharedFields": [
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "CollectCandidatesAsync",
+          "ComputeMetricsAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache"
+        ]
+      },
+      {
+        "methods": [
+          "ComputeCandidateMetricsAsync"
+        ],
+        "sharedFields": [
+          "_failureInjector",
+          "_logger"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "DiagnosticDocumentLookup",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.DiagnosticDocumentLookup",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\DiagnosticDocumentLookup.cs",
+    "line": 8,
+    "methodCount": 6,
+    "fieldCount": 1,
+    "lcom4Score": 4,
+    "clusters": [
+      {
+        "methods": [
+          "FindAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "FindInDocumentAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "CollectProjectDiagnosticsAsync",
+          "FindAnalyzerMatchAsync",
+          "FindInResolvedDocumentAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache"
+        ]
+      },
+      {
+        "methods": [
+          "CollectSolutionDiagnosticsAsync"
+        ],
+        "sharedFields": []
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "BatchTestScaffolder",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.BatchTestScaffolder",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\BatchTestScaffolder.cs",
+    "line": 27,
+    "methodCount": 6,
+    "fieldCount": 7,
+    "lcom4Score": 3,
+    "clusters": [
+      {
+        "methods": [
+          "PreviewBatchAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "CreateBatchScaffoldContext",
+          "CreateBatchScaffoldPreviewAsync",
+          "PreviewFirstTestFileAsync",
+          "ResolveDestinationTestProject"
+        ],
+        "sharedFields": [
+          "_fileOperationService",
+          "_previewStore",
+          "_resolveProject",
+          "_resolveTestFramework",
+          "_validateIsTestProject",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "InferSiblingPatternFromRecent"
+        ],
+        "sharedFields": [
+          "_exceptionReporter"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CodeActionService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CodeActionService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CodeActionService.cs",
+    "line": 14,
+    "methodCount": 5,
+    "fieldCount": 6,
+    "lcom4Score": 3,
+    "clusters": [
+      {
+        "methods": [
+          "GetCodeActionsAsync",
+          "PreviewCodeActionAsync"
+        ],
+        "sharedFields": [
+          "_previewStore",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "CollectCodeFixesAsync",
+          "CollectRefactoringsAsync"
+        ],
+        "sharedFields": [
+          "_codeFixProviders",
+          "_codeRefactoringProviders"
+        ]
+      },
+      {
+        "methods": [
+          "ReportProviderFailure"
+        ],
+        "sharedFields": [
+          "_exceptionReporter",
+          "_logger"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CompilationCache",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CompilationCache",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CompilationCache.cs",
+    "line": 36,
+    "methodCount": 7,
+    "fieldCount": 5,
+    "lcom4Score": 3,
+    "clusters": [
+      {
+        "methods": [
+          "Dispose",
+          "GetCompilationSnapshotAsync",
+          "GetCompilationWithAnalyzersAsync",
+          "Invalidate",
+          "IsLiveSolution"
+        ],
+        "sharedFields": [
+          "_analyzerBound",
+          "_analyzerFactory",
+          "_compilationFactory",
+          "_compilations",
+          "_workspaceManager"
+        ]
+      },
+      {
+        "methods": [
+          "GetCompilationAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "BuildCompilationWithAnalyzersAsync"
+        ],
+        "sharedFields": []
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CompositeApplyOrchestrator",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CompositeApplyOrchestrator",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CompositeApplyOrchestrator.cs",
+    "line": 9,
+    "methodCount": 5,
+    "fieldCount": 5,
+    "lcom4Score": 3,
+    "clusters": [
+      {
+        "methods": [
+          "ApplyCompositeAsync",
+          "CompleteApplyAsync"
+        ],
+        "sharedFields": [
+          "_changeTracker",
+          "_compositePreviewStore",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "ApplyMutationsAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "ApplyMutationAsync",
+          "ProjectFailure"
+        ],
+        "sharedFields": [
+          "_exceptionReporter",
+          "_logger"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "ShadowCopyAnalyzerAssemblyLoader",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Helpers.AnalyzerReferenceIsolation.ShadowCopyAnalyzerAssemblyLoader",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Helpers\\AnalyzerReferenceIsolation.cs",
+    "line": 460,
+    "methodCount": 7,
+    "fieldCount": 6,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "AddDependencyLocation",
+          "LoadFromPath",
+          "Resolve",
+          "ShadowCopy",
+          "TryResolveDependency",
+          "UnloadAndRelease"
+        ],
+        "sharedFields": [
+          "_assembliesByIdentity",
+          "_contexts",
+          "_dependenciesByName",
+          "_logger",
+          "_shadowCopiesByIdentity",
+          "_shadowRoot"
+        ]
+      },
+      {
+        "methods": [
+          "RegisterAnalyzerDirectory"
+        ],
+        "sharedFields": []
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "ApplyUndoWorkflowService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.ApplyUndoWorkflowService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\ApplyUndoWorkflowService.cs",
+    "line": 99,
+    "methodCount": 6,
+    "fieldCount": 6,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "BestEffortRevertAfterCancellationAsync",
+          "CapturePreApplyBaselineAsync",
+          "RevertBySequenceAsync",
+          "VerifyAppliedEditAsync"
+        ],
+        "sharedFields": [
+          "_compileCheckService",
+          "_logger",
+          "_revertBudget",
+          "_undoService"
+        ]
+      },
+      {
+        "methods": [
+          "ApplyWithVerifyAsync",
+          "ResolveProjectFilter"
+        ],
+        "sharedFields": [
+          "_previewStore",
+          "_refactoringService"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "ChangeTracker",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.ChangeTracker",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\ChangeTracker.cs",
+    "line": 12,
+    "methodCount": 4,
+    "fieldCount": 4,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "Dispose"
+        ],
+        "sharedFields": [
+          "_workspaceManager"
+        ]
+      },
+      {
+        "methods": [
+          "Clear",
+          "GetChanges",
+          "RecordChange"
+        ],
+        "sharedFields": [
+          "_changes",
+          "_globalSequence",
+          "_logger"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CodePatternAnalyzer",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CodePatternAnalyzer",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CodePatternAnalyzer.cs",
+    "line": 12,
+    "methodCount": 3,
+    "fieldCount": 5,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "FindReflectionUsagesAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "FindReflectionUsagesDetailedAsync",
+          "SemanticSearchAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache",
+          "_exceptionReporter",
+          "_logger",
+          "_rootLoader",
+          "_workspace"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CohesionAnalysisService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CohesionAnalysisService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CohesionAnalysisService.cs",
+    "line": 18,
+    "methodCount": 3,
+    "fieldCount": 3,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "GetCohesionMetricsAsync"
+        ],
+        "sharedFields": []
+      },
+      {
+        "methods": [
+          "FindSharedMembersAsync",
+          "GetCohesionMetricsDetailedAsync"
+        ],
+        "sharedFields": [
+          "_logger",
+          "_typeAnalyzer",
+          "_workspace"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "DiagnosticQueryService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.DiagnosticQueryService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\DiagnosticQueryService.cs",
+    "line": 12,
+    "methodCount": 9,
+    "fieldCount": 4,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "BuildWorkspaceScopeAsync",
+          "CacheDiagnostics",
+          "GetCachedResult",
+          "GetDiagnosticsAsync",
+          "InvalidateWorkspaceCaches",
+          "StoreResult",
+          "TryGetCachedDiagnostics",
+          "TryGetCachedWorkspaceDiagnostics"
+        ],
+        "sharedFields": [
+          "_diagnosticCache",
+          "_resultCache",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "CollectProjectResultsAsync"
+        ],
+        "sharedFields": [
+          "_projectAnalyzer"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "DiagnosticService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.DiagnosticService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\DiagnosticService.cs",
+    "line": 14,
+    "methodCount": 4,
+    "fieldCount": 4,
+    "lcom4Score": 2,
+    "clusters": [
+      {
+        "methods": [
+          "GetDiagnosticDetailsAsync",
+          "GetDiagnosticsAsync",
+          "TryGetCachedWorkspaceDiagnostics"
+        ],
+        "sharedFields": [
+          "_documentLookup",
+          "_queryService",
+          "_workspace"
+        ]
+      },
+      {
+        "methods": [
+          "BuildDetailsDtoAsync"
+        ],
+        "sharedFields": [
+          "_supportedFixEnumeration"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "BuildService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.BuildService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\BuildService.cs",
+    "line": 10,
+    "methodCount": 3,
+    "fieldCount": 5,
+    "lcom4Score": 1,
+    "clusters": [
+      {
+        "methods": [
+          "BuildProjectAsync",
+          "BuildWorkspaceAsync",
+          "EnrichDiagnosticSpansAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache",
+          "_executor",
+          "_logger",
+          "_options",
+          "_workspaceManager"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CompositePreviewStore",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CompositePreviewStore",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CompositePreviewStore.cs",
+    "line": 5,
+    "methodCount": 3,
+    "fieldCount": 1,
+    "lcom4Score": 1,
+    "clusters": [
+      {
+        "methods": [
+          "Invalidate",
+          "Retrieve",
+          "Store"
+        ],
+        "sharedFields": [
+          "_diskBackend"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  },
+  {
+    "typeName": "CrossProjectRefactoringService",
+    "fullyQualifiedName": "RoslynMcp.Roslyn.Services.CrossProjectRefactoringService",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\CrossProjectRefactoringService.cs",
+    "line": 14,
+    "methodCount": 3,
+    "fieldCount": 3,
+    "lcom4Score": 1,
+    "clusters": [
+      {
+        "methods": [
+          "PreviewDependencyInversionAsync",
+          "PreviewExtractInterfaceAsync",
+          "PreviewMoveTypeToProjectAsync"
+        ],
+        "sharedFields": [
+          "_compilationCache",
+          "_previewStore",
+          "_workspace"
+        ]
+      }
+    ],
+    "typeKind": "Class",
+    "lifecyclePattern": null,
+    "recommendation": "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration."
+  }
+]
+```
+
+**How to interpret LCOM4:**
+- **Score = 1**: Perfectly cohesive — all methods share state. No SRP issue.
+- **Score = 2**: Two independent clusters — the type likely has two responsibilities.
+- **Score >= 3**: Multiple independent clusters — strong SRP violation, prime extraction candidate.
+
+**Recommended workflow for types with LCOM4 > 1:**
+1. Call `find_shared_members` on the type to identify private members used by multiple public methods.
+   Shared members complicate extraction — they may need to be duplicated or extracted into a helper.
+2. Call `find_consumers` on the type to understand who depends on it and how (constructor, field, parameter).
+   This determines the blast radius of splitting the type.
+3. Use `extract_type_preview` to move one cluster's methods into a new focused type.
+4. Use `extract_type_apply` to commit the extraction.
+5. Optionally use `extract_interface_preview` to create an interface for the new type.
+6. Use `bulk_replace_type_preview` to update consumers from the concrete type to the interface.
+7. Call `build_workspace` to verify compilation after each step.
+8. Call `test_related_files` and `test_run` to verify behavior.
+
+Focus on types with the highest LCOM4 scores first — these have the most independent responsibilities.

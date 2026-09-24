@@ -1,0 +1,56 @@
+[
+  {
+    "uri": "roslyn://workspace/00000000000000000000000000000000/status",
+    "error": {
+      "code": -32002,
+      "message": "WorkspaceNotFound: The workspaceId is unknown to this server (never loaded, or lost after a restart). Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId. (resource: roslyn://workspace/00000000000000000000000000000000/status; correlationId: 524a3b8914b24920a936e02871de7814)"
+    },
+    "ms": 21,
+    "mime": null,
+    "text": ""
+  },
+  {
+    "uri": "roslyn://workspace/x/file/does-not-exist.cs",
+    "error": {
+      "code": -32002,
+      "message": "WorkspaceNotFound: The workspaceId is unknown to this server (never loaded, or lost after a restart). Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId. (resource: roslyn://workspace/x/file/does-not-exist.cs; correlationId: dd3470da84464eaba23ccbb82aef00da)"
+    },
+    "ms": 1,
+    "mime": null,
+    "text": ""
+  },
+  {
+    "uri": "roslyn://server/catalog/tools/-1/0",
+    "error": null,
+    "ms": 6,
+    "mime": "application/json",
+    "text": "{\r\n  \"resourceName\": \"server_catalog_tools_page\",\r\n  \"offset\": 0,\r\n  \"limit\": 1,\r\n  \"returnedCount\": 1,\r\n  \"totalCount\": 175,\r\n  \"hasMore\": true,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"server_info\",\r\n      \"category\": \"server\",\r\n      \"supportTier\": \"stable\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Inspect server capabilities, versions, and s"
+  },
+  {
+    "uri": "roslyn://server/catalog/tools/0/999",
+    "error": null,
+    "ms": 7,
+    "mime": "application/json",
+    "text": "{\r\n  \"resourceName\": \"server_catalog_tools_page\",\r\n  \"offset\": 0,\r\n  \"limit\": 200,\r\n  \"returnedCount\": 175,\r\n  \"totalCount\": 175,\r\n  \"hasMore\": false,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"server_info\",\r\n      \"category\": \"server\",\r\n      \"supportTier\": \"stable\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Inspect server capabilities, versions, "
+  },
+  {
+    "uri": "roslyn://server/catalog-diff/v0.0.1/current",
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/v0.0.1/current; correlationId: c0c53bac33684f4f9162a4ea7fbc5ced)"
+    },
+    "ms": 2,
+    "mime": null,
+    "text": ""
+  },
+  {
+    "uri": "roslyn://nope",
+    "error": {
+      "code": -32002,
+      "message": "Unknown resource URI: 'roslyn://nope'"
+    },
+    "ms": 1,
+    "mime": null,
+    "text": ""
+  }
+]

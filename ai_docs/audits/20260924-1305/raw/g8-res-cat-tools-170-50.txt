@@ -1,0 +1,67 @@
+{
+  "resourceName": "server_catalog_tools_page",
+  "offset": 170,
+  "limit": 50,
+  "returnedCount": 4,
+  "totalCount": 174,
+  "hasMore": false,
+  "entries": [
+    {
+      "kind": "tool",
+      "name": "evaluate_msbuild_property",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Evaluate a single MSBuild property for a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "tool",
+      "name": "evaluate_msbuild_items",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List MSBuild items of a type with evaluated includes and metadata.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_msbuild_properties",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Dump evaluated MSBuild properties for a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "tool",
+      "name": "set_diagnostic_severity",
+      "category": "configuration",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Set dotnet_diagnostic severity in .editorconfig.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    }
+  ],
+  "_meta": {
+    "queuedMs": 0,
+    "heldMs": 0,
+    "elapsedMs": 0
+  }
+}

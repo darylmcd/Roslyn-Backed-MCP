@@ -1,0 +1,13 @@
+Inspect MSBuild evaluation for this project using Roslyn MCP tools.
+
+**workspaceId:** `13abf7e1dc8a42a8961d6e73a8865c07`
+**Project file:** `<repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj`
+
+Workflow:
+1. Call `evaluate_msbuild_property` for `TargetFramework` on this project first.
+2. For a broad dump of evaluated properties, call `get_msbuild_properties` (large output — focus on what the user asked).
+3. Call `evaluate_msbuild_items` with item type `PackageReference`.
+4. If results disagree with `dotnet build` or the IDE, confirm the correct project file, multi-targeting, and imports from `Directory.Build.props` / `Directory.Packages.props`.
+5. After editing project files, call `workspace_reload` before relying on compilation or symbol tools.
+
+Treat this as inspection and troubleshooting unless the user explicitly asked to mutate project files.

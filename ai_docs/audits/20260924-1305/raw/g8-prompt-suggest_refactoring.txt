@@ -1,0 +1,416 @@
+Analyze the following C# code and suggest refactorings to improve its quality, readability, and maintainability.
+
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs
+
+**Document Symbols:**
+```json
+[
+  {
+    "name": "WorkspaceTools",
+    "kind": "Class",
+    "modifiers": [
+      "public",
+      "static"
+    ],
+    "startLine": 18,
+    "endLine": 742,
+    "children": [
+      {
+        "name": "_autoPrewarmProjectThreshold",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 21,
+        "endLine": 21,
+        "children": null
+      },
+      {
+        "name": "_defaultSupportBundleChangeCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 22,
+        "endLine": 22,
+        "children": null
+      },
+      {
+        "name": "_maxSupportBundleChangeCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 23,
+        "endLine": 23,
+        "children": null
+      },
+      {
+        "name": "_defaultSupportBundleDriftCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 24,
+        "endLine": 24,
+        "children": null
+      },
+      {
+        "name": "_maxSupportBundleDriftCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 25,
+        "endLine": 25,
+        "children": null
+      },
+      {
+        "name": "s_processDrainTimeout",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "static",
+          "readonly"
+        ],
+        "startLine": 26,
+        "endLine": 26,
+        "children": null
+      },
+      {
+        "name": "LoadWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 35,
+        "endLine": 98,
+        "children": null
+      },
+      {
+        "name": "ReloadWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 103,
+        "endLine": 124,
+        "children": null
+      },
+      {
+        "name": "CloseWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 129,
+        "endLine": 243,
+        "children": null
+      },
+      {
+        "name": "ReportProcessDrainFailure",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 245,
+        "endLine": 251,
+        "children": null
+      },
+      {
+        "name": "TryKillDetachedTestHosts",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 266,
+        "endLine": 358,
+        "children": null
+      },
+      {
+        "name": "ListWorkspaces",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 360,
+        "endLine": 378,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceStatus",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 383,
+        "endLine": 401,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceHealth",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 403,
+        "endLine": 413,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceReadinessReport",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 419,
+        "endLine": 488,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceSupportBundle",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 494,
+        "endLine": 562,
+        "children": null
+      },
+      {
+        "name": "GetProjectGraph",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 564,
+        "endLine": 578,
+        "children": null
+      },
+      {
+        "name": "GetSourceGeneratedDocuments",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 580,
+        "endLine": 593,
+        "children": null
+      },
+      {
+        "name": "GetSourceText",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 599,
+        "endLine": 622,
+        "children": null
+      },
+      {
+        "name": "RestoreAndReloadIfRequiredAsync",
+        "kind": "Method",
+        "modifiers": [
+          "internal",
+          "static",
+          "async"
+        ],
+        "startLine": 624,
+        "endLine": 655,
+        "children": null
+      },
+      {
+        "name": "SerializeWorkspaceLoadResult",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 657,
+        "endLine": 677,
+        "children": null
+      },
+      {
+        "name": "ShouldPrewarmAfterLoad",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 679,
+        "endLine": 680,
+        "children": null
+      },
+      {
+        "name": "ResolveOptionalWorkspaceId",
+        "kind": "Method",
+        "modifiers": [
+          "internal",
+          "static"
+        ],
+        "startLine": 690,
+        "endLine": 700,
+        "children": null
+      },
+      {
+        "name": "NormalizeCap",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 702,
+        "endLine": 703,
+        "children": null
+      },
+      {
+        "name": "CreateLogger",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 705,
+        "endLine": 706,
+        "children": null
+      },
+      {
+        "name": "BuildRestoreFailureMessage",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 708,
+        "endLine": 724,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceChanges",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 726,
+        "endLine": 741,
+        "children": null
+      }
+    ]
+  }
+]
+```
+
+**Code:**
+```csharp
+  40:         IWorkspaceExecutionGate gate,
+  41:         IWorkspaceManager workspace,
+  42:         IWorkspaceWarmService warmService,
+  43:         IDotnetCommandRunner commandRunner,
+  44:         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
+  45:         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
+  46:         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
+  47:         [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
+  48:         [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
+  49:         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
+  50:         IProgress<ProgressNotificationValue>? progress = null,
+  51:         CancellationToken ct = default)
+  52:     {
+  53:         return gate.RunLoadGateAsync(async c =>
+  54:         {
+  55:             // workspace-load stage emissions: clients see "validating-path → opening-workspace
+  56:             // → checking-restore → done" instead of waiting silently for a ~45s P95 cold load
+  57:             // on large solutions (OrchardCore, etc.). The stage labels are kebab-case and
+  58:             // stable; total is the stage count so client progress bars track correctly. The
+  59:             // opt-in or auto-large-solution prewarm path adds "prewarming-workspace" before
+  60:             // "done". For omitted prewarm, the project-count threshold can only be evaluated
+  61:             // after load returns, so the progress denominator may expand from 4 to 5 on
+  62:             // >50-project solutions.
+  63:             // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
+  64:             // doesn't expose intra-load progress and adding it would balloon scope past the
+  65:             // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
+  66:             var totalStages = prewarm == true ? 5 : 4;
+  67:             ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
+  68:             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+  69:                 server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
+  70:             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
+  71:             var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
+  72:             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
+  73:             status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
+  74:             if (expandSanctionedRoots)
+  75:             {
+  76:                 // preview-apply-token-write-path-toctou: record the load-time expansion grant so a
+  77:                 // later *_apply redemption re-derives the SAME boundary that admitted this
+  78:                 // workspace. Without it, every document of an expansion-loaded sibling worktree
+  79:                 // sits outside the un-widened roots and every apply would be refused.
+  80:                 RootExpansionGrantRegistry.Grant(status.WorkspaceId);
+  81:             }
+  82: 
+  83:             var shouldPrewarm = ShouldPrewarmAfterLoad(prewarm, status);
+  84:             var resolvedTotalStages = shouldPrewarm ? 5 : totalStages;
+  85:             WorkspaceWarmResult? prewarmResult = null;
+  86:             if (shouldPrewarm)
+  87:             {
+  88:                 ProgressHelper.ReportStage(progress, 3, resolvedTotalStages, "prewarming-workspace");
+  89:                 prewarmResult = await gate.RunReadAsync(
+  90:                     status.WorkspaceId,
+  91:                     warmCt => warmService.WarmAsync(status.WorkspaceId, projects: null, warmCt),
+  92:                     c).ConfigureAwait(false);
+  93:             }
+  94: 
+  95:             ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
+  96:             return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
+  97:         }, ct);
+  98:     }
+  99: 
+ 100:     /// <remarks>
+ 101:     /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
+ 102:     /// </remarks>
+ 103:     [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Workspace-scoped calls auto-reload stale state by default. Use this for an explicit reload; autoRestore=true runs dotnet restore and reloads once when restoreRequired=true.")]
+ 104:     [McpToolMetadata("workspace", "stable", false, false,
+ 105:         "Reload an existing workspace session from disk.")]
+ 106:     public static Task<string> ReloadWorkspace(
+ 107:         IWorkspaceExecutionGate gate,
+ 108:         IWorkspaceManager workspace,
+ 109:         IDotnetCommandRunner commandRunner,
+ 110:         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+ 111:         [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+ 112:         [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
+ 113:         CancellationToken ct = default)
+ 114:     {
+ 115:         // Reload acquires both the global load gate AND the per-workspace write lock so that
+ 116:         // any in-flight readers on this workspace complete before the solution is replaced.
+ 117:         return gate.RunLoadGateAsync(outerCt =>
+ 118:             gate.RunWriteAsync(workspaceId, async innerCt =>
+ 119:             {
+ 120:                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
+```
+
+Please suggest refactorings considering:
+1. SOLID principles violations
+2. Code duplication opportunities
+3. Method extraction candidates
+4. Naming improvements
+5. Pattern usage (e.g., Strategy, Factory, Builder)
+6. Performance improvements
+7. C# idiom improvements (pattern matching, LINQ, etc.)
+
+For each suggestion, provide the specific code change and explain the benefit.

@@ -1,0 +1,17 @@
+Clean up diagnostics in this workspace using a preview-first loop.
+
+**Project Filter:** RoslynMcp.Core
+**Severity Filter:** Info
+
+**Diagnostic Summary:**
+No compiler or analyzer diagnostics matched the filter.
+
+Use this workflow:
+1. Start with the highest-volume or highest-severity diagnostic group.
+2. For one representative occurrence, call `diagnostic_details` to inspect curated fix metadata.
+3. If a curated fix exists, call `code_fix_preview`, review the diff, then `code_fix_apply`.
+4. If no curated fix exists, use `get_code_actions` and `preview_code_action` at the relevant span, or fall back to text-edit tools.
+5. After each applied batch, call `build_project` or `build_workspace` and verify the count for that diagnostic ID decreases.
+6. Repeat until the remaining diagnostics require manual design changes rather than mechanical fixes.
+
+Keep changes batched by diagnostic ID so validation remains attributable.

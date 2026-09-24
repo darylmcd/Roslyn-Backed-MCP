@@ -1,0 +1,85 @@
+// G8 resource + prompts/get harness against dnx Darylmcd.RoslynMcp@4.2.1
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+const S = '<scratch>';
+const RO = '<repo>/.worktrees/surface-test-20260924T130517Z-ro';
+const child = spawn('dnx', ['Darylmcd.RoslynMcp@4.2.1', '--source', 'https://api.nuget.org/v3/index.json'], { cwd: RO, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ROSLYNMCP_SANCTIONED_ROOTS: '.' } });
+const errc = []; child.stderr.on('data', d => errc.push(d));
+let buf = ''; let nextId = 1; const pending = new Map();
+const rootUri = 'file:///' + RO;
+child.stdout.on('data', d => {
+  buf += d.toString('utf8'); let nl;
+  while ((nl = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (!line) continue;
+    let m; try { m = JSON.parse(line); } catch { continue; }
+    if (m.method && m.id !== undefined) { send({ jsonrpc: '2.0', id: m.id, result: m.method === 'roots/list' ? { roots: [{ uri: rootUri, name: 'ro' }] } : {} }); continue; }
+    if (m.method) continue;
+    const p = pending.get(m.id); if (p) { pending.delete(m.id); p(m); }
+  }
+});
+function send(o) { child.stdin.write(JSON.stringify(o) + '\n'); }
+function rpc(method, params, to = 300000) { const id = nextId++; const t0 = Date.now(); return new Promise(res => { const tm = setTimeout(() => { pending.delete(id); res({ timeout: true, ms: Date.now() - t0 }); }, to); pending.set(id, m => { clearTimeout(tm); res({ ...m, ms: Date.now() - t0 }); }); send({ jsonrpc: '2.0', id, method, params }); }); }
+const results = [];
+async function read(label, uri) {
+  const r = await rpc('resources/read', { uri });
+  const c = r.result?.contents ?? [];
+  const txt = c.map(x => x.text ?? '').join('');
+  let jsonOk = null; try { JSON.parse(txt); jsonOk = true; } catch { jsonOk = false; }
+  const row = { label, uri, ms: r.ms, error: r.error ?? null, timeout: !!r.timeout, nContents: c.length, mime: c.map(x => x.mimeType), contentUri: c.map(x => x.uri), len: txt.length, jsonParses: jsonOk, head: txt.slice(0, 700) };
+  results.push(row); fs.writeFileSync(`${S}/g8-res-${label}.txt`, txt);
+  return { row, txt };
+}
+(async () => {
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'g8', version: '1' } }, 180000);
+  if (init.error || init.timeout) { console.log('init fail', JSON.stringify(init)); process.exit(2); }
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const wl = await rpc('tools/call', { name: 'workspace_load', arguments: { path: `${RO}/RoslynMcp.slnx` } }, 600000);
+  const wlt = wl.result?.content?.[0]?.text ?? JSON.stringify(wl.error);
+  const id = JSON.parse(wlt).workspaceId; results.push({ label: 'workspace_load', ms: wl.ms, id });
+  await read('catalog', 'roslyn://server/catalog');
+  await read('catalog-full', 'roslyn://server/catalog/full');
+  await read('cat-tools-0-5', 'roslyn://server/catalog/tools/0/5');
+  await read('cat-tools-170-50', 'roslyn://server/catalog/tools/170/50');
+  await read('cat-tools-neg', 'roslyn://server/catalog/tools/-1/0');
+  await read('cat-tools-abc', 'roslyn://server/catalog/tools/abc/5');
+  await read('cat-prompts-0-5', 'roslyn://server/catalog/prompts/0/5');
+  await read('cat-prompts-18-10', 'roslyn://server/catalog/prompts/18/10');
+  await read('templates', 'roslyn://server/resource-templates');
+  await read('workspaces', 'roslyn://workspaces');
+  await read('workspaces-verbose', 'roslyn://workspaces/verbose');
+  await read('status', `roslyn://workspace/${id}/status`);
+  await read('status-verbose', `roslyn://workspace/${id}/status/verbose`);
+  await read('projects', `roslyn://workspace/${id}/projects`);
+  await read('diagnostics', `roslyn://workspace/${id}/diagnostics`);
+  const f = `${RO}/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs`;
+  await read('file-enc', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}`);
+  await read('file-raw', `roslyn://workspace/${id}/file/${f}`);
+  await read('file-rawbs', `roslyn://workspace/${id}/file/${f.replace(/\//g, '\\')}`);
+  await read('file-enc-bs', `roslyn://workspace/${id}/file/${encodeURIComponent(f.replace(/\//g, '\\'))}`);
+  await read('file-missing', `roslyn://workspace/${id}/file/${encodeURIComponent(RO + '/nope.cs')}`);
+  await read('file-outside', `roslyn://workspace/${id}/file/${encodeURIComponent('C:/Windows/win.ini')}`);
+  await read('lines-1-10', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}/lines/1-10`);
+  await read('lines-1-10-raw', `roslyn://workspace/${id}/file/${f}/lines/1-10`);
+  await read('lines-10-5', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}/lines/10-5`);
+  await read('lines-oor', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}/lines/99999-100000`);
+  await read('lines-740-750', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}/lines/740-750`);
+  await read('lines-bad', `roslyn://workspace/${id}/file/${encodeURIComponent(f)}/lines/abc`);
+  // catalog-diff: versions from catalog
+  const cat = JSON.parse(fs.readFileSync(`${S}/g8-res-catalog.txt`, 'utf8'));
+  fs.writeFileSync(`${S}/g8-catalog-keys.json`, JSON.stringify(Object.keys(cat)));
+  const vers = JSON.stringify(cat).match(/"(?:supportedVersions|catalogVersions|knownVersions|versions)":\s*\[[^\]]*\]/);
+  results.push({ label: 'catalog-version-hint', v: vers?.[0] ?? null, catalogVersion: cat.catalogVersion ?? cat.version ?? null });
+  const diffs = process.argv.slice(2);
+  for (const d of diffs) await read('diff-' + d.replace(/[^\w.-]/g, '_'), `roslyn://server/catalog-diff/${d}`);
+  await read('diff-invalid', 'roslyn://server/catalog-diff/9.9.9/0.0.0');
+  await read('diff-garbage', 'roslyn://server/catalog-diff/abc/def');
+  // prompts/get compare
+  const pg = {};
+  for (const [n, a] of [['review_file', { workspaceId: id, filePath: f }], ['discover_capabilities', { taskCategory: 'refactoring' }], ['session_undo', { workspaceId: id }], ['review_file', { workspaceId: id }]]) {
+    const r = await rpc('prompts/get', { name: n, arguments: a });
+    pg[n + (a.filePath || n !== 'review_file' ? '' : '-missing')] = { ms: r.ms, error: r.error ?? null, messages: r.result?.messages ?? null };
+  }
+  fs.writeFileSync(`${S}/g8-promptsget.json`, JSON.stringify({ id, pg }, null, 2));
+  fs.writeFileSync(`${S}/g8-res-results.json`, JSON.stringify(results, null, 2));
+  child.stdin.end(); setTimeout(() => { fs.writeFileSync(`${S}/g8-res-stderr.txt`, Buffer.concat(errc).toString()); child.kill(); process.exit(0); }, 3000);
+})();

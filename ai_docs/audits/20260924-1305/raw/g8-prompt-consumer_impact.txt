@@ -1,0 +1,153 @@
+Analyze the consumer/dependency graph for this type and assess refactoring impact.
+
+**Consumer Analysis Results:**
+```json
+[
+  {
+    "typeName": "ProgressEmissionTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.Progress.ProgressEmissionTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\Progress\\ProgressEmissionTests.cs",
+    "line": 41,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "StructuredWorkspaceResolver",
+    "fullyQualifiedName": "RoslynMcp.Host.Stdio.Middleware.StructuredWorkspaceResolver",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Middleware\\StructuredWorkspaceResolver.cs",
+    "line": 22,
+    "projectName": "RoslynMcp.Host.Stdio",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "ToolDescriptionDietWorkspaceValidationTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.ToolDescriptionDietWorkspaceValidationTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ToolDescriptionDietWorkspaceValidationTests.cs",
+    "line": 21,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "Other"
+    ]
+  },
+  {
+    "typeName": "WorkspaceCachePrewarmTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.Workspace.WorkspaceCachePrewarmTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\Workspace\\WorkspaceCachePrewarmTests.cs",
+    "line": 16,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceCapLruEvictionTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceCapLruEvictionTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceCapLruEvictionTests.cs",
+    "line": 33,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceCloseDrainTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceCloseDrainTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceCloseDrainTests.cs",
+    "line": 21,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "Other",
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceLoadRestoreRaceTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceLoadRestoreRaceTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceLoadRestoreRaceTests.cs",
+    "line": 26,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceReadinessReportBuilder",
+    "fullyQualifiedName": "RoslynMcp.Host.Stdio.Tools.WorkspaceReadinessReportBuilder",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceReadinessReportBuilder.cs",
+    "line": 11,
+    "projectName": "RoslynMcp.Host.Stdio",
+    "dependencyKinds": [
+      "Other"
+    ]
+  },
+  {
+    "typeName": "WorkspaceReadinessReportIntegrationTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceReadinessReportIntegrationTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceReadinessReportIntegrationTests.cs",
+    "line": 10,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceReadinessReportTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceReadinessReportTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceReadinessReportTests.cs",
+    "line": 14,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceSupportBundleBuilder",
+    "fullyQualifiedName": "RoslynMcp.Host.Stdio.Tools.WorkspaceSupportBundleBuilder",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceSupportBundleBuilder.cs",
+    "line": 13,
+    "projectName": "RoslynMcp.Host.Stdio",
+    "dependencyKinds": [
+      "Other"
+    ]
+  },
+  {
+    "typeName": "WorkspaceSupportBundleTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceSupportBundleTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceSupportBundleTests.cs",
+    "line": 12,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  },
+  {
+    "typeName": "WorkspaceToolsIntegrationTests",
+    "fullyQualifiedName": "RoslynMcp.Tests.WorkspaceToolsIntegrationTests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\WorkspaceToolsIntegrationTests.cs",
+    "line": 20,
+    "projectName": "RoslynMcp.Tests",
+    "dependencyKinds": [
+      "StaticMemberAccess"
+    ]
+  }
+]
+```
+
+**How to use this data:**
+- **Constructor dependencies** indicate strong coupling — these consumers instantiate or receive the type via DI.
+- **Field dependencies** indicate persistent coupling — the consumer stores and reuses the type.
+- **Parameter dependencies** indicate transient coupling — the consumer only uses the type temporarily.
+- **BaseType dependencies** indicate inheritance coupling — breaking changes are high-risk.
+
+**Recommended next steps:**
+1. If planning to extract an interface: call `extract_interface_preview` to create the interface.
+2. Then use `bulk_replace_type_preview` with scope='parameters' to update consumers to use the interface.
+3. For constructor-injected consumers, update their DI registrations.
+4. Call `build_workspace` after each step to verify.
+5. Use `impact_analysis` for additional reference-level detail on specific members.
+
+**Risk assessment:** Types with many Constructor + Field consumers are the hardest to refactor safely.

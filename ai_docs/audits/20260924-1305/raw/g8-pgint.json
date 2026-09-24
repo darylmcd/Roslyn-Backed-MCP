@@ -1,0 +1,18 @@
+{
+  "strings": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'consumer_impact'. Provide every required argument using the advertised parameter types."
+  },
+  "numbers": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'consumer_impact'. Provide every required argument using the advertised parameter types."
+  },
+  "suggestStr": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'suggest_refactoring'. Provide every required argument using the advertised parameter types."
+  },
+  "suggestNoOpt": {
+    "code": -32602,
+    "message": "Invalid parameters for prompt 'suggest_refactoring'. Provide every required argument using the advertised parameter types."
+  }
+}

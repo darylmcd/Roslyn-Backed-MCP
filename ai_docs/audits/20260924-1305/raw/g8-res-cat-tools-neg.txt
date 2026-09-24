@@ -1,0 +1,427 @@
+{
+  "resourceName": "server_catalog_tools_page",
+  "offset": 0,
+  "limit": 1,
+  "returnedCount": 1,
+  "totalCount": 174,
+  "hasMore": true,
+  "entries": [
+    {
+      "kind": "tool",
+      "name": "server_info",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect server capabilities, versions, and support tiers.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "productShape": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "roslynVersion": {
+            "type": "string"
+          },
+          "workspaceCount": {
+            "type": "integer"
+          },
+          "workspaceCountHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connection": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string"
+              },
+              "loadedWorkspaceCount": {
+                "type": "integer"
+              },
+              "stdioPid": {
+                "type": "integer"
+              },
+              "serverStartedAt": {
+                "type": "string"
+              },
+              "previousStdioPid": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousExitedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousRecycleReason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "state",
+              "loadedWorkspaceCount",
+              "stdioPid",
+              "serverStartedAt"
+            ]
+          },
+          "catalogVersion": {
+            "type": "string"
+          },
+          "surface": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "resources": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "prompts": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "registered": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "tools": {
+                    "type": "integer"
+                  },
+                  "resources": {
+                    "type": "integer"
+                  },
+                  "prompts": {
+                    "type": "integer"
+                  },
+                  "parityOk": {
+                    "type": "boolean"
+                  },
+                  "identityDrift": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "toolsMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "toolsUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "toolsReflectionMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "toolsReflectionUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "resourcesMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "resourcesUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "resourcesReflectionMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "resourcesReflectionUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "promptsMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "promptsUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "promptsReflectionMissing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "promptsReflectionUnexpected": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "toolsMissing",
+                      "toolsUnexpected",
+                      "toolsReflectionMissing",
+                      "toolsReflectionUnexpected",
+                      "resourcesMissing",
+                      "resourcesUnexpected",
+                      "resourcesReflectionMissing",
+                      "resourcesReflectionUnexpected",
+                      "promptsMissing",
+                      "promptsUnexpected",
+                      "promptsReflectionMissing",
+                      "promptsReflectionUnexpected"
+                    ]
+                  }
+                },
+                "required": [
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "parityOk"
+                ]
+              }
+            },
+            "required": [
+              "tools",
+              "resources",
+              "prompts",
+              "registered"
+            ]
+          },
+          "resourceServerNames": {
+            "type": "object",
+            "properties": {
+              "canonical": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "probeGuidance": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "canonical",
+              "aliases",
+              "probeGuidance"
+            ]
+          },
+          "productBoundaries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "boolean"
+              },
+              "resources": {
+                "type": "boolean"
+              },
+              "prompts": {
+                "type": "boolean"
+              },
+              "logging": {
+                "type": "boolean"
+              },
+              "progress": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tools",
+              "resources",
+              "prompts",
+              "logging",
+              "progress"
+            ]
+          },
+          "update": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "current": {
+                "type": "string"
+              },
+              "latest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updateAvailable": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "checkStatus": {
+                "type": "string"
+              },
+              "lastCheckedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "current",
+              "latest",
+              "updateAvailable",
+              "command",
+              "checkStatus",
+              "lastCheckedAt"
+            ]
+          },
+          "pathBoundary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "configuredRootCount": {
+                "type": "integer"
+              },
+              "failOpen": {
+                "type": "boolean"
+              },
+              "enforcing": {
+                "type": "boolean"
+              },
+              "hint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "configuredRootCount",
+              "failOpen",
+              "enforcing",
+              "hint"
+            ]
+          }
+        },
+        "required": [
+          "server",
+          "version",
+          "productShape",
+          "runtime",
+          "os",
+          "roslynVersion",
+          "workspaceCount",
+          "workspaceCountHint",
+          "connection",
+          "catalogVersion",
+          "surface",
+          "resourceServerNames",
+          "productBoundaries",
+          "capabilities",
+          "update",
+          "pathBoundary"
+        ]
+      },
+      "deprecation": null
+    }
+  ],
+  "_meta": {
+    "queuedMs": 0,
+    "heldMs": 0,
+    "elapsedMs": 0
+  }
+}

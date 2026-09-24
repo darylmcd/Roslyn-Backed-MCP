@@ -1,0 +1,64 @@
+Explain the following C# compiler diagnostic and suggest how to fix it.
+
+**Diagnostic:** CA1822
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs
+**Line:** 322, **Column:** 9
+
+**Diagnostic Details:**
+```json
+{
+  "diagnostic": {
+    "id": "CA1822",
+    "message": "Member \u0027ResolveTargetTypeAndMethodAsync\u0027 does not access instance data and can be marked as static",
+    "severity": "Info",
+    "category": "Performance",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\SingleTestScaffolder.cs",
+    "startLine": 322,
+    "startColumn": 9,
+    "endLine": 322,
+    "endColumn": 40,
+    "location": {
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\Services\\SingleTestScaffolder.cs",
+      "startLine": 322,
+      "startColumn": 9,
+      "endLine": 322,
+      "endColumn": 40,
+      "containingMember": null,
+      "previewText": null,
+      "classification": null
+    }
+  },
+  "description": "Members that do not access instance data or call instance methods can be marked as static. After you mark the methods as static, the compiler will emit nonvirtual call sites to these members. This can give you a measurable performance gain for performance-sensitive code.",
+  "helpLinkUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1822",
+  "supportedFixes": [
+    {
+      "fixId": "MarkMembersAsStaticCodeFix",
+      "title": "Make static",
+      "description": "Code fix \u0022Make static\u0022 registered by CSharpMarkMembersAsStaticFixer (Microsoft.CodeAnalysis.CSharp.NetAnalyzers)."
+    }
+  ],
+  "guidanceMessage": null,
+  "fixEnumerationComplete": true,
+  "failedProviderCount": 0
+}
+```
+
+**Source Context:**
+```csharp
+      317:         => string.IsNullOrWhiteSpace(existingWarning)
+      318:             ? warning
+      319:             : $"{existingWarning} {warning}";
+      320: 
+      321:     private async Task<ResolvedTargetTypeInfo>
+ >>>  322:         ResolveTargetTypeAndMethodAsync(
+      323:             Solution solution, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
+      324:     {
+      325:         var testProject = solution.Projects.FirstOrDefault(p =>
+      326:             string.Equals(p.Name, testProjectName, StringComparison.OrdinalIgnoreCase) ||
+```
+
+Please:
+1. Explain what this diagnostic means in plain language
+2. Explain why it occurs in this context
+3. Suggest one or more fixes with code examples
+4. Note any potential side effects of each fix

@@ -1,0 +1,41 @@
+Diagnose test failures in workspace `13abf7e1dc8a42a8961d6e73a8865c07` using the server's read-side tools.
+
+**Project Filter:** RoslynMcp.Tests
+**Test Filter:** FullyQualifiedName~WorkspaceTools
+
+## Step 1 — Pick the right validation entry point
+- For a focused, just-edited slice, prefer `test_related_files` (file paths only — runs the smallest set that covers the changed source files).
+- For a broader sweep or when you don't know the affected tests yet, call `test_run` with the optional `projectName` / `filter` arguments above.
+
+## Step 2 — Inspect the result envelope
+The result envelope includes:
+- `Total` / `Passed` / `Failed` / `Skipped` counts.
+- `Failures[]` with `DisplayName`, `Message`, `StackTrace`.
+- `FailureEnvelope` when the run aborted before producing test results.
+
+**If `FailureEnvelope.ErrorKind == "FileLock"`** (MSB3027/MSB3021), the failure is
+infrastructure-class — another process is still holding the test assembly or an
+analyzer reference. **Do not modify test or production code.** Re-running validation
+in the same loaded workspace will re-acquire the lock. Bypass:
+1. Use `compile_check` / `project_diagnostics` / `diagnostic_details` for read-side
+   evidence while the lock persists.
+2. Close any IDE or sidecar process still running tests (Visual Studio Test Explorer,
+   JetBrains Rider runner, stale `dotnet watch`), then call `workspace_reload` and
+   retry validation. The reload releases the analyzer-DLL handles inside the MCP
+   server's own workspace.
+3. If the holder is unclear, run `dotnet build-server shutdown` from a shell outside
+   this MCP server, then re-issue the validation from an isolated process. Only
+   return to the diagnose-fix-revalidate loop after the bypass produces a structured
+   pass/fail result.
+
+## Step 3 — Diagnose each failure
+For every entry in `Failures[]`:
+1. Identify the root cause of the failing test.
+2. Determine if the failure is in the test itself or the code under test.
+3. Suggest specific code changes to fix the failure.
+4. If the test expectation is wrong, explain why and suggest the correct assertion.
+5. Note any test isolation issues (shared state, timing, external dependencies).
+
+## Step 4 — Re-validate
+After applying fixes, call `test_run` (or `test_related_files`) again with the same
+filter to confirm the failures cleared and no regressions were introduced.

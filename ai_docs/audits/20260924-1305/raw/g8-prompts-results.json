@@ -1,0 +1,669 @@
+{
+  "W": "13abf7e1dc8a42a8961d6e73a8865c07",
+  "out": [
+    {
+      "name": "analyze_dependencies",
+      "gptMs": [
+        4650,
+        836
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 23064,
+      "idempotent": true,
+      "pgMs": 790,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 23064,
+      "toolRefs": 1,
+      "toolRefList": [
+        "get_namespace_dependencies"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "cohesion_analysis",
+      "gptMs": [
+        1288,
+        442
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 25921,
+      "idempotent": true,
+      "pgMs": 401,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 25921,
+      "toolRefs": 9,
+      "toolRefList": [
+        "find_shared_members",
+        "find_consumers",
+        "extract_type_preview",
+        "extract_type_apply",
+        "extract_interface_preview",
+        "bulk_replace_type_preview",
+        "build_workspace",
+        "test_related_files",
+        "test_run"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "consumer_impact",
+      "gptMs": [
+        1019,
+        53
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 6577,
+      "idempotent": true,
+      "pgMs": 5,
+      "pgError": {
+        "code": -32602,
+        "message": "Invalid parameters for prompt 'consumer_impact'. Provide every required argument using the advertised parameter types."
+      },
+      "pgMatchesGpt": false,
+      "pgLen": 0,
+      "toolRefs": 4,
+      "toolRefList": [
+        "extract_interface_preview",
+        "bulk_replace_type_preview",
+        "build_workspace",
+        "impact_analysis"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "dead_code_audit",
+      "gptMs": [
+        565,
+        17
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 1134,
+      "idempotent": true,
+      "pgMs": 18,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 1134,
+      "toolRefs": 6,
+      "toolRefList": [
+        "remove_dead_code_preview",
+        "remove_dead_code_apply",
+        "build_workspace",
+        "test_run",
+        "find_unused_symbols",
+        "find_reflection_usages"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "debug_test_failure",
+      "gptMs": [
+        0,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2362,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 2362,
+      "toolRefs": 6,
+      "toolRefList": [
+        "test_related_files",
+        "test_run",
+        "compile_check",
+        "project_diagnostics",
+        "diagnostic_details",
+        "workspace_reload"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "discover_capabilities",
+      "gptMs": [
+        1,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 9080,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 9080,
+      "toolRefs": 57,
+      "toolRefList": [
+        "rename_preview",
+        "rename_apply",
+        "organize_usings_preview",
+        "organize_usings_apply",
+        "format_document_preview",
+        "format_document_apply",
+        "format_check",
+        "code_fix_preview",
+        "code_fix_apply",
+        "restructure_preview",
+        "replace_string_literals_preview",
+        "change_signature_preview",
+        "parameter_object_preview",
+        "symbol_refactor_preview",
+        "split_service_with_di_preview",
+        "record_field_add_with_satellites_preview",
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action",
+        "move_type_to_file_preview",
+        "move_type_to_file_apply",
+        "change_type_namespace_preview",
+        "extract_interface_preview",
+        "extract_interface_apply",
+        "bulk_replace_type_preview",
+        "bulk_replace_type_apply",
+        "replace_invocation_preview",
+        "extract_type_preview",
+        "get_cohesion_metrics",
+        "find_shared_members",
+        "extract_type_apply",
+        "extract_method_preview",
+        "extract_method_apply",
+        "extract_shared_expression_to_helper_preview",
+        "fix_all_preview",
+        "fix_all_apply",
+        "format_range_preview",
+        "format_range_apply",
+        "recommend_workflow",
+        "move_type_to_project_preview",
+        "extract_interface_cross_project_preview",
+        "dependency_inversion_preview",
+        "migrate_package_preview",
+        "split_class_preview",
+        "extract_and_wire_interface_preview",
+        "apply_composite_preview",
+        "compile_check",
+        "test_related_files",
+        "test_run",
+        "diagnostic_details",
+        "validate_recent_git_changes",
+        "validate_workspace",
+        "build_workspace",
+        "build_project",
+        "document_symbols",
+        "find_references",
+        "workspace_load"
+      ],
+      "unknownBacktick": [
+        "server_catalog"
+      ],
+      "unknownBare": []
+    },
+    {
+      "name": "explain_error",
+      "gptMs": [
+        13199,
+        59
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2754,
+      "idempotent": true,
+      "pgMs": 1,
+      "pgError": {
+        "code": -32602,
+        "message": "Invalid parameters for prompt 'explain_error'. Provide every required argument using the advertised parameter types."
+      },
+      "pgMatchesGpt": false,
+      "pgLen": 0,
+      "toolRefs": 0,
+      "toolRefList": [],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "fix_all_diagnostics",
+      "gptMs": [
+        44,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 926,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 926,
+      "toolRefs": 7,
+      "toolRefList": [
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply",
+        "get_code_actions",
+        "preview_code_action",
+        "build_project",
+        "build_workspace"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "guided_extract_interface",
+      "gptMs": [
+        104,
+        113
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 6228,
+      "idempotent": true,
+      "pgMs": 139,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 6228,
+      "toolRefs": 10,
+      "toolRefList": [
+        "extract_and_wire_interface_preview",
+        "extract_interface_preview",
+        "extract_interface_apply",
+        "get_code_actions",
+        "preview_code_action",
+        "scaffold_type_preview",
+        "find_references",
+        "build_workspace",
+        "test_related",
+        "test_run"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "guided_extract_method",
+      "gptMs": [
+        55,
+        51
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 1939,
+      "idempotent": true,
+      "pgMs": 1,
+      "pgError": {
+        "code": -32602,
+        "message": "Invalid parameters for prompt 'guided_extract_method'. Provide every required argument using the advertised parameter types."
+      },
+      "pgMatchesGpt": false,
+      "pgLen": 0,
+      "toolRefs": 7,
+      "toolRefList": [
+        "analyze_data_flow",
+        "analyze_control_flow",
+        "extract_method_preview",
+        "extract_method_apply",
+        "compile_check",
+        "build_project",
+        "revert_last_apply"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "guided_package_migration",
+      "gptMs": [
+        4,
+        8
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 1054,
+      "idempotent": true,
+      "pgMs": 4,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 1054,
+      "toolRefs": 12,
+      "toolRefList": [
+        "migrate_package_preview",
+        "apply_composite_preview",
+        "remove_package_reference_preview",
+        "add_package_reference_preview",
+        "add_central_package_version_preview",
+        "build_workspace",
+        "symbol_search",
+        "find_references",
+        "get_code_actions",
+        "preview_code_action",
+        "test_run",
+        "test_related_files"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "msbuild_inspection",
+      "gptMs": [
+        0,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 934,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 934,
+      "toolRefs": 4,
+      "toolRefList": [
+        "evaluate_msbuild_property",
+        "get_msbuild_properties",
+        "evaluate_msbuild_items",
+        "workspace_reload"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "refactor_and_validate",
+      "gptMs": [
+        889,
+        126
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2177,
+      "idempotent": true,
+      "pgMs": 1,
+      "pgError": {
+        "code": -32602,
+        "message": "Invalid parameters for prompt 'refactor_and_validate'. Provide every required argument using the advertised parameter types."
+      },
+      "pgMatchesGpt": false,
+      "pgLen": 0,
+      "toolRefs": 14,
+      "toolRefList": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action",
+        "rename_preview",
+        "organize_usings_preview",
+        "format_document_preview",
+        "apply_text_edit",
+        "apply_multi_file_edit",
+        "build_project",
+        "build_workspace",
+        "test_related_files",
+        "test_run",
+        "project_diagnostics",
+        "diagnostic_details"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "refactor_loop",
+      "gptMs": [
+        0,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2208,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 2208,
+      "toolRefs": 16,
+      "toolRefList": [
+        "rename_preview",
+        "extract_method_preview",
+        "restructure_preview",
+        "replace_string_literals_preview",
+        "preview_multi_file_edit",
+        "move_type_to_file_preview",
+        "extract_type_preview",
+        "extract_interface_preview",
+        "split_class_preview",
+        "move_type_to_project_preview",
+        "symbol_refactor_preview",
+        "symbol_impact_sweep",
+        "apply_with_verify",
+        "compile_check",
+        "validate_workspace",
+        "workspace_changes"
+      ],
+      "unknownBacktick": [
+        "rolled_back",
+        "applied_with_errors"
+      ],
+      "unknownBare": [
+        "ai_docs"
+      ]
+    },
+    {
+      "name": "review_complexity",
+      "gptMs": [
+        7,
+        2
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2560,
+      "idempotent": true,
+      "pgMs": 2,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 2560,
+      "toolRefs": 9,
+      "toolRefList": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action",
+        "callers_callees",
+        "find_references",
+        "impact_analysis",
+        "build_workspace",
+        "test_related",
+        "test_related_files"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "review_file",
+      "gptMs": [
+        311,
+        83
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 45163,
+      "idempotent": true,
+      "pgMs": 81,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 45163,
+      "toolRefs": 12,
+      "toolRefList": [
+        "workspace_warm",
+        "evaluate_msbuild_items",
+        "workspace_close",
+        "workspace_load",
+        "workspace_reload",
+        "workspace_list",
+        "workspace_status",
+        "compile_check",
+        "workspace_health",
+        "workspace_readiness_report",
+        "workspace_support_bundle",
+        "source_generated_documents"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "review_test_coverage",
+      "gptMs": [
+        48,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 21150,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 21150,
+      "toolRefs": 8,
+      "toolRefList": [
+        "test_coverage",
+        "document_symbols",
+        "symbol_info",
+        "scaffold_test_preview",
+        "scaffold_test_apply",
+        "test_run",
+        "get_complexity_metrics",
+        "security_diagnostics"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "security_review",
+      "gptMs": [
+        0,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 2498,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 2498,
+      "toolRefs": 12,
+      "toolRefList": [
+        "security_analyzer_status",
+        "add_package_reference_preview",
+        "workspace_reload",
+        "security_diagnostics",
+        "nuget_vulnerability_scan",
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply",
+        "get_code_actions",
+        "apply_text_edit",
+        "apply_multi_file_edit",
+        "build_workspace"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "session_undo",
+      "gptMs": [
+        0,
+        0
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 696,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": null,
+      "pgMatchesGpt": true,
+      "pgLen": 696,
+      "toolRefs": 7,
+      "toolRefList": [
+        "workspace_changes",
+        "revert_last_apply",
+        "workspace_reload",
+        "workspace_close",
+        "workspace_load",
+        "compile_check",
+        "build_workspace"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    },
+    {
+      "name": "suggest_refactoring",
+      "gptMs": [
+        88,
+        91
+      ],
+      "gptError": null,
+      "nMsgs": 1,
+      "len": 14450,
+      "idempotent": true,
+      "pgMs": 0,
+      "pgError": {
+        "code": -32602,
+        "message": "Invalid parameters for prompt 'suggest_refactoring'. Provide every required argument using the advertised parameter types."
+      },
+      "pgMatchesGpt": false,
+      "pgLen": 0,
+      "toolRefs": 3,
+      "toolRefList": [
+        "workspace_warm",
+        "workspace_reload",
+        "workspace_load"
+      ],
+      "unknownBacktick": [],
+      "unknownBare": []
+    }
+  ],
+  "negs": [
+    {
+      "promptName": "no_such_prompt",
+      "parametersJson": "{}",
+      "isError": true,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_prompt_text\",\r\n  \"message\": \"Parameter \\u0027promptName\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_prompt_text(promptName: string \\u2014 The name of the prompt as registered with [McpServerPrompt(Name = \\u0022...\\u0022)])\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0\r\n  }\r\n}"
+    },
+    {
+      "promptName": "review_file",
+      "parametersJson": "{\"workspaceId\":\"13abf7e1dc8a42a8961d6e73a8865c07\"}",
+      "isError": true,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_prompt_text\",\r\n  \"message\": \"Parameter \\u0027parametersJson\\u0027 must be a JSON object whose properties match the prompt schema. Include every required prompt parameter and use values of the advertised types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_prompt_text(parametersJson: string? \\u2014 JSON object of named parameters the prompt expects (e.g)\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n"
+    },
+    {
+      "promptName": "review_file",
+      "parametersJson": "not json",
+      "isError": true,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_prompt_text\",\r\n  \"message\": \"parametersJson must contain a valid JSON object. Example: {\\u0022workspaceId\\u0022:\\u0022workspace-1\\u0022}; use \\u0022{}\\u0022 to omit all parameters.\",\r\n  \"exceptionType\": \"PromptParameterBindingException\",\r\n  \"schemaHint\": \"get_prompt_text(parametersJson: string? \\u2014 JSON object of named parameters the prompt expects (e.g)\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\""
+    },
+    {
+      "promptName": "review_file",
+      "parametersJson": "[1,2]",
+      "isError": true,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_prompt_text\",\r\n  \"message\": \"Parameter \\u0027parametersJson\\u0027 must be a JSON object whose properties match the prompt schema. Include every required prompt parameter and use values of the advertised types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_prompt_text(parametersJson: string? \\u2014 JSON object of named parameters the prompt expects (e.g)\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n"
+    },
+    {
+      "promptName": "",
+      "parametersJson": "{}",
+      "isError": true,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_prompt_text\",\r\n  \"message\": \"Parameter \\u0027promptName\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_prompt_text(promptName: string \\u2014 The name of the prompt as registered with [McpServerPrompt(Name = \\u0022...\\u0022)])\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0\r\n  }\r\n}"
+    },
+    {
+      "via": "prompts/get unknown",
+      "error": {
+        "code": -32602,
+        "message": "Unknown prompt: 'no_such_prompt'"
+      }
+    }
+  ]
+}

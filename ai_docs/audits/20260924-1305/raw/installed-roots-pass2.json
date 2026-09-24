@@ -1,0 +1,199 @@
+{
+  "load": {
+    "ms": 4124,
+    "wsId": "0b88629259264ea7a39c5082293bc229",
+    "text": "{\r\n  \"workspaceId\": \"0b88629259264ea7a39c5082293bc229\",\r\n  \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\samples\\\\SampleSolution\\\\SampleSolution.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"0b88629259264ea7a39c5082293bc229:1\",\r\n  \"loadedAtUtc\": \"2026-09-24T13:12:09.7367883\\u002B00:00\",\r\n  \"projectCount\": 3,\r\n  \"documentCount\": 36,\r\n  \"isLoaded\": true,\r\n  \"isStale\": false,\r\n  \"workspaceDiagnosticCount\": 0,\r\n  \"workspaceErrorCount\": 0,\r\n  \"workspaceWarningCount\": 0,\r\n  \"isReady\": false,\r\n  \"analyzersReady\": true,\r\n  \"restoreRequired\": true,\r\n  \"buildRequired\": false,\r\n  \"restoreHint\": \"Package-restore inputs changed since the last restore. Run \\u0060dotnet restore\\u0060 on the solution or project, then \\u0060workspace_reload\\u0060.\",\r\n  \"solutionFileName\": \"SampleSolution.slnx\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"load\",\r\n    \"queuedMs\": 11,\r\n    \"heldMs\": 4034,\r\n    \"elapsedMs\": 4090,\r\n    \"cacheHit\": false\r\n  }\r\n}"
+  },
+  "unknownArgs": [
+    {
+      "name": "workspace_list",
+      "args": [
+        "__bogus"
+      ],
+      "isError": false,
+      "ms": 4,
+      "text": "{\r\n  \"count\": 1,\r\n  \"workspaces\": [\r\n    {\r\n      \"workspaceId\": \"0b88629259264ea7a39c5082293bc229\",\r\n      \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\samples\\\\SampleSolution\\\\SampleSolution.slnx\",\r\n      \"workspaceVersion\": 1,\r\n      \"snapshotToke"
+    },
+    {
+      "name": "workspace_status",
+      "args": [
+        "workspaceId",
+        "__bogus"
+      ],
+      "isError": false,
+      "ms": 18,
+      "text": "{\r\n  \"workspaceId\": \"0b88629259264ea7a39c5082293bc229\",\r\n  \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\samples\\\\SampleSolution\\\\SampleSolution.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"0b88629259264ea7a39c5082293bc229:1\",\r\n  \"loadedAtUtc"
+    },
+    {
+      "name": "symbol_search",
+      "args": [
+        "workspaceId",
+        "query",
+        "__bogus"
+      ],
+      "isError": false,
+      "ms": 2443,
+      "text": "{\r\n  \"count\": 0,\r\n  \"totalCount\": 0,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 2439,\r\n    \"elapsedMs\": 2442,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+    },
+    {
+      "name": "find_references",
+      "args": [
+        "workspaceId",
+        "metadataName",
+        "limitt"
+      ],
+      "isError": true,
+      "ms": 2719,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"find_references\",\r\n  \"message\": \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\",\r\n  \"exceptionType\": \"SymbolNotFoundException\",\r\n  \"closestMatches\": [\r\n    {\r\n      \"metadataName\": \"System.Co"
+    },
+    {
+      "name": "compile_check",
+      "args": [
+        "workspaceId",
+        "severty"
+      ],
+      "isError": false,
+      "ms": 8,
+      "text": "{\r\n  \"success\": false,\r\n  \"errorCount\": 0,\r\n  \"warningCount\": 0,\r\n  \"totalDiagnostics\": 0,\r\n  \"returnedDiagnostics\": 0,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"hasMore\": false,\r\n  \"diagnostics\": [],\r\n  \"elapsedMs\": 0,\r\n  \"restoreHint\": \"Workspace package restore is required; call workspace_reload with a"
+    }
+  ],
+  "outputSchema": [
+    {
+      "name": "server_heartbeat",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 3
+    },
+    {
+      "name": "server_info",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 23
+    },
+    {
+      "name": "workspace_drift_check",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 9
+    },
+    {
+      "name": "workspace_health",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 2
+    },
+    {
+      "name": "workspace_list",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 3
+    },
+    {
+      "name": "workspace_readiness_report",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 12
+    },
+    {
+      "name": "workspace_status",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 3
+    },
+    {
+      "name": "workspace_support_bundle",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 11
+    }
+  ],
+  "noSchemaStructured": [
+    {
+      "name": "symbol_search",
+      "hasStructured": false
+    },
+    {
+      "name": "project_graph",
+      "hasStructured": false
+    },
+    {
+      "name": "compile_check",
+      "hasStructured": false
+    }
+  ],
+  "idempotent_symbol_search": true,
+  "edge": [
+    {
+      "name": "symbol_search",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"query\":\"\"}",
+      "isError": false,
+      "ms": 2,
+      "text": "{\r\n  \"count\": 0,\r\n  \"totalCount\": 0,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [],\r\n  \"note\": \"query must be non-empty \\u2014 pass a bare substring like \\u0027Animal\\u0027 to find \\u0027AnimalService\\u0027, \\u0027IAnimal\\u0027, etc.\",\r\n  \"_meta\": {\r\n    "
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"query\":\"ü漢字🙂\"}",
+      "isError": false,
+      "ms": 78,
+      "text": "{\r\n  \"count\": 0,\r\n  \"totalCount\": 0,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 77,\r\n    \"elapsedMs\": 77,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"query\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "isError": false,
+      "ms": 88,
+      "text": "{\r\n  \"count\": 0,\r\n  \"totalCount\": 0,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 84,\r\n    \"elapsedMs\": 84,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+    },
+    {
+      "name": "get_source_text",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"filePath\":\"C:/nonexistent/x.cs\"}",
+      "isError": true,
+      "ms": 14,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"get_source_text\",\r\n  \"message\": \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\",\r\n  \"exceptionType\": \"KeyNotFoundException\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n   "
+    },
+    {
+      "name": "get_source_text",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"filePath\":\"../../../../Windows/win.ini\"}",
+      "isError": true,
+      "ms": 42,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"get_source_text\",\r\n  \"message\": \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\",\r\n  \"exceptionType\": \"KeyNotFoundException\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n   "
+    },
+    {
+      "name": "find_references",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"filePath\":\"<repo>/.worktrees/surface-test-202",
+      "isError": true,
+      "ms": 19,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"find_references\",\r\n  \"message\": \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\",\r\n  \"exceptionType\": \"KeyNotFoundException\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n   "
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"query\":\"Calc\",\"limit\":-3}",
+      "isError": true,
+      "ms": 7,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027\\u003Cunknown\\u003E\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"sym"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"workspaceId\":\"0b88629259264ea7a39c5082293bc229\",\"query\":\"Calc\",\"limit\":2147483647}",
+      "isError": true,
+      "ms": 2,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027\\u003Cunknown\\u003E\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"sym"
+    }
+  ]
+}

@@ -1,0 +1,577 @@
+[
+  {
+    "label": "workspace_load",
+    "ms": 4595,
+    "id": "9950bee8a72f4cca872b1f9c2c8a898d"
+  },
+  {
+    "label": "catalog",
+    "uri": "roslyn://server/catalog",
+    "ms": 15,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog"
+    ],
+    "len": 13897,
+    "jsonParses": true,
+    "head": "{\r\n  \"catalogVersion\": \"2026.04\",\r\n  \"productShape\": \"local-first\",\r\n  \"supportPolicy\": \"Stable entries are covered by release documentation and compatibility expectations for the local stdio host. Experimental entries may evolve faster and can change with less notice before a remote host exists.\",\r\n  \"productBoundaries\": [\r\n    \"The production target is the local stdio server running on a developer workstation.\",\r\n    \"Workspace state comes from MSBuildWorkspace and on-disk files, not unsaved editor buffers.\",\r\n    \"Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.\",\r\n    \"Write-capable tools require an already loaded workspace"
+  },
+  {
+    "label": "catalog-full",
+    "uri": "roslyn://server/catalog/full",
+    "ms": 9,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/full"
+    ],
+    "len": 165529,
+    "jsonParses": true,
+    "head": "{\r\n  \"catalogVersion\": \"2026.04\",\r\n  \"productShape\": \"local-first\",\r\n  \"supportPolicy\": \"Stable entries are covered by release documentation and compatibility expectations for the local stdio host. Experimental entries may evolve faster and can change with less notice before a remote host exists.\",\r\n  \"productBoundaries\": [\r\n    \"The production target is the local stdio server running on a developer workstation.\",\r\n    \"Workspace state comes from MSBuildWorkspace and on-disk files, not unsaved editor buffers.\",\r\n    \"Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.\",\r\n    \"Write-capable tools require an already loaded workspace"
+  },
+  {
+    "label": "cat-tools-0-5",
+    "uri": "roslyn://server/catalog/tools/0/5",
+    "ms": 37,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/tools/0/5"
+    ],
+    "len": 15080,
+    "jsonParses": true,
+    "head": "{\r\n  \"resourceName\": \"server_catalog_tools_page\",\r\n  \"offset\": 0,\r\n  \"limit\": 5,\r\n  \"returnedCount\": 5,\r\n  \"totalCount\": 174,\r\n  \"hasMore\": true,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"server_info\",\r\n      \"category\": \"server\",\r\n      \"supportTier\": \"stable\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Inspect server capabilities, versions, and support tiers.\",\r\n      \"uriTemplate\": null,\r\n      \"parameters\": null,\r\n      \"outputSchema\": {\r\n        \"type\": \"object\",\r\n        \"properties\": {\r\n          \"server\": {\r\n            \"type\": \"string\"\r\n          },\r\n          \"version\": {\r\n            \"type\": \"string\"\r\n          },\r\n          \"produ"
+  },
+  {
+    "label": "cat-tools-170-50",
+    "uri": "roslyn://server/catalog/tools/170/50",
+    "ms": 2,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/tools/170/50"
+    ],
+    "len": 1811,
+    "jsonParses": true,
+    "head": "{\r\n  \"resourceName\": \"server_catalog_tools_page\",\r\n  \"offset\": 170,\r\n  \"limit\": 50,\r\n  \"returnedCount\": 4,\r\n  \"totalCount\": 174,\r\n  \"hasMore\": false,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"evaluate_msbuild_property\",\r\n      \"category\": \"project-mutation\",\r\n      \"supportTier\": \"stable\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Evaluate a single MSBuild property for a project.\",\r\n      \"uriTemplate\": null,\r\n      \"parameters\": null,\r\n      \"outputSchema\": null,\r\n      \"deprecation\": null\r\n    },\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"evaluate_msbuild_items\",\r\n      \"category\": \"project-mutation\",\r\n      \"supportTier\": \"stable\",\r\n  "
+  },
+  {
+    "label": "cat-tools-neg",
+    "uri": "roslyn://server/catalog/tools/-1/0",
+    "ms": 3,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/tools/-1/0"
+    ],
+    "len": 12148,
+    "jsonParses": true,
+    "head": "{\r\n  \"resourceName\": \"server_catalog_tools_page\",\r\n  \"offset\": 0,\r\n  \"limit\": 1,\r\n  \"returnedCount\": 1,\r\n  \"totalCount\": 174,\r\n  \"hasMore\": true,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"tool\",\r\n      \"name\": \"server_info\",\r\n      \"category\": \"server\",\r\n      \"supportTier\": \"stable\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Inspect server capabilities, versions, and support tiers.\",\r\n      \"uriTemplate\": null,\r\n      \"parameters\": null,\r\n      \"outputSchema\": {\r\n        \"type\": \"object\",\r\n        \"properties\": {\r\n          \"server\": {\r\n            \"type\": \"string\"\r\n          },\r\n          \"version\": {\r\n            \"type\": \"string\"\r\n          },\r\n          \"produ"
+  },
+  {
+    "label": "cat-tools-abc",
+    "uri": "roslyn://server/catalog/tools/abc/5",
+    "ms": 22,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Parameter 'offset' is invalid. Check that all required parameters are provided and values match the expected types. (resource: roslyn://server/catalog/tools/abc/5; param: offset; correlationId: 8d554d30a8a647daafc975ce25a83974)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "cat-prompts-0-5",
+    "uri": "roslyn://server/catalog/prompts/0/5",
+    "ms": 3,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/prompts/0/5"
+    ],
+    "len": 5271,
+    "jsonParses": true,
+    "head": "{\r\n  \"resourceName\": \"server_catalog_prompts_page\",\r\n  \"offset\": 0,\r\n  \"limit\": 5,\r\n  \"returnedCount\": 5,\r\n  \"totalCount\": 20,\r\n  \"hasMore\": true,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"prompt\",\r\n      \"name\": \"explain_error\",\r\n      \"category\": \"prompts\",\r\n      \"supportTier\": \"experimental\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Generate a prompt for explaining a compiler diagnostic.\",\r\n      \"uriTemplate\": null,\r\n      \"parameters\": [\r\n        {\r\n          \"name\": \"workspaceId\",\r\n          \"type\": \"string\",\r\n          \"required\": true,\r\n          \"defaultValue\": null,\r\n          \"description\": \"The workspace session identifier\"\r\n        },\r\n        {\r\n  "
+  },
+  {
+    "label": "cat-prompts-18-10",
+    "uri": "roslyn://server/catalog/prompts/18/10",
+    "ms": 3,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog/prompts/18/10"
+    ],
+    "len": 1867,
+    "jsonParses": true,
+    "head": "{\r\n  \"resourceName\": \"server_catalog_prompts_page\",\r\n  \"offset\": 18,\r\n  \"limit\": 10,\r\n  \"returnedCount\": 2,\r\n  \"totalCount\": 20,\r\n  \"hasMore\": false,\r\n  \"entries\": [\r\n    {\r\n      \"kind\": \"prompt\",\r\n      \"name\": \"session_undo\",\r\n      \"category\": \"prompts\",\r\n      \"supportTier\": \"experimental\",\r\n      \"readOnly\": true,\r\n      \"destructive\": false,\r\n      \"summary\": \"Generate a prompt for inspecting session mutations and undoing the last apply operation.\",\r\n      \"uriTemplate\": null,\r\n      \"parameters\": [\r\n        {\r\n          \"name\": \"workspaceId\",\r\n          \"type\": \"string\",\r\n          \"required\": true,\r\n          \"defaultValue\": null,\r\n          \"description\": \"The workspace session ide"
+  },
+  {
+    "label": "templates",
+    "uri": "roslyn://server/resource-templates",
+    "ms": 7,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/resource-templates"
+    ],
+    "len": 4111,
+    "jsonParses": true,
+    "head": "{\r\n  \"count\": 14,\r\n  \"resources\": [\r\n    {\r\n      \"name\": \"resource_templates\",\r\n      \"uriTemplate\": \"roslyn://server/resource-templates\",\r\n      \"category\": \"server\",\r\n      \"summary\": \"Lists all resource URI templates, including workspace-scoped templates.\",\r\n      \"supportTier\": \"stable\"\r\n    },\r\n    {\r\n      \"name\": \"server_catalog\",\r\n      \"uriTemplate\": \"roslyn://server/catalog\",\r\n      \"category\": \"server\",\r\n      \"summary\": \"Cap-safe summary of the server surface (tool/prompt counts \\u002B resource list \\u002B workflow hints). Full tools and prompts via paginated siblings.\",\r\n      \"supportTier\": \"stable\"\r\n    },\r\n    {\r\n      \"name\": \"server_catalog_full\",\r\n      \"uriTemplate\": \"ro"
+  },
+  {
+    "label": "workspaces",
+    "uri": "roslyn://workspaces",
+    "ms": 6,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspaces"
+    ],
+    "len": 870,
+    "jsonParses": true,
+    "head": "{\r\n  \"count\": 1,\r\n  \"workspaces\": [\r\n    {\r\n      \"workspaceId\": \"9950bee8a72f4cca872b1f9c2c8a898d\",\r\n      \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\RoslynMcp.slnx\",\r\n      \"workspaceVersion\": 1,\r\n      \"snapshotToken\": \"9950bee8a72f4cca872b1f9c2c8a898d:1\",\r\n      \"loadedAtUtc\": \"2026-09-24T13:11:42.8122732\\u002B00:00\",\r\n      \"projectCount\": 6,\r\n      \"documentCount\": 905,\r\n      \"isLoaded\": true,\r\n      \"isStale\": false,\r\n      \"workspaceDiagnosticCount\": 0,\r\n      \"workspaceErrorCount\": 0,\r\n      \"workspaceWarningCount\": 0,\r\n      \"isReady\": true,\r\n      \"analyzersReady\": true,\r\n      \"restoreRequired\": false,\r\n      \"buildRequired\": f"
+  },
+  {
+    "label": "workspaces-verbose",
+    "uri": "roslyn://workspaces/verbose",
+    "ms": 7,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspaces/verbose"
+    ],
+    "len": 3928,
+    "jsonParses": true,
+    "head": "{\r\n  \"count\": 1,\r\n  \"workspaces\": [\r\n    {\r\n      \"workspaceId\": \"9950bee8a72f4cca872b1f9c2c8a898d\",\r\n      \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\RoslynMcp.slnx\",\r\n      \"workspaceVersion\": 1,\r\n      \"snapshotToken\": \"9950bee8a72f4cca872b1f9c2c8a898d:1\",\r\n      \"loadedAtUtc\": \"2026-09-24T13:11:42.8122732\\u002B00:00\",\r\n      \"projectCount\": 6,\r\n      \"documentCount\": 905,\r\n      \"projects\": [\r\n        {\r\n          \"name\": \"ServerSurfaceCatalogAnalyzer\",\r\n          \"filePath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\analyzers\\\\ServerSurfaceCatalogAnalyzer\\\\ServerSurfaceCatalogAnalyzer.csproj\",\r\n  "
+  },
+  {
+    "label": "status",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/status",
+    "ms": 34,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/status"
+    ],
+    "len": 774,
+    "jsonParses": true,
+    "head": "{\r\n  \"workspaceId\": \"9950bee8a72f4cca872b1f9c2c8a898d\",\r\n  \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\RoslynMcp.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"9950bee8a72f4cca872b1f9c2c8a898d:1\",\r\n  \"loadedAtUtc\": \"2026-09-24T13:11:42.8122732\\u002B00:00\",\r\n  \"projectCount\": 6,\r\n  \"documentCount\": 905,\r\n  \"isLoaded\": true,\r\n  \"isStale\": false,\r\n  \"workspaceDiagnosticCount\": 0,\r\n  \"workspaceErrorCount\": 0,\r\n  \"workspaceWarningCount\": 0,\r\n  \"isReady\": true,\r\n  \"analyzersReady\": true,\r\n  \"restoreRequired\": false,\r\n  \"buildRequired\": false,\r\n  \"restoreHint\": null,\r\n  \"solutionFileName\": \"RoslynMcp.slnx\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw"
+  },
+  {
+    "label": "status-verbose",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/status/verbose",
+    "ms": 1,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/status/verbose"
+    ],
+    "len": 3519,
+    "jsonParses": true,
+    "head": "{\r\n  \"workspaceId\": \"9950bee8a72f4cca872b1f9c2c8a898d\",\r\n  \"loadedPath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\RoslynMcp.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"9950bee8a72f4cca872b1f9c2c8a898d:1\",\r\n  \"loadedAtUtc\": \"2026-09-24T13:11:42.8122732\\u002B00:00\",\r\n  \"projectCount\": 6,\r\n  \"documentCount\": 905,\r\n  \"projects\": [\r\n    {\r\n      \"name\": \"ServerSurfaceCatalogAnalyzer\",\r\n      \"filePath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\analyzers\\\\ServerSurfaceCatalogAnalyzer\\\\ServerSurfaceCatalogAnalyzer.csproj\",\r\n      \"documentCount\": 4,\r\n      \"projectReferences\": [],\r\n      \"targetFrameworks\": [\r"
+  },
+  {
+    "label": "projects",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/projects",
+    "ms": 3,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/projects"
+    ],
+    "len": 2914,
+    "jsonParses": true,
+    "head": "{\r\n  \"workspaceId\": \"9950bee8a72f4cca872b1f9c2c8a898d\",\r\n  \"projects\": [\r\n    {\r\n      \"name\": \"ServerSurfaceCatalogAnalyzer\",\r\n      \"filePath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\analyzers\\\\ServerSurfaceCatalogAnalyzer\\\\ServerSurfaceCatalogAnalyzer.csproj\",\r\n      \"assemblyName\": \"RoslynMcp.Analyzers.ServerSurfaceCatalog\",\r\n      \"isTestProject\": false,\r\n      \"outputType\": \"Library\",\r\n      \"targetFrameworks\": [\r\n        \"netstandard2.0\"\r\n      ],\r\n      \"projectReferences\": []\r\n    },\r\n    {\r\n      \"name\": \"RoslynMcp.Core\",\r\n      \"filePath\": \"<repo>\\\\.worktrees\\\\surface-test-20260924T130517Z-ro\\\\src\\\\RoslynMcp.Core\\"
+  },
+  {
+    "label": "diagnostics",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/diagnostics",
+    "ms": 19341,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/diagnostics"
+    ],
+    "len": 638,
+    "jsonParses": true,
+    "head": "{\r\n  \"totalErrors\": 0,\r\n  \"totalWarnings\": 0,\r\n  \"totalInfo\": 4405,\r\n  \"compilerErrors\": 0,\r\n  \"analyzerErrors\": 0,\r\n  \"workspaceErrors\": 0,\r\n  \"returnedDiagnostics\": 0,\r\n  \"cap\": 500,\r\n  \"hasMore\": false,\r\n  \"paginationNote\": null,\r\n  \"severityFloor\": \"Warning\",\r\n  \"severityNote\": \"Resource omits Info-severity diagnostics by default. Use project_diagnostics with severity=\\u0022Info\\u0022 or omit the filter for full coverage.\",\r\n  \"workspaceDiagnostics\": [],\r\n  \"compilerDiagnostics\": [],\r\n  \"analyzerDiagnostics\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 19335,\r\n    \"elapsedMs\": 19336\r\n  }\r\n}"
+  },
+  {
+    "label": "file-enc",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs",
+    "ms": 62,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "text/x-csharp"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs"
+    ],
+    "len": 43259,
+    "jsonParses": false,
+    "head": "using System.ComponentModel;\nusing System.Diagnostics;\nusing System.Reflection;\nusing System.Text.Json;\nusing System.Text.Json.Nodes;\nusing Microsoft.Extensions.Logging;\nusing ModelContextProtocol;\nusing ModelContextProtocol.Protocol;\nusing ModelContextProtocol.Server;\nusing RoslynMcp.Core.Models;\nusing RoslynMcp.Core.Services;\nusing RoslynMcp.Host.Stdio.Catalog;\nusing RoslynMcp.Host.Stdio.Security;\nusing RoslynMcp.Roslyn.Contracts;\n\nnamespace RoslynMcp.Host.Stdio.Tools;\n\n[McpServerToolType]\npublic static class WorkspaceTools\n{\n    private const int _autoPrewarmProjectThreshold = 50;\n    private const int _defaultSupportBundleChangeCap = 20;\n    private const int _maxSupportBundleChangeCap ="
+  },
+  {
+    "label": "file-raw",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+    "ms": 2,
+    "error": {
+      "code": -32002,
+      "message": "Unknown resource URI: 'roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs'"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "file-rawbs",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+    "ms": 52,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "text/x-csharp"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs"
+    ],
+    "len": 43259,
+    "jsonParses": false,
+    "head": "using System.ComponentModel;\nusing System.Diagnostics;\nusing System.Reflection;\nusing System.Text.Json;\nusing System.Text.Json.Nodes;\nusing Microsoft.Extensions.Logging;\nusing ModelContextProtocol;\nusing ModelContextProtocol.Protocol;\nusing ModelContextProtocol.Server;\nusing RoslynMcp.Core.Models;\nusing RoslynMcp.Core.Services;\nusing RoslynMcp.Host.Stdio.Catalog;\nusing RoslynMcp.Host.Stdio.Security;\nusing RoslynMcp.Roslyn.Contracts;\n\nnamespace RoslynMcp.Host.Stdio.Tools;\n\n[McpServerToolType]\npublic static class WorkspaceTools\n{\n    private const int _autoPrewarmProjectThreshold = 50;\n    private const int _defaultSupportBundleChangeCap = 20;\n    private const int _maxSupportBundleChangeCap ="
+  },
+  {
+    "label": "file-enc-bs",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%5C.worktrees%5Csurface-test-20260924T130517Z-ro%5Csrc%5CRoslynMcp.Host.Stdio%5CTools%5CWorkspaceTools.cs",
+    "ms": 53,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "text/x-csharp"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%5C.worktrees%5Csurface-test-20260924T130517Z-ro%5Csrc%5CRoslynMcp.Host.Stdio%5CTools%5CWorkspaceTools.cs"
+    ],
+    "len": 43259,
+    "jsonParses": false,
+    "head": "using System.ComponentModel;\nusing System.Diagnostics;\nusing System.Reflection;\nusing System.Text.Json;\nusing System.Text.Json.Nodes;\nusing Microsoft.Extensions.Logging;\nusing ModelContextProtocol;\nusing ModelContextProtocol.Protocol;\nusing ModelContextProtocol.Server;\nusing RoslynMcp.Core.Models;\nusing RoslynMcp.Core.Services;\nusing RoslynMcp.Host.Stdio.Catalog;\nusing RoslynMcp.Host.Stdio.Security;\nusing RoslynMcp.Roslyn.Contracts;\n\nnamespace RoslynMcp.Host.Stdio.Tools;\n\n[McpServerToolType]\npublic static class WorkspaceTools\n{\n    private const int _autoPrewarmProjectThreshold = 50;\n    private const int _defaultSupportBundleChangeCap = 20;\n    private const int _maxSupportBundleChangeCap ="
+  },
+  {
+    "label": "file-missing",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fnope.cs",
+    "ms": 133,
+    "error": {
+      "code": -32002,
+      "message": "NotFound: The requested item was not found. Ensure the workspace is loaded and the identifier is correct. (resource: roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fnope.cs; correlationId: a628fb375ca34b11a06460cb01f05a02)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "file-outside",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/C%3A%2FWindows%2Fwin.ini",
+    "ms": 123,
+    "error": {
+      "code": -32002,
+      "message": "NotFound: The requested item was not found. Ensure the workspace is loaded and the identifier is correct. (resource: roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/C%3A%2FWindows%2Fwin.ini; correlationId: d9db083d53ef4fbc8a79498dbef1c97b)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "lines-1-10",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/1-10",
+    "ms": 58,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "text/x-csharp"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/1-10"
+    ],
+    "len": 382,
+    "jsonParses": false,
+    "head": "// roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/.../lines/1-10 of 742\r\nusing System.ComponentModel;\nusing System.Diagnostics;\nusing System.Reflection;\nusing System.Text.Json;\nusing System.Text.Json.Nodes;\nusing Microsoft.Extensions.Logging;\nusing ModelContextProtocol;\nusing ModelContextProtocol.Protocol;\nusing ModelContextProtocol.Server;\nusing RoslynMcp.Core.Models;\n"
+  },
+  {
+    "label": "lines-1-10-raw",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs/lines/1-10",
+    "ms": 1,
+    "error": {
+      "code": -32002,
+      "message": "Unknown resource URI: 'roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/<repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs/lines/1-10'"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "lines-10-5",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/10-5",
+    "ms": 1,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Parameter 'lineRange' must use the 1-based 'startLine-endLine' format with startLine less than or equal to endLine. (resource: roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/10-5; param: lineRange; correlationId: cc8e8456f8e0483087be2f700b4b2088)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "lines-oor",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/99999-100000",
+    "ms": 58,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Parameter 'lineRange' starts past the end of the source file. Request a range within the reported line count. (resource: roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/99999-100000; param: lineRange; correlationId: dde2d568c7d849899b93386cc550c9a0)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "lines-740-750",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/740-750",
+    "ms": 45,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "text/x-csharp"
+    ],
+    "contentUri": [
+      "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/740-750"
+    ],
+    "len": 110,
+    "jsonParses": false,
+    "head": "// roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/.../lines/740-742 of 742\r\n        }, ct);\n    }\n}\n"
+  },
+  {
+    "label": "lines-bad",
+    "uri": "roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/abc",
+    "ms": 2,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Parameter 'lineRange' must use the 1-based 'startLine-endLine' format with startLine less than or equal to endLine. (resource: roslyn://workspace/9950bee8a72f4cca872b1f9c2c8a898d/file/%3Crepo%3E%2F.worktrees%2Fsurface-test-20260924T130517Z-ro%2Fsrc%2FRoslynMcp.Host.Stdio%2FTools%2FWorkspaceTools.cs/lines/abc; param: lineRange; correlationId: 2a6f6acdaf4a420a9d8f67498cf2c86b)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "catalog-version-hint",
+    "v": null,
+    "catalogVersion": "2026.04"
+  },
+  {
+    "label": "diff-v2.3.1_v2.3.2",
+    "uri": "roslyn://server/catalog-diff/v2.3.1/v2.3.2",
+    "ms": 2,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/v2.3.1/v2.3.2; correlationId: d2b26c86ee254f159d347c7d2be04aa0)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "diff-2.3.1_current",
+    "uri": "roslyn://server/catalog-diff/2.3.1/current",
+    "ms": 20,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog-diff/2.3.1/current"
+    ],
+    "len": 136085,
+    "jsonParses": true,
+    "head": "{\r\n  \"fromVersion\": \"2.3.1\",\r\n  \"toVersion\": \"4.2.1\",\r\n  \"fromCatalogVersion\": \"2026.04\",\r\n  \"toCatalogVersion\": \"2026.04\",\r\n  \"snapshotSources\": {\r\n    \"from\": {\r\n      \"sourceKind\": \"git-tag\",\r\n      \"sourceRef\": \"v2.3.1\",\r\n      \"sourceCommit\": \"e147875\"\r\n    },\r\n    \"to\": {\r\n      \"sourceKind\": \"current\",\r\n      \"sourceRef\": \"current\",\r\n      \"sourceCommit\": \"current\"\r\n    }\r\n  },\r\n  \"tools\": {\r\n    \"added\": [\r\n      {\r\n        \"kind\": \"tool\",\r\n        \"name\": \"find_overloads\",\r\n        \"category\": \"symbols\",\r\n        \"supportTier\": \"experimental\",\r\n        \"readOnly\": true,\r\n        \"destructive\": false,\r\n        \"summary\": \"Enumerate all overloads of a member by type \\u002B name.\",\r\n  "
+  },
+  {
+    "label": "diff-v2.3.1_latest",
+    "uri": "roslyn://server/catalog-diff/v2.3.1/latest",
+    "ms": 8,
+    "error": null,
+    "timeout": false,
+    "nContents": 1,
+    "mime": [
+      "application/json"
+    ],
+    "contentUri": [
+      "roslyn://server/catalog-diff/v2.3.1/latest"
+    ],
+    "len": 136084,
+    "jsonParses": true,
+    "head": "{\r\n  \"fromVersion\": \"2.3.1\",\r\n  \"toVersion\": \"4.2.1\",\r\n  \"fromCatalogVersion\": \"2026.04\",\r\n  \"toCatalogVersion\": \"2026.04\",\r\n  \"snapshotSources\": {\r\n    \"from\": {\r\n      \"sourceKind\": \"git-tag\",\r\n      \"sourceRef\": \"v2.3.1\",\r\n      \"sourceCommit\": \"e147875\"\r\n    },\r\n    \"to\": {\r\n      \"sourceKind\": \"current\",\r\n      \"sourceRef\": \"current\",\r\n      \"sourceCommit\": \"current\"\r\n    }\r\n  },\r\n  \"tools\": {\r\n    \"added\": [\r\n      {\r\n        \"kind\": \"tool\",\r\n        \"name\": \"find_overloads\",\r\n        \"category\": \"symbols\",\r\n        \"supportTier\": \"experimental\",\r\n        \"readOnly\": true,\r\n        \"destructive\": false,\r\n        \"summary\": \"Enumerate all overloads of a member by type \\u002B name.\",\r\n  "
+  },
+  {
+    "label": "diff-v2.3.2_current",
+    "uri": "roslyn://server/catalog-diff/v2.3.2/current",
+    "ms": 1,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/v2.3.2/current; correlationId: 1177cd4c15ed4e91a039f01678393829)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "diff-4.2.1_current",
+    "uri": "roslyn://server/catalog-diff/4.2.1/current",
+    "ms": 1,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/4.2.1/current; correlationId: 3302dc4b4c8344da8e16731390280606)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "diff-invalid",
+    "uri": "roslyn://server/catalog-diff/9.9.9/0.0.0",
+    "ms": 1,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/9.9.9/0.0.0; correlationId: 73b101d363834694845a8d7764eda8a8)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  },
+  {
+    "label": "diff-garbage",
+    "uri": "roslyn://server/catalog-diff/abc/def",
+    "ms": 1,
+    "error": {
+      "code": -32602,
+      "message": "InvalidArgument: Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource. (resource: roslyn://server/catalog-diff/abc/def; correlationId: d2ac1d209b98467db335343ffd63345c)"
+    },
+    "timeout": false,
+    "nContents": 0,
+    "mime": [],
+    "contentUri": [],
+    "len": 0,
+    "jsonParses": false,
+    "head": ""
+  }
+]

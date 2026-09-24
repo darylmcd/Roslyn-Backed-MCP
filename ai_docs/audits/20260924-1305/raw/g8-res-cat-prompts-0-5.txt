@@ -1,0 +1,190 @@
+{
+  "resourceName": "server_catalog_prompts_page",
+  "offset": 0,
+  "limit": 5,
+  "returnedCount": 5,
+  "totalCount": 20,
+  "hasMore": true,
+  "entries": [
+    {
+      "kind": "prompt",
+      "name": "explain_error",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for explaining a compiler diagnostic.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "diagnosticId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Diagnostic identifier, e.g. CS8019"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "line",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based line number"
+        },
+        {
+          "name": "column",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based column number"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "prompt",
+      "name": "suggest_refactoring",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for refactoring suggestions.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "startLine",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: start line to focus on"
+        },
+        {
+          "name": "endLine",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: end line to focus on"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "prompt",
+      "name": "review_file",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for file review.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "prompt",
+      "name": "analyze_dependencies",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for architecture and dependency analysis.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "prompt",
+      "name": "debug_test_failure",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for debugging a failing test.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: specific test project name"
+        },
+        {
+          "name": "filter",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: test filter expression to narrow which tests to run"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    }
+  ],
+  "_meta": {
+    "queuedMs": 0,
+    "heldMs": 0,
+    "elapsedMs": 0
+  }
+}
