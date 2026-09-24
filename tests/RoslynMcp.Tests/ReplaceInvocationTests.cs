@@ -136,6 +136,86 @@ public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
+    /// replace-invocation-rewrites-replacement-body: when the replacement method delegates to
+    /// the old method (SummarizeV2 => Summarize(...)), the call inside SummarizeV2's own body
+    /// must NOT be rewritten — doing so would turn the replacement into infinite recursion.
+    /// Only the external caller is rewritten, and the callsite count reflects that.
+    /// </summary>
+    [TestMethod]
+    public async Task ReplaceInvocation_DelegatingReplacement_LeavesReplacementBodyUnchanged()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ReplaceInvocationDelegatingFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            """
+            namespace SampleLib;
+
+            public static class ReplaceInvocationDelegating
+            {
+                public static string Summarize(string text, int maxLength) => text.Length <= maxLength ? text : text[..maxLength];
+
+                public static string SummarizeV2(string text, int maxLength)
+                {
+                    return Summarize(text, maxLength).Trim();
+                }
+            }
+
+            public static class ReplaceInvocationDelegatingCallers
+            {
+                public static string Use() => ReplaceInvocationDelegating.Summarize("abcdef", 3);
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var scopedWorkspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var preview = await BulkRefactoringService.PreviewReplaceInvocationAsync(
+                scopedWorkspaceId,
+                oldMethod: "SampleLib.ReplaceInvocationDelegating.Summarize(string, int)",
+                newMethod: "SampleLib.ReplaceInvocationDelegating.SummarizeV2(string, int)",
+                scope: null,
+                CancellationToken.None);
+
+            var fixtureChange = preview.Changes
+                .FirstOrDefault(c => c.FilePath.EndsWith("ReplaceInvocationDelegatingFixture.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(fixtureChange, "The fixture file must appear in the preview changes.");
+
+            var diffLines = fixtureChange.UnifiedDiff.Split('\n');
+            var addedText = string.Join('\n', diffLines
+                .Where(line => line.StartsWith('+') && !line.StartsWith("+++")));
+            var removedText = string.Join('\n', diffLines
+                .Where(line => line.StartsWith('-') && !line.StartsWith("---")));
+
+            StringAssert.Contains(
+                addedText,
+                "ReplaceInvocationDelegating.SummarizeV2(\"abcdef\", 3)",
+                "The external caller must be rewritten to the replacement method.");
+
+            Assert.IsFalse(
+                removedText.Contains(".Trim()", StringComparison.Ordinal),
+                "The replacement method's own body must not be touched by the rewrite.");
+            Assert.IsFalse(
+                addedText.Contains("SummarizeV2(text, maxLength)", StringComparison.Ordinal),
+                "The delegating call inside SummarizeV2 must not be rewritten into a self-recursive call.");
+
+            Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates should be populated for a non-zero rewrite.");
+            Assert.AreEqual(1, preview.CallsiteUpdates.Count, "Only the fixture file should be touched.");
+            Assert.AreEqual(1, preview.CallsiteUpdates[0].CallsiteCount,
+                "Only the external call-site is rewritten; the call inside the replacement body is excluded.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(scopedWorkspaceId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    /// <summary>
     /// Missing parens → clear ArgumentException. Guard: the FQ parser must reject input that
     /// has no '(' so callers cannot accidentally pass just a method name and get a confusing
     /// downstream "overload match failed" message.

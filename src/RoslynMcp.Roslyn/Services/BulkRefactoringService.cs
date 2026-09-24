@@ -234,9 +234,20 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         var references = await SymbolFinder.FindReferencesAsync(oldMethodSymbol, solution, ct).ConfigureAwait(false);
 
+        // replace-invocation-rewrites-replacement-body: a replacement that delegates to the old
+        // method (NewM(...) => OldM(...)) must keep its own body intact — rewriting that call
+        // would make the replacement call itself forever. Exclude every reference that lies
+        // inside one of the new method's declarations. Compare by file path + span rather than
+        // SyntaxTree identity because newMethodSymbol may come from a cached compilation.
+        var replacementDeclarations = newMethodSymbol.DeclaringSyntaxReferences
+            .Where(r => !string.IsNullOrEmpty(r.SyntaxTree.FilePath))
+            .Select(r => (FilePath: r.SyntaxTree.FilePath, Span: r.Span))
+            .ToList();
+
         var refsByDocument = references
             .SelectMany(r => r.Locations)
             .Where(loc => loc.Location.IsInSource)
+            .Where(loc => !IsInsideDeclaration(loc, replacementDeclarations))
             .GroupBy(loc => loc.Document.Id);
 
         var newSolution = solution;
@@ -283,6 +294,23 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
             changes,
             Warnings: null,
             CallsiteUpdates: callsiteUpdates.Count == 0 ? null : callsiteUpdates);
+    }
+
+    private static bool IsInsideDeclaration(
+        ReferenceLocation location,
+        IReadOnlyList<(string FilePath, Microsoft.CodeAnalysis.Text.TextSpan Span)> declarations)
+    {
+        var filePath = location.Location.SourceTree?.FilePath ?? location.Document.FilePath;
+        if (string.IsNullOrEmpty(filePath)) return false;
+
+        var span = location.Location.SourceSpan;
+        foreach (var (declFilePath, declSpan) in declarations)
+        {
+            if (string.Equals(declFilePath, filePath, StringComparison.OrdinalIgnoreCase) && declSpan.Contains(span))
+                return true;
+        }
+
+        return false;
     }
 
     private static async Task<(Solution Solution, int CallsiteCount, string? FilePath)> RewriteInvocationsInDocumentAsync(
