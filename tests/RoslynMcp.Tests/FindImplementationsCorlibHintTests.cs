@@ -20,7 +20,12 @@ namespace RoslynMcp.Tests;
 /// implementation root, the wrapper emits a structured <c>hint</c> ("source-anchor this query")
 /// instead of a bare (possibly-empty) set. Non-corlib roots are unaffected.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-09: [DoNotParallelize] removed. Every test method here only reads the
+// assembly-shared SampleSolution workspace through the synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync), calls the static pure ReferenceService.IsCorlibImplementationRoot, builds
+// private in-memory CSharpCompilations, or uses a per-test RecordingPreResolvedReferenceService instance — no
+// *_apply, no WorkspaceManager.LoadAsync/ReloadAsync/Close, no static/environment/filesystem mutation.
+// Validated with a repeated (3x) run of this class alongside its donotparallelize-audit-wave-09 siblings.
 [TestClass]
 public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
 {

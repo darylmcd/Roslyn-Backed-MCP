@@ -33,6 +33,11 @@ namespace RoslynMcp.Tests;
 /// reload completes.
 /// </para>
 /// </summary>
+// donotparallelize-audit-wave-09: retained. WorkspaceStatusResource_DuringConcurrentReload_SucceedsAfterReload
+// calls WorkspaceManager.ReloadAsync on the assembly-shared SampleSolution workspace id handed out by the
+// WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) — a writer on server-side workspace state every parallel-enabled
+// SharedWorkspaceTestBase class reads. The cache only synchronizes the initial load, not a mid-run reload, so a
+// concurrent class would observe a swapped Solution snapshot or block on the per-workspace writer lock.
 [DoNotParallelize]
 [TestClass]
 public sealed class FetchMcpResourceReadinessTests : SharedWorkspaceTestBase

@@ -9,7 +9,11 @@ namespace RoslynMcp.Tests;
 /// only finds symbols declared in the workspace's own source and <c>symbol_signature_help</c>
 /// resolves a single already-bound call site rather than listing every overload choice.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-09: [DoNotParallelize] removed. Every test method here is a read-only
+// SymbolTools.FindOverloads query against the assembly-shared SampleSolution workspace obtained through the
+// synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) — no *_apply, no
+// WorkspaceManager.LoadAsync/ReloadAsync/Close, no static/environment/filesystem mutation. Validated with a
+// repeated (3x) run of this class alongside its donotparallelize-audit-wave-09 siblings.
 [TestClass]
 public sealed class FindOverloadsTests : SharedWorkspaceTestBase
 {
