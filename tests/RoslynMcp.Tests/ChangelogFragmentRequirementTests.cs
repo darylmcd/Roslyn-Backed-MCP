@@ -87,6 +87,7 @@ public sealed class ChangelogFragmentRequirementTests
             new RequirementCase("committed branch source", RequirementFixtureKind.CommittedBranchSource, 1, "Change-bearing work requires"),
             new RequirementCase("missing base", RequirementFixtureKind.MissingBase, 1, "could not resolve the target branch"),
             new RequirementCase("planning only", RequirementFixtureKind.PlanningOnly, 0, "fragment verification passed"),
+            new RequirementCase("audit evidence only", RequirementFixtureKind.AuditEvidenceOnly, 0, "fragment verification passed"),
             new RequirementCase("changed fragment", RequirementFixtureKind.ChangedFragment, 0, "1 changed"),
             new RequirementCase("inherited fragment", RequirementFixtureKind.InheritedFragment, 1, "Change-bearing work requires"),
             new RequirementCase("assembled release", RequirementFixtureKind.AssembledRelease, 0, "strict assembled release"),
@@ -228,6 +229,12 @@ public sealed class ChangelogFragmentRequirementTests
             case RequirementFixtureKind.PlanningOnly:
                 File.WriteAllText(Path.Combine(root, "ai_docs", "note.md"), "planning\n");
                 break;
+            case RequirementFixtureKind.AuditEvidenceOnly:
+                Directory.CreateDirectory(Path.Combine(root, "audit-reports"));
+                File.WriteAllText(
+                    Path.Combine(root, "audit-reports", "_latest-promotion-scorecard.json"),
+                    "{}\n");
+                break;
             case RequirementFixtureKind.ChangedFragment:
                 File.AppendAllText(Path.Combine(root, "src", "fixture.txt"), "changed\n");
                 File.WriteAllText(
@@ -368,6 +375,7 @@ public sealed class ChangelogFragmentRequirementTests
         CommittedBranchSource,
         MissingBase,
         PlanningOnly,
+        AuditEvidenceOnly,
         ChangedFragment,
         InheritedFragment,
         AssembledRelease,

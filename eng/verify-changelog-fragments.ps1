@@ -7,7 +7,7 @@
     Validates every current changelog.d/*.md fragment (excluding README.md),
     then compares the branch, index, worktree, and untracked files with main.
     Shipped changes require at least one valid fragment changed by the current
-    work. Internal ai_docs planning/provenance is exempt.
+    work. Internal ai_docs planning/provenance and audit-reports evidence are exempt.
 
     A release bump may consume all fragments without creating a replacement
     only when the change set is confined to consumed fragments and all seven
@@ -95,9 +95,12 @@ function Get-ChangedPaths {
 function Test-IsChangeBearingPath {
     param([Parameter(Mandatory)][string] $Path)
 
+    # ai_docs/ is internal planning/provenance; audit-reports/ is audit evidence (including the
+    # tracked promotion scorecard). Neither ships, so neither needs a changelog fragment.
     return $Path -ne 'CHANGELOG.md' -and
         $Path -notlike 'changelog.d/*' -and
-        $Path -notlike 'ai_docs/*'
+        $Path -notlike 'ai_docs/*' -and
+        $Path -notlike 'audit-reports/*'
 }
 
 function Test-IsStrictAssembledRelease {

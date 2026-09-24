@@ -238,6 +238,51 @@ public sealed class CiRunnerParityContractTests
     }
 
     [TestMethod]
+    public void EvidenceRoute_SkipsTheMatrixBehindALintJobThatTheRequiredGateEnforces()
+    {
+        var workflow = LoadCiWorkflow();
+        var route = GetJobBlock(workflow, "route");
+        var validate = GetJobBlock(workflow, "validate");
+        var lint = GetJobBlock(workflow, "evidence_lint");
+        var gate = GetJobBlock(workflow, "validate-gate");
+
+        StringAssert.Contains(route, "evidence_only: ${{ steps.decide.outputs.evidence_only }}");
+        StringAssert.Contains(route, "evidence_only=$($decision.evidence_only.ToString().ToLowerInvariant())");
+        StringAssert.Contains(validate, "if: needs.route.outputs.evidence_only != 'true'");
+
+        StringAssert.Contains(lint, "needs: route");
+        StringAssert.Contains(lint, "if: needs.route.outputs.evidence_only == 'true'");
+        StringAssert.Contains(lint, "fetch-depth: 0");
+        StringAssert.Contains(lint, "run: ./eng/verify-changelog-fragments.ps1");
+        StringAssert.Contains(lint, "run: ./eng/verify-ai-docs.ps1");
+        Assert.IsFalse(
+            lint.Contains("setup-dotnet", StringComparison.Ordinal),
+            "The evidence route must stay pwsh-only; a .NET setup belongs to the docs or code route.");
+
+        // The required `validate` check must fail closed: evidence routing only passes when the
+        // lint job succeeded AND the build/test matrix and SDK floor were skipped, never failed.
+        StringAssert.Contains(gate, "- evidence_lint\n");
+        StringAssert.Contains(gate, "$evidenceOnly = '${{ needs.route.outputs.evidence_only }}' -eq 'true'");
+        StringAssert.Contains(gate, "$evidenceLintResult = '${{ needs.evidence_lint.result }}'");
+        StringAssert.Contains(gate, "$evidenceLintResult -ne 'success'");
+        StringAssert.Contains(gate, "$validateResult -ne 'skipped'");
+        StringAssert.Contains(gate, "$sdkFloorResult -ne 'skipped'");
+    }
+
+    [TestMethod]
+    public void DocsRoute_RunsTheReleaseVersionGatesThatGuardChangelog()
+    {
+        var validate = GetJobBlock(LoadCiWorkflow(), "validate");
+        var gates = GetNamedStepBlock(validate, "Verify release version gates");
+
+        StringAssert.Contains(
+            gates,
+            "if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'");
+        StringAssert.Contains(gates, "./eng/verify-version-drift.ps1");
+        StringAssert.Contains(gates, "./eng/verify-breaking-version-bump.ps1");
+    }
+
+    [TestMethod]
     public void ValidateGate_UsesTheRequiredNameOnlyForPullRequests()
     {
         var workflow = LoadCiWorkflow();

@@ -18,8 +18,8 @@ validation rather than the cheaper docs-only path. A partial or unverifiable fil
 never be trusted to justify skipping test coverage.
 
 .OUTPUTS
-A single-line compressed JSON object on stdout: { "docs_only": bool, "runner_matrix": [...],
-"reason": "..." }. The `runner_matrix` shape matches the per-leg fields the `validate` job's
+A single-line compressed JSON object on stdout: { "docs_only": bool, "evidence_only": bool,
+"runner_matrix": [...], "reason": "..." }. evidence_only implies docs_only. The `runner_matrix` shape matches the per-leg fields the `validate` job's
 matrix strategy consumes (name, runs_on, artifact_owner, timeout_minutes, test_shard_index,
 test_shard_count) -- unchanged from the pre-extraction inline script.
 #>
@@ -92,12 +92,39 @@ $scheduledValidation = @(
     New-CiTopologyLeg -Name 'linux-full' -RunsOn 'ubuntu-latest' -ArtifactOwner $true -TimeoutMinutes 45 -TestShardIndex 0 -TestShardCount 1
 )
 
-# Documentation-shaped paths that would otherwise route docs-only, minus the behavior-bearing
-# subset (executable prompts/skills/agents and the changelog) that must always force full
-# validation even though their extension matches the documentation pattern.
-$documentationPattern = '^(.*\.md|ai_docs/.*\.json)$'
+# Three validation tiers; a pull request takes the highest tier any of its paths (including rename
+# origins) needs: code > docs > evidence.
+#
+# Evidence tier: audit output, backlog item details and report archives that no test or eng/ script
+# reads. These skip .NET build/test entirely behind a pwsh lint job. The exclusions are the
+# individual files inside those roots that tests DO read; they stay in the docs tier.
+# CiEvidenceTierConsumerContractTests fails when a test or eng/ script newly references an
+# evidence root, so a new consumer cannot silently land behind the fast route.
+$evidencePattern = '^(ai_docs/audits/|ai_docs/reports/|ai_docs/items/|audit-reports/)'
+$evidenceExclusions = @(
+    'ai_docs/items/backlog-d-fragment-schema.md'
+    'audit-reports/_latest-promotion-scorecard.json'
+)
+# Docs tier: documentation-shaped paths (plus the tracked promotion scorecard and the evidence
+# exclusions above) whose contracts the docs-only test class allowlist covers. CHANGELOG.md is docs
+# tier: the docs route runs the version-drift and breaking-version gates that guard it.
+$documentationPattern = '^(.*\.md|ai_docs/.*\.json|audit-reports/_latest-promotion-scorecard\.json)$'
+# Behavior-bearing Markdown (executable prompts/skills/agents) always forces full validation even
+# though its extension matches the documentation pattern.
 $behaviorBearingMarkdownPattern =
-    '(^CHANGELOG\.md$|^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/)'
+    '^(skills|\.claude/skills|agents|\.claude/agents|\.github/prompts)/'
+
+function Get-PathTier {
+    param([Parameter(Mandatory)][string] $Path)
+
+    if ($Path -match $evidencePattern -and $evidenceExclusions -notcontains $Path) {
+        return 'evidence'
+    }
+    if ($Path -match $documentationPattern -and $Path -notmatch $behaviorBearingMarkdownPattern) {
+        return 'docs'
+    }
+    return 'code'
+}
 
 function Get-OptionalPropertyValue {
     # Set-StrictMode -Version Latest turns a direct '.previous_filename' access into a terminating
@@ -154,6 +181,7 @@ function Resolve-CiTopologyDecision {
     if ($EventName -ne 'pull_request') {
         return [ordered]@{
             docs_only     = $false
+            evidence_only = $false
             runner_matrix = @($scheduledValidation)
             reason        = 'Dispatch/schedule: one unsharded Linux coverage leg.'
         }
@@ -162,6 +190,7 @@ function Resolve-CiTopologyDecision {
     if ($EnumerationFailed) {
         return [ordered]@{
             docs_only     = $false
+            evidence_only = $false
             runner_matrix = @($codePullRequest)
             reason        = 'Pull-request file listing could not be verified (API failure); routing full validation.'
         }
@@ -183,7 +212,7 @@ function Resolve-CiTopologyDecision {
     $enumeratedFileCount = $enumeration.EnumeratedFileCount
     $changed = @($enumeration.ChangedPaths)
 
-    $docsOnly = $false
+    $tier = 'code'
     if ($enumeratedFileCount -ge 3000 -or $enumeratedFileCount -ne $ReportedChangedFileCount) {
         # Write-Warning renders through the host and, under `pwsh -File` with stdout redirected,
         # lands on stdout (with ANSI escapes) ahead of this script's sole intended stdout output --
@@ -193,16 +222,29 @@ function Resolve-CiTopologyDecision {
             "returned $enumeratedFileCount; route full validation because the API result may be " +
             "capped or incomplete.")
     }
-    else {
-        $nonDocs = @($changed | Where-Object {
-            $_ -notmatch $documentationPattern -or $_ -match $behaviorBearingMarkdownPattern
-        })
-        $docsOnly = $changed.Count -gt 0 -and $nonDocs.Count -eq 0
+    elseif ($changed.Count -gt 0) {
+        $tiers = @($changed | ForEach-Object { Get-PathTier -Path $_ })
+        $tier = if ($tiers -contains 'code') { 'code' }
+            elseif ($tiers -contains 'docs') { 'docs' }
+            else { 'evidence' }
     }
 
-    if ($docsOnly) {
+    if ($tier -eq 'evidence') {
+        # docs_only stays true so every docs-only-conditioned step and the SDK-floor skip keep
+        # their existing semantics; evidence_only additionally skips the validate matrix. The
+        # matrix value is the docs matrix only so the (skipped) matrix expression stays well-formed.
         return [ordered]@{
             docs_only     = $true
+            evidence_only = $true
+            runner_matrix = @($docsOnlyPullRequest)
+            reason        = 'Evidence-only PR: pwsh lint only; build and test legs skipped.'
+        }
+    }
+
+    if ($tier -eq 'docs') {
+        return [ordered]@{
+            docs_only     = $true
+            evidence_only = $false
             runner_matrix = @($docsOnlyPullRequest)
             reason        = 'Policy-only docs PR: two hosted Linux test shards.'
         }
@@ -210,6 +252,7 @@ function Resolve-CiTopologyDecision {
 
     return [ordered]@{
         docs_only     = $false
+        evidence_only = $false
         runner_matrix = @($codePullRequest)
         reason        = 'Code PR: four hosted Windows and two hosted Linux shards.'
     }
