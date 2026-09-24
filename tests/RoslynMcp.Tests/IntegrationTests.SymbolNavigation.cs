@@ -2,7 +2,11 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-14: [DoNotParallelize] removed. Every test method only reads the shared SampleSolution
+// workspace obtained through the assembly-shared, synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) —
+// symbol search/info, navigation, references, hierarchy, diagnostics, callers/callees, impact analysis. No
+// *_apply/edit writes, no direct WorkspaceManager.LoadAsync/Close, no filesystem or process-global mutation.
+// Verified with a repeated (3x) run alongside its wave-14 sibling, green every time.
 [TestClass]
 public class IntegrationTests_SymbolNavigation : SharedWorkspaceTestBase
 {

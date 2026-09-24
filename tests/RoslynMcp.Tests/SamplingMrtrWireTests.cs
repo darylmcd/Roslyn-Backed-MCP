@@ -23,7 +23,15 @@ using RoslynMcp.Tests.Helpers;
 namespace RoslynMcp.Tests;
 
 /// <summary>Raw-wire and redaction coverage for request-scoped sampling.</summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-23: [DoNotParallelize] removed. Each test builds its own in-memory
+// client/server harness over a per-test ServiceCollection (no process-global MCP registration),
+// uses per-test recording fakes (RecordingReporter, CountingTestNameSuggestionProvider,
+// SamplingWorkspaceManager), and every real workspace is a per-test IsolatedWorkspaceScope copy
+// loaded and closed through WorkspaceManager — scaffold_test_preview is preview-only, so there is
+// no *_apply, no shared-workspace reload, and no write outside the test's own temp copy. No static
+// mutable fields or environment variables are touched. Validated by a bounded repeated (3x)
+// concurrent run alongside its wave-23 siblings and parallel-enabled workspace-loading classes,
+// green every time (including the 30 s per-test timeouts).
 [TestClass]
 public sealed class SamplingMrtrWireTests : IsolatedWorkspaceTestBase
 {

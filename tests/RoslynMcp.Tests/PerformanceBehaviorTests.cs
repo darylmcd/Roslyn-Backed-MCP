@@ -5,7 +5,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-18: opt-out removed. Workspace_Status_Uses_Loaded_Metadata_Until_Reload loads,
+// edits, reloads and closes its own temp copy of SampleSolution (CreateSampleSolutionCopy) under its own
+// workspace id, the same private-copy WorkspaceManager.LoadAsync pattern the parallel classes
+// MoveTypeDiskStateTests and CouplingAnalysisTests use; the other two methods run against local
+// FakeWorkspaceManager / BlockingDotnetCommandRunner instances. No method touches the
+// WorkspaceIdCache-shared workspace, a static, the environment, or a child process.
 [TestClass]
 public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 {
@@ -27,11 +32,12 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         var appProjectPath = Path.Combine(copiedRoot, "SampleApp", "SampleApp.csproj");
+        string? workspaceId = null;
 
         try
         {
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            var workspaceId = status.WorkspaceId;
+            workspaceId = status.WorkspaceId;
 
             var initialStatus = WorkspaceManager.GetStatus(workspaceId);
             var initialProject = initialStatus.Projects.First(project => project.Name == "SampleApp");
@@ -58,6 +64,11 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         }
         finally
         {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
             DeleteDirectoryIfExists(copiedRoot);
         }
     }

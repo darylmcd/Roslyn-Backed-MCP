@@ -2,7 +2,14 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-12: [DoNotParallelize] removed. ClassInit loads a private SampleSolution copy
+// (CreateSampleSolutionCopy, under the per-process TestTempRoot) into its own workspace id; the one on-disk
+// mutation (AnalyzeControlFlow_FullMethodRange_...) and its ReloadAsync target only that private copy and
+// workspace, and ClassCleanup closes it. This is the same isolated-copy load/reload/close shape that the
+// parallel IsolatedWorkspaceTestBase classes (e.g. ExternalEditStalenessTests, EditUndoIntegrationTests)
+// already run concurrently; tests within this class still run sequentially under class-level scope, so the
+// fixed-line-offset restore in that test is unaffected. Verified with a repeated (3x) concurrent run
+// alongside its wave-12 siblings and other parallel isolated-workspace classes, green every time.
 [TestClass]
 public sealed class FlowAnalysisServiceTests : SharedWorkspaceTestBase
 {

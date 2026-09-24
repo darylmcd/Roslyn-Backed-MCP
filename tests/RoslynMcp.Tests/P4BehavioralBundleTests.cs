@@ -20,7 +20,11 @@ namespace RoslynMcp.Tests;
 /// 6. <c>analyze-snippet-cs0029-literal-span</c> — regression test that the CS0029
 ///    span covers the entire string literal (start and end columns).
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-17: [DoNotParallelize] removed. Every test only reads the assembly-shared
+// sample workspace through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) — type
+// usages, overrides, bulk references, MSBuild property errors — or touches no workspace at all (an in-memory
+// snippet, a read of SolutionDiffHelper.cs). No workspace reload/apply, no child dotnet process, no static or
+// environment mutation. Verified with a repeated (3x) run of this class alongside its wave-17 siblings.
 [TestClass]
 public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
 {

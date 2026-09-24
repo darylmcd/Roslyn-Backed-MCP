@@ -21,7 +21,11 @@ namespace RoslynMcp.Tests;
 ///   name on the interface member).</description></item>
 /// </list>
 /// </remarks>
-[DoNotParallelize]
+// donotparallelize-audit-wave-15: [DoNotParallelize] removed. Both test methods only read the shared
+// SampleSolution workspace obtained through the assembly-shared, already-synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync) via ReferenceService.FindOverridesAsync and
+// SymbolRelationshipService.GetMemberHierarchyAsync. No writes, no direct LoadAsync/Close, no
+// static/environment/process state. Verified with a repeated (3x) run alongside its wave-15 siblings.
 [TestClass]
 public sealed class MemberHierarchyCrossToolConsistencyTests : SharedWorkspaceTestBase
 {

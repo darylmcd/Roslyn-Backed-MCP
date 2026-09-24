@@ -9,6 +9,13 @@ namespace RoslynMcp.Tests;
 /// These are not micro-benchmarks — they verify that operations complete within
 /// a generous wall-clock budget to catch severe regressions.
 /// </summary>
+// donotparallelize-audit-wave-18: retained. Every method asserts a Stopwatch wall-clock budget, and the
+// coupling-metrics methods write [perf-capture] elapsed-ms that the documented "measurably reduced"
+// acceptance of analysis-services-uncached-full-solution-scans is read from. The dependency is the shared
+// process CPU/thread pool: MSTest runs [DoNotParallelize] classes sequentially after the parallel pass, so
+// these timings are taken without sibling classes' analysis work, MSBuildWorkspace loads, or child
+// dotnet build/test processes (for example ExpandedSurfaceIntegrationTests_CoverageProcess) competing for
+// the same cores. Removing the opt-out turns a regression signal into a contention measurement.
 [DoNotParallelize]
 [TestClass]
 [TestCategory("Performance")]

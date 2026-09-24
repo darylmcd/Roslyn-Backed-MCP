@@ -5,7 +5,10 @@ namespace RoslynMcp.Tests;
 /// returns deterministic, trivia-aware lexical snapshots so fixture authors can pin 1-based
 /// line/column anchors without re-implementing Roslyn's token-boundary rules.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-18: opt-out removed. Every method is a read-only
+// SymbolNavigationService.ProbePositionAsync call against the SampleSolution workspace obtained
+// through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync); the class performs no
+// direct load/reload/close, no *_apply, no static or environment mutation, and spawns no process.
 [TestClass]
 public sealed class PositionProbeTests : SharedWorkspaceTestBase
 {

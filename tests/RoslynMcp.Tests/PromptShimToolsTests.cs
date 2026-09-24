@@ -17,7 +17,16 @@ namespace RoslynMcp.Tests;
 // value (workspaceId), and an omitted parameter falling through to its default (projectName),
 // asserting the rendered message text. This pins the CT → DI service → supplied-JSON → default
 // precedence chain alongside the value-free binding-error regressions below.
-[DoNotParallelize]
+//
+// donotparallelize-audit-wave-21: [DoNotParallelize] removed. Every test method here either
+// reads through the assembly-shared, already-synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync) with read-only prompt rendering, or binds against a local
+// ServiceCollection with no workspace at all. The only process-global state touched is
+// PromptShimTools' prompt index, a Lazy<T> with LazyThreadSafetyMode.ExecutionAndPublication
+// (PromptShimTools.cs:39-40), so PromptIndexBuildCount stays 1 no matter which concurrent class
+// forces it first. No *_apply, WorkspaceManager.LoadAsync/Close, UndoService, ChangeTracker, or
+// PreviewStore use. Validated by a repeated (3x) concurrent run alongside parallel-enabled
+// sibling classes, green every time.
 [TestClass]
 public sealed class PromptShimToolsTests : SharedWorkspaceTestBase
 {

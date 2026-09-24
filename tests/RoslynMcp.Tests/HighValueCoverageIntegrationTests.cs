@@ -6,7 +6,14 @@ namespace RoslynMcp.Tests;
 /// Targets P1/P2 coverage gaps: CompileCheckService, CodeActionService,
 /// DependencyAnalysisService, DeadCodeService (see docs/coverage-baseline.md).
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-14: [DoNotParallelize] removed. All methods except one read the shared
+// SampleSolution workspace through the synchronized WorkspaceIdCache; the preview/dead-code cases throw on
+// argument validation before touching the PreviewStore. CompileCheck_BuildFailureSolution_Reports_Errors loads
+// the read-only BuildFailureSolution fixture (in-memory compile only, no build/write) and closes it in a finally
+// block so it no longer holds a MaxConcurrentWorkspaces slot. WorkspaceManager.LoadAsync deduplicates by path, so
+// that session is shared with ValidationIntegrationTests' BuildFailureSolution load; the Close is safe only because
+// ValidationIntegrationTests keeps [DoNotParallelize] and never overlaps this class. Removing that opt-out must
+// first give one side a private session (e.g. non-empty globalProperties, which skips dedup).
 [TestClass]
 public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
 {
@@ -36,21 +43,28 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
         var status = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, CancellationToken.None);
         var workspaceId = status.WorkspaceId;
 
-        var result = await CompileCheckService.CheckAsync(
-            workspaceId, new CompileCheckOptions(), CancellationToken.None);
+        try
+        {
+            var result = await CompileCheckService.CheckAsync(
+                workspaceId, new CompileCheckOptions(), CancellationToken.None);
 
-        Assert.IsFalse(result.Success, "Broken solution should report compile errors.");
-        Assert.IsTrue(result.ErrorCount > 0, "Expected at least one error for MissingSymbol.");
-        Assert.IsNotNull(result.Diagnostics);
-        Assert.IsTrue(
-            result.Diagnostics.Any(d => d.Id.Contains("CS", StringComparison.Ordinal)),
-            "Expected compiler diagnostics.");
-        var locatedDiagnostic = result.Diagnostics.First(d => d.Location is not null);
-        Assert.AreEqual(locatedDiagnostic.FilePath, locatedDiagnostic.Location!.FilePath);
-        Assert.AreEqual(locatedDiagnostic.StartLine, locatedDiagnostic.Location.StartLine);
-        Assert.AreEqual(locatedDiagnostic.StartColumn, locatedDiagnostic.Location.StartColumn);
-        Assert.AreEqual(locatedDiagnostic.EndLine, locatedDiagnostic.Location.EndLine);
-        Assert.AreEqual(locatedDiagnostic.EndColumn, locatedDiagnostic.Location.EndColumn);
+            Assert.IsFalse(result.Success, "Broken solution should report compile errors.");
+            Assert.IsTrue(result.ErrorCount > 0, "Expected at least one error for MissingSymbol.");
+            Assert.IsNotNull(result.Diagnostics);
+            Assert.IsTrue(
+                result.Diagnostics.Any(d => d.Id.Contains("CS", StringComparison.Ordinal)),
+                "Expected compiler diagnostics.");
+            var locatedDiagnostic = result.Diagnostics.First(d => d.Location is not null);
+            Assert.AreEqual(locatedDiagnostic.FilePath, locatedDiagnostic.Location!.FilePath);
+            Assert.AreEqual(locatedDiagnostic.StartLine, locatedDiagnostic.Location.StartLine);
+            Assert.AreEqual(locatedDiagnostic.StartColumn, locatedDiagnostic.Location.StartColumn);
+            Assert.AreEqual(locatedDiagnostic.EndLine, locatedDiagnostic.Location.EndLine);
+            Assert.AreEqual(locatedDiagnostic.EndColumn, locatedDiagnostic.Location.EndColumn);
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
     }
 
     [TestMethod]

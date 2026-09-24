@@ -11,7 +11,13 @@ namespace RoslynMcp.Tests;
 /// defects surfaced in firewall-analyzer 2026-04-15 §9.1 (literal `__name__` emitted
 /// in goal output).
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-23: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
+// only calls RestructureService.PreviewRestructureAsync, which computes a candidate solution
+// without TryApplyChanges — no *_apply, no reload, no disk writes, no UndoService/ChangeTracker
+// writes. Its private RestructureService instance is class-local. Validated by a bounded repeated
+// (3x) concurrent run alongside its wave-23 siblings and parallel-enabled workspace-loading
+// classes, green every time.
 [TestClass]
 public sealed class RestructureServiceTests : SharedWorkspaceTestBase
 {

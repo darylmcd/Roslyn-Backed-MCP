@@ -10,7 +10,14 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-21: [DoNotParallelize] removed. Every test method here either
+// renders a RoslynPrompts workflow read-only against the assembly-shared, already-synchronized
+// WorkspaceIdCache workspace (LoadSharedSampleWorkspaceAsync), renders a pure template, reflects
+// over prompt signatures, or drives private in-memory stubs. The ContextGatheringFailure cases use
+// a fresh random missing workspace id and never load or close anything. No prompt under test calls
+// TryApplyChanges or an *_apply path, and no test touches WorkspaceManager.LoadAsync/Close,
+// UndoService, ChangeTracker, or PreviewStore. Validated by a repeated (3x) concurrent run
+// alongside parallel-enabled sibling classes, green every time.
 [TestClass]
 public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 {

@@ -9,7 +9,13 @@ namespace RoslynMcp.Tests;
 /// <c>Build(a, b, c)</c> migrate to <c>Generate(b, c, a)</c> with argument reorder; the
 /// fixture below replays that shape and asserts every call-form is rewritten correctly.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-23: [DoNotParallelize] removed. Every test method creates its own
+// per-test SampleSolution copy (CreateSampleSolutionCopy), writes fixtures only inside that copy,
+// loads/closes it via WorkspaceManager (ConcurrentDictionary session table + slot limiter, Strict
+// evict policy with a test cap of 64 — no LRU eviction of other classes' sessions), and only calls
+// the preview side of BulkRefactoringService — no *_apply, no reload of a shared workspace, no
+// UndoService/ChangeTracker writes. Validated by a bounded repeated (3x) concurrent run alongside
+// its wave-23 siblings and parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 {
