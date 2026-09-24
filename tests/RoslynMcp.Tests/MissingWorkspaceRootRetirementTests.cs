@@ -4,7 +4,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-16: [DoNotParallelize] removed. Each test deletes only its own GUID-named sample
+// copy under TestTempRoot.Current; the FileWatcherService root/identity watchers are filtered to that exact
+// directory/solution name, and WorkspaceClosed handlers ignore every id but the test's own. Tests 3-4 use a
+// private WorkspaceManager with a fake watcher and gate. Negative-timing assertions (not retired while a read
+// is held; Dispose blocked on the gate) cannot flip under load, and positive waits carry 10 s budgets. Verified
+// with 3x runs alone, 3x alongside its wave-16 siblings, and 3x in a concurrent fixture-copy mix, green every time.
 [TestClass]
 public sealed class MissingWorkspaceRootRetirementTests : SharedWorkspaceTestBase
 {
