@@ -21,7 +21,12 @@ namespace RoslynMcp.Tests;
 ///   <item>A provider is registered but produces no <c>CodeAction</c>s.</item>
 /// </list>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-11: [DoNotParallelize] removed. The guidance-builder tests are pure static string
+// builders; the PreviewFixAllAsync tests only read the assembly-shared SampleSolution workspace through the
+// synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) and never apply — at most one preview token
+// lands in the shared bounded PreviewStore, as parallel preview classes (FixAllServiceTests,
+// ChangeSignaturePreviewTests) already do. Provider/analyzer loading is behind Lazy<T> (ExecutionAndPublication).
+// Verified with a repeated (3x) run of this class alongside its wave-11 siblings and concurrent parallel classes.
 [TestClass]
 public sealed class FixAllServiceGuidanceTests : SharedWorkspaceTestBase
 {

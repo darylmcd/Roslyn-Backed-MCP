@@ -17,7 +17,12 @@ namespace RoslynMcp.Tests;
 /// from each LocationDto when set; structural fields (filePath, line, column,
 /// classification) stay populated.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-11: [DoNotParallelize] removed. Every test method only reads the assembly-shared
+// SampleSolution workspace through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) — no reload,
+// no *_apply, no direct WorkspaceManager.LoadAsync/Close. The bulk-failure test builds its own CompilationCache,
+// ReferenceService and capturing sink locally (event subscribe/unsubscribe on the shared WorkspaceManager is
+// thread-safe) and scopes correlation through the AsyncLocal RequestCorrelationContext. Verified with a
+// repeated (3x) run of this class alongside its wave-11 siblings and concurrent parallel classes, green every time.
 [TestClass]
 public sealed class FindReferencesSummaryTests : SharedWorkspaceTestBase
 {

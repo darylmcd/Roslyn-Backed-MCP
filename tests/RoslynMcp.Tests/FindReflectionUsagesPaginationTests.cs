@@ -11,7 +11,12 @@ namespace RoslynMcp.Tests;
 /// adds <c>offset</c>, <c>limit</c> (default 200), <c>summary</c> at the wrapper
 /// layer — collect-all + Skip/Take, mirroring <c>find_type_usages</c>.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-11: [DoNotParallelize] removed. Every test method materializes its own
+// per-test SampleSolution copy (CreateSampleSolutionCopy under TestTempRoot.Current), loads and closes only
+// that isolated workspace id, and deletes only its own copy — the same per-test fixture-copy pattern already
+// running in parallel in CohesionAnalysisTests, MoveTypeDiskStateTests and UndoFileOperationsTests. No shared
+// SampleSolution workspace, no *_apply, no process-global state. Verified with a repeated (3x) run of this
+// class alongside its wave-11 siblings and concurrent parallel classes, green every time.
 [TestClass]
 public sealed class FindReflectionUsagesPaginationTests : SharedWorkspaceTestBase
 {
