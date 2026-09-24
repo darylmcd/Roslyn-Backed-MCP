@@ -9,9 +9,11 @@ namespace RoslynMcp.Tests;
 // donotparallelize-audit-wave-14: [DoNotParallelize] removed. All methods except one read the shared
 // SampleSolution workspace through the synchronized WorkspaceIdCache; the preview/dead-code cases throw on
 // argument validation before touching the PreviewStore. CompileCheck_BuildFailureSolution_Reports_Errors loads
-// its own private session of the read-only BuildFailureSolution fixture (in-memory compile only, no build/write)
-// and closes it in a finally block so it no longer holds a MaxConcurrentWorkspaces slot for the rest of the run.
-// Verified with a repeated (3x) run alongside its wave-14 sibling, green every time.
+// the read-only BuildFailureSolution fixture (in-memory compile only, no build/write) and closes it in a finally
+// block so it no longer holds a MaxConcurrentWorkspaces slot. WorkspaceManager.LoadAsync deduplicates by path, so
+// that session is shared with ValidationIntegrationTests' BuildFailureSolution load; the Close is safe only because
+// ValidationIntegrationTests keeps [DoNotParallelize] and never overlaps this class. Removing that opt-out must
+// first give one side a private session (e.g. non-empty globalProperties, which skips dedup).
 [TestClass]
 public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
 {
