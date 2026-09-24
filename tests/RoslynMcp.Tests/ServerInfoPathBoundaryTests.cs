@@ -143,9 +143,11 @@ public sealed class ServerInfoPathBoundaryTests
     /// camelCase name, so the projection cannot be silently disconnected from the response.
     /// </summary>
     [TestMethod]
-    // preview-apply-token-write-path-toctou: ToolDispatch.ApplyByTokenAsync now reads the
-    // process-global SecurityOptionsSnapshot on every token apply, so a parallel class redeeming
-    // preview tokens would be validated against this test's temporary ["."] boundary.
+    // donotparallelize-audit-wave-26: retained. This method (and the one below) writes the
+    // process-global static SecurityOptionsSnapshot.Value. preview-apply-token-write-path-toctou:
+    // ToolDispatch.ApplyByTokenAsync -> RevalidateChangedPathsAsync reads that snapshot on every
+    // token apply, so a parallel class redeeming preview tokens would be validated against this
+    // test's temporary ["."] (or null) boundary.
     [DoNotParallelize]
     public async Task ServerInfo_CarriesPathBoundary_FromTheStartupSnapshot()
     {

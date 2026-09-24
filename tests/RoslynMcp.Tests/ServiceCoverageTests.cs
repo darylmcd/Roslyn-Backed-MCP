@@ -2,6 +2,14 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-26: retained. Every method except RunTests_Executes_SampleLib_Tests
+// is a read through the synchronized WorkspaceIdCache, but that one spawns a real child
+// `dotnet test` (TestRunnerService.BuildVsTestArguments: implicit restore + build, no
+// --no-restore/--no-build) against the IN-REPO samples/SampleSolution shared workspace, rewriting
+// its obj/ tree. Parallel-enabled classes concurrently call CreateSampleSolutionCopy, whose
+// TestFixtureFileSystem.CopyDirectory skips only bin/ and copies obj/ file-by-file, so a
+// concurrent restore/build can hand them a torn or vanished obj/ artifact. The per-workspace
+// GatedCommandExecutor gate does not cover those copies (they are plain file I/O, not commands).
 [DoNotParallelize]
 [TestClass]
 public class ServiceCoverageTests : SharedWorkspaceTestBase
