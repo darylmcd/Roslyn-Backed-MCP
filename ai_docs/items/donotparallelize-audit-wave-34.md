@@ -21,4 +21,4 @@ Parent row `test-assembly-donotparallelize-audit` found 124 attributes across 12
 ## Context
 
 One bounded slice of `test-assembly-donotparallelize-audit`. Children are intentionally independent except the final aggregate wave, which depends on waves 01–39.
-
+Coupling from donotparallelize-audit-wave-14 (PR #1603): `HighValueCoverageIntegrationTests.CompileCheck_BuildFailureSolution_Reports_Errors` now calls `WorkspaceManager.Close` on the BuildFailureSolution session. `WorkspaceManager.LoadAsync` deduplicates by path (`src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` skipDedup/FindSessionByLoadedPath), so that session is shared with `ValidationIntegrationTests`' load (`tests/RoslynMcp.Tests/ValidationIntegrationTests.cs:154`). Removing `[DoNotParallelize]` from `ValidationIntegrationTests` must first give one side a private session (e.g. non-empty globalProperties, which skips dedup).
