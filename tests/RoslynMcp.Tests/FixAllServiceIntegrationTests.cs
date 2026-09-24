@@ -3,7 +3,12 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-12: [DoNotParallelize] removed. Every test reads the shared SampleSolution
+// through the assembly-shared, synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) or validates
+// input with no workspace at all. No preview token is ever minted (unknown-id / no-provider / validation-throw
+// paths only), the CompilationCache is a per-test local instance, and there is no apply, reload, direct
+// WorkspaceManager.LoadAsync/Close, or filesystem write. Verified with a repeated (3x) concurrent run
+// alongside its wave-12 siblings and other parallel isolated-workspace classes, green every time.
 [TestClass]
 public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
 {
