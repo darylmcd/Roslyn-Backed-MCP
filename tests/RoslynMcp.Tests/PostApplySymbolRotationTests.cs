@@ -8,7 +8,6 @@ namespace RoslynMcp.Tests;
 /// longer resolves (MetadataName and DisplayName both change). The apply response rotates the
 /// handle so agents can keep chaining without re-issuing <c>symbol_search</c> with the new name.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
 {

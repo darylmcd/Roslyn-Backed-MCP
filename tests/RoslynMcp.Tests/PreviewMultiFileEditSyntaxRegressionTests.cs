@@ -10,7 +10,6 @@ namespace RoslynMcp.Tests;
 /// line comment, stray brace) that previously passed <c>GetCSharpSyntaxErrors</c> when the
 /// tree only surfaced non-Error severities or skipped text without a severed Error diagnostic.
 /// </summary>
-[DoNotParallelize]
 [TestClass]
 public sealed class PreviewMultiFileEditSyntaxRegressionTests : IsolatedWorkspaceTestBase
 {
