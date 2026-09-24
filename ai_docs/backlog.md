@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-24T14:21:19Z
+**updated_at:** 2026-09-24T14:28:45Z
 
 ## Agent contract
 
@@ -305,7 +305,7 @@
 | `root-sample-solution-duplicates-removal` | Low | — | **Delete the stale root sample duplicates** — SampleSolution.slnx + root SampleApp/SampleLib*/ (21 files) duplicate samples/SampleSolution/; they cause ambiguous solution discovery and double maintenance. [type: chore] [source: doc-audit 2026-09-23] | L | items/root-sample-solution-duplicates-removal.md |
 | `justfile-recipe-doc-comments-stale` | Low | — | **Fix justfile recipe doc comments** — verify-version-drift says "six" files (script checks seven); tool-update and tool-install-local multi-line comments render as mid-sentence fragments in `just --list`. [type: build] [source: doc-audit 2026-09-23] | M | items/justfile-recipe-doc-comments-stale.md |
 | `dockerfile-run-comment-and-sanctioned-roots-env` | Low | — | **Fix Dockerfile run guidance** — the run comment uses an invalid --tmpdir flag, omits -i, and the image sets no ROSLYNMCP_SANCTIONED_ROOTS (fail-closed), so a documented run cannot load a workspace. [type: build] [source: doc-audit 2026-09-23] | S | items/dockerfile-run-comment-and-sanctioned-roots-env.md |
-| `profile-large-solution-hardcoded-default-path` | Low | — | **Remove the hardcoded maintainer default path** — eng/profile-large-solution.ps1 defaults -SolutionPath to C:/Code-Repo/OrchardCore/OrchardCore.slnx; make it mandatory. [type: chore] [source: doc-audit 2026-09-23] | S | items/profile-large-solution-hardcoded-default-path.md |
+| `profile-large-solution-hardcoded-default-path` | Low | — | **Drop the stale local-OrchardCore assumption from large-solution profiling** — make -SolutionPath mandatory and repoint the baseline doc + runbook; the local checkout is gone. [type: chore] [source: doc-audit 2026-09-23; operator 2026-09-24] | S | items/profile-large-solution-hardcoded-default-path.md |
 | `repo-local-mcp-registrations-decision` | Low | — | **Decide the tracked repo-local MCP registrations** — .cursor/mcp.json and .vscode/mcp.json register roslyn without ROSLYNMCP_SANCTIONED_ROOTS while repo guidance says not to depend on a repo-local registration; delete them or add the env and reword. [type: docs] [source: doc-audit 2026-09-23] | M | items/repo-local-mcp-registrations-decision.md |
 | `docs-build-run-package-coverage-gaps` | Low | — | **Close docs coverage gaps** — docs/ lacks purpose+command+prereq+outcome for the just runner, Docker, NuGet/registry publish, and dnx launch (build/test/run rows have no expected outcome). [type: docs] [source: doc-audit 2026-09-23] | S | items/docs-build-run-package-coverage-gaps.md |
 | `adr-0008-names-other-repos-privacy-review` | Low | — | **Privacy-review ADR 0008** — the public ADR names the operator's other repos with usage counts; anonymize the buckets if those repos are private. [type: docs] [source: doc-audit 2026-09-23] | S | items/adr-0008-names-other-repos-privacy-review.md |
