@@ -54,7 +54,7 @@
         "gatedTree": "d8198d364a4a0ced340db4a7416497d2d3c367d4",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-09-20260924T080137483Z-15372-a1.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-09-20260924T080137483Z-15372-a1.log",
         "gatedAt": "2026-09-24T08:15:34.508Z"
       }
     },
@@ -102,7 +102,7 @@
         "gatedTree": "4f629089406949f7e616a5216175d84bf2ba319e",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-10-20260924T081534654Z-15372-a1.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-10-20260924T081534654Z-15372-a1.log",
         "gatedAt": "2026-09-24T08:28:48.071Z"
       },
       "integrationGate": {
@@ -112,7 +112,7 @@
         "headOid": "5049bba1d3a93a1f5b81848727ee475beb264061",
         "gatedTree": "4f629089406949f7e616a5216175d84bf2ba319e",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-10-pr1601-20260924T091931871Z-44324.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-10-pr1601-20260924T091931871Z-44324.log",
         "gatedAt": "2026-09-24T09:33:43.509Z"
       }
     },
@@ -160,7 +160,7 @@
         "gatedTree": "aab96dd8951c8e7f6c51932db425724a605b600b",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-11-20260924T082848113Z-15372-a1.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-11-20260924T082848113Z-15372-a1.log",
         "gatedAt": "2026-09-24T08:43:07.305Z"
       },
       "integrationGate": {
@@ -170,7 +170,7 @@
         "headOid": "fa23f6bf405cf42e46073f01da12384cc3d248ed",
         "gatedTree": "aab96dd8951c8e7f6c51932db425724a605b600b",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-11-pr1592-20260924T093353574Z-36468.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-11-pr1592-20260924T093353574Z-36468.log",
         "gatedAt": "2026-09-24T09:47:04.000Z"
       }
     },
@@ -218,7 +218,7 @@
         "gatedTree": "88ec3e4bb6c46b59fbe93edab1deeec3a101fed6",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-12-20260924T084307347Z-15372-a1.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/chain-donotparallelize-audit-wave-12-20260924T084307347Z-15372-a1.log",
         "gatedAt": "2026-09-24T08:55:55.685Z"
       },
       "integrationGate": {
@@ -228,7 +228,7 @@
         "headOid": "9cc0c401157daad91921d683c373b73d9f6c8e1e",
         "gatedTree": "88ec3e4bb6c46b59fbe93edab1deeec3a101fed6",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-12-pr1602-20260924T094713770Z-9876.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-12-pr1602-20260924T094713770Z-9876.log",
         "gatedAt": "2026-09-24T10:00:14.344Z"
       }
     },
@@ -276,7 +276,7 @@
         "headOid": "9b37f542851d068ee839405bb6bdfdfd1654a315",
         "gatedTree": "afd328637c9c055bbdf8e66fb02addcf3e8df2fb",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-13-pr1593-20260924T100022272Z-14712.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-13-pr1593-20260924T100022272Z-14712.log",
         "gatedAt": "2026-09-24T10:12:20.270Z"
       }
     },
@@ -324,7 +324,7 @@
         "headOid": "7eb8c75c531b806380f002f585c64148cb6109fb",
         "gatedTree": "926914e463790a3347670fd40fd394ba8549c2be",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-14-pr1603-20260924T101228484Z-50380.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-14-pr1603-20260924T101228484Z-50380.log",
         "gatedAt": "2026-09-24T10:25:12.869Z"
       }
     },
@@ -372,7 +372,7 @@
         "headOid": "d41895c8f58a591c216c348c1fd8e7664a94c11c",
         "gatedTree": "5a5306d3e3cfb48c44ec639b2850fe547d3c0d6c",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-15-pr1594-20260924T102521731Z-60116.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-15-pr1594-20260924T102521731Z-60116.log",
         "gatedAt": "2026-09-24T10:38:38.091Z"
       }
     },
@@ -420,7 +420,7 @@
         "headOid": "0bb7f7ef5926aaea2eb8e6fef8b2f9d6b018de66",
         "gatedTree": "236898b08903d132cf7e8b6edd7e6ac1c62d1a25",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-16-pr1596-20260924T103847516Z-29816.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-16-pr1596-20260924T103847516Z-29816.log",
         "gatedAt": "2026-09-24T10:51:24.624Z"
       }
     },
@@ -468,7 +468,7 @@
         "headOid": "c7a136ecd3c9e1c808826f0e2cb271749bf8aab0",
         "gatedTree": "4a72b8385c50d3efb44f77daef85b471a997dc96",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-17-pr1595-20260924T105133015Z-35400.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-17-pr1595-20260924T105133015Z-35400.log",
         "gatedAt": "2026-09-24T11:04:28.701Z"
       }
     },
@@ -516,7 +516,7 @@
         "headOid": "7a5cb601596cc92f35e0ac0258d27fd8af70b75b",
         "gatedTree": "7e2a31a5cea4cb0d685f48cf8bcd50f0e021e346",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-18-pr1604-20260924T110437283Z-31204.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-18-pr1604-20260924T110437283Z-31204.log",
         "gatedAt": "2026-09-24T11:17:32.036Z"
       }
     },
@@ -564,7 +564,7 @@
         "headOid": "845874cb9b89524092862da269e665ab59b4f997",
         "gatedTree": "8f61ea5129184202f78e0fd90f9ae5195d62fc7b",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-19-pr1605-20260924T111741296Z-50444.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-19-pr1605-20260924T111741296Z-50444.log",
         "gatedAt": "2026-09-24T11:30:34.010Z"
       }
     },
@@ -612,7 +612,7 @@
         "headOid": "4c35ce0daa3dc8ffaa0fe105240d1aa2b760bf2a",
         "gatedTree": "8cd49d1ad78f7291ddbcbbdeed2568b27ce8d2ec",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-20-pr1600-20260924T113042887Z-29624.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-20-pr1600-20260924T113042887Z-29624.log",
         "gatedAt": "2026-09-24T11:42:46.552Z"
       }
     },
@@ -660,7 +660,7 @@
         "headOid": "bedab881102ac3e468ec600cda89c384a9d70f04",
         "gatedTree": "0b71701f3542460995596471c4691dc475219688",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-21-pr1597-20260924T114254437Z-17500.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-21-pr1597-20260924T114254437Z-17500.log",
         "gatedAt": "2026-09-24T11:53:54.811Z"
       }
     },
@@ -708,7 +708,7 @@
         "headOid": "b62bb7f1fbb136830085ebef2f331e6a3610dbfb",
         "gatedTree": "9dd9aaa3a14ed6ef660346e4310c521936bfa08f",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-22-pr1599-20260924T115404546Z-39568.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-22-pr1599-20260924T115404546Z-39568.log",
         "gatedAt": "2026-09-24T12:04:59.844Z"
       }
     },
@@ -756,7 +756,7 @@
         "headOid": "91fc9ac6e9d56b618e44c69c458a81bd4b3c35cd",
         "gatedTree": "abc223ab0afbcc8c85b5eff0b841b2c7bb22a96b",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-23-pr1598-20260924T120508756Z-43708.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/66441335-537d-43f8-9131-9efa9ad1bd82/scratchpad/gate-logs/gate-donotparallelize-audit-wave-23-pr1598-20260924T120508756Z-43708.log",
         "gatedAt": "2026-09-24T12:15:48.252Z"
       }
     }

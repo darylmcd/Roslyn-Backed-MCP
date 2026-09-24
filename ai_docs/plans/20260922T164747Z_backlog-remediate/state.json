@@ -54,7 +54,7 @@
         "gatedTree": "38b9d84635d19593730406b13c2e3a099569ed82",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-formatter-baseline-contended-nested-process-timeout-investigation-20260923T125555801Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-formatter-baseline-contended-nested-process-timeout-investigation-20260923T125555801Z-19592-a1.log",
         "gatedAt": "2026-09-23T13:09:51.948Z"
       }
     },
@@ -100,7 +100,7 @@
         "gatedTree": "2c2ac89702c9ba2ca24369d5d89d3186318eb76e",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-sanctioned-roots-cwd-default-undocumented-20260923T130951990Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-sanctioned-roots-cwd-default-undocumented-20260923T130951990Z-19592-a1.log",
         "gatedAt": "2026-09-23T13:22:55.785Z"
       }
     },
@@ -148,7 +148,7 @@
         "gatedTree": "d25debea86776efb1318da8b8fa3e70f68cd2c58",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-01-20260923T132255832Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-01-20260923T132255832Z-19592-a1.log",
         "gatedAt": "2026-09-23T13:35:47.534Z"
       }
     },
@@ -196,7 +196,7 @@
         "gatedTree": "57323aa3bcf4f9c77161ac04fdb20882dba65383",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-02-20260923T133547562Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-02-20260923T133547562Z-19592-a1.log",
         "gatedAt": "2026-09-23T13:49:58.627Z"
       }
     },
@@ -244,7 +244,7 @@
         "gatedTree": "eb3689680df837ccc77799abd43a57776b56d6cf",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-03-20260923T134958781Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-03-20260923T134958781Z-19592-a1.log",
         "gatedAt": "2026-09-23T14:02:54.953Z"
       }
     },
@@ -292,7 +292,7 @@
         "gatedTree": "cdc7aa62fa2a9c81c13a2ec44475113f3f40d4be",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-04-20260923T140254980Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-04-20260923T140254980Z-19592-a1.log",
         "gatedAt": "2026-09-23T14:16:09.627Z"
       }
     },
@@ -340,7 +340,7 @@
         "gatedTree": "1c4e2c3492e872aa2facf09ccd112323249c0e8a",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-05-20260923T141609653Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-05-20260923T141609653Z-19592-a1.log",
         "gatedAt": "2026-09-23T14:29:15.769Z"
       }
     },
@@ -388,7 +388,7 @@
         "gatedTree": "79c951c26eaf303e294204eda9924fd8079800af",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-06-20260923T142915809Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-06-20260923T142915809Z-19592-a1.log",
         "gatedAt": "2026-09-23T14:42:11.907Z"
       }
     },
@@ -436,7 +436,7 @@
         "gatedTree": "be5b6d79e3bd25ba2f2710e39ab45094977103f7",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-07-20260923T144211932Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-07-20260923T144211932Z-19592-a1.log",
         "gatedAt": "2026-09-23T14:55:09.514Z"
       }
     },
@@ -484,7 +484,7 @@
         "gatedTree": "3acafbafe71dfc9250e3dfd5acf8b5c57d90d530",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-08-20260923T145509540Z-19592-a1.log",
+        "log": "<user>/AppData/Local/Temp/bsweep-gate-logs/chain-donotparallelize-audit-wave-08-20260923T145509540Z-19592-a1.log",
         "gatedAt": "2026-09-23T15:07:45.492Z"
       }
     }

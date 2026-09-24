@@ -74,6 +74,55 @@ public sealed class DocumentationGateScriptTests
         }
     }
 
+    // Samples are assembled at runtime so this source file never contains a literal profile path
+    // (the guard under test scans every tracked file, including this one).
+    private const string Drive = "C:";
+    private const string AccountName = "jdoe";
+
+    [TestMethod]
+    [DataRow("windows-backslash", true)]
+    [DataRow("windows-forward", true)]
+    [DataRow("json-escaped", true)]
+    [DataRow("msys", true)]
+    [DataRow("url-encoded", true)]
+    [DataRow("claude-project-slug", true)]
+    [DataRow("linux-home", true)]
+    [DataRow("placeholder-foo", false)]
+    [DataRow("angle-placeholder", false)]
+    [DataRow("userprofile-variable", false)]
+    [DataRow("github-runner-home", false)]
+    [DataRow("github-owner-url", false)]
+    public async Task LocalPathLeaks_RejectRealProfilePathsAndAcceptPlaceholdersAsync(string shape, bool hasIssue)
+    {
+        var content = shape switch
+        {
+            "windows-backslash" => Drive + "\\Users\\" + AccountName + "\\AppData\\Local\\Temp\\x.log",
+            "windows-forward" => Drive + "/Users/" + AccountName + "/.claude/agents/a.md",
+            "json-escaped" => "{\"log\": \"" + Drive + "\\\\Users\\\\" + AccountName + "\\\\gate.log\"}",
+            "msys" => "/c/Users/" + AccountName + "/.claude",
+            "url-encoded" => "roslyn://workspace/1/file/C%3A%2FUsers%2F" + AccountName + "%2Frepo%2Fa.cs",
+            "claude-project-slug" => "projects/C--Users-" + AccountName + "--claude/memory",
+            "linux-home" => "/home/" + AccountName + "/src/repo",
+            "placeholder-foo" => Drive + "\\Users\\foo",
+            "angle-placeholder" => "<user>/.nuget/packages/x",
+            "userprofile-variable" => "%USERPROFILE%\\actions-runner and $env:USERPROFILE",
+            "github-runner-home" => "/home/runner/work/Repo/Repo",
+            "github-owner-url" => "https://github.com/darylmcd/Roslyn-Backed-MCP",
+            _ => throw new ArgumentOutOfRangeException(nameof(shape)),
+        };
+
+        var issues = await RunContractAsync(
+            "local-path-leak-validation.ps1",
+            "@(Get-LocalPathLeakIssue -Files ([System.IO.FileInfo]::new($args[1])) -RepoRoot (Split-Path -Parent $args[1]))",
+            content);
+
+        Assert.AreEqual(hasIssue ? 1 : 0, issues.Length, string.Join(Environment.NewLine, issues));
+        if (hasIssue)
+        {
+            StringAssert.Contains(issues[0], "Local user-profile path in input.md");
+        }
+    }
+
     private static async Task<string[]> RunContractAsync(string contractFile, string invocation, string content)
     {
         var fixture = Path.Combine(TestTempRoot.Current, "DocumentationGate", Guid.NewGuid().ToString("N"));
