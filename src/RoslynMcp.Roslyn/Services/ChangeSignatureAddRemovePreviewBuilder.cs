@@ -19,13 +19,17 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var originalTexts = new Dictionary<DocumentId, string>();
         var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+        // Every declaration and caller span is collected against the ORIGINAL solution and
+        // grouped per document, then each document is rewritten exactly once from its original
+        // root. Re-resolving original trees/spans against an already-edited document silently
+        // skipped every same-document declaration or caller after the first edit.
         var symbolsToScan = await CollectRelatedSymbolsAsync(method, solution, ct).ConfigureAwait(false);
-        var accumulator = await RewriteRelatedDeclarationsAsync(
-            solution, symbolsToScan, updateDeclaration, originalTexts, ct).ConfigureAwait(false);
+        var targets = new Dictionary<DocumentId, DocumentRewriteTargets>();
+        await CollectDeclarationSpansAsync(solution, symbolsToScan, targets, ct).ConfigureAwait(false);
+        await CollectCallerSpansAsync(solution, symbolsToScan, targets, ct).ConfigureAwait(false);
 
-        var callerLocations = await CollectCallerSpansAsync(solution, symbolsToScan, ct).ConfigureAwait(false);
-        accumulator = await RewriteCallerArgumentsAsync(
-            accumulator, solution, callerLocations, updateCallsite, originalTexts, perFileCallsites, ct).ConfigureAwait(false);
+        var accumulator = await RewriteDocumentsAsync(
+            solution, targets, updateDeclaration, updateCallsite, originalTexts, perFileCallsites, ct).ConfigureAwait(false);
 
         var changes = await BuildFileChangesAsync(accumulator, originalTexts, ct).ConfigureAwait(false);
         var callsiteUpdates = perFileCallsites
@@ -34,6 +38,138 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             .ToList();
 
         return (accumulator, changes, callsiteUpdates);
+    }
+
+    private sealed class DocumentRewriteTargets
+    {
+        public HashSet<TextSpan> DeclarationSpans { get; } = [];
+
+        public HashSet<TextSpan> CallerSpans { get; } = [];
+    }
+
+    private static DocumentRewriteTargets GetTargets(Dictionary<DocumentId, DocumentRewriteTargets> targets, DocumentId docId)
+    {
+        if (!targets.TryGetValue(docId, out var docTargets))
+        {
+            docTargets = new DocumentRewriteTargets();
+            targets[docId] = docTargets;
+        }
+
+        return docTargets;
+    }
+
+    private static async Task CollectDeclarationSpansAsync(
+        Solution solution,
+        IReadOnlyList<IMethodSymbol> symbolsToScan,
+        Dictionary<DocumentId, DocumentRewriteTargets> targets,
+        CancellationToken ct)
+    {
+        foreach (var sym in symbolsToScan)
+        {
+            foreach (var declRef in sym.DeclaringSyntaxReferences)
+            {
+                var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
+                if (node is not BaseMethodDeclarationSyntax mds) continue;
+                var doc = solution.GetDocument(node.SyntaxTree);
+                if (doc is null) continue;
+
+                GetTargets(targets, doc.Id).DeclarationSpans.Add(mds.Span);
+            }
+        }
+    }
+
+    private static async Task CollectCallerSpansAsync(
+        Solution solution,
+        IReadOnlyList<IMethodSymbol> symbolsToScan,
+        Dictionary<DocumentId, DocumentRewriteTargets> targets,
+        CancellationToken ct)
+    {
+        foreach (var sym in symbolsToScan)
+        {
+            var callers = await SymbolFinder.FindCallersAsync(sym, solution, ct).ConfigureAwait(false);
+            foreach (var caller in callers)
+            {
+                foreach (var location in caller.Locations)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (!location.IsInSource) continue;
+
+                    var originalDoc = solution.GetDocument(location.SourceTree);
+                    if (originalDoc is null) continue;
+
+                    GetTargets(targets, originalDoc.Id).CallerSpans.Add(location.SourceSpan);
+                }
+            }
+        }
+    }
+
+    private static async Task<Solution> RewriteDocumentsAsync(
+        Solution solution,
+        Dictionary<DocumentId, DocumentRewriteTargets> targets,
+        Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
+        Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
+        Dictionary<DocumentId, string> originalTexts,
+        Dictionary<string, int> perFileCallsites,
+        CancellationToken ct)
+    {
+        var accumulator = solution;
+        foreach (var (docId, docTargets) in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+            var doc = solution.GetDocument(docId);
+            if (doc is null) continue;
+            var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            if (oldRoot is null) continue;
+
+            // All spans are original-solution spans, so they resolve against the original root.
+            var nodesToRewrite = new HashSet<SyntaxNode>();
+            foreach (var span in docTargets.DeclarationSpans)
+            {
+                var declaration = oldRoot.FindNode(span).FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                if (declaration is not null) nodesToRewrite.Add(declaration.ParameterList);
+            }
+
+            foreach (var span in docTargets.CallerSpans)
+            {
+                var invocation = oldRoot.FindNode(span).FirstAncestorOrSelf<InvocationExpressionSyntax>();
+                if (invocation is not null) nodesToRewrite.Add(invocation);
+            }
+
+            if (nodesToRewrite.Count == 0) continue;
+
+            await CaptureOriginalTextAsync(originalTexts, solution, docId, ct).ConfigureAwait(false);
+
+            var callsiteCount = 0;
+            var newRoot = oldRoot.ReplaceNodes(nodesToRewrite, (_, rewritten) =>
+            {
+                switch (rewritten)
+                {
+                    case ParameterListSyntax parameterList:
+                        return updateDeclaration(parameterList);
+                    case InvocationExpressionSyntax invocation:
+                        var args = invocation.ArgumentList.Arguments;
+                        var isPositional = args.All(a => a.NameColon is null);
+                        var newArgs = updateCallsite(args, isPositional);
+                        if (newArgs.Equals(args)) return invocation;
+                        callsiteCount++;
+                        return invocation.WithArgumentList(invocation.ArgumentList.WithArguments(newArgs));
+                    default:
+                        return rewritten;
+                }
+            });
+
+            accumulator = accumulator.WithDocumentText(docId, SourceText.From(newRoot.ToFullString()));
+
+            if (callsiteCount > 0)
+            {
+                var filePath = doc.FilePath ?? doc.Name;
+                perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count)
+                    ? count + callsiteCount
+                    : callsiteCount;
+            }
+        }
+
+        return accumulator;
     }
 
     private static async Task<string> CaptureOriginalTextAsync(
@@ -48,122 +184,6 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
         var text = (await doc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         originalTexts[docId] = text;
         return text;
-    }
-
-    private static async Task<Solution> RewriteRelatedDeclarationsAsync(
-        Solution solution,
-        IReadOnlyList<IMethodSymbol> symbolsToScan,
-        Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
-        Dictionary<DocumentId, string> originalTexts,
-        CancellationToken ct)
-    {
-        var accumulator = solution;
-        var visitedDeclarationSpans = new HashSet<(DocumentId DocId, TextSpan Span)>();
-        foreach (var sym in symbolsToScan)
-        {
-            foreach (var declRef in sym.DeclaringSyntaxReferences)
-            {
-                var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
-                if (node is not BaseMethodDeclarationSyntax mds) continue;
-                var doc = accumulator.GetDocument(node.SyntaxTree);
-                if (doc is null) continue;
-                if (!visitedDeclarationSpans.Add((doc.Id, mds.ParameterList.Span))) continue;
-
-                await CaptureOriginalTextAsync(originalTexts, solution, doc.Id, ct).ConfigureAwait(false);
-                var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (oldRoot is null) continue;
-
-                var currentMds = oldRoot.FindNode(mds.Span).FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
-                if (currentMds is null) continue;
-                var newParamList = updateDeclaration(currentMds.ParameterList);
-                var newRoot = oldRoot.ReplaceNode(currentMds.ParameterList, newParamList);
-                accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
-            }
-        }
-
-        return accumulator;
-    }
-
-    private static async Task<Dictionary<DocumentId, List<TextSpan>>> CollectCallerSpansAsync(
-        Solution solution,
-        IReadOnlyList<IMethodSymbol> symbolsToScan,
-        CancellationToken ct)
-    {
-        var callerLocations = new Dictionary<DocumentId, List<TextSpan>>();
-        foreach (var sym in symbolsToScan)
-        {
-            var callers = await SymbolFinder.FindCallersAsync(sym, solution, ct).ConfigureAwait(false);
-            foreach (var caller in callers)
-            {
-                foreach (var location in caller.Locations)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    if (!location.IsInSource) continue;
-
-                    var originalDoc = solution.GetDocument(location.SourceTree);
-                    if (originalDoc is null) continue;
-
-                    if (!callerLocations.TryGetValue(originalDoc.Id, out var spans))
-                    {
-                        spans = [];
-                        callerLocations[originalDoc.Id] = spans;
-                    }
-
-                    if (!spans.Contains(location.SourceSpan))
-                    {
-                        spans.Add(location.SourceSpan);
-                    }
-                }
-            }
-        }
-
-        return callerLocations;
-    }
-
-    private static async Task<Solution> RewriteCallerArgumentsAsync(
-        Solution accumulator,
-        Solution solution,
-        Dictionary<DocumentId, List<TextSpan>> callerLocations,
-        Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
-        Dictionary<DocumentId, string> originalTexts,
-        Dictionary<string, int> perFileCallsites,
-        CancellationToken ct)
-    {
-        foreach (var (docId, spans) in callerLocations)
-        {
-            ct.ThrowIfCancellationRequested();
-            var doc = accumulator.GetDocument(docId);
-            if (doc is null) continue;
-
-            await CaptureOriginalTextAsync(originalTexts, solution, doc.Id, ct).ConfigureAwait(false);
-
-            spans.Sort((a, b) => b.Start.CompareTo(a.Start));
-            foreach (var span in spans)
-            {
-                ct.ThrowIfCancellationRequested();
-                doc = accumulator.GetDocument(docId);
-                if (doc is null) break;
-                var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (oldRoot is null) break;
-
-                var node = oldRoot.FindNode(span);
-                var invocation = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-                if (invocation is null) continue;
-
-                var args = invocation.ArgumentList.Arguments;
-                var isPositional = args.All(a => a.NameColon is null);
-                var newArgs = updateCallsite(args, isPositional);
-                if (newArgs.Equals(args)) continue;
-                var newInvocation = invocation.WithArgumentList(invocation.ArgumentList.WithArguments(newArgs));
-                var newRoot = oldRoot.ReplaceNode(invocation, newInvocation);
-                accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
-
-                var filePath = doc.FilePath ?? doc.Name;
-                perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count) ? count + 1 : 1;
-            }
-        }
-
-        return accumulator;
     }
 
     private static async Task<List<FileChangeDto>> BuildFileChangesAsync(
