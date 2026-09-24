@@ -442,13 +442,45 @@ public class ClientRootPathValidatorTests
     [TestMethod]
     public async Task ValidatePath_NullServerWithoutOptions_RejectsFailClosed()
     {
-        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                 server: null,
                 Path.Combine(TestTempRoot.Current, "any", "path"),
                 CancellationToken.None));
 
         StringAssert.Contains(error.Message, "no sanctioned roots are configured");
+    }
+
+    [TestMethod]
+    public async Task ValidatePath_NoConfiguredRoots_EnvelopeNamesConfigurationAndRedactsPath()
+    {
+        // sanctioned-roots-unconfigured-error-misattributed: the fail-closed no-roots branch must
+        // reach the caller as an actionable configuration error, not the generic
+        // "Parameter 'path' is invalid … expected types" redaction template, and must still not
+        // echo the requested path.
+        var requestedPath = Path.Combine(
+            TestTempRoot.Current,
+            "rmcp-no-roots-" + Guid.NewGuid().ToString("N"),
+            "Private.slnx");
+
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
+            ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null,
+                requestedPath,
+                CancellationToken.None,
+                securityOptions: new SecurityOptions()));
+
+        var envelope = ToolErrorHandler.ClassifyAndFormat(error, "workspace_load");
+        using var document = JsonDocument.Parse(envelope);
+        var message = document.RootElement.GetProperty("message").GetString();
+
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        Assert.IsNotNull(message);
+        StringAssert.Contains(message, "ROSLYNMCP_SANCTIONED_ROOTS");
+        StringAssert.Contains(message, "ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN");
+        Assert.IsFalse(message.Contains("expected types", StringComparison.Ordinal));
+        Assert.IsFalse(envelope.Contains(requestedPath, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(envelope.Contains("Private.slnx", StringComparison.OrdinalIgnoreCase));
     }
 
     // ───────── canonical-target return (path-boundary-link-swap-toctou) ─────────
@@ -624,7 +656,7 @@ public class ClientRootPathValidatorTests
     {
         var path = Path.Combine(TestTempRoot.Current, "rmcp-empty-boundary", "file.cs");
 
-        var error = await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+        var error = await Assert.ThrowsExactlyAsync<PublicArgumentException>(() =>
             ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                 server: null,
                 path,

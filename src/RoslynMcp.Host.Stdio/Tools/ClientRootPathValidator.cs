@@ -151,12 +151,15 @@ internal static class ClientRootPathValidator
         logger?.LogWarning(
             "No sanctioned roots are configured for path '{Path}' — rejecting access (fail-closed)",
             path);
-        throw new ArgumentException(
-            $"Path validation failed for '{path}': no sanctioned roots are configured. " +
-            "Configure ROSLYNMCP_SANCTIONED_ROOTS or explicitly set " +
-            "ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true for compatibility.",
-            nameof(path));
+        // Server-authored and path-free, so ToolErrorHandler returns it verbatim instead of the
+        // generic "Parameter 'path' is invalid" template; the path stays in the server-side log only.
+        throw new PublicArgumentException(MissingConfigurationRefusalMessage, nameof(path));
     }
+
+    private const string MissingConfigurationRefusalMessage =
+        "Path validation failed: no sanctioned roots are configured. " +
+        "Configure ROSLYNMCP_SANCTIONED_ROOTS or explicitly set " +
+        "ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true for compatibility.";
 
     internal static Task<string> ResolvePathAsync(string path, CancellationToken ct) =>
         Task.Run(() => ResolvePath(path), ct);
