@@ -200,8 +200,13 @@ public sealed class ServerDiscoveryWireTests
         Assert.AreEqual(CacheScope.Private, result.CacheScope);
     }
 
+    // donotparallelize-audit-wave-25: method-level [DoNotParallelize] removed. The test builds a
+    // private DI container (CreateDeprecatedAliasHarnessAsync) with its own WorkspaceManager and
+    // loads SampleSolution read-only (prewarm=false, autoRestore=false) into that private manager;
+    // it never touches the assembly-shared TestAssemblyFixture services, WorkspaceIdCache, an
+    // *_apply tool, env vars, or child processes. MsBuildInitializer.EnsureInitialized is idempotent.
+    // Validated by a >=3x repeated run alongside parallel-enabled sibling classes (see PR notes).
     [TestMethod]
-    [DoNotParallelize]
     public async Task DeprecatedAlias_ToolsListAndOmittedWorkspaceDispatchMatchCanonical()
     {
         MsBuildInitializer.EnsureInitialized();
