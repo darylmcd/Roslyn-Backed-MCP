@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-24T14:45:46Z
+**updated_at:** 2026-09-24T14:58:35Z
 
 ## Agent contract
 
@@ -110,7 +110,6 @@
 | `security-md-supported-versions-and-roots-stale` | Medium | — | **Refresh SECURITY.md** — supported-versions table lists 1.26.x (product is 4.x) and the boundary text describes client-roots validation that ADR 0002 replaced with the server-owned sanctioned-root boundary. [type: docs] [source: doc-audit 2026-09-23] | S | items/security-md-supported-versions-and-roots-stale.md |
 | `v5-major-release-contract-prereqs` | Medium | — | **Write ADR + product-contract entries for the 2 pending BREAKING fragments before the 5.0.0 cut** — server_info updateAvailable bool→bool? and WorkspaceNotFound category lack the ADR/migration docs release-policy requires. [type: docs] | S | items/v5-major-release-contract-prereqs.md |
 | `formatter-baseline-nested-child-handshake-flake` | Medium | — | **Stabilize formatter-baseline nested-child handshake under load** — the 10 s nested pwsh handshake wait failed once in a full-suite gate; make it contention-safe. [type: test-infrastructure] [source: 20260924T025012Z_backlog-remediate] | S | items/formatter-baseline-nested-child-handshake-flake.md |
-| `ci-evidence-tier-route` | Medium | — | **Add an evidence-only CI route and stop forcing CHANGELOG.md onto the full matrix** — audit/evidence-only PRs skip build+test behind a pwsh lint job; CHANGELOG-only PRs take the docs route plus version gates. [type: ci] [source: PR #1607 CI analysis] | M | items/ci-evidence-tier-route.md |
 
 ## Low
 
