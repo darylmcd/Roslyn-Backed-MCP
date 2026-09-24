@@ -200,6 +200,100 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Facade_Preserves_Sibling_Types_Base_List_And_Constants()
+    {
+        // Regression for split-service-with-di-facade-drops-sibling-types: the facade used to be
+        // synthesized as a fresh compilation unit holding only the split class, so every other
+        // type in the file, the class's base list, and its constants were deleted.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "ShapeService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n" +
+            "\n" +
+            "public interface IShapeService\n" +
+            "{\n" +
+            "    int Area(int side);\n" +
+            "    int Perimeter(int side);\n" +
+            "}\n" +
+            "\n" +
+            "/// <summary>Computes square metrics.</summary>\n" +
+            "public sealed class ShapeService : IShapeService\n" +
+            "{\n" +
+            "    public const int Sides = 4;\n" +
+            "\n" +
+            "    public int Area(int side) => side * side;\n" +
+            "\n" +
+            "    public int Perimeter(int side) => side * Sides;\n" +
+            "}\n" +
+            "\n" +
+            "public sealed class ShapeConsumer\n" +
+            "{\n" +
+            "    private readonly IShapeService _shapes;\n" +
+            "\n" +
+            "    public ShapeConsumer(IShapeService shapes) => _shapes = shapes;\n" +
+            "\n" +
+            "    public int Describe(int side) => _shapes.Area(side) + _shapes.Perimeter(side);\n" +
+            "}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "ShapeService",
+            new[]
+            {
+                new SplitServicePartition("ShapeAreaService", new[] { "Area" }),
+                new SplitServicePartition("ShapePerimeterService", new[] { "Perimeter" }),
+            },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+
+        Assert.IsFalse(facadeContents.Contains('\r', StringComparison.Ordinal),
+            "The facade rewrite must keep the source file's LF line endings (no mixed CRLF from synthesized members).");
+        StringAssert.Contains(facadeContents, "public interface IShapeService",
+            "The sibling interface declared in the same file must survive the facade rewrite.");
+        StringAssert.Contains(facadeContents, "int Area(int side);",
+            "The sibling interface's members must survive untouched.");
+        StringAssert.Contains(facadeContents, "public sealed class ShapeConsumer",
+            "The sibling class declared in the same file must survive the facade rewrite.");
+        StringAssert.Contains(facadeContents, "public int Describe(int side) => _shapes.Area(side) + _shapes.Perimeter(side);",
+            "The sibling class body must be preserved verbatim.");
+        StringAssert.Contains(facadeContents, "public sealed class ShapeService : IShapeService",
+            "The facade must keep the original base list.");
+        StringAssert.Contains(facadeContents, "/// <summary>Computes square metrics.</summary>",
+            "The facade must keep the original type's doc comment.");
+        StringAssert.Contains(facadeContents, "public const int Sides = 4;",
+            "The facade must keep constants declared on the source type.");
+        StringAssert.Contains(facadeContents, "_shapeAreaService.Area(side)",
+            "Facade must forward Area to the area partition.");
+        StringAssert.Contains(facadeContents, "_shapePerimeterService.Perimeter(side)",
+            "Facade must forward Perimeter to the perimeter partition.");
+
+        // The rewritten facade file must still compile alongside the new partition files.
+        await workspace.ReloadAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, "SampleLib", StringComparison.Ordinal));
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics(CancellationToken.None)
+            .Where(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Select(diagnostic => diagnostic.ToString())
+            .ToArray();
+        Assert.AreEqual(0, errors.Length,
+            $"Split output must compile. Errors:\n{string.Join("\n", errors)}\n--- facade ---\n{facadeContents}");
+    }
+
+    [TestMethod]
     public async Task Split_Service_With_Di_Preview_Returns_Warning_When_Registration_Not_Found()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
