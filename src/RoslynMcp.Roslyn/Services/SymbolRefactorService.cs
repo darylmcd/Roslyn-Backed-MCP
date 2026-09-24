@@ -869,20 +869,29 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 migratedFieldNames.Contains(declarator.Identifier.ValueText) &&
                 !identifiersInRetainedMembers.Contains(declarator.Identifier.ValueText));
 
+        // A mutable field used by both a moved method and a kept member would be copied into the
+        // partition AND kept on the facade: two independent copies of one piece of state.
+        var sharedMutableField = context.FieldDeclarations
+            .Where(field => !field.Modifiers.Any(token => token.Kind() is SyntaxKind.ReadOnlyKeyword or SyntaxKind.ConstKeyword))
+            .SelectMany(field => field.Declaration.Variables)
+            .Select(declarator => declarator.Identifier.ValueText)
+            .FirstOrDefault(name => migratedFieldNames.Contains(name) && identifiersInRetainedMembers.Contains(name));
+        if (sharedMutableField is not null)
+        {
+            throw new InvalidOperationException(
+                $"Mutable field '{sharedMutableField}' is used both by a moved method and by a member that stays on '{sourceType}'; " +
+                "splitting would duplicate its state. Make it readonly, or move every member that uses it into the same partition.");
+        }
+
         // Instance fields that stay on the facade without an initializer were assigned by the
         // dropped constructor(s); inject them through the facade constructor exactly as
         // BuildPartitionConstructor does for partitions, or they would stay null at runtime.
-        var ctorAssignedNames = originalDeclaration.Members.OfType<ConstructorDeclarationSyntax>()
-            .Where(ctor => !IsStatic(ctor.Modifiers))
-            .SelectMany(ctor => ctor.DescendantNodes().OfType<AssignmentExpressionSyntax>())
-            .Select(assignment => assignment.Left switch
-            {
-                IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-                MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText,
-                _ => null,
-            })
-            .OfType<string>()
+        var retainedFieldNames = context.FieldDeclarations
+            .Where(field => !IsDroppedField(field))
+            .SelectMany(field => field.Declaration.Variables)
+            .Select(declarator => declarator.Identifier.ValueText)
             .ToHashSet(StringComparer.Ordinal);
+        var ctorAssignedNames = CollectInjectableConstructorAssignments(originalDeclaration, sourceType, migratedFieldNames, retainedFieldNames);
         var retainedCtorFields = context.FieldDeclarations
             .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.ConstKeyword)) &&
                 !IsDroppedField(field) &&
@@ -918,6 +927,63 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var facadeDeclaration = originalDeclaration.WithMembers(SyntaxFactory.List(facadeMembers));
         return context.Root.ReplaceNode(originalDeclaration, facadeDeclaration);
     }
+
+    /// <summary>
+    /// The facade drops every instance constructor, so it can only reproduce a constructor that
+    /// does nothing but copy parameters into fields (<c>_x = x;</c> or <c>_x = x ?? throw ...;</c>).
+    /// Returns the assigned field names; throws when a constructor does anything else (guard
+    /// clauses, computed values, property assignments, event subscriptions), which the facade
+    /// would otherwise silently lose.
+    /// </summary>
+    private static HashSet<string> CollectInjectableConstructorAssignments(
+        TypeDeclarationSyntax typeDeclaration,
+        string sourceType,
+        IReadOnlySet<string> migratedFieldNames,
+        IReadOnlySet<string> retainedFieldNames)
+    {
+        var assigned = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var ctor in typeDeclaration.Members.OfType<ConstructorDeclarationSyntax>().Where(ctor => !IsStatic(ctor.Modifiers)))
+        {
+            var parameterNames = ctor.ParameterList.Parameters
+                .Select(parameter => parameter.Identifier.ValueText)
+                .ToHashSet(StringComparer.Ordinal);
+            IEnumerable<ExpressionSyntax?> expressions = ctor.ExpressionBody is { } arrow
+                ? [arrow.Expression]
+                : (ctor.Body?.Statements ?? default).Select(statement => (statement as ExpressionStatementSyntax)?.Expression);
+
+            foreach (var expression in expressions)
+            {
+                var target = expression is AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assignment &&
+                    IsParameterCopy(assignment.Right, parameterNames)
+                        ? assignment.Left switch
+                        {
+                            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+                            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText,
+                            _ => null,
+                        }
+                        : null;
+                if (target is null || !(migratedFieldNames.Contains(target) || retainedFieldNames.Contains(target)))
+                {
+                    throw new InvalidOperationException(
+                        $"A constructor of '{sourceType}' does more than copy parameters into fields ('{expression?.ToString() ?? "non-expression statement"}'); " +
+                        "split_service_with_di_preview replaces it with a generated facade constructor and cannot carry that logic. " +
+                        "Reduce the constructor to field assignments from parameters, then split.");
+                }
+
+                assigned.Add(target);
+            }
+        }
+
+        return assigned;
+    }
+
+    private static bool IsParameterCopy(ExpressionSyntax value, IReadOnlySet<string> parameterNames) => value switch
+    {
+        IdentifierNameSyntax identifier => parameterNames.Contains(identifier.Identifier.ValueText),
+        BinaryExpressionSyntax { RawKind: (int)SyntaxKind.CoalesceExpression, Left: IdentifierNameSyntax left, Right: ThrowExpressionSyntax } =>
+            parameterNames.Contains(left.Identifier.ValueText),
+        _ => false,
+    };
 
     private static bool IsStatic(SyntaxTokenList modifiers) =>
         modifiers.Any(token => token.IsKind(SyntaxKind.StaticKeyword));
