@@ -8,7 +8,15 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-28: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync)
+// and only calls read paths (SymbolResolver.ResolveOrThrowAsync, SymbolMapper.ToDto /
+// ClassifyReferenceLocation / ToDiagnosticDto, SymbolFinder.FindReferencesAsync,
+// SymbolSearchService.GetDocumentSymbolsAsync); the nameof/diagnostic cases use per-test in-memory
+// AdhocWorkspace/SyntaxTree fixtures. No *_apply, no reload, no disk writes, no
+// UndoService/ChangeTracker writes, no statics or environment mutation. Validated by a bounded
+// repeated (3x) concurrent run alongside its wave-28 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class SymbolMapperTests : SharedWorkspaceTestBase
 {

@@ -43,7 +43,15 @@ namespace RoslynMcp.Tests;
 /// </list>
 /// </para>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-28: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
+// only calls read paths (SymbolTools.FindReferences/SearchSymbols, SymbolHandleSerializer); the
+// MRTR tests use per-test RecordingReferenceService/StaticSymbolSearchService fakes and per-test
+// RequestContext instances over the assembly-shared path-authorized server, which they never
+// mutate (RequestScopedInputAdapter keeps no session/static cache; gate metrics are AsyncLocal).
+// The dedupe tests build per-test in-memory AdhocWorkspaces. No *_apply, no reload, no disk
+// writes, no statics or environment mutation. Validated by a bounded repeated (3x) concurrent run
+// alongside its wave-28 siblings and parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTestBase
 {
