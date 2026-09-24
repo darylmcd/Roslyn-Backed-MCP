@@ -29,6 +29,13 @@ namespace RoslynMcp.Tests.Progress;
 /// emitted.
 /// </para>
 /// </remarks>
+// donotparallelize-audit-wave-20: retained. BuildWorkspace_EmitsStageSequence_PreparingBuild_To_Done
+// (ValidationTools.BuildWorkspace -> BuildService) and TestRun_EmitsStageSequence_DiscoveringTests_To_Done
+// (ValidationTools.RunTests -> TestRunnerService) spawn real child `dotnet build` / `dotnet test`
+// processes against the shared in-repo SampleSolution fixture (the WorkspaceIdCache sample, not a
+// temp copy), writing its bin/obj outputs. That is the same shared-fixture child-process hazard that
+// kept ExpandedSurfaceIntegrationTests_CoverageProcess serialized in wave 07; the synchronized cache
+// does not cover on-disk build output shared with every other SampleSolution reader/builder.
 [DoNotParallelize]
 [TestClass]
 public sealed class ProgressEmissionTests : SharedWorkspaceTestBase
