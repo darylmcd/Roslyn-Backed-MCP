@@ -4,7 +4,13 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-22: [DoNotParallelize] removed. The shared-workspace methods only
+// call *_preview paths (read-gated, producing per-token PreviewStore entries) through the
+// synchronized WorkspaceIdCache. The two apply/reload methods load a GUID-unique copy under
+// TestTempRoot.Current, and WorkspaceManager.LoadAsync/ReloadAsync/Close act only on that
+// session. ApplyRefactoringAsync writes only that copy's files; UndoService/ChangeTracker
+// state is ConcurrentDictionary keyed by workspaceId. Verified with 3x repeated concurrent runs
+// alongside wave-22 siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
 {

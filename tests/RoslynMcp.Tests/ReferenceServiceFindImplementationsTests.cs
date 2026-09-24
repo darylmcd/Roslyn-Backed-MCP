@@ -16,7 +16,11 @@ namespace RoslynMcp.Tests;
 /// a 2-implementation interface. The test asserts the default path reports exactly one
 /// location per implementation symbol and that the opt-in restores the raw list.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-22: [DoNotParallelize] removed. Both methods only call the
+// read-only ReferenceService.FindImplementationsAsync against the sample workspace obtained
+// through the synchronized WorkspaceIdCache. No LoadAsync/ReloadAsync/Close, no *_apply,
+// no static or filesystem mutation. Verified with 3x repeated concurrent runs alongside
+// wave-22 siblings and parallel-enabled classes, green every time.
 [TestClass]
 public class ReferenceServiceFindImplementationsTests : SharedWorkspaceTestBase
 {
