@@ -3,7 +3,12 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-16: [DoNotParallelize] removed. ClassInit writes its fixtures only into a
+// private GUID-named sample copy under TestTempRoot.Current (CreateSampleSolutionCopy) before loading it;
+// every test then performs read-only FindTypeMutationsAsync analysis on that class-owned workspace, and
+// ClassCleanup closes only its own WorkspaceId — no shared workspace, static, or process-global mutation.
+// The same private-copy LoadAsync/Close pattern already runs in parallel (e.g. MoveTypeDiskStateTests).
+// Verified with 3x runs alone, 3x alongside its wave-16 siblings, and 3x in a concurrent fixture-copy mix.
 [TestClass]
 public sealed class MutationAnalysisSideEffectsTests : SharedWorkspaceTestBase
 {

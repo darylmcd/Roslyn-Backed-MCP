@@ -3,7 +3,11 @@ using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-16: [DoNotParallelize] removed. Every test method only reads through the
+// assembly-shared, already-synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) or exercises pure
+// argument validation — no *_apply, reload, direct WorkspaceManager.LoadAsync/Close, static state, or
+// filesystem mutation. Verified with 3x runs alone, 3x alongside its wave-16 siblings, and 3x in a
+// concurrent mix with fixture-copy classes (MoveTypeDiskStateTests, UndoFileOperationsTests, ...), green every time.
 [TestClass]
 public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
 {
