@@ -6,7 +6,7 @@ host_repo_path: C:/Code-Repo/Roslyn-Backed-MCP
 sessions_scanned: 270
 sessions_included: 9
 repos_covered: [roslyn-backed-mcp, dotnet-firewall-analyzer]
-repos_scanned: [roslyn-backed-mcp, dotnet-network-documentation, tradewise, users-daryl-claude, bioremote, syslog-server, biofiletransfer, dev-sync, it-chat-bot, windows-system32, jedi-py-mcp, syslog-server-mcp, dotnet-firewall-analyzer]
+repos_scanned: [roslyn-backed-mcp, dotnet-network-documentation, tradewise, user-claude-home, bioremote, syslog-server, biofiletransfer, dev-sync, it-chat-bot, windows-system32, jedi-py-mcp, syslog-server-mcp, dotnet-firewall-analyzer]
 phase_mix:
   refactoring: 2
   release_operational: 6

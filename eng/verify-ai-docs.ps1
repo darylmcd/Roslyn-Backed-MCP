@@ -50,6 +50,10 @@ foreach ($pattern in $stalePatterns) {
 . (Join-Path $PSScriptRoot 'markdown-link-validation.ps1')
 $issues.AddRange([string[]]@(Get-MarkdownLinkIssue -Files $markdownFiles))
 
+# Public repository: no tracked or pending file may carry a developer's user-profile path.
+. (Join-Path $PSScriptRoot 'local-path-leak-validation.ps1')
+$issues.AddRange([string[]]@(Get-LocalPathLeakIssue -Files @($allFiles) -RepoRoot $RepoRoot))
+
 . (Join-Path $PSScriptRoot 'reconciliation-cleanup-contract.ps1')
 $planReconcilerPath = Join-Path $RepoRoot '.claude/skills/reconcile-backlog-sweep-plan/SKILL.md'
 if (-not [System.IO.File]::Exists($planReconcilerPath)) {

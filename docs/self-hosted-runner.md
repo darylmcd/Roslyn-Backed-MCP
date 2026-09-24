@@ -28,8 +28,8 @@ Remote deregistration stopped the corresponding Windows service. The retired ins
 | Service `actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev` | Absent |
 | Repository runner API | `total_count=0` |
 | `Runner.Listener.exe`, `Runner.Worker.exe`, `RunnerService.exe` | 0 processes |
-| `C:\Users\daryl\actions-runner` | Absent |
-| `C:\Users\daryl\actions-runner.retired-20260824` | Absent |
+| `%USERPROFILE%\actions-runner` | Absent |
+| `%USERPROFILE%\actions-runner.retired-20260824` | Absent |
 
 ## Safe hybrid prerequisites
 
@@ -65,9 +65,9 @@ Remote registration, the configured executable path, and the quarantine are alre
 ```powershell
 $ErrorActionPreference = 'Stop'
 $serviceName = 'actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev'
-$expectedImage = '"C:\Users\daryl\actions-runner\bin\RunnerService.exe"'
-$originalRunnerRoot = 'C:\Users\daryl\actions-runner'
-$quarantineRoot = 'C:\Users\daryl\actions-runner.retired-20260824'
+$expectedImage = '"{0}\actions-runner\bin\RunnerService.exe"' -f $env:USERPROFILE
+$originalRunnerRoot = Join-Path $env:USERPROFILE 'actions-runner'
+$quarantineRoot = Join-Path $env:USERPROFILE 'actions-runner.retired-20260824'
 
 $runnerInventory = gh api repos/darylmcd/Roslyn-Backed-MCP/actions/runners | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $runnerInventory.total_count -ne 0) {
@@ -124,8 +124,8 @@ if ($null -ne $serviceRecord) {
 The quarantine is currently absent. If a recoverable quarantine is ever created again, validate the exact plain-directory root, reject unexpected reparse points, validate the only two known junctions and their absent targets, remove those links first, and only then recurse over the exact root:
 
 ```powershell
-$originalRunnerRoot = 'C:\Users\daryl\actions-runner'
-$expectedRunnerRoot = 'C:\Users\daryl\actions-runner.retired-20260824'
+$originalRunnerRoot = Join-Path $env:USERPROFILE 'actions-runner'
+$expectedRunnerRoot = Join-Path $env:USERPROFILE 'actions-runner.retired-20260824'
 if (Test-Path -LiteralPath $originalRunnerRoot) {
     throw "Refusing cleanup because the retired service path exists: $originalRunnerRoot"
 }
@@ -143,8 +143,8 @@ if (Test-Path -LiteralPath $expectedRunnerRoot) {
     }
 
     $expectedLinks = @{
-        (Join-Path $runnerRoot 'bin') = 'C:\Users\daryl\actions-runner\bin.2.336.0'
-        (Join-Path $runnerRoot 'externals') = 'C:\Users\daryl\actions-runner\externals.2.336.0'
+        (Join-Path $runnerRoot 'bin') = (Join-Path $originalRunnerRoot 'bin.2.336.0')
+        (Join-Path $runnerRoot 'externals') = (Join-Path $originalRunnerRoot 'externals.2.336.0')
     }
     $reparsePoints = @(Get-ChildItem -LiteralPath $runnerRoot -Recurse -Force |
         Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint })

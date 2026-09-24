@@ -11,7 +11,7 @@ info: Microsoft.Hosting.Lifetime[0]
 info: Microsoft.Hosting.Lifetime[0]
       Hosting environment: Production
 info: Microsoft.Hosting.Lifetime[0]
-      Content root path: C:\Users\daryl\AppData\Local\Temp\claude\C--Users-daryl--claude\35d8f367-e4d4-426f-9842-de721d666449\scratchpad
+      Content root path: <user>\AppData\Local\Temp\claude\<user-slug>--claude\35d8f367-e4d4-426f-9842-de721d666449\scratchpad
 info: ModelContextProtocol.Server.McpServer[570385771]
       Server (roslyn-mcp 4.0.0.0) method 'initialize' request handler called.
 info: ModelContextProtocol.Server.McpServer[1867955179]

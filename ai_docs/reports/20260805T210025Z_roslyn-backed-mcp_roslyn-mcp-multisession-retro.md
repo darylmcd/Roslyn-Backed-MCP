@@ -169,7 +169,7 @@ truncated: true
 | `mcp__roslyn__get_code_actions` | codex | 1 | Zero code actions at a caret position with no diagnostic reported there (documented tool behavior, but a dead end for the caller) | one-shot | server-side |
 | `mcp__roslyn__document_symbols` | claude | 1 | Errored `FileNotFound` when pointed at a `.sln` path instead of a source document | one-shot | server-side |
 
-Full verbatim quotes for every row above (agent- and session-tagged) are in the underlying workflow evidence at `C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/776682eb-03d6-4590-b9b8-52e14dd71955/scratchpad/out/issueRows.json` — retained for the maintainer's convenience; not part of this report's canonical content.
+Full verbatim quotes for every row above (agent- and session-tagged) are in the underlying workflow evidence at `<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/776682eb-03d6-4590-b9b8-52e14dd71955/scratchpad/out/issueRows.json` — retained for the maintainer's convenience; not part of this report's canonical content.
 
 ## 2b. Missing tool gaps
 
