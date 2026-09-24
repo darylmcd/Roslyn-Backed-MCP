@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -294,6 +295,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     /// instance fields referenced by their migrated methods (split-service-with-di-broken-output).
     /// </summary>
     private sealed record SplitServiceContext(
+        Document Document,
+        CompilationUnitSyntax Root,
         TypeDeclarationSyntax TypeDeclaration,
         IReadOnlyList<MethodDeclarationSyntax> MethodDeclarations,
         IReadOnlyList<FieldDeclarationSyntax> FieldDeclarations,
@@ -353,6 +356,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             ?? throw new InvalidOperationException($"Source file '{sourceFilePath}' must have a parent directory.");
 
         return new SplitServiceContext(
+            document,
+            root,
             typeDeclaration,
             methodDeclarations,
             fieldDeclarations,
@@ -436,7 +441,11 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
     // 2) Rewrite the original file: the source type becomes a forwarding facade whose
     //    members delegate to partition implementations held in private fields. Every
-    //    partition is injected via the facade's primary-style constructor.
+    //    partition is injected via the facade's constructor.
+    //    split-service-with-di-facade-drops-sibling-types: the facade replaces ONLY the source
+    //    type's declaration node inside the original compilation unit, so sibling types, the
+    //    type's attributes / base list / constraints, and non-method members survive. Only the
+    //    synthesized nodes carry Formatter.Annotation, so unrelated formatting is untouched.
     private static async Task EmitFacadeFileAsync(
         SplitServiceContext context,
         string sourceFilePath,
@@ -446,10 +455,20 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         List<FileChangeDto> changes,
         CancellationToken ct)
     {
-        var originalContent = await File.ReadAllTextAsync(sourceFilePath, ct).ConfigureAwait(false);
-        var facadeContent = BuildFacadeFile(
-            context.NamespaceName, sourceType, context.TypeDeclaration,
-            context.MethodDeclarations, context.MemberToPartition, partitions, context.Usings);
+        var originalContent = (await context.Document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+        var facadeRoot = BuildFacadeRoot(context, sourceType, partitions);
+
+        // Synthesized nodes must use the file's existing line ending; otherwise an LF file
+        // without an end_of_line editorconfig entry gains CRLF lines from the formatter default.
+        var lineEnding = originalContent.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var formattingOptions = (await context.Document.GetOptionsAsync(ct).ConfigureAwait(false))
+            .WithChangedOption(FormattingOptions.NewLine, LanguageNames.CSharp, lineEnding);
+        var formattedDocument = await Formatter.FormatAsync(
+            context.Document.WithSyntaxRoot(facadeRoot),
+            Formatter.Annotation,
+            formattingOptions,
+            cancellationToken: ct).ConfigureAwait(false);
+        var facadeContent = (await formattedDocument.GetTextAsync(ct).ConfigureAwait(false)).ToString();
         mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent));
         changes.Add(new FileChangeDto(sourceFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, facadeContent, sourceFilePath)));
     }
@@ -782,14 +801,92 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return LowerFirst(stripped);
     }
 
-    private static string BuildFacadeFile(
-        string namespaceName,
+    /// <summary>
+    /// Builds the facade by replacing only the source type's declaration node within the
+    /// original compilation unit. The type keeps its attributes, modifiers, base list,
+    /// constraints, and every non-method member (constants, static members, properties,
+    /// events, nested types). Changes to its members:
+    /// <list type="bullet">
+    /// <item>partitioned methods become forwarding stubs in their original positions;</item>
+    /// <item>instance constructors are replaced by the partition-injecting facade constructor;</item>
+    /// <item>private instance fields migrated to a partition are dropped when no retained member
+    /// still references them (state belongs to the partitions).</item>
+    /// </list>
+    /// </summary>
+    private static CompilationUnitSyntax BuildFacadeRoot(
+        SplitServiceContext context,
         string sourceType,
-        TypeDeclarationSyntax originalDeclaration,
-        IReadOnlyList<MethodDeclarationSyntax> allMethods,
-        IReadOnlyDictionary<string, SplitServicePartition> memberToPartition,
-        IReadOnlyList<SplitServicePartition> partitions,
-        SyntaxList<UsingDirectiveSyntax> usings)
+        IReadOnlyList<SplitServicePartition> partitions)
+    {
+        var originalDeclaration = context.TypeDeclaration;
+        var memberToPartition = context.MemberToPartition;
+
+        var partitionedMethods = context.MethodDeclarations
+            .Where(method => memberToPartition.ContainsKey(method.Identifier.ValueText))
+            .ToArray();
+        var migratedFieldNames = ResolveFieldsReferencedByMethods(context.FieldDeclarations, partitionedMethods)
+            .SelectMany(field => field.Declaration.Variables)
+            .Select(declarator => declarator.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // Identifiers used by members that stay on the facade verbatim. A migrated field still
+        // referenced here must stay too, or the retained member stops compiling.
+        var identifiersInRetainedMembers = originalDeclaration.Members
+            .Where(member => member switch
+            {
+                MethodDeclarationSyntax method => !memberToPartition.ContainsKey(method.Identifier.ValueText),
+                ConstructorDeclarationSyntax ctor => IsStatic(ctor.Modifiers),
+                FieldDeclarationSyntax field => !IsDroppableFacadeField(field),
+                _ => true,
+            })
+            .SelectMany(member => member.DescendantNodes().OfType<IdentifierNameSyntax>())
+            .Select(identifier => identifier.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var facadeMembers = new List<MemberDeclarationSyntax>();
+        facadeMembers.AddRange(BuildFacadeInjectionMembers(sourceType, partitions));
+        foreach (var member in originalDeclaration.Members)
+        {
+            switch (member)
+            {
+                case MethodDeclarationSyntax method
+                    when memberToPartition.TryGetValue(method.Identifier.ValueText, out var partition):
+                    facadeMembers.Add(BuildForwardingMethod(method, partition.TypeName)
+                        .WithAttributeLists(method.AttributeLists)
+                        .WithLeadingTrivia(method.GetLeadingTrivia())
+                        .WithTrailingTrivia(method.GetTrailingTrivia())
+                        .WithAdditionalAnnotations(Formatter.Annotation));
+                    break;
+                case ConstructorDeclarationSyntax ctor when !IsStatic(ctor.Modifiers):
+                    // Replaced by the partition-injecting facade constructor.
+                    break;
+                case FieldDeclarationSyntax field
+                    when IsDroppableFacadeField(field) && field.Declaration.Variables.All(declarator =>
+                        migratedFieldNames.Contains(declarator.Identifier.ValueText) &&
+                        !identifiersInRetainedMembers.Contains(declarator.Identifier.ValueText)):
+                    break;
+                default:
+                    facadeMembers.Add(member);
+                    break;
+            }
+        }
+
+        var facadeDeclaration = originalDeclaration.WithMembers(SyntaxFactory.List(facadeMembers));
+        return context.Root.ReplaceNode(originalDeclaration, facadeDeclaration);
+    }
+
+    private static bool IsStatic(SyntaxTokenList modifiers) =>
+        modifiers.Any(token => token.IsKind(SyntaxKind.StaticKeyword));
+
+    // Only private (or implicitly private) mutable-state instance fields may leave the facade;
+    // constants, static fields, and non-private fields are part of the type's surface.
+    private static bool IsDroppableFacadeField(FieldDeclarationSyntax field) =>
+        !field.Modifiers.Any(token => token.Kind() is SyntaxKind.StaticKeyword or SyntaxKind.ConstKeyword
+            or SyntaxKind.PublicKeyword or SyntaxKind.ProtectedKeyword or SyntaxKind.InternalKeyword);
+
+    private static IEnumerable<MemberDeclarationSyntax> BuildFacadeInjectionMembers(
+        string sourceType,
+        IReadOnlyList<SplitServicePartition> partitions)
     {
         // Private readonly field per partition, injected via constructor.
         var fieldMembers = partitions
@@ -817,36 +914,9 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             .AddParameterListParameters(ctorParameters)
             .WithBody(ctorBody);
 
-        // Forwarding members — one method per original method delegating to the corresponding
-        // partition field. Methods that did not make it into any partition are copied through
-        // verbatim so the facade's surface matches the original type.
-        var forwardingMembers = allMethods.Select(method =>
-        {
-            if (memberToPartition.TryGetValue(method.Identifier.ValueText, out var partition))
-            {
-                return BuildForwardingMethod(method, partition.TypeName);
-            }
-
-            // Preserve unpartitioned methods on the facade as-is (minus attributes) — they
-            // continue to contain their original logic.
-            return method
-                .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
-                .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed))
-                .WithTrailingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed));
-        });
-
-        var members = new List<MemberDeclarationSyntax>();
-        members.AddRange(fieldMembers);
-        members.Add(constructor);
-        members.AddRange(forwardingMembers);
-
-        var classDecl = SyntaxFactory.ClassDeclaration(sourceType)
-            .WithModifiers(originalDeclaration.Modifiers)
-            .WithMembers(SyntaxFactory.List(members));
-
-        var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(usings);
-        compilationUnit = WrapInNamespace(compilationUnit, namespaceName, classDecl);
-        return compilationUnit.NormalizeWhitespace().ToFullString() + Environment.NewLine;
+        return fieldMembers
+            .Append<MemberDeclarationSyntax>(constructor)
+            .Select(member => member.WithAdditionalAnnotations(Formatter.Annotation));
     }
 
     private static MethodDeclarationSyntax BuildForwardingMethod(MethodDeclarationSyntax original, string partitionTypeName)
