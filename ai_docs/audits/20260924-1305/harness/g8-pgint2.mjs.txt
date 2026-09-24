@@ -1,0 +1,25 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+const S = '<scratch>';
+const RO = '<repo>/.worktrees/surface-test-20260924T130517Z-ro';
+const child = spawn('dnx Darylmcd.RoslynMcp@4.2.1 --source https://api.nuget.org/v3/index.json', [], { cwd: RO, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ROSLYNMCP_LOG_LEVEL: 'Debug', Logging__LogLevel__Default: 'Debug', ROSLYNMCP_SANCTIONED_ROOTS: '.' } }); const errc=[]; child.stderr.on('data', d => errc.push(d));
+let buf = ''; let nextId = 1; const pending = new Map();
+child.stdout.on('data', d => { buf += d; let nl; while ((nl = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (!l) continue; let m; try { m = JSON.parse(l); } catch { continue; } if (m.method && m.id !== undefined) { send({ jsonrpc: '2.0', id: m.id, result: { roots: [{ uri: 'file:///' + RO, name: 'ro' }] } }); continue; } if (m.method) continue; const p = pending.get(m.id); if (p) { pending.delete(m.id); p(m); } } });
+function send(o) { child.stdin.write(JSON.stringify(o) + '\n'); }
+function rpc(method, params) { const id = nextId++; return new Promise(res => { pending.set(id, res); send({ jsonrpc: '2.0', id, method, params }); }); }
+(async () => {
+  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const wl = await rpc('tools/call', { name: 'workspace_load', arguments: { path: `${RO}/RoslynMcp.slnx` } });
+  const W = JSON.parse(wl.result.content[0].text).workspaceId;
+  const f = `${RO}/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs`;
+  const res = { W: { error: W } };
+  res.strings = await rpc('prompts/get', { name: 'consumer_impact', arguments: { workspaceId: W, filePath: f, line: '19', column: '21' } });
+  res.numbers = await rpc('prompts/get', { name: 'consumer_impact', arguments: { workspaceId: W, filePath: f, line: 19, column: 21 } });
+  res.suggestStr = await rpc('prompts/get', { name: 'suggest_refactoring', arguments: { workspaceId: W, filePath: f, startLine: '40', endLine: '120' } });
+  res.suggestNum = await rpc('prompts/get', { name: 'suggest_refactoring', arguments: { workspaceId: W, filePath: f, startLine: 40, endLine: 120 } }); res.reviewFile = await rpc('prompts/get', { name: 'review_file', arguments: { workspaceId: W, filePath: f } }); res.suggestNoOpt = await rpc('prompts/get', { name: 'suggest_refactoring', arguments: { workspaceId: W, filePath: f } });
+  const summ = Object.fromEntries(Object.entries(res).map(([k, r]) => [k, r.error ?? { ok: true, len: r.result?.messages?.[0]?.content?.text?.length }]));
+  fs.writeFileSync(`${S}/g8-pgint2.json`, JSON.stringify(summ, null, 2));
+  console.log(JSON.stringify(summ));
+  fs.writeFileSync(S + '/g8-pgint2-stderr.txt', Buffer.concat(errc).toString()); child.stdin.end(); setTimeout(() => { child.kill(); process.exit(0); }, 2000);
+})();

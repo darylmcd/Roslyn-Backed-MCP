@@ -1,0 +1,88 @@
+// G8 prompt harness: get_prompt_text x2 + prompts/get per prompt, tool-name diff vs ledger-seed
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+const S = '<scratch>';
+const RO = '<repo>/.worktrees/surface-test-20260924T130517Z-ro';
+const child = spawn('dnx Darylmcd.RoslynMcp@4.2.1 --source https://api.nuget.org/v3/index.json', [], { cwd: RO, shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ROSLYNMCP_SANCTIONED_ROOTS: '.' } });
+const errc = []; child.stderr.on('data', d => errc.push(d));
+let buf = ''; let nextId = 1; const pending = new Map();
+child.stdout.on('data', d => {
+  buf += d.toString('utf8'); let nl;
+  while ((nl = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (!line) continue;
+    let m; try { m = JSON.parse(line); } catch { continue; }
+    if (m.method && m.id !== undefined) { send({ jsonrpc: '2.0', id: m.id, result: m.method === 'roots/list' ? { roots: [{ uri: 'file:///' + RO, name: 'ro' }] } : {} }); continue; }
+    if (m.method) continue;
+    const p = pending.get(m.id); if (p) { pending.delete(m.id); p(m); }
+  }
+});
+function send(o) { child.stdin.write(JSON.stringify(o) + '\n'); }
+function rpc(method, params, to = 300000) { const id = nextId++; const t0 = Date.now(); return new Promise(res => { const tm = setTimeout(() => { pending.delete(id); res({ timeout: true, ms: Date.now() - t0 }); }, to); pending.set(id, m => { clearTimeout(tm); res({ ...m, ms: Date.now() - t0 }); }); send({ jsonrpc: '2.0', id, method, params }); }); }
+const tools = new Set(fs.readFileSync(`${S}/ledger-seed.tsv`, 'utf8').split(/\r?\n/).map(l => l.split('\t')[0]).filter(Boolean));
+const promptsList = JSON.parse(fs.readFileSync(`${S}/raw/installed-prompts.json`, 'utf8')).items;
+const promptNames = new Set(promptsList.map(p => p.name));
+function extract(text) {
+  const tick = new Set([...text.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)].map(m => m[1]));
+  const bare = new Set([...text.matchAll(/\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/g)].map(m => m[1]));
+  const unkTick = [...tick].filter(n => !tools.has(n) && !promptNames.has(n));
+  const unkBare = [...bare].filter(n => !tools.has(n) && !promptNames.has(n) && !tick.has(n));
+  const toolRefs = [...bare].filter(n => tools.has(n));
+  return { toolRefs, unkTick, unkBare };
+}
+(async () => {
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'g8p', version: '1' } }, 180000);
+  if (init.error || init.timeout) { console.log('init fail'); process.exit(2); }
+  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const wl = await rpc('tools/call', { name: 'workspace_load', arguments: { path: `${RO}/RoslynMcp.slnx` } }, 600000);
+  const W = JSON.parse(wl.result.content[0].text).workspaceId;
+  const WT = `${RO}/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs`;
+  const lines = fs.readFileSync(WT, 'utf8').split(/\r?\n/);
+  const args = {
+    analyze_dependencies: { workspaceId: W },
+    cohesion_analysis: { workspaceId: W, projectName: 'RoslynMcp.Roslyn' },
+    consumer_impact: { workspaceId: W, filePath: WT, line: 19, column: 21 },
+    dead_code_audit: { workspaceId: W, projectName: 'RoslynMcp.Core' },
+    debug_test_failure: { workspaceId: W, projectName: 'RoslynMcp.Tests', filter: 'FullyQualifiedName~WorkspaceTools' },
+    discover_capabilities: { taskCategory: 'refactoring' },
+    explain_error: { workspaceId: W, diagnosticId: 'CA1822', filePath: `${RO}/src/RoslynMcp.Roslyn/Services/SingleTestScaffolder.cs`, line: 322, column: 9 },
+    fix_all_diagnostics: { workspaceId: W, projectName: 'RoslynMcp.Core', severityFilter: 'Info' },
+    guided_extract_interface: { workspaceId: W, filePath: `${RO}/src/RoslynMcp.Roslyn/Services/ChangeTracker.cs`, typeName: 'ChangeTracker' },
+    guided_extract_method: { workspaceId: W, filePath: WT, startLine: 66, startColumn: 13, endLine: 67, endColumn: lines[66].length + 1, methodName: 'ReportStart' },
+    guided_package_migration: { workspaceId: W, oldPackageId: 'Nito.AsyncEx', newPackageId: 'Nito.AsyncEx.Coordination', newVersion: '5.1.2' },
+    msbuild_inspection: { workspaceId: W, projectFilePath: `${RO}/src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj`, propertyName: 'TargetFramework', itemType: 'PackageReference' },
+    refactor_and_validate: { workspaceId: W, filePath: WT, startLine: 66, startColumn: 13, endLine: 67, endColumn: lines[66].length + 1 },
+    refactor_loop: { intent: 'extract the progress-stage reporting in WorkspaceTools.LoadAsync into a helper', workspaceId: W },
+    review_complexity: { workspaceId: W, projectName: 'RoslynMcp.Core' },
+    review_file: { workspaceId: W, filePath: WT },
+    review_test_coverage: { workspaceId: W, projectName: 'RoslynMcp.Tests' },
+    security_review: { workspaceId: W, projectName: 'RoslynMcp.Host.Stdio' },
+    session_undo: { workspaceId: W },
+    suggest_refactoring: { workspaceId: W, filePath: WT, startLine: 40, endLine: 120 },
+  };
+  const out = [];
+  const texts = {};
+  const gpt = async (name, a) => { const r = await rpc('tools/call', { name: 'get_prompt_text', arguments: { promptName: name, parametersJson: JSON.stringify(a) } }); const t = r.result?.content?.[0]?.text ?? JSON.stringify(r.error); let j = null; try { j = JSON.parse(t); } catch {} return { r, t, j }; };
+  for (const p of promptsList) {
+    const a = args[p.name];
+    if (!a) { out.push({ name: p.name, skipped: 'no args mapped' }); continue; }
+    const g1 = await gpt(p.name, a);
+    const g2 = await gpt(p.name, a);
+    const pg = await rpc('prompts/get', { name: p.name, arguments: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, String(v)])) });
+    const t1 = (g1.j?.messages ?? []).map(m => m.text).join('\n---\n');
+    const t2 = (g2.j?.messages ?? []).map(m => m.text).join('\n---\n');
+    const tp = (pg.result?.messages ?? []).map(m => m.content?.text ?? '').join('\n---\n');
+    texts[p.name] = t1; fs.writeFileSync(`${S}/g8-prompt-${p.name}.txt`, t1);
+    const ex = extract(t1);
+    out.push({ name: p.name, gptMs: [g1.j?._meta?.elapsedMs ?? g1.r.ms, g2.j?._meta?.elapsedMs ?? g2.r.ms], gptError: g1.r.result?.isError ? g1.t.slice(0, 300) : null, nMsgs: g1.j?.messages?.length ?? 0, len: t1.length, idempotent: t1 === t2, pgMs: pg.ms, pgError: pg.error ?? null, pgMatchesGpt: tp === t1, pgLen: tp.length, toolRefs: ex.toolRefs.length, toolRefList: ex.toolRefs, unknownBacktick: ex.unkTick, unknownBare: ex.unkBare.slice(0, 40) });
+  }
+  // negatives via harness too
+  const negs = [];
+  for (const [n, pj] of [['no_such_prompt', '{}'], ['review_file', '{"workspaceId":"' + W + '"}'], ['review_file', 'not json'], ['review_file', '[1,2]'], ['', '{}']]) {
+    const r = await rpc('tools/call', { name: 'get_prompt_text', arguments: { promptName: n, parametersJson: pj } });
+    negs.push({ promptName: n, parametersJson: pj, isError: r.result?.isError, text: (r.result?.content?.[0]?.text ?? JSON.stringify(r.error)).slice(0, 500) });
+  }
+  const pgneg = await rpc('prompts/get', { name: 'no_such_prompt', arguments: {} });
+  negs.push({ via: 'prompts/get unknown', error: pgneg.error });
+  fs.writeFileSync(`${S}/g8-prompts-results.json`, JSON.stringify({ W, out, negs }, null, 2));
+  child.stdin.end(); setTimeout(() => { child.kill(); process.exit(0); }, 3000);
+})();

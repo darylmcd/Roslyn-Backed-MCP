@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "name": "server_catalog",
+      "uri": "roslyn://server/catalog",
+      "description": "Machine-readable catalog summary: tool/prompt counts + resource list + workflow hints + support tiers. Tool and prompt lists are paginated via roslyn://server/catalog/tools/{offset}/{limit} and roslyn://server/catalog/prompts/{offset}/{limit}. Full unpaginated catalog at roslyn://server/catalog/full.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "server_catalog_full",
+      "uri": "roslyn://server/catalog/full",
+      "description": "Unpaginated full server catalog including every tool and prompt entry. Large payload (~80 KB on a 170-tool surface) — may exceed the MCP tool-result cap on some clients; prefer the paginated siblings when that happens.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "resource_templates",
+      "uri": "roslyn://server/resource-templates",
+      "description": "Lists all supported MCP resource URI templates. Workspace-scoped resources (status, projects, diagnostics, source files) are not returned as static entries in clients that only call resources/list — substitute workspaceId (and filePath where required) using these templates.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "workspaces",
+      "uri": "roslyn://workspaces",
+      "description": "List all currently loaded workspace sessions with a lean summary per workspace (counts and load state, no per-project tree). For the verbose payload use roslyn://workspaces/verbose. Workspace-scoped resources (status, projects, diagnostics, source_file) use URI templates — if your MCP client only shows static resources from resources/list, read roslyn://server/resource-templates to discover those templates.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "workspaces_verbose",
+      "uri": "roslyn://workspaces/verbose",
+      "description": "Verbose variant of roslyn://workspaces — returns the full per-project tree and workspace diagnostics for every loaded session. Can be large on multi-project solutions; prefer the summary resource at roslyn://workspaces unless you need the full payload.",
+      "mimeType": "application/json"
+    }
+  ]
+}

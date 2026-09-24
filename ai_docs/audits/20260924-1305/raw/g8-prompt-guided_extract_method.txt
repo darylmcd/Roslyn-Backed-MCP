@@ -1,0 +1,26 @@
+Extract the selected statements into a new method named `ReportStart` using the Roslyn MCP extract-method workflow.
+
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs
+**Selection:** 66:13 - 67:85
+
+**Source context:**
+```csharp
+  63:             // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
+  64:             // doesn't expose intra-load progress and adding it would balloon scope past the
+  65:             // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
+  66:             var totalStages = prewarm == true ? 5 : 4;
+  67:             ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
+  68:             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+  69:                 server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
+  70:             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
+```
+
+Use this workflow:
+1. Call `analyze_data_flow` on the same line/column range to see variables read, written, or captured — the selection should be a coherent region; multiple exits (`return`/`throw`) inside the span may block extraction.
+2. Call `analyze_control_flow` on the range to confirm suitability (single-entry / exit expectations for the snippet).
+3. Call `extract_method_preview` with `workspaceId`, `filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, and `methodName`. Show inferred parameters and return value to the user.
+4. If the preview is acceptable, call `extract_method_apply` with the preview token.
+5. Run `compile_check` or `build_project` for the owning project after apply.
+6. If apply was wrong, offer `revert_last_apply`, adjust the selection, and preview again.
+
+Complete one extraction and verify compilation before starting another refactoring.

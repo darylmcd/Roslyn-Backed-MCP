@@ -1,0 +1,267 @@
+[
+  {
+    "name": "analyze_dependencies",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'analyze_dependencies'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 14,
+    "messages": null
+  },
+  {
+    "name": "cohesion_analysis",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'cohesion_analysis'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "consumer_impact",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'consumer_impact'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "dead_code_audit",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'dead_code_audit'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "debug_test_failure",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'debug_test_failure'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "discover_capabilities",
+    "requiredArgs": [
+      "taskCategory"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'discover_capabilities'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "explain_error",
+    "requiredArgs": [
+      "workspaceId",
+      "diagnosticId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'explain_error'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "fix_all_diagnostics",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'fix_all_diagnostics'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "guided_extract_interface",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath",
+      "typeName"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'guided_extract_interface'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "guided_extract_method",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn",
+      "endLine",
+      "endColumn",
+      "methodName"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'guided_extract_method'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "guided_package_migration",
+    "requiredArgs": [
+      "workspaceId",
+      "oldPackageId",
+      "newPackageId",
+      "newVersion"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'guided_package_migration'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "msbuild_inspection",
+    "requiredArgs": [
+      "workspaceId",
+      "projectFilePath"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'msbuild_inspection'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "refactor_and_validate",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'refactor_and_validate'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "refactor_loop",
+    "requiredArgs": [
+      "intent",
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'refactor_loop'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "review_complexity",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'review_complexity'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "review_file",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'review_file'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "review_test_coverage",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'review_test_coverage'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "security_review",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'security_review'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 1,
+    "messages": null
+  },
+  {
+    "name": "session_undo",
+    "requiredArgs": [
+      "workspaceId"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'session_undo'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 0,
+    "messages": null
+  },
+  {
+    "name": "suggest_refactoring",
+    "requiredArgs": [
+      "workspaceId",
+      "filePath"
+    ],
+    "error": {
+      "code": -32602,
+      "message": "Invalid parameters for prompt 'suggest_refactoring'. Provide every required argument using the advertised parameter types."
+    },
+    "ms": 7,
+    "messages": null
+  }
+]

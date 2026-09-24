@@ -1,0 +1,382 @@
+{
+  "catalogVersion": "2026.04",
+  "productShape": "local-first",
+  "supportPolicy": "Stable entries are covered by release documentation and compatibility expectations for the local stdio host. Experimental entries may evolve faster and can change with less notice before a remote host exists.",
+  "productBoundaries": [
+    "The production target is the local stdio server running on a developer workstation.",
+    "Workspace state comes from MSBuildWorkspace and on-disk files, not unsaved editor buffers.",
+    "Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.",
+    "Write-capable tools require an already loaded workspace and are intentionally bounded by preview/apply or explicit edit requests."
+  ],
+  "toolCount": 174,
+  "toolsResourceTemplate": "roslyn://server/catalog/tools/{offset}/{limit}",
+  "resources": [
+    {
+      "kind": "resource",
+      "name": "server_catalog",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Cap-safe summary of the server surface (tool/prompt counts \u002B resource list \u002B workflow hints). Full tools and prompts via paginated siblings.",
+      "uriTemplate": "roslyn://server/catalog",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_full",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Unpaginated full catalog including every tool and prompt entry. Large payload (~80 KB).",
+      "uriTemplate": "roslyn://server/catalog/full",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_tools_page",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Paginated slice of the server tool catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "uriTemplate": "roslyn://server/catalog/tools/{offset}/{limit}",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_prompts_page",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Paginated slice of the server prompt catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "uriTemplate": "roslyn://server/catalog/prompts/{offset}/{limit}",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_version_diff",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Structured surface diff between supported released server catalog versions. Slots: fromVersion \u002B toVersion (v-prefix optional; toVersion also accepts current/latest).",
+      "uriTemplate": "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "resource_templates",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Lists all resource URI templates, including workspace-scoped templates.",
+      "uriTemplate": "roslyn://server/resource-templates",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspaces",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List active workspace sessions (lean summary; counts and load state, no per-project tree).",
+      "uriTemplate": "roslyn://workspaces",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspaces_verbose",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List active workspace sessions with full per-project tree and diagnostics.",
+      "uriTemplate": "roslyn://workspaces/verbose",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_status",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect workspace status (lean summary; counts and load state, no per-project tree).",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_status_verbose",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect workspace status with full per-project tree and workspace diagnostics.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status/verbose",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_projects",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read project graph metadata for a workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/projects",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_diagnostics",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read all compiler diagnostics for a workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/diagnostics",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "source_file",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read a source file from the loaded workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "resource",
+      "name": "source_file_lines",
+      "category": "workspace",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read a 1-based inclusive line range from a source file in the loaded workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
+      "parameters": null,
+      "outputSchema": null,
+      "deprecation": null
+    }
+  ],
+  "promptCount": 20,
+  "promptsResourceTemplate": "roslyn://server/catalog/prompts/{offset}/{limit}",
+  "workflowHints": [
+    {
+      "name": "Preview/Apply",
+      "toolSequence": [
+        "rename_preview",
+        "rename_apply"
+      ],
+      "description": "Most write operations use a two-step pattern: call *_preview to inspect the diff, then *_apply with the preview token."
+    },
+    {
+      "name": "Diagnostic Fix",
+      "toolSequence": [
+        "compile_check",
+        "project_diagnostics",
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply"
+      ],
+      "description": "Start with fast compile_check, inspect diagnostics, preview a fix, then apply it."
+    },
+    {
+      "name": "Code Action",
+      "toolSequence": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action"
+      ],
+      "description": "List available Roslyn refactorings/fixes at a location, preview, then apply."
+    },
+    {
+      "name": "Security Audit",
+      "toolSequence": [
+        "security_analyzer_status",
+        "security_diagnostics",
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply"
+      ],
+      "description": "Check analyzer coverage, get security findings, then fix them."
+    },
+    {
+      "name": "Compile Sanity",
+      "toolSequence": [
+        "compile_check"
+      ],
+      "description": "Use in-memory compilation for routine compile sanity; reserve build_workspace/build_project for CI-parity or project-system validation."
+    },
+    {
+      "name": "Change Validation",
+      "toolSequence": [
+        "validate_recent_git_changes",
+        "test_related_files",
+        "test_run"
+      ],
+      "description": "Use the auto-scoped validation bundle or find tests related to changed files, then run the filtered test slice."
+    },
+    {
+      "name": "Post-edit Verify (auto-scoped)",
+      "toolSequence": [
+        "validate_recent_git_changes"
+      ],
+      "description": "Preferred post-edit bundle: derives changedFilePaths from git status --porcelain and runs compile_check \u002B project_diagnostics \u002B test_related_files scoped to the touched-file set. Falls back to validate_workspace scope with a warning when git is unavailable."
+    },
+    {
+      "name": "Dead Code Cleanup",
+      "toolSequence": [
+        "find_unused_symbols",
+        "remove_dead_code_preview",
+        "remove_dead_code_apply",
+        "compile_check"
+      ],
+      "description": "Find unused symbols, preview removal, apply, then verify with compile_check."
+    },
+    {
+      "name": "Package Migration",
+      "toolSequence": [
+        "migrate_package_preview",
+        "apply_composite_preview",
+        "build_workspace"
+      ],
+      "description": "Preview migrating a package across projects, apply, then verify."
+    },
+    {
+      "name": "Coverage Analysis",
+      "toolSequence": [
+        "test_discover",
+        "test_coverage",
+        "scaffold_test_preview",
+        "scaffold_test_apply"
+      ],
+      "description": "Discover tests, run coverage, scaffold new tests for gaps."
+    },
+    {
+      "name": "SRP Analysis \u0026 Type Extraction",
+      "toolSequence": [
+        "get_cohesion_metrics",
+        "find_shared_members",
+        "extract_type_preview",
+        "extract_type_apply",
+        "build_workspace"
+      ],
+      "description": "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."
+    },
+    {
+      "name": "Consumer Impact Analysis",
+      "toolSequence": [
+        "find_consumers",
+        "find_references_bulk",
+        "impact_analysis"
+      ],
+      "description": "Find all types that depend on a type or interface, understand dependency kinds (constructor, field, parameter, base type), then assess change impact."
+    },
+    {
+      "name": "Interface Extraction \u0026 Migration",
+      "toolSequence": [
+        "extract_interface_preview",
+        "extract_interface_apply",
+        "bulk_replace_type_preview",
+        "bulk_replace_type_apply",
+        "build_workspace"
+      ],
+      "description": "Extract an interface from a concrete type, then bulk-replace all parameter/field references to use the interface instead. Verify with build."
+    },
+    {
+      "name": "Type Organization",
+      "toolSequence": [
+        "move_type_to_file_preview",
+        "move_type_to_file_apply",
+        "build_workspace"
+      ],
+      "description": "Move types from multi-type files into their own dedicated files for better code organization."
+    },
+    {
+      "name": "Batch Diagnostic Fix",
+      "toolSequence": [
+        "list_analyzers",
+        "project_diagnostics",
+        "fix_all_preview",
+        "fix_all_apply",
+        "build_workspace"
+      ],
+      "description": "List available analyzers and rules, identify diagnostics, batch-fix all occurrences across the solution, then verify the build."
+    },
+    {
+      "name": "Flow Analysis for Refactoring",
+      "toolSequence": [
+        "analyze_data_flow",
+        "analyze_control_flow",
+        "extract_type_preview",
+        "extract_type_apply"
+      ],
+      "description": "Analyze data and control flow to understand variable dependencies and reachability before extracting code into new types or methods."
+    },
+    {
+      "name": "Quick Validation",
+      "toolSequence": [
+        "compile_check",
+        "validate_workspace",
+        "analyze_snippet",
+        "evaluate_csharp"
+      ],
+      "description": "Use in-memory compilation, scoped validation, snippet analysis, or script evaluation for rapid feedback without full builds."
+    },
+    {
+      "name": "Selection-Range Refactoring",
+      "toolSequence": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action",
+        "compile_check"
+      ],
+      "description": "Pass startLine/startColumn/endLine/endColumn to get_code_actions for selection-based refactorings: introduce parameter (expression \u2192 method parameter with call-site updates) and inline temporary variable. Preview, apply, then verify compilation."
+    }
+  ],
+  "summary": {
+    "catalogVersion": "2026.04",
+    "stableTools": 113,
+    "experimentalTools": 61,
+    "stableResources": 9,
+    "experimentalResources": 5,
+    "stablePrompts": 0,
+    "experimentalPrompts": 20
+  }
+}

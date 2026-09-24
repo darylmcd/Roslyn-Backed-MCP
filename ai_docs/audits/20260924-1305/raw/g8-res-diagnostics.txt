@@ -1,0 +1,23 @@
+{
+  "totalErrors": 0,
+  "totalWarnings": 0,
+  "totalInfo": 4405,
+  "compilerErrors": 0,
+  "analyzerErrors": 0,
+  "workspaceErrors": 0,
+  "returnedDiagnostics": 0,
+  "cap": 500,
+  "hasMore": false,
+  "paginationNote": null,
+  "severityFloor": "Warning",
+  "severityNote": "Resource omits Info-severity diagnostics by default. Use project_diagnostics with severity=\u0022Info\u0022 or omit the filter for full coverage.",
+  "workspaceDiagnostics": [],
+  "compilerDiagnostics": [],
+  "analyzerDiagnostics": [],
+  "_meta": {
+    "gateMode": "rw-lock",
+    "queuedMs": 0,
+    "heldMs": 19335,
+    "elapsedMs": 19336
+  }
+}

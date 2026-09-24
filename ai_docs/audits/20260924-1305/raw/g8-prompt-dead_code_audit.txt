@@ -1,0 +1,22 @@
+Perform a dead code audit for this workspace.
+
+**Project Filter:** RoslynMcp.Core
+**Unused Symbols Found:** 0
+
+**Sample Unused Symbols (first 20):**
+No unused symbols detected.
+
+Use this workflow:
+1. Review the unused symbols above. Consider whether each is truly unused or accessed via reflection, serialization, or external entry points.
+2. For symbols that are safe to remove, call `remove_dead_code_preview` with the symbol handles to preview the removal.
+3. Inspect the preview diff — check that no other code is affected.
+4. If the preview looks correct, call `remove_dead_code_apply` with the preview token.
+5. After removal, call `build_workspace` to verify compilation succeeds.
+6. Run `test_run` to confirm no tests break.
+7. If more unused symbols remain, repeat the process with `find_unused_symbols`.
+
+Be cautious with:
+- Public API types that may be used by external consumers
+- Types used via reflection (`find_reflection_usages` can help identify these)
+- Event handlers and interface implementations that appear unused but are wired at runtime
+- Serialization targets that are only instantiated during deserialization

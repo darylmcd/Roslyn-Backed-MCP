@@ -1,0 +1,64 @@
+{
+  "resourceName": "server_catalog_prompts_page",
+  "offset": 18,
+  "limit": 10,
+  "returnedCount": 2,
+  "totalCount": 20,
+  "hasMore": false,
+  "entries": [
+    {
+      "kind": "prompt",
+      "name": "session_undo",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for inspecting session mutations and undoing the last apply operation.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    },
+    {
+      "kind": "prompt",
+      "name": "refactor_loop",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt that walks an agent through the standard refactor \u2192 preview \u2192 apply-with-verify \u2192 validate_workspace loop using v1.17/v1.18 primitives.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "intent",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Natural-language refactor intent (e.g. \u0027rename GetUser to GetUserAsync and propagate to mappers\u0027)."
+        },
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null,
+      "deprecation": null
+    }
+  ],
+  "_meta": {
+    "queuedMs": 0,
+    "heldMs": 0,
+    "elapsedMs": 0
+  }
+}

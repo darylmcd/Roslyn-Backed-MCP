@@ -1,0 +1,26 @@
+{
+  "workspaceId": "9950bee8a72f4cca872b1f9c2c8a898d",
+  "loadedPath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\RoslynMcp.slnx",
+  "workspaceVersion": 1,
+  "snapshotToken": "9950bee8a72f4cca872b1f9c2c8a898d:1",
+  "loadedAtUtc": "2026-09-24T13:11:42.8122732\u002B00:00",
+  "projectCount": 6,
+  "documentCount": 905,
+  "isLoaded": true,
+  "isStale": false,
+  "workspaceDiagnosticCount": 0,
+  "workspaceErrorCount": 0,
+  "workspaceWarningCount": 0,
+  "isReady": true,
+  "analyzersReady": true,
+  "restoreRequired": false,
+  "buildRequired": false,
+  "restoreHint": null,
+  "solutionFileName": "RoslynMcp.slnx",
+  "_meta": {
+    "gateMode": "rw-lock",
+    "queuedMs": 5,
+    "heldMs": 2,
+    "elapsedMs": 10
+  }
+}

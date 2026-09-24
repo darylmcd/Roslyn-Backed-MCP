@@ -1,0 +1,78 @@
+[
+  {
+    "assemblyName": "RoslynMcp.Analyzers.ServerSurfaceCatalog",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\analyzers\\ServerSurfaceCatalogAnalyzer\\ServerSurfaceCatalogAnalyzer.csproj",
+    "isTestProject": false,
+    "name": "ServerSurfaceCatalogAnalyzer",
+    "outputType": "Library",
+    "projectReferences": [],
+    "targetFrameworks": [
+      "netstandard2.0"
+    ]
+  },
+  {
+    "assemblyName": "RoslynMcp.Core",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Core\\RoslynMcp.Core.csproj",
+    "isTestProject": false,
+    "name": "RoslynMcp.Core",
+    "outputType": "Library",
+    "projectReferences": [],
+    "targetFrameworks": [
+      "net10.0"
+    ]
+  },
+  {
+    "assemblyName": "RoslynMcp.Host.Stdio",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\RoslynMcp.Host.Stdio.csproj",
+    "isTestProject": false,
+    "name": "RoslynMcp.Host.Stdio",
+    "outputType": "Exe",
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Roslyn"
+    ],
+    "targetFrameworks": [
+      "net10.0"
+    ]
+  },
+  {
+    "assemblyName": "RoslynMcp.Roslyn",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Roslyn\\RoslynMcp.Roslyn.csproj",
+    "isTestProject": false,
+    "name": "RoslynMcp.Roslyn",
+    "outputType": "Library",
+    "projectReferences": [
+      "RoslynMcp.Core"
+    ],
+    "targetFrameworks": [
+      "net10.0"
+    ]
+  },
+  {
+    "assemblyName": "RoslynMcp.ShardDiscoveryFixtures",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\RoslynMcp.ShardDiscoveryFixtures.csproj",
+    "isTestProject": true,
+    "name": "RoslynMcp.ShardDiscoveryFixtures",
+    "outputType": "Exe",
+    "projectReferences": [],
+    "targetFrameworks": [
+      "net10.0"
+    ]
+  },
+  {
+    "assemblyName": "RoslynMcp.Tests",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\RoslynMcp.Tests.csproj",
+    "isTestProject": true,
+    "name": "RoslynMcp.Tests",
+    "outputType": "Exe",
+    "projectReferences": [
+      "RoslynMcp.Core",
+      "RoslynMcp.Host.Stdio",
+      "RoslynMcp.Roslyn",
+      "ServerSurfaceCatalogAnalyzer"
+    ],
+    "targetFrameworks": [
+      "net10.0"
+    ]
+  }
+]

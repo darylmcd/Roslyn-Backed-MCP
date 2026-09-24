@@ -1,0 +1,208 @@
+{
+  "load": {
+    "ms": 99,
+    "isError": true,
+    "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"workspace_load\",\r\n  \"message\": \"Parameter \\u0027path\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"workspace_load(path: string \\u2014 Absolute path to a .sln, .slnx, or .csproj file)\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"load\",\r\n    \"queuedMs\": 4,\r\n    \"heldMs\": 12,\r\n    \"elapsedMs\": 61\r\n  }\r\n}"
+  },
+  "unknownArgs": [
+    {
+      "name": "workspace_list",
+      "args": [
+        "__bogus"
+      ],
+      "isError": false,
+      "ms": 5,
+      "text": "{\r\n  \"count\": 0,\r\n  \"workspaces\": [],\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 3\r\n  }\r\n}"
+    },
+    {
+      "name": "workspace_status",
+      "args": [
+        "workspaceId",
+        "__bogus"
+      ],
+      "isError": true,
+      "ms": 10,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"workspace_status\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"workspace_"
+    },
+    {
+      "name": "symbol_search",
+      "args": [
+        "workspaceId",
+        "query",
+        "__bogus"
+      ],
+      "isError": true,
+      "ms": 27,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    },
+    {
+      "name": "find_references",
+      "args": [
+        "workspaceId",
+        "metadataName",
+        "limitt"
+      ],
+      "isError": true,
+      "ms": 2,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"find_references\",\r\n  \"message\": \"Parameter \\u0027workspaceId\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"find_refe"
+    },
+    {
+      "name": "compile_check",
+      "args": [
+        "workspaceId",
+        "severty"
+      ],
+      "isError": true,
+      "ms": 1,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"compile_check\",\r\n  \"message\": \"Parameter \\u0027workspaceId\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"compile_che"
+    }
+  ],
+  "outputSchema": [
+    {
+      "name": "server_heartbeat",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 3
+    },
+    {
+      "name": "server_info",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 22
+    },
+    {
+      "name": "workspace_drift_check",
+      "isError": true,
+      "hasStructured": false,
+      "structuredEqualsText": false,
+      "errors": [
+        "no structuredContent"
+      ],
+      "ms": 1
+    },
+    {
+      "name": "workspace_health",
+      "isError": true,
+      "hasStructured": false,
+      "structuredEqualsText": false,
+      "errors": [
+        "no structuredContent"
+      ],
+      "ms": 1
+    },
+    {
+      "name": "workspace_list",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 1
+    },
+    {
+      "name": "workspace_readiness_report",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 8
+    },
+    {
+      "name": "workspace_status",
+      "isError": true,
+      "hasStructured": false,
+      "structuredEqualsText": false,
+      "errors": [
+        "no structuredContent"
+      ],
+      "ms": 2
+    },
+    {
+      "name": "workspace_support_bundle",
+      "isError": false,
+      "hasStructured": true,
+      "structuredEqualsText": false,
+      "errors": [],
+      "ms": 8
+    }
+  ],
+  "noSchemaStructured": [
+    {
+      "name": "symbol_search",
+      "hasStructured": false,
+      "isError": true
+    },
+    {
+      "name": "project_graph",
+      "hasStructured": false,
+      "isError": true
+    },
+    {
+      "name": "compile_check",
+      "hasStructured": false,
+      "isError": true
+    }
+  ],
+  "idempotent_symbol_search": true,
+  "edge": [
+    {
+      "name": "symbol_search",
+      "args": "{\"query\":\"\"}",
+      "isError": true,
+      "ms": 1,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"query\":\"ü漢字🙂\"}",
+      "isError": true,
+      "ms": 0,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"query\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "isError": true,
+      "ms": 2,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    },
+    {
+      "name": "get_source_text",
+      "args": "{\"filePath\":\"C:/nonexistent/x.cs\"}",
+      "isError": true,
+      "ms": 1,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_source_text\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_source_"
+    },
+    {
+      "name": "get_source_text",
+      "args": "{\"filePath\":\"../../../../Windows/win.ini\"}",
+      "isError": true,
+      "ms": 0,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"get_source_text\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"get_source_"
+    },
+    {
+      "name": "find_references",
+      "args": "{\"filePath\":\"<repo>/.worktrees/surface-test-20260924T130517Z-ro/samples/SampleSolution/SampleSol",
+      "isError": true,
+      "ms": 2,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"find_references\",\r\n  \"message\": \"Parameter \\u0027workspaceId\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"find_refe"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"query\":\"Calc\",\"limit\":-3}",
+      "isError": true,
+      "ms": 1,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    },
+    {
+      "name": "symbol_search",
+      "args": "{\"query\":\"Calc\",\"limit\":2147483647}",
+      "isError": true,
+      "ms": 3,
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Parameter \\u0027arguments\\u0027 is invalid. Check that all required parameters are provided and values match the expected types.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search"
+    }
+  ]
+}

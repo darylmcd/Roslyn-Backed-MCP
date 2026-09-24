@@ -1,0 +1,85 @@
+// Pass 2: loaded-workspace probes — unknown args, outputSchema/structuredContent conformance, idempotency.
+// Usage: node harness2.mjs <outDir> <label> <root> <slnPath> -- <command> [args...]
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+const argv = process.argv.slice(2);
+const sep = argv.indexOf('--');
+const [outDir, label, root, sln] = argv.slice(0, sep);
+const [cmd, ...cmdArgs] = argv.slice(sep + 1);
+const child = spawn(cmd, cmdArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
+const errs = []; child.stderr.on('data', d => errs.push(d));
+let buf = '', nextId = 1; const pending = new Map();
+const rootUri = 'file:///' + root.replace(/\\/g, '/');
+child.stdout.on('data', d => {
+  buf += d.toString('utf8'); let nl;
+  while ((nl = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (!line) continue;
+    const msg = JSON.parse(line);
+    if (msg.method && msg.id !== undefined) { child.stdin.write(JSON.stringify(msg.method === 'roots/list' ? { jsonrpc: '2.0', id: msg.id, result: { roots: [{ uri: rootUri }] } } : { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'unsupported' } }) + '\n'); continue; }
+    if (msg.method) continue;
+    const p = pending.get(msg.id); if (p) { pending.delete(msg.id); p(msg); }
+  }
+});
+const rpc = (method, params, t = 120000) => new Promise(res => { const id = nextId++; const t0 = Date.now(); const tm = setTimeout(() => res({ timeout: true }), t); pending.set(id, m => { clearTimeout(tm); res({ ...m, ms: Date.now() - t0 }); }); child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
+const call = (name, args) => rpc('tools/call', { name, arguments: args });
+const txt = r => r.result?.content?.map(c => c.text).join('') ?? JSON.stringify(r.error ?? r);
+
+function check(schema, value, p = '$') {
+  const errors = [];
+  if (!schema || typeof schema !== 'object') return errors;
+  const types = schema.type ? (Array.isArray(schema.type) ? schema.type : [schema.type]) : null;
+  const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : typeof value;
+  if (types && !types.includes(actual) && !(actual === 'integer' && types.includes('number'))) errors.push(`${p}: expected ${types} got ${actual}`);
+  if (actual === 'object' && schema.properties) {
+    for (const r of schema.required || []) if (!(r in value)) errors.push(`${p}: missing required '${r}'`);
+    for (const [k, v] of Object.entries(value)) if (schema.properties[k]) errors.push(...check(schema.properties[k], v, `${p}.${k}`));
+      else if (schema.additionalProperties === false) errors.push(`${p}: extra property '${k}'`);
+  }
+  if (actual === 'array' && schema.items) value.slice(0, 5).forEach((v, i) => errors.push(...check(schema.items, v, `${p}[${i}]`)));
+  return errors;
+}
+
+(async () => {
+  const log = {};
+  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: { roots: {} }, clientInfo: { name: 'audit-h2', version: '1' } });
+  child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  const tools = (await rpc('tools/list', {})).result.tools;
+  const load = await call('workspace_load', { path: sln });
+  let wsId; try { wsId = JSON.parse(txt(load)).workspaceId; } catch {}
+  log.load = { ms: load.ms, isError: load.result?.isError, wsId, text: txt(load).slice(0, 1500) };
+  // unknown args on a LIVE workspace
+  log.unknownArgs = [];
+  for (const [name, args] of [['workspace_list', { __bogus: 1 }], ['workspace_status', { workspaceId: wsId, __bogus: 1 }], ['symbol_search', { workspaceId: wsId, query: 'Calculator', __bogus: 1 }], ['find_references', { workspaceId: wsId, metadataName: 'SampleLib.Calculator', limitt: 1 }], ['compile_check', { workspaceId: wsId, severty: 'Error' }]]) {
+    const r = await call(name, args);
+    log.unknownArgs.push({ name, args: Object.keys(args), isError: r.result?.isError ?? !!r.error, ms: r.ms, text: txt(r).slice(0, 300) });
+  }
+  // outputSchema conformance
+  log.outputSchema = [];
+  for (const t of tools.filter(t => t.outputSchema)) {
+    const args = t.inputSchema.required?.includes('workspaceId') || t.inputSchema.properties?.workspaceId ? { workspaceId: wsId } : {};
+    const r = await call(t.name, args);
+    const sc = r.result?.structuredContent;
+    let parsed; try { parsed = JSON.parse(txt(r)); } catch { parsed = undefined; }
+    log.outputSchema.push({ name: t.name, isError: r.result?.isError ?? false, hasStructured: sc !== undefined, structuredEqualsText: sc !== undefined && JSON.stringify(sc) === JSON.stringify(parsed), errors: sc !== undefined ? check(t.outputSchema, sc).slice(0, 10) : ['no structuredContent'], ms: r.ms });
+  }
+  // structuredContent on a sample of tools WITHOUT outputSchema
+  log.noSchemaStructured = [];
+  for (const name of ['symbol_search', 'project_graph', 'compile_check']) {
+    const r = await call(name, { workspaceId: wsId, query: 'Calc' });
+    log.noSchemaStructured.push({ name, hasStructured: r.result?.structuredContent !== undefined, isError: r.result?.isError });
+  }
+  // idempotency of read-only tools
+  const a = txt(await call('symbol_search', { workspaceId: wsId, query: 'Calc' })).replace(/"_meta"[\s\S]*$/, '');
+  const b = txt(await call('symbol_search', { workspaceId: wsId, query: 'Calc' })).replace(/"_meta"[\s\S]*$/, '');
+  log.idempotent_symbol_search = a === b;
+  // edge inputs
+  log.edge = [];
+  for (const [name, args] of [['symbol_search', { workspaceId: wsId, query: '' }], ['symbol_search', { workspaceId: wsId, query: 'ü漢字🙂' }], ['symbol_search', { workspaceId: wsId, query: 'a'.repeat(20000) }], ['get_source_text', { workspaceId: wsId, filePath: 'C:/nonexistent/x.cs' }], ['get_source_text', { workspaceId: wsId, filePath: '../../../../Windows/win.ini' }], ['find_references', { workspaceId: wsId, filePath: sln, line: -1, column: -5 }], ['symbol_search', { workspaceId: wsId, query: 'Calc', limit: -3 }], ['symbol_search', { workspaceId: wsId, query: 'Calc', limit: 2147483647 }]]) {
+    const r = await call(name, args);
+    log.edge.push({ name, args: JSON.stringify(args).slice(0, 120), isError: r.result?.isError ?? !!r.error, ms: r.ms, text: txt(r).slice(0, 300) });
+  }
+  await call('workspace_close', { workspaceId: wsId });
+  fs.writeFileSync(path.join(outDir, `${label}-pass2.json`), JSON.stringify(log, null, 2));
+  child.stdin.end(); setTimeout(() => { fs.writeFileSync(path.join(outDir, `${label}-pass2-stderr.txt`), Buffer.concat(errs).toString()); child.kill(); process.exit(0); }, 2000);
+})();

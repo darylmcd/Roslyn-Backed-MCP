@@ -1,0 +1,2243 @@
+{
+  "audit_run": {
+    "id": "20260924-1305",
+    "scope": "mcp",
+    "since": "full",
+    "repo": "Roslyn-Backed-MCP",
+    "commit": "e24a48a41b431f11c9de936dd5f943925bf2b727",
+    "server_audited": "4.2.1+4eba260102e41747ecaa75511acd8ff0f119b75d",
+    "started_at": "2026-09-24T13:05:17Z",
+    "finished_at": "2026-09-24T14:17:56Z",
+    "tiers_run": [
+      0,
+      1,
+      2
+    ],
+    "parallel_subagents": 7
+  },
+  "findings": [
+    {
+      "fingerprint": "8c59bc99b785f0b7c2a7ad21b84535469c8a33e7",
+      "title": "Resolve cache-compilation symbols back to the solution before SymbolFinder in unused/dead-field/coupling analysis",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/CompilationCache.cs:61",
+        "src/RoslynMcp.Roslyn/Services/SourceGeneratorCompilation.cs:46",
+        "src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs:970",
+        "src/RoslynMcp.Roslyn/Services/CouplingAnalysisService.cs:102"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Resolve cache-compilation symbols back to the solution before SymbolFinder in unused/dead-field/coupling analysis. find_dead_fields(W_RO, projectName=RoslynMcp.Host.Stdio) → s_index/AnalysisTools/s_currentReleaseVersion usageKind=never-read, safelyRemovable=true; all three are read (PromptParameterIndex.cs:32, ServerSurfaceCatalog.cs:32, :105). Introduced by #1402 (92ac5a9c).",
+      "acceptance": [
+        "find_dead_fields on a project with materialized generator output (RoslynMcp.Host.Stdio) no longer reports ServerSurfaceCatalog.s_allTools / PromptParameterIndex.s_index / s_currentReleaseVersion as never-read or safelyRemovable",
+        "find_unused_symbols no longer reports ServerSurfaceCatalog.Tool (100+ call sites) as unused",
+        "get_coupling_metrics reports non-zero Ca for Host.Stdio types referenced from other types",
+        "Regression test loads a fixture project with a source generator and asserts a referenced field is not reported dead"
+      ],
+      "suggested_approach": "Fix generator-project blindness in unused-symbol, dead-field and coupling analysis — map symbols from the generator-rerun compilation back to the Solution before SymbolFinder so live code stops reporting zero references.",
+      "dependencies": [],
+      "backlog_id": "compilation-cache-generator-rerun-blinds-unused-analysis",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "cd8e2d86d2672ba5db17af21b7e448f6c3ed0c1d",
+      "title": "find_type_consumers / find_type_mutations return empty for generator projects",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TypeConsumersService.cs:111",
+        "src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs:375"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "find_type_consumers / find_type_mutations return empty for generator projects. find_type_consumers(SurfaceEntry) → count 0 vs find_references totalCount 61; find_type_mutations(HostProcessMetadataStore) → mutatingMembers [] although WriteCurrent calls File.WriteAllText/Move/Delete.",
+      "acceptance": [
+        "find_type_consumers(RoslynMcp.Host.Stdio.Catalog.SurfaceEntry) returns the consumers find_references/find_consumers report (61 refs / 13 types)",
+        "find_type_mutations(HostProcessMetadataStore) reports WriteCurrent with MutationScopes containing IO",
+        "Regression tests cover a generator-bearing fixture project"
+      ],
+      "suggested_approach": "Fix find_type_consumers and find_type_mutations empty results in generator projects — resolve the type through the solution compilation instead of the cache's generator-rerun compilation.",
+      "dependencies": [
+        "compilation-cache-generator-rerun-blinds-unused-analysis"
+      ],
+      "backlog_id": "find-type-consumers-mutations-generator-blind",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "0455b300c230fa5ca4a55082f4d855310a42cf54",
+      "title": "Unconfigured sanctioned roots surface as 'Parameter path is invalid'",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs:153"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Unconfigured sanctioned roots surface as 'Parameter path is invalid'. Raw harness, server without roots env: workspace_load{path:<repo>/.../SampleSolution.slnx} → InvalidArgument \"Parameter 'path' is invalid. Check that all required parameters are provided and values match the expected types.\"; cause only on stderr ('Filesystem boundary is not configured'). Reproduces on 4.2.1 and HEAD e24a48a4.",
+      "acceptance": [
+        "With ROSLYNMCP_SANCTIONED_ROOTS unset (fail-closed), workspace_load on a valid absolute .slnx returns a message naming ROSLYNMCP_SANCTIONED_ROOTS / ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN, not 'Parameter path is invalid … expected types'",
+        "The message does not echo the requested path (redaction contract preserved)",
+        "Regression test asserts the envelope message for the no-roots branch"
+      ],
+      "suggested_approach": "Return an actionable error when no sanctioned roots are configured — throw a public, path-free message naming ROSLYNMCP_SANCTIONED_ROOTS instead of the generic 'Parameter path is invalid'.",
+      "dependencies": [],
+      "backlog_id": "sanctioned-roots-unconfigured-error-misattributed",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "76a40aae703427058664ff65fa79f700e0e5aa04",
+      "title": "prompts/get rejects spec string args for int params and never names the bad argument",
+      "severity": "High",
+      "category": "C3",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Middleware/PromptBindingStageAdapter.cs:81"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "prompts/get rejects spec string args for int params and never names the bad argument. prompts/get consumer_impact {line:\"19\",column:\"21\"} → -32602 Invalid parameters; same with JSON numbers → OK. prompts/get review_file {} → message never names filePath (PromptBindingStageAdapter.cs:73/85/90).",
+      "acceptance": [
+        "prompts/get consumer_impact {line:\"19\",column:\"21\"} renders (MCP types prompt argument values as strings)",
+        "All 5 int-arg prompts (consumer_impact, explain_error, guided_extract_method, refactor_and_validate, suggest_refactoring) render with string args",
+        "Missing/invalid-arg errors name the parameter (e.g. \"Missing required argument 'filePath' for prompt 'review_file'\")"
+      ],
+      "suggested_approach": "Accept spec-compliant string prompt arguments and name the offending argument — coerce string values for int/int? prompt params and include the parameter name in binding errors.",
+      "dependencies": [],
+      "backlog_id": "prompt-argument-binding-spec-strings-and-names",
+      "first_seen_run": "20260924-1305",
+      "check": "C3"
+    },
+    {
+      "fingerprint": "b6945ca28e98ade899d985fd1cfe2f86155a8dce",
+      "title": "split_service_with_di_preview facade deletes every other type in the file",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:843"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "split_service_with_di_preview facade deletes every other type in the file. split_service_with_di_preview on G4Fixture.cs → facade diff deletes IG4Shape, G4Square, G4Circle, G4Point, G4Consumer and drops ': IG4Fixture' + const (not applied — data loss).",
+      "acceptance": [
+        "Splitting a service whose file also declares other types/interfaces keeps those declarations, base list and constants intact",
+        "Preview output compiles (compile_check 0 new errors) for a multi-type source file",
+        "Regression test covers a file with an interface + 2 classes"
+      ],
+      "suggested_approach": "Stop split_service_with_di_preview from deleting sibling types — rewrite the facade in place in the original compilation unit instead of emitting a fresh unit holding only the split class.",
+      "dependencies": [],
+      "backlog_id": "split-service-with-di-facade-drops-sibling-types",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "dbaabe7b931ce87c57b69593d417a8a2490ce2af",
+      "title": "change_signature_preview op=add skips later declarations/callsites in the same document",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs:71"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "change_signature_preview op=add skips later declarations/callsites in the same document. change_signature_preview op=add IG4Shape.Area → CS0535 on G4Square/G4Circle after apply; callsiteUpdates=1 of 5.",
+      "acceptance": [
+        "op=add on an interface member whose implementations live in the same file updates every implementation (no CS0535)",
+        "callsiteUpdates equals find_references callsite count",
+        "Regression test: interface + 2 implementations + 3 callers in one file"
+      ],
+      "suggested_approach": "Make change_signature_preview op=add update every implementation and callsite in a shared document — track spans against the edited tree (or batch edits per document) so later nodes are not skipped.",
+      "dependencies": [],
+      "backlog_id": "change-signature-add-skips-same-document-impls",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "2e938dabbe440f05d13419b592e936bf0e1a7fa5",
+      "title": "restructure_preview splices captures without parentheses (silent semantic change)",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RestructureService.cs:410"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "restructure_preview splices captures without parentheses (silent semantic change). `__a__ + 1` → `__a__ * 3` produced `count + count * 3` (compiles clean, wrong semantics). PlaceholderSubstituter.VisitIdentifierName returns captured.WithTriviaFrom(node) with no parenthesization.",
+      "acceptance": [
+        "Pattern `__a__ + 1` → goal `__a__ * 3` applied to `count + 1` style input where __a__ binds a binary expression yields a parenthesized result",
+        "Regression test asserts precedence is preserved for binary/conditional captures"
+      ],
+      "suggested_approach": "Parenthesize captured expressions when restructure_preview substitutes placeholders — wrap captures where operator precedence could change meaning so rewrites never silently alter semantics.",
+      "dependencies": [],
+      "backlog_id": "restructure-preview-splice-without-parenthesization",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "a98cd6ed270ff821536e61e8c3afaa67272a8950",
+      "title": "replace_invocation_preview rewrites calls inside the replacement method (infinite recursion)",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs:235"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "replace_invocation_preview rewrites calls inside the replacement method (infinite recursion). replace_invocation_preview → SummarizeV2 body becomes SummarizeV2(verbose,title,count): infinite recursion, 0 diagnostics (reverted).",
+      "acceptance": [
+        "Replacing Summarize(...) with SummarizeV2(...) where SummarizeV2 delegates to Summarize leaves SummarizeV2's body unchanged",
+        "Regression test asserts no callsite inside the replacement symbol is rewritten"
+      ],
+      "suggested_approach": "Exclude the replacement method's own body from replace_invocation_preview — skip callsites inside the new target so the rewrite cannot create self-recursion.",
+      "dependencies": [],
+      "backlog_id": "replace-invocation-rewrites-replacement-body",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "b5109fff51a3ea402d8a65d0748c0bdf4ae09104",
+      "title": "apply_composite_preview applies are not undoable; revert_last_apply undoes the previous op",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:117"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "apply_composite_preview applies are not undoable; revert_last_apply undoes the previous op. revert_last_apply after composite seq37 reverted seq36 create_file instead. CompositeApplyOrchestrator has no CaptureBeforeApply call (only EditorConfigService, EditService, ProjectMutationService, RefactoringService do).",
+      "acceptance": [
+        "revert_last_apply immediately after apply_composite_preview restores the composite's files",
+        "It does not touch the previous apply",
+        "workspace_changes records the composite apply"
+      ],
+      "suggested_approach": "Capture undo state in CompositeApplyOrchestrator — call UndoService.CaptureBeforeApply so revert_last_apply reverts the composite apply, not the unrelated operation before it.",
+      "dependencies": [],
+      "backlog_id": "apply-composite-no-undo-capture",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "14db82872f99795fb29aadab4ca853f1c07d42a9",
+      "title": "change_type_namespace_preview emits uncompilable namespace syntax",
+      "severity": "High",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs:371"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "change_type_namespace_preview emits uncompilable namespace syntax. change_type_namespace_preview emits 'namespaceSampleLib.Shapes{'; apply_with_verify → 8 errors, rolled back.",
+      "acceptance": [
+        "Preview on a file-scoped-namespace file produces compilable output (apply_with_verify status=applied)",
+        "Regression test covers file-scoped and block-scoped sources"
+      ],
+      "suggested_approach": "Emit valid namespace syntax in change_type_namespace_preview — normalize the new block namespace and match the file's file-scoped style instead of splicing 'namespaceX{' beside a file-scoped namespace.",
+      "dependencies": [],
+      "backlog_id": "change-type-namespace-emits-invalid-syntax",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "c4bb79bf8d34d95dbf40a0ca9cdc5860110b6e7f",
+      "title": "Server-authored ArgumentException messages are redacted to a generic template",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ParameterValidation.cs:60",
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:43",
+        "src/RoslynMcp.Roslyn/Services/SnippetAnalysisService.cs:154",
+        "src/RoslynMcp.Host.Stdio/Tools/ScriptingTools.cs:33"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Server-authored ArgumentException messages are redacted to a generic template. symbol_search{limit:-3} → \"Parameter '<unknown>' is invalid…\"; analyze_snippet bogus kind same; ValidatePagination (17 callers) throws paramless ArgumentException; 18 single-line paramless throws repo-wide. go_to_definition(line=99999)/enclosing_symbol(line=0) → \"Parameter 'line' is invalid…\" without the file line count.",
+      "acceptance": [
+        "symbol_search{limit:-3} → message names 'limit' and the valid range",
+        "analyze_snippet{kind:'bogusKind'} names the valid kinds",
+        "evaluate_csharp{timeoutSeconds:-1} states 'must be greater than 0'",
+        "An analyzer or test guards against new plain `throw new ArgumentException(msg)` without paramName in Host.Stdio tool paths"
+      ],
+      "suggested_approach": "Throw PublicArgumentException with a parameter name from ParameterValidation — out-of-range offset/limit errors must name the parameter and bound instead of \"Parameter '<unknown>' is invalid\".",
+      "dependencies": [],
+      "backlog_id": "argument-exception-throw-sites-lack-public-message",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "1140dea211dd81f98cc61219deaa09bd966db865",
+      "title": "Actionable InvalidOperationException messages redacted to 'operation is not valid in the current state'",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:152",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs:674",
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:94",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:1197"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Actionable InvalidOperationException messages redacted to 'operation is not valid in the current state'. 12 refusal paths across Phases 6/10/12/13 returned \"The operation is not valid in the current state. Check the tool contract and retry.\" (set_project_property_preview, move_type_to_project_preview, create_file_preview existing file, scaffold_first_test_file_preview, format_range_preview, change_signature reorder, get_prompt_text unknown prompt, catalog-diff pair). Also misleading advice: build_project/test_run(projectName=NoSuchProject) and rename_preview(fabricated symbolHandle) → \"The operation is not valid for the current workspace state. Call workspace_reload if the state is stale, then retry.\" (real cause: project/symbol not found, WorkspaceProjectResolver.cs:21).",
+      "acceptance": [
+        "set_project_property_preview(OutputPath) returns 'Property OutputPath is not supported. Allowed properties: …'",
+        "move_type_to_project_preview cycle refusal names the cycle",
+        "format_range_preview refusal and change_signature reorder errors state the reason",
+        "get_prompt_text unknown prompt lists available prompts (PromptShimTools.cs:67)",
+        "build_project/test_run with an unknown projectName name the loaded projects and never advise workspace_reload"
+      ],
+      "suggested_approach": "Carry public messages for expected InvalidOperation refusals — introduce a public-message exception for server-authored refusals (cycle, allowlist, duplicate ref, existing file) so ToolErrorHandler stops genericizing them.",
+      "dependencies": [],
+      "backlog_id": "invalid-operation-throw-sites-lack-public-message",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "19b7fbb16f9fe2fc270549619ed4953c06c9277e",
+      "title": "workspace_close publishes test seams getProcessesByName / processDrainTimeout",
+      "severity": "Medium",
+      "category": "C4",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:143"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "workspace_close publishes test seams getProcessesByName / processDrainTimeout. tools/list: getProcessesByName {\"$comment\":\"Unsupported .NET type\",\"not\":true}, processDrainTimeout {TimeSpan pattern}, both undocumented; comment at WorkspaceTools.cs:141 claims 'no [Description], so the schema omits it' — false. Client-settable drain timeout.",
+      "acceptance": [
+        "tools/list workspace_close inputSchema has only workspaceId and drainProcesses",
+        "WorkspaceCloseDrainTests still inject a fake enumerator and short timeout via an internal overload",
+        "A schema test asserts no tool exposes a param with $comment 'Unsupported .NET type' or without a description"
+      ],
+      "suggested_approach": "Remove test seams from the workspace_close MCP schema — move getProcessesByName/processDrainTimeout off the tool method so clients cannot see or set them.",
+      "dependencies": [],
+      "backlog_id": "workspace-close-schema-leaks-test-seams",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "3488e22f00752896921d0ba05b95aba831c8df5c",
+      "title": "Misspelled/unknown tool arguments are silently ignored",
+      "severity": "Medium",
+      "category": "C4",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Misspelled/unknown tool arguments are silently ignored. 175/175 inputSchemas lack additionalProperties:false; compile_check{…,severty:'Error'} and workspace_status{…,__bogus:1} succeed; the filter is silently dropped.",
+      "acceptance": [
+        "compile_check{workspaceId, severty:'Error'} returns InvalidArgument naming 'severty' and suggesting 'severity' (or succeeds with an explicit unknownArguments warning)",
+        "inputSchema advertises additionalProperties:false if rejection is chosen",
+        "Regression test covers one read and one write tool"
+      ],
+      "suggested_approach": "Reject or warn on unknown tool arguments — fail with the list of accepted names (or add a _meta warning) so a typo like 'severty' no longer silently drops a filter.",
+      "dependencies": [],
+      "backlog_id": "unknown-tool-arguments-silently-ignored",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "2355dd88ae62d7615e30feaebfd4c4afe8ca41b2",
+      "title": "find_implementations(IDisposable) returns 0 even source-anchored (regression)",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:350"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "find_implementations(IDisposable) returns 0 even source-anchored (regression). find_implementations(WorkspaceManager.cs:22:59 IDisposable) → count 0 + hint 'Source-anchor the query instead'. Prior audit 2026-05-31 (find-implementations-corlib-metadataname-zero): source-anchored returned 17 — now 0.",
+      "acceptance": [
+        "find_implementations at a source position on an IDisposable token returns the workspace's implementers (26 by rg in W_RO)",
+        "The metadataName path either returns them too or its hint points at a path that works",
+        "Regression test pins both locator kinds"
+      ],
+      "suggested_approach": "Let source-anchored find_implementations bypass the corlib-root guard — the hint tells callers to source-anchor, but that path also short-circuits to 0.",
+      "dependencies": [],
+      "backlog_id": "find-implementations-corlib-guard-blocks-source-anchor",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "929293a094cb5b8f293d3af5dc0ee43a4f9026a7",
+      "title": "get_di_registrations reports a constructor argument as the implementation type of factory lambdas",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs:535"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_di_registrations reports a constructor argument as the implementation type of factory lambdas. ServiceCollectionExtensions.cs:87 → implementationType 'System.Net.Http.IHttpClientFactory'; :97 → 'ILogger<WorkspaceCacheStore>'.",
+      "acceptance": [
+        "AddSingleton(sp => new NuGetVersionChecker(sp.GetRequiredService<IHttpClientFactory>(), …)) reports NuGetVersionChecker",
+        "Doc comment at :525 corrected",
+        "Regression test covers ctor-arg and forward (sp => sp.GetRequiredService<T>()) shapes"
+      ],
+      "suggested_approach": "Resolve factory-lambda implementation types from the created object — use the object-creation type or a directly returned forward instead of the first nested GetRequiredService<T>.",
+      "dependencies": [],
+      "backlog_id": "di-registrations-factory-lambda-impl-misattributed",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "27f255ad9178e7e24f028610e089abe4c95bb2b8",
+      "title": "find_duplicate_helpers flags work-doing call chains as BCL re-wraps",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs:784"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "find_duplicate_helpers flags work-doing call chains as BCL re-wraps. ≥5 of 10 spot-checked hits (BuildEntries, FormatIdentityDrift, AppendRow, FormatVersionCheckStatus…) are false positives, all confidence=high.",
+      "acceptance": [
+        "BuildEntries => GetParameters().Where().Select().ToArray() is not reported",
+        "A true re-wrap (x => Enumerable.ToArray(x)) still is",
+        "False-positive rate on the 10-sample spot check ≤ 10%"
+      ],
+      "suggested_approach": "Require parameter forwarding before find_duplicate_helpers reports a re-wrap — check the outermost call only forwards the helper's parameters instead of classifying by outermost invocation.",
+      "dependencies": [],
+      "backlog_id": "find-duplicate-helpers-outermost-call-false-positive",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "9ef428c651d2ff2ffdf02203876ac7c2629f33a5",
+      "title": "get_coupling_metrics summary counts only the returned page",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/CouplingAnalysisTools.cs:33"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_coupling_metrics summary counts only the returned page. summary=true → totalTypes=100, projectCount=3, Core absent; limit=5000 → 1504 types, 6 projects.",
+      "acceptance": [
+        "summary=true (default limit 100) reports totalTypes 1504 and 6 projects on W_RO",
+        "Regression test with limit < type count"
+      ],
+      "suggested_approach": "Compute get_coupling_metrics project rollups over all types — aggregate before applying limit so summary totals are not silently truncated to the top-N page.",
+      "dependencies": [],
+      "backlog_id": "coupling-summary-rollup-limited-to-page",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "83b3fb32e048abdd18614d862a7b0058b6d84ced",
+      "title": "Unknown projectName returns empty results instead of an error",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/ProjectFilterHelper.cs:7"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Unknown projectName returns empty results instead of an error. project_diagnostics(projectName=NoSuchProject, summary) → all zeros; compile_check same input → InvalidArgument.",
+      "acceptance": [
+        "project_diagnostics(projectName=NoSuchProject) → InvalidArgument naming the loaded projects",
+        "list_analyzers same",
+        "Regression test"
+      ],
+      "suggested_approach": "Reject unknown projectName in project_diagnostics and list_analyzers — reuse compile_check's 'No loaded project matches' error so a typo does not read as a clean project.",
+      "dependencies": [],
+      "backlog_id": "unknown-projectname-silently-empty",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "45f7ac99321a4d211ff358b5e86f385b33dafc85",
+      "title": "find_dead_locals flags outer locals captured and written by a local function",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs:1247"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "find_dead_locals flags outer locals captured and written by a local function. 4 of 5 hits are false positives: outer local captured by a local function (containingMethod=ObservingHandler).",
+      "acceptance": [
+        "WorkspaceReloadedEventTests.cs:60 'observed' is not reported",
+        "Regression test with a local function writing a captured outer local later read by the outer method"
+      ],
+      "suggested_approach": "Skip outer locals in find_dead_locals' per-local-function data-flow pass — only report locals whose ContainingSymbol is the analyzed body owner.",
+      "dependencies": [],
+      "backlog_id": "find-dead-locals-captured-by-local-function",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "0ca14e72d29f34785b540fdf696fb0ba1759f420",
+      "title": "callers_callees drops callers in field/property initializers",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/SymbolServiceHelpers.cs:25"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "callers_callees drops callers in field/property initializers. callers_callees(Tool 434:33) → totalCallers 0 vs find_references 175; impact_analysis 175 refs / 0 affected declarations.",
+      "acceptance": [
+        "callers_callees(ServerSurfaceCatalog.Tool) reports the initializer callers (find_references: 175)",
+        "find_references containingMember is non-null for initializer refs",
+        "impact_analysis affected declarations > 0 for Tool"
+      ],
+      "suggested_approach": "Resolve the containing symbol of field initializers via the declarator — GetDeclaredSymbol(FieldDeclarationSyntax) returns null, so callers_callees and impact_analysis lose every initializer caller.",
+      "dependencies": [],
+      "backlog_id": "callers-callees-field-initializer-callers-dropped",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "01adef16a27bf8a81f606ece5981b22c4898ae1d",
+      "title": "analyze_data_flow / analyze_control_flow silently analyze a narrower range",
+      "severity": "Medium",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs:247"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "analyze_data_flow / analyze_control_flow silently analyze a narrower range. analyze_control_flow(MutationAnalysisService.cs 667-725) → analyzed only 711-725 (next method); returns 672/675 dropped, no warning.",
+      "acceptance": [
+        "A range spanning two methods returns a warning + effective range (or InvalidArgument)",
+        "Single-method ranges unchanged",
+        "Regression test"
+      ],
+      "suggested_approach": "Report the effective range (or refuse) when flow analysis narrows a multi-member selection — add effectiveStartLine/EndLine plus a warning instead of silently analyzing the largest block.",
+      "dependencies": [],
+      "backlog_id": "flow-analysis-silent-region-narrowing",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "72bec79259ea0d4dfefd6252ac2739bd5b9a2af5",
+      "title": "build/test tool failures are returned as successful results",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:454"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "build/test tool failures are returned as successful results. test_related(filePath,line) → {\"error\":true,\"category\":\"InvalidArgument\"…} delivered with isError=false; symbol_info same error → isError=true.",
+      "acceptance": [
+        "test_related / build_workspace / build_project / test_discover / test_run / test_related_files error paths return isError=true",
+        "Regression test asserts isError on one induced failure per tool family"
+      ],
+      "suggested_approach": "Set isError on build/test tool failure envelopes — route ValidationTools' catch-all through StructuredResultProjector.BuildErrorResult so clients see a failed call.",
+      "dependencies": [],
+      "backlog_id": "validation-tools-error-envelope-not-iserror",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "d24fd2887ca23af3adac6be3853a4c4bbc2aaad8",
+      "title": "fix_all_preview cannot find code-fix providers shipped in analyzer assemblies",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs:334"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "fix_all_preview cannot find code-fix providers shipped in analyzer assemblies. fix_all_preview CA1822/MSTEST0046 → 'No code fix provider' while code_fix_preview on the same diagnostic succeeds. AnalyzerFileReference.Display is a simple name, not a path.",
+      "acceptance": [
+        "fix_all_preview(diagnosticId=CA1822) finds MarkMembersAsStaticCodeFix (code_fix_preview already does)",
+        "Regression test with an analyzer-package diagnostic"
+      ],
+      "suggested_approach": "Load fix-all providers from analyzer references by full path — replace Assembly.LoadFrom(afr.Display) with the FullPath/GetAssembly route the code-fix registry uses.",
+      "dependencies": [],
+      "backlog_id": "fix-all-analyzer-assembly-provider-not-found",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "5a70604b26d51b125f51f4b64f8cb6daf1a56493",
+      "title": "format_range_preview refuses whenever whole-document formatting changes line count anywhere",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs:1197"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "format_range_preview refuses whenever whole-document formatting changes line count anywhere. format_range_preview range 60-80 refused because of a blank line at line 8.",
+      "acceptance": [
+        "format_range_preview(60-80) succeeds when an unrelated blank line at line 8 would be removed by full-document format",
+        "Edits stay inside the requested range",
+        "Regression test"
+      ],
+      "suggested_approach": "Format only the requested span in format_range_preview — use Formatter.FormatAsync with the span instead of splicing a whole-document format that refuses on unrelated line-count changes.",
+      "dependencies": [],
+      "backlog_id": "format-range-refuses-on-unrelated-line-count-change",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "81100c5924477ee1d5f5f5839bc107f567f0eb1e",
+      "title": "extract_type_preview breaks interface contracts, publicizes fields, reformats whole file",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TypeExtractionService.cs:127"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "extract_type_preview breaks interface contracts, publicizes fields, reformats whole file. extract_type_preview moving Lookup → CS0535; fields made public; whole file NormalizeWhitespace'd.",
+      "acceptance": [
+        "Moving a member that implements an interface is refused or leaves a forwarder (no CS0535)",
+        "Private fields stay private (:1024)",
+        "Unchanged regions are not reformatted (no whole-file NormalizeWhitespace)"
+      ],
+      "suggested_approach": "Guard extract_type_preview against moving interface members and preserve accessibility — refuse (or keep a forwarder for) interface-implementing members, keep field accessibility, format only changed nodes.",
+      "dependencies": [],
+      "backlog_id": "extract-type-breaks-interfaces-and-publicizes-fields",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "b4557b6b3ca0a6b58a340cb0f0d1aa2bf7bd0e46",
+      "title": "set_diagnostic_severity / set_editorconfig_option writes are not reflected until manual reload",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:397"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "set_diagnostic_severity / set_editorconfig_option writes are not reflected until manual reload. CA1861 still Info after set_diagnostic_severity silent; isStale=false.",
+      "acceptance": [
+        "After set_diagnostic_severity(CA1861, silent), project_diagnostics no longer reports CA1861 without a manual workspace_reload",
+        "workspace_status isStale=true (or version bumped) after the write"
+      ],
+      "suggested_approach": "Invalidate the workspace after editorconfig writes — mark the workspace stale (or update AnalyzerConfigDocuments) so the next diagnostic call honors the new severity.",
+      "dependencies": [],
+      "backlog_id": "editorconfig-write-no-workspace-invalidation",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "3d1acb4267d75f70d492899cd21ebc381a5a5474",
+      "title": "extract_method_preview emits string? return that trips CS8603",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:257"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "extract_method_preview emits string? return that trips CS8603. extract_method_preview → private string? BuildLine → CS8603 after apply.",
+      "acceptance": [
+        "Extracting a region returning a non-null var string yields 'string' (no CS8603)",
+        "Regression test with nullable context enabled"
+      ],
+      "suggested_approach": "Use the returned expression's flow state for extract_method's return type — use the nullable flow state of the returned value, not the var local's declared annotation.",
+      "dependencies": [],
+      "backlog_id": "extract-method-nullable-return-flow-state",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "67cc1e3a162a24137e28cda566ba32b1c410443c",
+      "title": "replace_string_literals_preview rewrites the target const's own initializer",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs:162"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "replace_string_literals_preview rewrites the target const's own initializer. const ReportPrefix = G4Fixture.ReportPrefix (CS0110) after preview.",
+      "acceptance": [
+        "Replacing \"report:\" with G4Fixture.ReportPrefix leaves the const declaration unchanged",
+        "Regression test"
+      ],
+      "suggested_approach": "Skip the target constant's own initializer in replace_string_literals_preview — the rewrite currently produces `const X = Type.X` (CS0110).",
+      "dependencies": [],
+      "backlog_id": "replace-string-literals-const-self-reference",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "f1850e2a289b4bb2bd01b3f233725016e8b7d5b4",
+      "title": "record_field_add_with_satellites_preview inserts satellite lines outside initializers",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:930"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "record_field_add_with_satellites_preview inserts satellite lines outside initializers. 'Evictions = this.Evictions,' inserted after the one-line Clone → CS1519 (reverted).",
+      "acceptance": [
+        "A one-line Clone() => new(){…} gets the new member inside the initializer (no CS1519)",
+        "Snapshot/Reset satellites are updated",
+        "Regression test"
+      ],
+      "suggested_approach": "Insert satellite updates syntactically in record_field_add_with_satellites_preview — edit the object initializer node instead of line-based insertion, and cover Snapshot/Reset satellites.",
+      "dependencies": [],
+      "backlog_id": "record-satellites-line-insert-outside-initializer",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "4f624aa0a7369c895dfffde27bc9260e2f493ca1",
+      "title": "Apply tools report 'workspace reloaded' for tokens from the other preview store",
+      "severity": "Medium",
+      "category": "C2",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs:394",
+        "src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:67",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceForkApplyService.cs:169"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Apply tools report 'workspace reloaded' for tokens from the other preview store. scaffold_test_batch_preview token → apply_composite_preview 'PreviewTokenStale: workspace was reloaded'; same token → preview_multi_file_edit_apply succeeds (3 files). symbol_refactor token → preview_multi_file_edit_apply reported 'reloaded'. Consumed token: rename_apply(token) twice → 2nd call \"expired because the workspace was reloaded\" (it was consumed).",
+      "acceptance": [
+        "apply_composite_preview(<scaffold_test_batch token>) either applies it or names preview_multi_file_edit_apply",
+        "workspace_fork_apply accepts project-mutation tokens or its description drops 'any *_preview'",
+        "Descriptions of scaffold_test_batch_preview, dependency_inversion_preview, extract_interface_cross_project_preview, move_type_to_project_preview, symbol_refactor_preview name their apply tool",
+        "Re-applying a consumed token says the token was already applied, not that the workspace reloaded"
+      ],
+      "suggested_approach": "Route preview tokens to the right store and document each preview's apply tool — a token from the wrong store must say 'redeem with <tool>' instead of a false 'workspace was reloaded'.",
+      "dependencies": [],
+      "backlog_id": "preview-token-store-mismatch-false-stale",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "117ff90e35652e69c745ae11059fdd2f9b765dd0",
+      "title": "migrate_package / remove_central_package_version drop PackageVersion entries other projects need",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/PackageMigrationOrchestrator.cs:164",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs:517"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "migrate_package / remove_central_package_version drop PackageVersion entries other projects need. migrate_package_preview diff removes <PackageVersion Include=\"MSTest.TestAdapter\"> from <repo>/Directory.Packages.props although tests/RoslynMcp.Tests and 2 more csproj reference it; warnings:null.",
+      "acceptance": [
+        "migrate_package_preview(MSTest.TestAdapter→X) on the sample workspace keeps the central entry (or emits a warning naming tests/RoslynMcp.Tests)",
+        "remove_central_package_version_preview same",
+        "Regression test with an out-of-workspace consumer"
+      ],
+      "suggested_approach": "Keep shared central PackageVersion entries when projects outside the workspace consume them — scan sibling project files under the Directory.Packages.props root, or warn, before removing.",
+      "dependencies": [],
+      "backlog_id": "migrate-package-removes-shared-central-version",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "5100a068ac823d3151898b40ea8d8acb5a9707fa",
+      "title": "build_project reports errorCount 0 for project-level NU/MSB errors",
+      "severity": "Medium",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/DotnetOutputParser.cs:12"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "build_project reports errorCount 0 for project-level NU/MSB errors. build_project(SampleLib.Tests) → exitCode 1, stdout 'SampleLib.Tests.csproj : error NU1201: …', errorCount 0, diagnostics [].",
+      "acceptance": [
+        "build_project on a project failing with NU1201 reports errorCount ≥1 with the diagnostic id",
+        "Regression test with a captured NU1201 output line"
+      ],
+      "suggested_approach": "Parse location-less MSBuild/NuGet errors in DotnetOutputParser — accept 'project.csproj : error NU1201: …' lines so a failed build never reports errorCount 0.",
+      "dependencies": [],
+      "backlog_id": "build-output-parser-drops-locationless-errors",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "61fe86cecf051abd8a7b21e71e4a58b6891f4746",
+      "title": "NetAnalyzers package + SDK built-in analyzers both run (every CA diagnostic reported twice)",
+      "severity": "Medium",
+      "category": "C6",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "Directory.Build.props:27"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "NetAnalyzers package + SDK built-in analyzers both run (every CA diagnostic reported twice). csc SARIF build of SampleLib: 74 results / 38 distinct; CA1822 64 = 32 unique ×2; list_analyzers 10 analyzers vs 6 assemblies. Package 10.0.401 ships no build/ props to disable the SDK copy (EnableNETAnalyzers defaults true).",
+      "acceptance": [
+        "Only one NetAnalyzers copy is loaded (list_analyzers analyzer count drops; csc SARIF has no duplicate CA results)",
+        "project_diagnostics CA counts halve (e.g. CA1822 64 → 32 on the sample)",
+        "CI analyzer severity gates still pass"
+      ],
+      "suggested_approach": "Drop the redundant Microsoft.CodeAnalysis.NetAnalyzers package reference — the SDK already injects the identical 10.0.401 analyzers, so every CA diagnostic is reported twice.",
+      "dependencies": [],
+      "backlog_id": "netanalyzers-package-duplicates-sdk-analyzers",
+      "first_seen_run": "20260924-1305",
+      "check": "C6"
+    },
+    {
+      "fingerprint": "ff3b0d801c4c705ed3d1e4bbdd3b85ac0b8c0a57",
+      "title": "Server runs duplicate analyzer assemblies twice",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/CompilationCache.cs:247"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Server runs duplicate analyzer assemblies twice. CA1822 reported 64 times for 32 unique occurrences on the sample solution.",
+      "acceptance": [
+        "A project referencing the same analyzer assembly twice reports each diagnostic once",
+        "Regression test"
+      ],
+      "suggested_approach": "Dedupe analyzer references by assembly identity in CompilationCache — duplicate analyzer DLLs (SDK + package) currently double every diagnostic the server reports.",
+      "dependencies": [],
+      "backlog_id": "compilation-cache-dedupe-analyzer-references",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "c34f105789fa75e53cfe74feed00e77d129564ff",
+      "title": "initialize advertises logging capability but server_info says logging:false",
+      "severity": "Low",
+      "category": "C6",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs:150"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "initialize advertises logging capability but server_info says logging:false. initialize → capabilities.logging {}; logging/setLevel → {} success; server_info capabilities.logging=false; no notifications/message observed.",
+      "acceptance": [
+        "initialize.capabilities.logging and server_info.capabilities.logging agree",
+        "If advertised, logging/setLevel changes what is emitted"
+      ],
+      "suggested_approach": "Align the logging capability between initialize and server_info — either emit notifications/message or stop advertising capabilities.logging.",
+      "dependencies": [],
+      "backlog_id": "logging-capability-parity",
+      "first_seen_run": "20260924-1305",
+      "check": "C6"
+    },
+    {
+      "fingerprint": "07638723541da044333ae8e3cf07955603d3c3a9",
+      "title": "nuget_vulnerability_scan annotated openWorldHint=false despite network access",
+      "severity": "Low",
+      "category": "C4",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/SecurityTools.cs:60"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "nuget_vulnerability_scan annotated openWorldHint=false despite network access. annotations openWorldHint=false; tool shells `dotnet list package --vulnerable` against NuGet. No tool in the 174-tool surface sets openWorldHint=true.",
+      "acceptance": [
+        "tools/list nuget_vulnerability_scan annotations.openWorldHint=true",
+        "Catalog/annotation parity test still passes"
+      ],
+      "suggested_approach": "Set OpenWorld=true on nuget_vulnerability_scan — it queries NuGet feeds; audit other network-touching tools for the same annotation.",
+      "dependencies": [],
+      "backlog_id": "nuget-vulnerability-scan-openworld-annotation",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "832c50a20a0ea906cdcda3ec5d6f5d9026750335",
+      "title": "Catalog paging resources clamp invalid offset/limit instead of erroring",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs:272"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Catalog paging resources clamp invalid offset/limit instead of erroring. catalog/tools/-1/0 → OK offset 0 limit 1; catalog/tools/0/999 → limit 200; catalog/tools/abc → generic redacted error.",
+      "acceptance": [
+        "roslyn://server/catalog/tools/-1/0 → -32602 naming offset/limit",
+        "…/tools/abc/5 names 'offset must be an integer'"
+      ],
+      "suggested_approach": "Reject out-of-range catalog page slots — negative offset or limit outside 1-200 should return InvalidArgument like tool-side ValidatePagination, not a silently clamped page.",
+      "dependencies": [],
+      "backlog_id": "catalog-page-slots-silently-clamped",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "0c4e8cf012a273508f1fda3a8b3145b464b51818",
+      "title": "catalog-diff description advertises a version pair that is rejected",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs:80",
+        "src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs:299"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "catalog-diff description advertises a version pair that is rejected. catalog-diff/v2.3.1/v2.3.2 → 'Unsupported catalog diff. Request one of the version pairs advertised by the catalog resource.' — the catalog lists no pairs; only 2.3.1→current/latest works.",
+      "acceptance": [
+        "Every pair named in the resource description resolves",
+        "The InvalidArgument message names the supported pairs"
+      ],
+      "suggested_approach": "Make catalog-diff advertise only accepted pairs — fix the description's 'v2.3.1 -> v2.3.2' example, list supported pairs in the catalog, and surface the valid pair in the error.",
+      "dependencies": [],
+      "backlog_id": "catalog-diff-advertised-pair-rejected",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "5093bd83054fadc4832af454d333d49982bad040",
+      "title": "Only 8 of 175 tools declare outputSchema / structuredContent",
+      "severity": "Low",
+      "category": "C4",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 1,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Only 8 of 175 tools declare outputSchema / structuredContent. tools/list: outputSchema on 8 tools (server_*, workspace_* status family), all 8 validate clean; 167 return JSON as text only.",
+      "acceptance": [
+        "The named tools declare outputSchema and return structuredContent that validates",
+        "Schema drift test covers them"
+      ],
+      "suggested_approach": "Add outputSchema + structuredContent to the high-traffic read tools — start with symbol_search, find_references, compile_check and project_diagnostics.",
+      "dependencies": [],
+      "backlog_id": "tool-output-schema-coverage",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "754cfb2e0b51d8a37fc4d66bc11706de3d9ab3ae",
+      "title": "get_source_text NotFound does not say the file isn't in the workspace",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:568"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_source_text NotFound does not say the file isn't in the workspace. get_source_text nonexistent path → \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\"",
+      "acceptance": [
+        "get_source_text{filePath:'C:/nonexistent/x.cs'} names the file-not-in-workspace cause",
+        "Path traversal inputs still reveal nothing about the host filesystem"
+      ],
+      "suggested_approach": "Return a file-specific NotFound for get_source_text and location-based lookups — say the path is not a document in the loaded workspace instead of the generic identifier message.",
+      "dependencies": [],
+      "backlog_id": "get-source-text-notfound-message-generic",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "d52ebb556332173c71d4b61cb1a2b0c75a2da3f5",
+      "title": "get_di_registrations omits TryAdd* but reports totalCountMeaning=complete",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs:181"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_di_registrations omits TryAdd* but reports totalCountMeaning=complete. get_di_registrations(Host.Stdio) → 14, totalCountMeaning 'complete'; source has 17.",
+      "acceptance": [
+        "Host.Stdio count matches source (17 incl. TryAddSingleton at ServiceCollectionExtensions.cs:80-82) or totalCountMeaning != complete",
+        "Schema text mentions the behavior"
+      ],
+      "suggested_approach": "Include TryAdd* registrations (or report partial) in get_di_registrations — the default view drops them while claiming completeness.",
+      "dependencies": [],
+      "backlog_id": "di-registrations-tryadd-omitted-claims-complete",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "b61b9a938663ace99ca5095e7b9c0548325a475b",
+      "title": "semantic_grep comment-scope hits report trivia start, not match position",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs:233"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "semantic_grep comment-scope hits report trivia start, not match position. semantic_grep('TODO|FIXME', scope=comments) → RecordFieldAdditionImpactDto.cs line 64 col 4; actual TODO at line 70, not in snippet.",
+      "acceptance": [
+        "TODO at line 70 inside a doc comment starting at line 64 reports line 70 with the TODO in the snippet"
+      ],
+      "suggested_approach": "Report the match offset for semantic_grep comment hits — return the matched line/column and snippet instead of the trivia start and its first 200 chars.",
+      "dependencies": [],
+      "backlog_id": "semantic-grep-comment-hit-location",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "85a8fa4af1548f9c1b9a12957134eff19a8edf97",
+      "title": "schemaHint first-sentence trim cuts 'e.g.' and drops constraints",
+      "severity": "Low",
+      "category": "C4",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 1,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:788"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "schemaHint first-sentence trim cuts 'e.g.' and drops constraints. recommend_workflow(task='') → schemaHint '…Natural-language task, e.g)'.",
+      "acceptance": [
+        "recommend_workflow(task='') schemaHint contains the full example",
+        "evaluate_csharp hint keeps 'Must be > 0'"
+      ],
+      "suggested_approach": "Stop TrimToFirstSentence from splitting on abbreviations — treat 'e.g.'/'i.e.' as non-terminal and keep constraint sentences like 'Must be > 0'.",
+      "dependencies": [],
+      "backlog_id": "schema-hint-truncates-on-abbreviation",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "36314e3d6f0c5e370967f889e91e4a3d54f09d2d",
+      "title": "analyze_snippet declaredSymbols omits fields, enums, events, ctors",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SnippetAnalysisService.cs:105"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "analyze_snippet declaredSymbols omits fields, enums, events, ctors. analyze_snippet(kind=members) → CS0414 on _name but declaredSymbols lacks it.",
+      "acceptance": [
+        "kind=members snippet with `private string _name` lists the field",
+        "Enums/events/ctors listed"
+      ],
+      "suggested_approach": "Collect field variables and other member kinds in analyze_snippet declaredSymbols — walk FieldDeclaration.Declaration.Variables and include enums, delegates, events, constructors.",
+      "dependencies": [],
+      "backlog_id": "analyze-snippet-declared-symbols-drop-fields",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "85f11d540210271af3e8bf5c8bb0c3db80acf1e5",
+      "title": "source_generated_documents conflates MSBuild .g.cs with generator output and lacks _meta",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:840"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "source_generated_documents conflates MSBuild .g.cs with generator output and lacks _meta. source_generated_documents(W_RW) → bare array of 3 GlobalUsings.g.cs (MSBuild), no _meta.",
+      "acceptance": [
+        "GlobalUsings.g.cs entries carry origin=msbuild (or are excluded)",
+        "Response is an object with _meta"
+      ],
+      "suggested_approach": "Tag source_generated_documents entries by origin and wrap in an envelope — distinguish generator output from obj//*.g.cs MSBuild files and return an object so _meta is injected.",
+      "dependencies": [],
+      "backlog_id": "source-generated-documents-origin-and-meta",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "4ac4fee0fa32d0d4d48e0695953102a2bb8ea9c4",
+      "title": "discover_capabilities returns the full surface for an unknown category",
+      "severity": "Low",
+      "category": "C3",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Prompts/PromptMessageBuilder.cs:87",
+        "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.AnalysisWorkflows.cs:133"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "discover_capabilities returns the full surface for an unknown category. discover_capabilities{taskCategory:'nonsense-category'} → 'capabilities relevant to nonsense-category: Tools (174)…'.",
+      "acceptance": [
+        "taskCategory='nonsense' lists valid categories",
+        "Rendered text no longer claims every tool needs a workspaceId"
+      ],
+      "suggested_approach": "Reject or flag unknown taskCategory in discover_capabilities — replace the `_ => true` fallback and fix the false 'All tools require a workspaceId' line.",
+      "dependencies": [],
+      "backlog_id": "discover-capabilities-unknown-category-matches-all",
+      "first_seen_run": "20260924-1305",
+      "check": "C3"
+    },
+    {
+      "fingerprint": "5dd2b4efbfe07371b32c63cca2e1afbe8832f90f",
+      "title": "roslyn://workspace/{id}/status/verbose lacks readiness fields the summary has",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Resources/WorkspaceResources.cs:64"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "roslyn://workspace/{id}/status/verbose lacks readiness fields the summary has. status has isReady/analyzersReady/restoreHint/solutionFileName/workspaceErrorCount; status/verbose has none of them.",
+      "acceptance": [
+        "status/verbose keys ⊇ status keys"
+      ],
+      "suggested_approach": "Make status/verbose a superset of status — include isReady, analyzersReady, restoreHint, solutionFileName and error counts in the verbose resource.",
+      "dependencies": [],
+      "backlog_id": "workspace-status-verbose-not-superset",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "cd6559a26b5406f26496e6c61b3f25dd8be32490",
+      "title": "analyze_dependencies prompt keeps 50 low-value external nodes",
+      "severity": "Low",
+      "category": "C3",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.cs:247"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "analyze_dependencies prompt keeps 50 low-value external nodes. Rendered nodes = 50 external namespaces (typeCount 0); RoslynMcp.Host.Stdio.Tools appears in cycles but not nodes.",
+      "acceptance": [
+        "Rendered prompt includes every namespace that appears in the cycles list",
+        "External namespaces with typeCount 0 rank last"
+      ],
+      "suggested_approach": "Rank analyze_dependencies prompt nodes before capping — prefer project namespaces and cycle members over zero-type external namespaces.",
+      "dependencies": [],
+      "backlog_id": "analyze-dependencies-prompt-unranked-node-cap",
+      "first_seen_run": "20260924-1305",
+      "check": "C3"
+    },
+    {
+      "fingerprint": "9ed307fbcf3e9674df05ed76c772f0d5d49ee480",
+      "title": "get_prompt_text description cites a nonexistent list_prompts",
+      "severity": "Low",
+      "category": "C3",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/PromptShimTools.cs:57"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_prompt_text description cites a nonexistent list_prompts. promptName description: 'Use list_prompts on the resources channel…'.",
+      "acceptance": [
+        "Descriptions at :47 and :57 name prompts/list or roslyn://server/catalog/prompts/{offset}/{limit}"
+      ],
+      "suggested_approach": "Fix get_prompt_text's description to reference prompts/list — 'list_prompts' is neither a tool nor a resource.",
+      "dependencies": [],
+      "backlog_id": "get-prompt-text-description-cites-list-prompts",
+      "first_seen_run": "20260924-1305",
+      "check": "C3"
+    },
+    {
+      "fingerprint": "d1445cc49a929f9219dc18338650be6a19288cd9",
+      "title": "project_diagnostics cold scan 25 s and default page ~190 KB",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/DiagnosticProjectAnalyzer.cs:70"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "project_diagnostics cold scan 25 s and default page ~190 KB. project_diagnostics(limit=20) cold elapsedMs=24902 (budget 15 s); default limit=200 ≈190 KB; diagnostics resource cold 19.3 s.",
+      "acceptance": [
+        "Default response < 100 KB on the 905-doc solution",
+        "Cold elapsed documented or reduced below 15 s"
+      ],
+      "suggested_approach": "Cut project_diagnostics cold cost and default payload — lower the default limit or default to summary so the first call stays within budget and under 100 KB.",
+      "dependencies": [],
+      "backlog_id": "project-diagnostics-cold-scan-over-budget",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "63673c0cb81d763a2e683cd14be20c039767fe0a",
+      "title": "get_namespace_dependencies circularOnly returns edges not on any cycle",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:316"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "get_namespace_dependencies circularOnly returns edges not on any cycle. circularOnly=true returns Host.Stdio.Tools→Core.Models (34), which is on no cycle.",
+      "acceptance": [
+        "circularOnly=true returns only edges within a strongly connected component"
+      ],
+      "suggested_approach": "Filter circularOnly by edge-on-cycle, not endpoint-in-cycle — Tools→Core.Models is returned although it is on no cycle.",
+      "dependencies": [],
+      "backlog_id": "namespace-deps-circular-only-edge-leak",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "1b2bf3939df599c2ce4f5eb2d7bea2f1d627f61d",
+      "title": "diagnostic_details returns the raw MessageFormat with {0}",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/DiagnosticService.cs:132"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "diagnostic_details returns the raw MessageFormat with {0}. CS0414 → description \"The field '{0}' is assigned but its value is never used\".",
+      "acceptance": [
+        "CS0414 description names the field"
+      ],
+      "suggested_approach": "Format diagnostic_details description with the diagnostic's arguments — prefer diagnostic.GetMessage() before falling back to the descriptor MessageFormat.",
+      "dependencies": [],
+      "backlog_id": "diagnostic-details-unformatted-description",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "336583db758575b5c13c69bdcb2ece58edd0ed00",
+      "title": "test_related finds no tests for private members",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:309"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "test_related finds no tests for private members. test_related(ClassifyValueTypeMutation 498:28) → 0; test_related(ParameterObjectService) → 45.",
+      "acceptance": [
+        "test_related(ParameterObjectService.ClassifyValueTypeMutation) returns the type's related tests (45)"
+      ],
+      "suggested_approach": "Fall back to the containing type's tests in test_related for private/internal members — the member-only sweep never leaves its own file.",
+      "dependencies": [],
+      "backlog_id": "test-related-private-member-no-container-fallback",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "b31ebb7e5922211a2306f3bd35ac8dea958038ae",
+      "title": "trace_exception_flow ranks catch(Exception) equal to nearer base catches",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/ExceptionFlowService.cs:172"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "trace_exception_flow ranks catch(Exception) equal to nearer base catches. trace(PublicInvalidOperationException, max 5) → 5× catch(System.Exception) although 9 catch(InvalidOperationException) sites exist. Prior trace-exception-flow-no-throwsite-half partially fixed (throw sites now present).",
+      "acceptance": [
+        "trace(PublicInvalidOperationException) lists catch(InvalidOperationException) sites before catch(Exception)",
+        "countOmitted reported per list"
+      ],
+      "suggested_approach": "Rank trace_exception_flow catches by inheritance distance — nearer base-type catches must outrank catch(Exception); split countOmitted per list.",
+      "dependencies": [],
+      "backlog_id": "trace-exception-flow-catch-ranking",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "e7357a0e6773d4e84d48d14630371a9ee2609a5f",
+      "title": "callers_callees counts doc-comment cref references as callers",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:367"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "callers_callees counts doc-comment cref references as callers. callers include `<see cref=\"GetCompilationAsync\"/>` at ICompilationCache.cs:32,101.",
+      "acceptance": [
+        "callers of ICompilationCache.GetCompilationAsync exclude ICompilationCache.cs:32,101 crefs"
+      ],
+      "suggested_approach": "Exclude doc-comment cref references from callers_callees — filter references inside documentation trivia.",
+      "dependencies": [],
+      "backlog_id": "callers-callees-counts-cref-as-caller",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "1a43b94db280a0f9ca7c6a961b9f48c11d434824",
+      "title": "find_type_consumers truncates without totalCount/hasMore",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TypeConsumersService.cs:93"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "find_type_consumers truncates without totalCount/hasMore. find_type_consumers(limit=3) → {count:3, items:[…]} with no totalCount/hasMore; 34 files exist.",
+      "acceptance": [
+        "limit=3 on a 34-file type returns totalCount 34, hasMore true"
+      ],
+      "suggested_approach": "Add totalCount/hasMore to find_type_consumers — truncation at limit is invisible, unlike the other reference tools.",
+      "dependencies": [],
+      "backlog_id": "find-type-consumers-no-pagination-metadata",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "7bf023361318edd01f37861c962cb51d96b65820",
+      "title": "workspace_changes lists reverted/rolled-back applies as applied",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Core/Services/IChangeTracker.cs:17",
+        "src/RoslynMcp.Roslyn/Services/ChangeTracker.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "workspace_changes lists reverted/rolled-back applies as applied. seq 7/28/33 rolled back and 31/35/36 reverted are listed as plain applies; mixed path separators. validate_workspace(changedFilePaths=null) auto-scope lists G4Fixture.cs/G4CacheStore.cs/G4Triangle.cs twice (backslash vs forward-slash) — ChangeTracker stores unnormalized paths; validate_recent_git_changes has no dupes.",
+      "acceptance": [
+        "Entries reverted by revert_last_apply/revert_apply_by_sequence show status=reverted",
+        "apply_with_verify rollbacks show status=rolled_back",
+        "Path separators normalized",
+        "validate_workspace auto-scoped changedFilePaths has no separator-only duplicates"
+      ],
+      "suggested_approach": "Record revert and rollback outcomes in workspace_changes — add a status per entry so reverted and apply_with_verify rollbacks are distinguishable.",
+      "dependencies": [],
+      "backlog_id": "workspace-changes-missing-revert-status",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "325b86dc5d80986f26f05ab2c3132dca42873e3d",
+      "title": "bulk_replace_type_preview adds a using for the enclosing namespace",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs:114"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "bulk_replace_type_preview adds a using for the enclosing namespace. bulk_replace_type_preview adds 'using SampleLib;' inside namespace SampleLib.",
+      "acceptance": [
+        "No 'using SampleLib;' added inside namespace SampleLib"
+      ],
+      "suggested_approach": "Skip redundant usings in bulk_replace_type_preview — EnsureUsingDirective should ignore namespaces already in scope via the enclosing namespace.",
+      "dependencies": [],
+      "backlog_id": "bulk-replace-type-redundant-using",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "5054c38fd1fb7865339c85178052540fca7e9f98",
+      "title": "Refactor previews leave trivia defects",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs:133",
+        "src/RoslynMcp.Roslyn/Services/DeadCodeService.cs:129"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Refactor previews leave trivia defects. 'class G4Fixture\\n : IG4Fixture'; dead-code removal leaves a '    ' line.",
+      "acceptance": [
+        "extract_interface keeps 'class G4Fixture : IG4Fixture' on one line",
+        "remove_dead_code leaves no whitespace-only line"
+      ],
+      "suggested_approach": "Fix trivia nits in extract_interface and remove_dead_code previews — no newline before ' : IFoo', no whitespace-only residue line after removal.",
+      "dependencies": [],
+      "backlog_id": "refactor-preview-trivia-nits",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "284640eb84c93fff5a83e2192668142382e5afc1",
+      "title": "set_editorconfig_option adds a new [*.{cs,csx,cake}] section beside an existing [*.cs]",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:397"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "set_editorconfig_option adds a new [*.{cs,csx,cake}] section beside an existing [*.cs]. set_editorconfig_option added [*.{cs,csx,cake}] next to the existing [*.cs] section (Phase 6/7). Related prior #735 (duplicate key) — no duplicate key this run.",
+      "acceptance": [
+        "Setting a C# key on a file with [*.cs] edits that section",
+        "get_editorconfig_options reflects the value"
+      ],
+      "suggested_approach": "Reuse an existing matching section in set_editorconfig_option — write into [*.cs] when it exists instead of appending a parallel glob section.",
+      "dependencies": [],
+      "backlog_id": "set-editorconfig-option-creates-parallel-section",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "7863c992f2e6755338cecb958fc4bdcfc188c6ff",
+      "title": "scaffold_type_apply writes mixed CRLF/LF line endings",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TypeScaffolder.cs:192"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "scaffold_type_apply writes mixed CRLF/LF line endings. scaffold_type_apply → G6Widget.cs LF lines with 2 CRLF blank separators.",
+      "acceptance": [
+        "Scaffolded file has a single EOL style matching .editorconfig end_of_line"
+      ],
+      "suggested_approach": "Use one newline convention in TypeScaffolder stub assembly — AppendLine after stubs that already end in \\n mixes CRLF into LF files.",
+      "dependencies": [],
+      "backlog_id": "scaffold-type-mixed-line-endings",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "55cff73232307f1324f535cf7ef1b9834fd9946a",
+      "title": "New files written via TryApplyChanges get a BOM regardless of .editorconfig",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1031"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "New files written via TryApplyChanges get a BOM regardless of .editorconfig. move_type_to_file_apply → EF BB BF + CRLF with .editorconfig end_of_line=lf charset=utf-8; apply_composite writes no BOM but CRLF. Distinct from composite-apply-encoding-hygiene-consolidated (test/doc hygiene).",
+      "acceptance": [
+        "create_file_apply / move_type_to_file_apply / scaffold_*_apply honor .editorconfig charset and end_of_line",
+        "All apply paths agree on encoding"
+      ],
+      "suggested_approach": "Route new-file writes through SourceFileEncoding's no-BOM default — create_file/move_type_to_file/scaffold applies add a BOM despite charset=utf-8.",
+      "dependencies": [],
+      "backlog_id": "new-file-apply-writes-bom-ignoring-editorconfig",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "f477002f527524e37d8fb9605f269f0ad15d2625",
+      "title": "move_type_to_project_preview always adds a source→target reference",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:94"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "move_type_to_project_preview always adds a source→target reference. move_type_to_project_preview(TrulyUnusedConcreteType → SampleApp) → InvalidOperation (cycle).",
+      "acceptance": [
+        "Moving an unused type to SampleApp (which references SampleLib) succeeds",
+        "Target file named after the type, not the source file (:74)"
+      ],
+      "suggested_approach": "Add the source→target ProjectReference only when the source still uses the moved type — the unconditional reference makes moves to dependent projects always fail as cycles.",
+      "dependencies": [],
+      "backlog_id": "move-type-to-project-unconditional-reference",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "e4d25d8e02644711ab1466d066f86cc07d8a4e9c",
+      "title": "workspace_reload leaves restoreRequired=false after a restore failure",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "medium",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceSessionLoader.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "workspace_reload leaves restoreRequired=false after a restore failure. workspace_reload after NU1201 → workspaceErrorCount 1, isReady false, restoreRequired false, restoreHint null. Root cause not traced — confirm anchor during deepening.",
+      "acceptance": [
+        "After an NU1201 restore failure, workspace_reload reports restoreRequired=true with a restoreHint"
+      ],
+      "suggested_approach": "Set restoreRequired when project.assets.json carries restore errors — so autoRestore/restoreHint trigger after e.g. NU1201.",
+      "dependencies": [],
+      "backlog_id": "workspace-reload-restore-failure-not-flagged",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "f343f06a720bcc05dde3be53379168de460563b0",
+      "title": "manifest.json (MCPB 0.3) lists 8/174 tools and an unrunnable binary entry",
+      "severity": "Low",
+      "category": "C5",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "manifest.json"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "manifest.json (MCPB 0.3) lists 8/174 tools and an unrunnable binary entry. Checked field-by-field against MCPB MANIFEST.md v0.3 (no validator installed): required fields present; tools 8/174, no tools_generated; server.type binary entry_point 'RoslynMcp.Host.Stdio' not a bundled path; mcp_config.command 'roslynmcp' (global tool). Nothing packages it (docs/release-policy.md:75 'legacy DXT-style'); it ships inside the plugin payload.",
+      "acceptance": [
+        "Either manifest.json is removed (and verify-version-drift / release-policy updated) or it sets tools_generated/prompts_generated true with a valid ${__dirname} command",
+        "Decision recorded in docs/release-policy.md"
+      ],
+      "suggested_approach": "Retire or regenerate manifest.json — it lists 8 of 174 tools without tools_generated, declares no prompts, and its binary entry_point/command would not run as a bundle.",
+      "dependencies": [],
+      "backlog_id": "mcpb-manifest-stale-or-retire",
+      "first_seen_run": "20260924-1305",
+      "check": "C5"
+    },
+    {
+      "fingerprint": "1a198e123725d4fd93a8d341494692d1afb44ad6",
+      "title": "ConsumerAnalysisService breaks on cancellation and returns partial results",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs:51"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "ConsumerAnalysisService breaks on cancellation and returns partial results. Code read during Phase 3 (bad-code sighting, Directive #3).",
+      "acceptance": [
+        "Cancellation surfaces as OperationCanceledException / cancelled envelope, never a partial success"
+      ],
+      "suggested_approach": "Throw on cancellation in ConsumerAnalysisService — `if (ct.IsCancellationRequested) break;` returns a truncated consumer list as if complete.",
+      "dependencies": [],
+      "backlog_id": "consumer-analysis-cancellation-returns-partial",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "e976f611f613a9c5032827b97017b6731581138a",
+      "title": "SideEffectClassifier comments no longer match the code",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/SideEffectClassifier.cs:78"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "SideEffectClassifier comments no longer match the code. Code read during Phase 3 (bad-code sighting, Directive #3).",
+      "acceptance": [
+        "Comments at :78 and :82 describe current behavior"
+      ],
+      "suggested_approach": "Refresh stale comments in SideEffectClassifier — lines 78/82 describe behavior the classifier no longer has.",
+      "dependencies": [],
+      "backlog_id": "side-effect-classifier-stale-comments",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "ed381e0aadb69fe37094b624ec345df71f6f6c42",
+      "title": "Stale duplicate sample tree at repo root",
+      "severity": "Low",
+      "category": "C6",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "SampleSolution.slnx",
+        "SampleApp/Program.cs",
+        "SampleLib/AnimalService.cs",
+        "SampleLib.Tests/AnimalServiceTests.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Stale duplicate sample tree at repo root. git ls-files → 19 tracked files last changed in 157fdded (1.14.0); root Program.cs differs from samples/SampleSolution copy; no eng/.github/justfile references; 2026-08-25 logging audit run2 stdout shows 2 candidate solutions (RoslynMcp.slnx, SampleSolution.slnx).",
+      "acceptance": [
+        "Root SampleApp/, SampleLib/, SampleLib.Tests/, SampleSolution.slnx removed (19 tracked files)",
+        "Workspace auto-discovery at the repo root finds only RoslynMcp.slnx",
+        "Full test suite still passes (tests use samples/SampleSolution copies)"
+      ],
+      "suggested_approach": "Remove the stale root-level SampleSolution tree — SampleApp/, SampleLib/, SampleLib.Tests/ and SampleSolution.slnx duplicate samples/SampleSolution and make workspace auto-discovery see two candidate solutions.",
+      "dependencies": [],
+      "backlog_id": "root-sample-solution-tree-duplicate",
+      "first_seen_run": "20260924-1305",
+      "check": "C6"
+    },
+    {
+      "fingerprint": "c70816aa0fc96db5ba75b392c598249f4af2f5c9",
+      "title": "SharedExpressionProbe fixture comment is stale",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "samples/SampleSolution/SampleLib/SharedExpressionProbe.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "SharedExpressionProbe fixture comment is stale. Phase 6k runner read (bad-code sighting, Directive #3).",
+      "acceptance": [
+        "Fixture comment describes the current extract_shared_expression_to_helper probe shape"
+      ],
+      "suggested_approach": "Refresh the stale comment in the SharedExpressionProbe fixture — it no longer describes what the fixture exercises.",
+      "dependencies": [],
+      "backlog_id": "shared-expression-probe-stale-comment",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "dd6c6b9ca363fd098e273874e04d176217ac07b0",
+      "title": "NotFound closestMatches ranks anonymous-type members above the real symbol",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Helpers/SymbolResolver.cs:493"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "NotFound closestMatches ranks anonymous-type members above the real symbol. closestMatches = <>f__AnonymousType0.i/.p/.r, <>f__AnonymousType1.m/.n; real type absent. query.Contains(simpleName) scores 1-char names; ordinal tiebreak (:254) sorts <>f__ first. 7.8 s cold.",
+      "acceptance": [
+        "find_references(metadataName=RoslynMcp.Core.Services.IWorkspaceManager) suggests RoslynMcp.Roslyn.Contracts.IWorkspaceManager first",
+        "Compiler-generated symbols excluded from suggestions"
+      ],
+      "suggested_approach": "Rank closestMatches by name similarity, not raw substring — a wrong-namespace metadataName suggests <>f__AnonymousType props instead of the real type.",
+      "dependencies": [],
+      "backlog_id": "find-references-closest-matches-rank-anonymous-members",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "f6aa4d94360aa328539cb4bba9438c58114325f5",
+      "title": "test_run with a filter matching zero tests reports success silently",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TestRunnerService.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "test_run with a filter matching zero tests reports success silently. test_run(filter=NoMatch, compact) → total 0, succeeded true, no warning.",
+      "acceptance": [
+        "test_run(filter matching nothing) returns a warning (or distinct status) naming the filter"
+      ],
+      "suggested_approach": "Warn when a test_run filter matches zero tests — total=0/succeeded=true hides a typo'd filter; mirror validate_*'s test-zero-run verdict.",
+      "dependencies": [],
+      "backlog_id": "test-run-zero-match-filter-silent-success",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "2d5488df0108664682536f7d52ac58a7560657f8",
+      "title": "Alias deprecation metadata says removal in major 2 on a 4.x server",
+      "severity": "Low",
+      "category": "C2",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Catalog/ToolAliasDeprecation.cs:49"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Alias deprecation metadata says removal in major 2 on a 4.x server. get_test_coverage_map deprecation.earliestRemovalMajor=2; server 4.2.1.",
+      "acceptance": [
+        "earliestRemovalMajor is a future major (or the aliases are removed per policy)",
+        "A test asserts earliestRemovalMajor > current major"
+      ],
+      "suggested_approach": "Refresh alias deprecation metadata — get_test_coverage_map/get_symbol_outline/find_duplicated_code advertise earliestRemovalMajor 2 while the server is 4.2.1.",
+      "dependencies": [],
+      "backlog_id": "tool-alias-deprecation-stale-removal-major",
+      "first_seen_run": "20260924-1305",
+      "check": "C2"
+    },
+    {
+      "fingerprint": "477988a2518773fddebccbb7f1281f307024e163",
+      "title": "revert_apply_by_sequence cannot tell already-reverted from unknown",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/UndoService.cs:164"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "revert_apply_by_sequence cannot tell already-reverted from unknown. revert_apply_by_sequence(60) twice → 2nd: reason=unknown-sequence \"Either the sequence is from before this session, or the apply did not produce a revertable snapshot\".",
+      "acceptance": [
+        "revert_apply_by_sequence on a reverted seq returns reason=already-reverted"
+      ],
+      "suggested_approach": "Report already-reverted sequences distinctly in revert_apply_by_sequence — both cases return unknown-sequence with a misleading \"before this session\" message.",
+      "dependencies": [],
+      "backlog_id": "revert-by-sequence-already-reverted-indistinct",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "b90c05bd9ccb384ff0345638c8ed291657957260",
+      "title": "Status-family tools drop _meta from structuredContent",
+      "severity": "Low",
+      "category": "C4",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs:103",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:383"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Status-family tools drop _meta from structuredContent. Registered client shows no _meta for workspace_list, workspace_status, server_info, server_heartbeat, workspace_health, workspace_drift_check (structuredContent channel, UseStructuredContent=true).",
+      "acceptance": [
+        "workspace_status/workspace_list/server_info structuredContent carry _meta (or outputSchema documents where it is)"
+      ],
+      "suggested_approach": "Include _meta timing in structuredContent for the 8 outputSchema tools — clients rendering structuredContent see no elapsedMs for workspace_status, server_info and siblings.",
+      "dependencies": [],
+      "backlog_id": "structured-content-tools-omit-meta",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": "6d14aebd136703cad68154a46e68cf9d9d198d54",
+      "title": "test_reference_map denominator includes compiler-synthesized members",
+      "severity": "Low",
+      "category": "C1",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/TestReferenceMapService.cs"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "test_reference_map denominator includes compiler-synthesized members. test_reference_map(W_RW) → covered 6 / uncovered 148 (3.9%), uncovered includes AnimalRecord.<Clone>$(), PrintMembers, Cat.Cat(), IAnimal.Speak().",
+      "acceptance": [
+        "AnimalRecord.<Clone>$ / PrintMembers / implicit Cat() not in uncoveredSymbols"
+      ],
+      "suggested_approach": "Exclude implicit/synthesized members from test_reference_map coverage — record <Clone>$, PrintMembers, Deconstruct, implicit ctors and interface members deflate coveragePercent.",
+      "dependencies": [],
+      "backlog_id": "test-reference-map-counts-synthesized-members",
+      "first_seen_run": "20260924-1305",
+      "check": "C1"
+    },
+    {
+      "fingerprint": "13c17b7949eae0363f2eb1a367b6b7218232be68",
+      "title": "Symbol locator silently accepts mixed/partial locator input",
+      "severity": "Low",
+      "category": "C4",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorFactory.cs:48"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md",
+        "ai_docs/audits/20260924-1305/raw/"
+      ],
+      "description": "Symbol locator silently accepts mixed/partial locator input. test_related(metadataName=SampleLib.Cat, filePath=…) accepted; metadataName wins. Related test-only row symbollocatorfactory-drift-tool-test-gap.",
+      "acceptance": [
+        "test_related(metadataName + filePath, no line/col) → InvalidArgument naming the conflicting locators"
+      ],
+      "suggested_approach": "Reject mixed or partial symbol locators — metadataName + filePath without line/column is silently resolved by precedence although descriptions call the locators mutually exclusive.",
+      "dependencies": [],
+      "backlog_id": "symbol-locator-mixed-input-silently-accepted",
+      "first_seen_run": "20260924-1305",
+      "check": "C4"
+    },
+    {
+      "fingerprint": null,
+      "title": "find_overloads: empty memberName returns silent empty result",
+      "severity": "Info",
+      "category": "C1",
+      "sizing": null,
+      "status": "open",
+      "confidence": "medium",
+      "tier": 2,
+      "anchors": [
+        "mcp-tool:find_overloads"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md"
+      ],
+      "description": "find_overloads: empty memberName returns silent empty result",
+      "acceptance": [],
+      "suggested_approach": "Info only — no row (see report § Info).",
+      "backlog_id": "mcp-surface-audit-2026-09-24-info-digest",
+      "first_seen_run": "20260924-1305"
+    },
+    {
+      "fingerprint": null,
+      "title": "test_coverage.failureEnvelope.missingPackages holds project names, not package names",
+      "severity": "Info",
+      "category": "C1",
+      "sizing": null,
+      "status": "open",
+      "confidence": "medium",
+      "tier": 2,
+      "anchors": [
+        "mcp-tool:test_coverage"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md"
+      ],
+      "description": "test_coverage.failureEnvelope.missingPackages holds project names, not package names",
+      "acceptance": [],
+      "suggested_approach": "Info only — no row (see report § Info).",
+      "backlog_id": "mcp-surface-audit-2026-09-24-info-digest",
+      "first_seen_run": "20260924-1305"
+    },
+    {
+      "fingerprint": null,
+      "title": "workspace_warm silently skips unknown project names (documented)",
+      "severity": "Info",
+      "category": "C1",
+      "sizing": null,
+      "status": "open",
+      "confidence": "medium",
+      "tier": 2,
+      "anchors": [
+        "mcp-tool:workspace_warm"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md"
+      ],
+      "description": "workspace_warm silently skips unknown project names (documented)",
+      "acceptance": [],
+      "suggested_approach": "Info only — no row (see report § Info).",
+      "backlog_id": "mcp-surface-audit-2026-09-24-info-digest",
+      "first_seen_run": "20260924-1305"
+    },
+    {
+      "fingerprint": null,
+      "title": "project_diagnostics rows unsorted within a file",
+      "severity": "Info",
+      "category": "C1",
+      "sizing": null,
+      "status": "open",
+      "confidence": "medium",
+      "tier": 2,
+      "anchors": [
+        "mcp-tool:project_diagnostics"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md"
+      ],
+      "description": "project_diagnostics rows unsorted within a file",
+      "acceptance": [],
+      "suggested_approach": "Info only — no row (see report § Info).",
+      "backlog_id": "mcp-surface-audit-2026-09-24-info-digest",
+      "first_seen_run": "20260924-1305"
+    },
+    {
+      "fingerprint": null,
+      "title": "Fix drift in the shipped mcp-server-surface-test skill",
+      "severity": "Medium",
+      "category": "C3",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "skills/mcp-server-surface-test/SKILL.md:19",
+        "skills/mcp-server-surface-test/prompts/phases/apply-and-test.md:88",
+        ".claude-plugin/plugin.json"
+      ],
+      "evidence": [
+        "ai_docs/audits/20260924-1305/report.md"
+      ],
+      "description": "Skill gate requires connection.state=ready before any workspace is loaded (server reports idle); wrong apply route for symbol_refactor_preview; get_test_coverage_map mis-described; --full dispatches an agent the plugin does not ship.",
+      "acceptance": [],
+      "suggested_approach": "Correct the skill prompts and ship or replace the phase-runner agent.",
+      "dependencies": [],
+      "backlog_id": "surface-test-skill-prompt-drift",
+      "first_seen_run": "20260924-1305"
+    }
+  ]
+}

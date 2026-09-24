@@ -1,0 +1,429 @@
+{
+  "items": [
+    {
+      "name": "analyze_dependencies",
+      "description": "Generate a prompt to analyze architecture and dependency structure of a workspace",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cohesion_analysis",
+      "description": "Generate a prompt that guides SRP analysis using cohesion metrics, identifies extraction candidates, and plans type splits",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: filter by project name",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "consumer_impact",
+      "description": "Generate a prompt that analyzes the consumer/dependency graph for a type to assess the impact of refactoring it",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        },
+        {
+          "name": "line",
+          "description": "1-based line number",
+          "required": true
+        },
+        {
+          "name": "column",
+          "description": "1-based column number",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "dead_code_audit",
+      "description": "Generate a prompt that guides a dead code audit using unused symbol detection and removal tools.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: filter by project name",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "debug_test_failure",
+      "description": "Generate a pure-template prompt that walks the agent through running tests and diagnosing failures. Renders instructions only — the caller is responsible for invoking `test_run` / `test_related_files` and passing the results into the analysis step.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: specific test project name",
+          "required": false
+        },
+        {
+          "name": "filter",
+          "description": "Optional: test filter expression to narrow which tests to run",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "discover_capabilities",
+      "description": "Generate a prompt that helps an agent discover relevant server tools and workflows for a given task category.",
+      "arguments": [
+        {
+          "name": "taskCategory",
+          "description": "Task category: refactoring, analysis, security, testing, editing, navigation, project-mutation, scaffolding, or all",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "explain_error",
+      "description": "Generate a prompt to explain a compiler diagnostic error and suggest fixes. Uses a 20 s soft cap on the diagnostic-detail lookup so a slow analyzer pass aborts cleanly with an actionable message instead of hanging through the framework's default timeout.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "diagnosticId",
+          "description": "Diagnostic identifier, e.g. CS8019",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        },
+        {
+          "name": "line",
+          "description": "1-based line number",
+          "required": true
+        },
+        {
+          "name": "column",
+          "description": "1-based column number",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "fix_all_diagnostics",
+      "description": "Generate a prompt that batches diagnostic cleanup using code-fix and validation tools.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: specific project name",
+          "required": false
+        },
+        {
+          "name": "severityFilter",
+          "description": "Optional: severity filter such as error, warning, or info",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "guided_extract_interface",
+      "description": "Generate a prompt that guides interface extraction and consumer updates across a solution.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file containing the target type",
+          "required": true
+        },
+        {
+          "name": "typeName",
+          "description": "Name of the concrete type to extract an interface from",
+          "required": true
+        },
+        {
+          "name": "targetProjectName",
+          "description": "Optional: target project for the extracted interface",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "guided_extract_method",
+      "description": "Generate a prompt for extract-method refactoring with data-flow and control-flow checks.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        },
+        {
+          "name": "startLine",
+          "description": "1-based start line of the selection",
+          "required": true
+        },
+        {
+          "name": "startColumn",
+          "description": "1-based start column of the selection",
+          "required": true
+        },
+        {
+          "name": "endLine",
+          "description": "1-based end line of the selection",
+          "required": true
+        },
+        {
+          "name": "endColumn",
+          "description": "1-based end column of the selection",
+          "required": true
+        },
+        {
+          "name": "methodName",
+          "description": "Name for the new method",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "guided_package_migration",
+      "description": "Generate a prompt that walks a package migration across all affected projects.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "oldPackageId",
+          "description": "Existing package id to replace",
+          "required": true
+        },
+        {
+          "name": "newPackageId",
+          "description": "Replacement package id",
+          "required": true
+        },
+        {
+          "name": "newVersion",
+          "description": "Replacement package version",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "msbuild_inspection",
+      "description": "Generate a prompt for evaluating MSBuild properties and items for a project file.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectFilePath",
+          "description": "Absolute path to the .csproj or project file",
+          "required": true
+        },
+        {
+          "name": "propertyName",
+          "description": "Optional: a single property name to evaluate (e.g. TargetFramework, OutputPath)",
+          "required": false
+        },
+        {
+          "name": "itemType",
+          "description": "Optional: MSBuild item type to list (e.g. Compile, PackageReference)",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "refactor_and_validate",
+      "description": "Generate a prompt that composes code-action preview/apply with validation steps for a focused refactoring. Uses a 20 s soft cap and a Warning severity floor so a slow analyzer pass aborts cleanly with an actionable message instead of hanging through the framework's default timeout.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        },
+        {
+          "name": "startLine",
+          "description": "1-based start line number",
+          "required": true
+        },
+        {
+          "name": "startColumn",
+          "description": "1-based start column number",
+          "required": true
+        },
+        {
+          "name": "endLine",
+          "description": "Optional: 1-based end line number for a selection range",
+          "required": false
+        },
+        {
+          "name": "endColumn",
+          "description": "Optional: 1-based end column number for a selection range",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "refactor_loop",
+      "description": "Generate a prompt that walks an agent through the standard refactor → preview → apply-with-verify → validate_workspace loop using v1.17/v1.18 primitives. Mirrors the `refactor-loop` Claude Code skill so non-Claude clients have the same workflow.",
+      "arguments": [
+        {
+          "name": "intent",
+          "description": "Natural-language refactor intent (e.g. 'rename GetUser to GetUserAsync and propagate to mappers').",
+          "required": true
+        },
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "review_complexity",
+      "description": "Generate a prompt that guides a complexity review to identify and address high-complexity code.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: filter by project name",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "review_file",
+      "description": "Generate a prompt to perform a code review on a file",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "review_test_coverage",
+      "description": "Generate a prompt that guides a test coverage review using test discovery, execution, and coverage tools.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: specific test project name",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "security_review",
+      "description": "Generate a pure-template prompt that walks the agent through a comprehensive security review. Renders instructions only — the caller is responsible for invoking `security_analyzer_status`, `security_diagnostics`, and `nuget_vulnerability_scan` in sequence and feeding their structured results into the triage step.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "projectName",
+          "description": "Optional: filter by project name",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "session_undo",
+      "description": "Generate a prompt for inspecting session mutations and undoing the last apply operation.",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "suggest_refactoring",
+      "description": "Generate a prompt to analyze code and suggest refactorings",
+      "arguments": [
+        {
+          "name": "workspaceId",
+          "description": "The workspace session identifier",
+          "required": true
+        },
+        {
+          "name": "filePath",
+          "description": "Absolute path to the source file",
+          "required": true
+        },
+        {
+          "name": "startLine",
+          "description": "Optional: start line to focus on",
+          "required": false
+        },
+        {
+          "name": "endLine",
+          "description": "Optional: end line to focus on",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

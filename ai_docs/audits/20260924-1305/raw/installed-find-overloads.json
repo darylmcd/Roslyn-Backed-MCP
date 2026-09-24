@@ -1,0 +1,49 @@
+[
+ {
+  "args": {
+   "typeMetadataName": "SampleLib.OverloadAccessibilityProbeBase",
+   "memberName": "Probe"
+  },
+  "isError": false,
+  "ms": 1037,
+  "text": "{\r\n  \"count\": 2,\r\n  \"items\": [\r\n    {\r\n      \"displaySignature\": \"void OverloadAccessibilityProbeBase.Probe()\",\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [],\r\n      \"documentation\": \"\"\r\n    },\r\n    {\r\n      \"displaySignature\": \"void OverloadAccessibilityProbeBase.Probe(int value)\",\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [\r\n        \"int value\"\r\n      ],\r\n      \"documentation\": \"\"\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 8,\r\n    \"heldMs\": 1019,\r\n    \"elapsedMs\": 1036,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+ },
+ {
+  "args": {
+   "typeMetadataName": "SampleLib.OverloadAccessibilityProbeDerived",
+   "memberName": "Probe",
+   "includeInherited": true
+  },
+  "isError": false,
+  "ms": 8,
+  "text": "{\r\n  \"count\": 1,\r\n  \"items\": [\r\n    {\r\n      \"displaySignature\": \"void OverloadAccessibilityProbeBase.Probe(int value)\",\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [\r\n        \"int value\"\r\n      ],\r\n      \"documentation\": \"\"\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 6,\r\n    \"elapsedMs\": 7,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+ },
+ {
+  "args": {
+   "typeMetadataName": "SampleLib.OverloadAccessibilityProbeDerived",
+   "memberName": "Probe",
+   "includeInherited": false
+  },
+  "isError": false,
+  "ms": 1,
+  "text": "{\r\n  \"count\": 0,\r\n  \"items\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+ },
+ {
+  "args": {
+   "typeMetadataName": "SampleLib.NoSuchType",
+   "memberName": "Probe"
+  },
+  "isError": true,
+  "ms": 26,
+  "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"find_overloads\",\r\n  \"message\": \"The requested item was not found. Ensure the workspace is loaded and the identifier is correct.\",\r\n  \"exceptionType\": \"KeyNotFoundException\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 23,\r\n    \"elapsedMs\": 23,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+ },
+ {
+  "args": {
+   "typeMetadataName": "SampleLib.OverloadAccessibilityProbeBase",
+   "memberName": ""
+  },
+  "isError": false,
+  "ms": 1,
+  "text": "{\r\n  \"count\": 0,\r\n  \"items\": [],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+ }
+]

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-16T06:25:47Z",
+  "generatedAt": "2026-09-24T14:10:25Z",
   "noWorktree": false,
   "auditedRepo": "roslyn-backed-mcp",
-  "auditReportPath": "audit-reports/20260516T062547Z_roslyn-backed-mcp_mcp-server-surface-test.md",
-  "serverVersion": "1.38.1",
+  "auditReportPath": "audit-reports/20260924T130517Z_roslyn-backed-mcp_mcp-server-surface-test.md",
+  "serverVersion": "4.2.1+4eba260102e41747ecaa75511acd8ff0f119b75d",
   "catalogVersion": "2026.04",
   "experimentalSurface": {
-    "tools": 58,
-    "resources": 4,
+    "tools": 61,
+    "resources": 5,
     "prompts": 20
   },
   "scorecard": [
@@ -17,12 +17,40 @@
       "name": "workspace_warm",
       "category": "workspace",
       "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded (unknown project silently skipped by design)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_drift_check",
+      "category": "workspace",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_overloads",
+      "category": "symbols",
+      "currentTier": "experimental",
       "recommendation": "promote",
       "evidenceCount": 3,
       "evidence": [
-        "phase-0 prewarm=true completed in 2042 ms; coldCompilationCount=4 reported",
-        "every subsequent read in this audit ran cache-warm (p50 well under reader budget)",
-        "schema accurate vs live behavior"
+        "closure probe: base 2 overloads, derived+includeInherited 1 (private excluded), includeInherited=false 0",
+        "negative: unknown type -> structured NotFound",
+        "p50 7 ms"
       ],
       "blockers": []
     },
@@ -31,219 +59,112 @@
       "name": "find_type_consumers",
       "category": "symbols",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "phase-3 returned 13 file rollups for WorkspaceManager (descending site count, ascending file path)",
-        "kinds set { ctor, invocation, other, field } correctly populated",
-        "p50 elapsedMs=11 (well within solution-scan budget)"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "find_type_mutations",
-      "category": "symbols",
-      "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 3,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-3 returned 5 mutating members for WorkspaceManager with 90 external callers (callerPhase=PostConstruction tagged)",
-        "mutationScope classifier present on every member",
-        "p50 elapsedMs=1106"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-3A - single-valued MutationScope misses compound IO+CollectionWrite (LoadAsync, GetSourceGeneratedDocumentsAsync); consider [Flags] enum"
+        "find-type-consumers-mutations-generator-blind (High); find-type-consumers-no-pagination-metadata"
       ]
     },
     {
       "kind": "tool",
-      "name": "find_property_writes",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-3 ObjectInitializer write detected on TestServiceContainer.WorkspaceManager (writeKind correct)",
-        "phase-3 elapsedMs=7"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "symbol_relationships",
+      "name": "probe_position",
       "category": "symbols",
       "currentTier": "experimental",
       "recommendation": "promote",
       "evidenceCount": 3,
       "evidence": [
-        "phase-3 totals + 4 buckets (definitions/references/implementations/baseMembers) returned correctly for WorkspaceManager",
-        "auto-promote (preferDeclaringMember=true default) works",
-        "p50 elapsedMs=8"
+        "G2/G3: identifier + whitespace trivia correct; agrees with symbol_info",
+        "negative: whitespace probe reported as Whitespace (actionable)",
+        "p50 5 ms"
       ],
       "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "trace_exception_flow",
+      "category": "advanced-analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "trace-exception-flow-catch-ranking"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_duplicate_helpers",
+      "category": "advanced-analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "find-duplicate-helpers-outermost-call-false-positive (>=50% FP)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_dead_locals",
+      "category": "advanced-analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "find-dead-locals-captured-by-local-function (4/5 false positives)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "find_dead_fields",
+      "category": "advanced-analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "compilation-cache-generator-rerun-blinds-unused-analysis (High: live fields safelyRemovable)"
+      ]
     },
     {
       "kind": "tool",
       "name": "symbol_impact_sweep",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "phase-3 summary=true + maxItemsPerCategory=20 caps work as documented",
-        "categories references/switchExhaustivenessIssues/mapperCallsites/persistenceLayerFindings populated correctly",
-        "p50 elapsedMs=147 (within solution-scan budget)"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "impact_analysis",
-      "category": "symbols",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-3 summary=true response correctly paginated (40 refs, 25 declarations, 2 projects)",
-        "p50 elapsedMs=7"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "semantic_search",
-      "category": "search",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "phase-11 'async methods returning Task<bool>' - 7 hits, structured fallback, debug.parsedTokens/appliedPredicates correctly exposed",
-        "phase-11 'classes implementing IDisposable' - 14 hits, implementing-interface predicate",
-        "p50 elapsedMs=65"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "semantic_grep",
-      "category": "search",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-11 regex ^Run.*Async$ on identifiers - 20 hits, all real Run*Async methods",
-        "p50 elapsedMs=12"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "get_di_registrations",
       "category": "analysis",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "phase-11 91 registrations, 90 distinct service types, all Singleton",
-        "overrideChains correctly identified 1 dead PreviewStoreOptions registration",
-        "lifetimeMismatchCount=0; summary=true page works"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "find_reflection_usages",
-      "category": "analysis",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-11 28 usages grouped into 7 kinds (typeof/Activator.CreateInstance/Type.GetField/FieldInfo.GetValue/FieldInfo.SetValue/Assembly.Load/Assembly.LoadFrom)",
-        "p50 elapsedMs=764"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "format_check",
-      "category": "analysis",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-6 found 6 format-drift files on main HEAD in RoslynMcp.Roslyn (using-order violations vs dotnet_sort_system_directives_first=true)",
-        "p50 elapsedMs=1164 across 126 documents"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "apply_with_verify",
-      "category": "apply",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-6 6l staleness rejection clean (workspace auto-reloaded mid-queue; status=apply_failed with actionable 'Please create a new preview.' error)",
-        "tool envelope structure matches description"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "apply_multi_file_edit",
-      "category": "apply",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 3,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-6 2-file batch applied atomically with verify=true",
-        "verification.status=clean, postErrorCount=0",
-        "p50 elapsedMs=1460"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-6B - workspace_changes split the atomic batch into 2 ledger entries (same timestamp, no batchId correlation) - ledger UX confusing for revert_apply_by_sequence callers"
+        "no negative probe; mapper heuristic false positive on *Serializer param (unfiled, unconfirmed)"
       ]
     },
     {
       "kind": "tool",
-      "name": "apply_text_edit",
-      "category": "apply",
+      "name": "test_reference_map",
+      "category": "validation",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "phase-6 verify=true attached compile_check, postErrorCount=0",
-        "audit-only writes in phases 9/8b cleanly reverted via revert_last_apply or revert_apply_by_sequence"
+        "exercised this run; see report section 11"
       ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "preview_multi_file_edit",
-      "category": "apply",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-6 token round-trip clean (preview->apply via preview_multi_file_edit_apply)",
-        "staleAction=auto-reloaded visible on later read after intervening write"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "revert_apply_by_sequence",
-      "category": "apply",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-9 non-tip rollback succeeded (CompilationCache.cs at seq 12 reverted while ChangeTracker.cs at seq 13 remained applied; compile_check clean after)",
-        "phase-9 negative probe(99999) returned reverted=false, reason=unknown-sequence with actionable message"
-      ],
-      "blockers": []
+      "blockers": [
+        "test-reference-map-counts-synthesized-members"
+      ]
     },
     {
       "kind": "tool",
@@ -251,14 +172,12 @@
       "category": "validation",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 3,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-8 overallStatus=clean in all 3 invocations (auto-scoped, fabricated path, full bundle)",
-        "phase-8 fabricated path 'nonexistent.cs' correctly surfaced as unknownFilePaths instead of crash",
-        "bundle composes compile_check + diagnostics + related-tests as documented"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-7B - ChangeTracker auto-scoped list still includes .editorconfig after a successful git checkout revert (disk-content reconcile gap)"
+        "workspace-changes-missing-revert-status (duplicate changedFilePaths by separator)"
       ]
     },
     {
@@ -269,166 +188,730 @@
       "recommendation": "promote",
       "evidenceCount": 2,
       "evidence": [
-        "phase-8 overallStatus=clean against worktree git metadata; 6 git-derived files matches git status",
-        "no crashes on dirty tree"
+        "G5 #29: clean status, 8 git-derived paths normalized, composes compile_check + diagnostics + related tests",
+        "p50 698 ms"
       ],
       "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_fork_apply",
+      "category": "validation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "preview-token-store-mismatch-false-stale (false stale for project-mutation tokens; leaves empty forks dir)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "preview_record_field_addition",
+      "category": "analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "semantic_grep",
+      "category": "analysis",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "semantic-grep-comment-hit-location"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "format_check",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "restructure_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "restructure-preview-splice-without-parenthesization (High)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "replace_string_literals_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "replace-string-literals-const-self-reference"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "change_signature_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "change-signature-add-skips-same-document-impls (High)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "parameter_object_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_refactor_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "preview-token-store-mismatch-false-stale (apply route undocumented)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "split_service_with_di_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised on fixture without the required repo shape"
+      ],
+      "blockers": [
+        "skipped-repo-shape in G6 (no DI); G4 preview showed data loss (not applied)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "record_field_add_with_satellites_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "record-satellites-line-insert-outside-initializer"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_file_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "new-file-apply-writes-bom-ignoring-editorconfig"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "change_type_namespace_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "change-type-namespace-emits-invalid-syntax (High)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "refactor-preview-trivia-nits"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "bulk_replace_type_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "bulk-replace-type-redundant-using"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "replace_invocation_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "replace-invocation-rewrites-replacement-body (High)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_type_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "extract-type-breaks-interfaces-and-publicizes-fields"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_method_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "extract-method-nullable-return-flow-state"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_shared_expression_to_helper_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "preview-token-store-mismatch-false-stale (no documented apply route)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "apply_with_verify",
+      "category": "undo",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "G4 6l: good preview status=applied; 4 known-bad previews rolled_back cleanly with introducedErrors",
+        "p50 1620 ms (writer budget 30 s)"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "fix-all-analyzer-assembly-provider-not-found"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "format_range_apply",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "format-range-refuses-on-unrelated-line-count-change"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "apply_multi_file_edit",
+      "category": "editing",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "preview_multi_file_edit",
+      "category": "editing",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "G4 6h: per-file diffs + one token; stale-token negative rejected with actionable message",
+        "p50 < 1.6 s"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "preview_multi_file_edit_apply",
+      "category": "editing",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 2,
+      "evidence": [
+        "G4/G6: redeemed multi-file, batch-scaffold and dependency_inversion tokens; stale probe actionable",
+        "p50 514 ms"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "create_file_apply",
+      "category": "file-operations",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "new-file-apply-writes-bom-ignoring-editorconfig; invalid-operation-throw-sites-lack-public-message"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "delete_file_apply",
+      "category": "file-operations",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "invalid-operation-throw-sites-lack-public-message (vague negative)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "move_file_apply",
+      "category": "file-operations",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "remove_dead_code_apply",
+      "category": "dead-code",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "refactor-preview-trivia-nits"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "remove_interface_member_preview",
+      "category": "dead-code",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "get_prompt_text",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "invalid-operation-throw-sites-lack-public-message (unknown prompt / missing arg vague); get-prompt-text-description-cites-list-prompts"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "recommend_workflow",
+      "category": "orchestration",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "schema-hint-truncates-on-abbreviation; argument-exception-throw-sites-lack-public-message"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "add_central_package_version_preview",
+      "category": "project-mutation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "invalid-operation-throw-sites-lack-public-message (existing version refusal redacted)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "apply_project_mutation",
+      "category": "project-mutation",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded"
+      ]
     },
     {
       "kind": "tool",
       "name": "scaffold_type_preview",
       "category": "scaffolding",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "phase-12 produces 'internal sealed class' default (v1.8+)",
-        "phase-12 auto-implements interface stubs with NotImplementedException + required usings (v1.17+)",
-        "p50 elapsedMs=21"
+        "exercised this run; see report section 11"
       ],
-      "blockers": []
+      "blockers": [
+        "argument-exception-throw-sites-lack-public-message (typeKind=struct vague)"
+      ]
     },
     {
       "kind": "tool",
-      "name": "scaffold_test_preview",
+      "name": "scaffold_type_apply",
       "category": "scaffolding",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
-      "evidence": [
-        "phase-12 MSTest auto-detected from RoslynMcp.Tests PackageReference",
-        "[DoNotParallelize] attribute inferred from sibling test scaffolding",
-        "constructor-arg expressions correct (new WorkspaceManagerOptions() for concrete record-like type; default(IInterface)! for interfaces with TODO comments)"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "add_package_reference_preview",
-      "category": "project-mutation",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-13 correct XML diff for new ItemGroup/PackageReference",
-        "Central package management warning emitted (Add 'X' to Directory.Packages.props before building) - actionable CPM awareness"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "set_project_property_preview",
-      "category": "project-mutation",
-      "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
-      "evidence": [
-        "phase-13 correct XML diff for Nullable=enable",
-        "Inheritance warning emitted (Property 'Nullable' is already set via Directory.Build.props - redundant entry) - actionable"
-      ],
-      "blockers": []
-    },
-    {
-      "kind": "tool",
-      "name": "set_editorconfig_option",
-      "category": "editorconfig",
-      "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 2,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-7 + phase-8b W2 write applied; file path resolved correctly",
-        "revert via git checkout cleaned cleanly"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-7A (P2) - duplicate-key append when value already matches; cascades to set_diagnostic_severity via shared writer"
+        "scaffold-type-mixed-line-endings"
       ]
     },
     {
       "kind": "tool",
-      "name": "set_diagnostic_severity",
-      "category": "editorconfig",
+      "name": "scaffold_test_batch_preview",
+      "category": "scaffolding",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
       "evidenceCount": 1,
       "evidence": [
-        "phase-8b W3 added 1 line; reverted via git checkout cleanly"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "Inherits FLAG-7A from set_editorconfig_option shared writer"
+        "preview-token-store-mismatch-false-stale (description names wrong apply tool)"
       ]
     },
     {
       "kind": "tool",
-      "name": "add_pragma_suppression",
-      "category": "editorconfig",
+      "name": "scaffold_first_test_file_preview",
+      "category": "scaffolding",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 2,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "phase-8b W4 pragma inserted at correct line",
-        "revert_last_apply round-trip clean (revertedOperation matched)"
+        "exercised this run; see report section 11"
       ],
-      "blockers": []
+      "blockers": [
+        "invalid-operation-throw-sites-lack-public-message"
+      ]
     },
     {
       "kind": "tool",
-      "name": "find_overrides",
-      "category": "navigation",
+      "name": "scaffold_test_apply",
+      "category": "scaffolding",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "new-file-apply-writes-bom-ignoring-editorconfig"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_project_preview",
+      "category": "cross-project-refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "move-type-to-project-unconditional-reference"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_cross_project_preview",
+      "category": "cross-project-refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "preview-token-store-mismatch-false-stale (no apply route; same-project target accepted)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "dependency_inversion_preview",
+      "category": "cross-project-refactoring",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "preview-token-store-mismatch-false-stale (apply only via undocumented tool)"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "migrate_package_preview",
+      "category": "orchestration",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "migrate-package-removes-shared-central-version"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "split_class_preview",
+      "category": "orchestration",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
+      ],
+      "blockers": [
+        "no negative probe recorded; mixed path separators in response"
+      ]
+    },
+    {
+      "kind": "tool",
+      "name": "extract_and_wire_interface_preview",
+      "category": "orchestration",
       "currentTier": "experimental",
       "recommendation": "needs-more-evidence",
       "evidenceCount": 1,
       "evidence": [
-        "phase-14 returned count=0 for System.IDisposable.Dispose despite 14+ implementations in the workspace"
+        "exercised on fixture without the required repo shape"
       ],
       "blockers": [
-        "FLAG-14A (P2) - cross-tool inconsistency with member_hierarchy.overrides; cannot recommend promote until semantic is converged",
-        "want a fresh probe at a virtual method (not interface) before final judgment"
+        "fixture has no DI registrations; applied via composite but DI rewiring unexercised"
       ]
     },
     {
       "kind": "tool",
-      "name": "member_hierarchy",
-      "category": "navigation",
+      "name": "apply_composite_preview",
+      "category": "orchestration",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 2,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-3 returned baseMembers=[IDisposable.Dispose] correctly for WorkspaceManager.Dispose",
-        "p50 elapsedMs=186"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-3C (P2) - overrides bucket mis-classifies sibling interface implementations as overrides"
+        "apply-composite-no-undo-capture (High)"
       ]
     },
     {
-      "kind": "tool",
-      "name": "callers_callees",
-      "category": "navigation",
+      "kind": "resource",
+      "name": "server_catalog_full",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: 165 KB full catalog; prompt params match prompts/list; counts match server_info"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_tools_page",
+      "category": "server",
       "currentTier": "experimental",
       "recommendation": "keep-experimental",
-      "evidenceCount": 2,
+      "evidenceCount": 1,
       "evidence": [
-        "phase-3 returned 8 callers + 32 callees for LoadAsync overload",
-        "totalCallers/totalCallees fields populated"
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-3B (P3) - previewText asymmetry (callers populated, callees null)"
+        "catalog-page-slots-silently-clamped"
       ]
     },
     {
-      "kind": "tool",
-      "name": "symbol_search",
-      "category": "search",
-      "currentTier": "stable",
-      "recommendation": "needs-more-evidence",
-      "evidenceCount": 3,
+      "kind": "resource",
+      "name": "server_catalog_prompts_page",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 1,
       "evidence": [
-        "phase-3 search by name PASS with kind filter",
-        "phase-17 empty-query returns clean note (no crash)",
-        "totalCount/hasMore pagination works"
+        "G8: 0/5 and 18/10 pages correct, hasMore correct"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_version_diff",
+      "category": "server",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "exercised this run; see report section 11"
       ],
       "blockers": [
-        "FLAG-8A (P2) - broad query at limit=100 exceeds MCP response cap; consider auto-clamp or default-summary"
+        "catalog-diff-advertised-pair-rejected"
       ]
     },
     {
@@ -437,47 +920,301 @@
       "category": "workspace",
       "currentTier": "experimental",
       "recommendation": "promote",
-      "evidenceCount": 3,
+      "evidenceCount": 2,
       "evidence": [
-        "phase-15 lines/1-20 returns 20 lines prefixed with documented marker comment",
-        "phase-15 lines/10-5 (invalid range) returns structured InvalidArgument error",
-        "1-based inclusive shape matches description"
+        "G8: // roslyn://... marker present, end clamped, 10-5 and 99999-100000 rejected in ~1 ms (actionable)",
+        "p50 58 ms"
       ],
       "blockers": []
     },
     {
-      "kind": "resource",
-      "name": "server_catalog_full",
-      "category": "server",
+      "kind": "prompt",
+      "name": "explain_error",
+      "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "needs-more-evidence",
-      "evidenceCount": 0,
-      "evidence": [],
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
       "blockers": [
-        "scoped-but-skipped - paginated siblings exercise the same data path"
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "suggest_refactoring",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "review_file",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "analyze_dependencies",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)",
+        "analyze-dependencies-prompt-unranked-node-cap"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "debug_test_failure",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "refactor_and_validate",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "fix_all_diagnostics",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_package_migration",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_extract_interface",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "security_review",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
       ]
     },
     {
       "kind": "prompt",
       "name": "discover_capabilities",
-      "category": "guided",
+      "category": "prompts",
       "currentTier": "experimental",
-      "recommendation": "promote",
-      "evidenceCount": 3,
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
       "evidence": [
-        "phase-16 rendered text lists 43 refactoring tools + 6 guided prompts + workflows; every tool name exists in live catalog",
-        "no hallucinated tools",
-        "p50 elapsedMs=93"
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
       ],
-      "blockers": []
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)",
+        "discover-capabilities-unknown-category-matches-all"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "dead_code_audit",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "review_test_coverage",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "review_complexity",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "cohesion_analysis",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "consumer_impact",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_extract_method",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument; int args reject spec strings)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "msbuild_inspection",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "session_undo",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
+    },
+    {
+      "kind": "prompt",
+      "name": "refactor_loop",
+      "category": "prompts",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidenceCount": 1,
+      "evidence": [
+        "G8: rendered via get_prompt_text x2 (idempotent); no hallucinated tool names; text equals prompts/get"
+      ],
+      "blockers": [
+        "prompt-argument-binding-spec-strings-and-names (missing-arg error never names the argument)"
+      ]
     }
   ],
   "summary": {
-    "promote": 18,
-    "keep-experimental": 8,
-    "needs-more-evidence": 5,
+    "promote": 9,
+    "keep-experimental": 75,
+    "needs-more-evidence": 2,
     "deprecate": 0,
-    "blocked": 0,
-    "not-scored-scoped-but-skipped": "approximately 51 (most experimental entries not exercised in this run; see coverage ledger for status)"
+    "blocked": 0
   }
 }

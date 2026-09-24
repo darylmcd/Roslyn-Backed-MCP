@@ -1,0 +1,11 @@
+Manage undo and session history for workspace `13abf7e1dc8a42a8961d6e73a8865c07`.
+
+Steps:
+1. Call `workspace_changes` to list mutations applied in this session (tools, files, timestamps).
+2. To undo only the **most recent** Roslyn solution-level apply, call `revert_last_apply` for this `workspaceId`.
+3. If files changed on disk outside MCP or the workspace is stale, call `workspace_reload` when safe.
+4. To tear down the session, call `workspace_close` and reload with `workspace_load` if needed.
+
+`revert_last_apply` reverses one apply — not arbitrary history. Use git or manual edits for broader rollback.
+
+After revert or reload, run `compile_check` or `build_workspace` to verify the tree.

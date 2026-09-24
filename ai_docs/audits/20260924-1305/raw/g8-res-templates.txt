@@ -1,0 +1,103 @@
+{
+  "count": 14,
+  "resources": [
+    {
+      "name": "resource_templates",
+      "uriTemplate": "roslyn://server/resource-templates",
+      "category": "server",
+      "summary": "Lists all resource URI templates, including workspace-scoped templates.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "server_catalog",
+      "uriTemplate": "roslyn://server/catalog",
+      "category": "server",
+      "summary": "Cap-safe summary of the server surface (tool/prompt counts \u002B resource list \u002B workflow hints). Full tools and prompts via paginated siblings.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "server_catalog_full",
+      "uriTemplate": "roslyn://server/catalog/full",
+      "category": "server",
+      "summary": "Unpaginated full catalog including every tool and prompt entry. Large payload (~80 KB).",
+      "supportTier": "experimental"
+    },
+    {
+      "name": "server_catalog_prompts_page",
+      "uriTemplate": "roslyn://server/catalog/prompts/{offset}/{limit}",
+      "category": "server",
+      "summary": "Paginated slice of the server prompt catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "supportTier": "experimental"
+    },
+    {
+      "name": "server_catalog_tools_page",
+      "uriTemplate": "roslyn://server/catalog/tools/{offset}/{limit}",
+      "category": "server",
+      "summary": "Paginated slice of the server tool catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "supportTier": "experimental"
+    },
+    {
+      "name": "server_catalog_version_diff",
+      "uriTemplate": "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
+      "category": "server",
+      "summary": "Structured surface diff between supported released server catalog versions. Slots: fromVersion \u002B toVersion (v-prefix optional; toVersion also accepts current/latest).",
+      "supportTier": "experimental"
+    },
+    {
+      "name": "source_file",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}",
+      "category": "workspace",
+      "summary": "Read a source file from the loaded workspace.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "source_file_lines",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
+      "category": "workspace",
+      "summary": "Read a 1-based inclusive line range from a source file in the loaded workspace.",
+      "supportTier": "experimental"
+    },
+    {
+      "name": "workspace_diagnostics",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/diagnostics",
+      "category": "analysis",
+      "summary": "Read all compiler diagnostics for a workspace.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "workspace_projects",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/projects",
+      "category": "workspace",
+      "summary": "Read project graph metadata for a workspace.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "workspace_status",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status",
+      "category": "workspace",
+      "summary": "Inspect workspace status (lean summary; counts and load state, no per-project tree).",
+      "supportTier": "stable"
+    },
+    {
+      "name": "workspace_status_verbose",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status/verbose",
+      "category": "workspace",
+      "summary": "Inspect workspace status with full per-project tree and workspace diagnostics.",
+      "supportTier": "stable"
+    },
+    {
+      "name": "workspaces",
+      "uriTemplate": "roslyn://workspaces",
+      "category": "workspace",
+      "summary": "List active workspace sessions (lean summary; counts and load state, no per-project tree).",
+      "supportTier": "stable"
+    },
+    {
+      "name": "workspaces_verbose",
+      "uriTemplate": "roslyn://workspaces/verbose",
+      "category": "workspace",
+      "summary": "List active workspace sessions with full per-project tree and diagnostics.",
+      "supportTier": "stable"
+    }
+  ]
+}

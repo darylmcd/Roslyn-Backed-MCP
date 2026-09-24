@@ -1,0 +1,58 @@
+{
+  "items": [
+    {
+      "name": "server_catalog_version_diff",
+      "uriTemplate": "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
+      "description": "Structured server surface diff between supported released catalog versions. fromVersion/toVersion accept v-prefixed or v-less semver; toVersion also accepts current/latest. First supported pair: v2.3.1 -> v2.3.2/current.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "server_catalog_prompts_page",
+      "uriTemplate": "roslyn://server/catalog/prompts/{offset}/{limit}",
+      "description": "Paginated slice of the server prompt catalog. Same shape as roslyn://server/catalog/tools/{offset}/{limit}.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "server_catalog_tools_page",
+      "uriTemplate": "roslyn://server/catalog/tools/{offset}/{limit}",
+      "description": "Paginated slice of the server tool catalog. offset: 0-based start index; limit: 1-200 entries per page. Response carries offset/limit/returnedCount/totalCount/hasMore + the entries array.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "workspace_diagnostics",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/diagnostics",
+      "description": "Get diagnostics for a loaded workspace, capped at 500 entries (Warning floor by default — Info diagnostics are excluded). For full pagination control or to include Info, use the project_diagnostics tool. Workspace-scoped URI; see roslyn://server/resource-templates.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "source_file",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}",
+      "description": "Read the source text of a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. For a line range, use the sibling template roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}.",
+      "mimeType": "text/x-csharp"
+    },
+    {
+      "name": "source_file_lines",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
+      "description": "Read a 1-based inclusive line range from a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) fail the read with a JSON-RPC InvalidParams (-32602) error — no C# MIME success body is returned.",
+      "mimeType": "text/x-csharp"
+    },
+    {
+      "name": "workspace_projects",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/projects",
+      "description": "Get the project dependency graph and project metadata for a workspace. Requires workspaceId from workspace_load; see roslyn://server/resource-templates for the URI pattern.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "workspace_status",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status",
+      "description": "Get a lean summary of a loaded workspace's status (counts and load state, no per-project tree). For the verbose payload use roslyn://workspace/{workspaceId}/status/verbose. URI uses the workspace_status template; see roslyn://server/resource-templates if your client does not list template URIs.",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "workspace_status_verbose",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status/verbose",
+      "description": "Verbose variant of roslyn://workspace/{workspaceId}/status — returns the full per-project tree and workspace diagnostics for the workspace. Prefer the summary resource at roslyn://workspace/{workspaceId}/status unless you need the full payload.",
+      "mimeType": "application/json"
+    }
+  ]
+}

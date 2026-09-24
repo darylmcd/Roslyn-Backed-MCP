@@ -1,0 +1,979 @@
+Perform a thorough code review of the following C# source file.
+
+**File:** <repo>/.worktrees/surface-test-20260924T130517Z-ro/src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs
+
+**Document Symbols:**
+```json
+[
+  {
+    "name": "WorkspaceTools",
+    "kind": "Class",
+    "modifiers": [
+      "public",
+      "static"
+    ],
+    "startLine": 18,
+    "endLine": 742,
+    "children": [
+      {
+        "name": "_autoPrewarmProjectThreshold",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 21,
+        "endLine": 21,
+        "children": null
+      },
+      {
+        "name": "_defaultSupportBundleChangeCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 22,
+        "endLine": 22,
+        "children": null
+      },
+      {
+        "name": "_maxSupportBundleChangeCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 23,
+        "endLine": 23,
+        "children": null
+      },
+      {
+        "name": "_defaultSupportBundleDriftCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 24,
+        "endLine": 24,
+        "children": null
+      },
+      {
+        "name": "_maxSupportBundleDriftCap",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "const"
+        ],
+        "startLine": 25,
+        "endLine": 25,
+        "children": null
+      },
+      {
+        "name": "s_processDrainTimeout",
+        "kind": "Field",
+        "modifiers": [
+          "private",
+          "static",
+          "readonly"
+        ],
+        "startLine": 26,
+        "endLine": 26,
+        "children": null
+      },
+      {
+        "name": "LoadWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 35,
+        "endLine": 98,
+        "children": null
+      },
+      {
+        "name": "ReloadWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 103,
+        "endLine": 124,
+        "children": null
+      },
+      {
+        "name": "CloseWorkspace",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 129,
+        "endLine": 243,
+        "children": null
+      },
+      {
+        "name": "ReportProcessDrainFailure",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 245,
+        "endLine": 251,
+        "children": null
+      },
+      {
+        "name": "TryKillDetachedTestHosts",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 266,
+        "endLine": 358,
+        "children": null
+      },
+      {
+        "name": "ListWorkspaces",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 360,
+        "endLine": 378,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceStatus",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 383,
+        "endLine": 401,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceHealth",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 403,
+        "endLine": 413,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceReadinessReport",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 419,
+        "endLine": 488,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceSupportBundle",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 494,
+        "endLine": 562,
+        "children": null
+      },
+      {
+        "name": "GetProjectGraph",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 564,
+        "endLine": 578,
+        "children": null
+      },
+      {
+        "name": "GetSourceGeneratedDocuments",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 580,
+        "endLine": 593,
+        "children": null
+      },
+      {
+        "name": "GetSourceText",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 599,
+        "endLine": 622,
+        "children": null
+      },
+      {
+        "name": "RestoreAndReloadIfRequiredAsync",
+        "kind": "Method",
+        "modifiers": [
+          "internal",
+          "static",
+          "async"
+        ],
+        "startLine": 624,
+        "endLine": 655,
+        "children": null
+      },
+      {
+        "name": "SerializeWorkspaceLoadResult",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 657,
+        "endLine": 677,
+        "children": null
+      },
+      {
+        "name": "ShouldPrewarmAfterLoad",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 679,
+        "endLine": 680,
+        "children": null
+      },
+      {
+        "name": "ResolveOptionalWorkspaceId",
+        "kind": "Method",
+        "modifiers": [
+          "internal",
+          "static"
+        ],
+        "startLine": 690,
+        "endLine": 700,
+        "children": null
+      },
+      {
+        "name": "NormalizeCap",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 702,
+        "endLine": 703,
+        "children": null
+      },
+      {
+        "name": "CreateLogger",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 705,
+        "endLine": 706,
+        "children": null
+      },
+      {
+        "name": "BuildRestoreFailureMessage",
+        "kind": "Method",
+        "modifiers": [
+          "private",
+          "static"
+        ],
+        "startLine": 708,
+        "endLine": 724,
+        "children": null
+      },
+      {
+        "name": "GetWorkspaceChanges",
+        "kind": "Method",
+        "modifiers": [
+          "public",
+          "static"
+        ],
+        "startLine": 726,
+        "endLine": 741,
+        "children": null
+      }
+    ]
+  }
+]
+```
+
+**Current Diagnostics:**
+```json
+{
+  "workspaceDiagnostics": [],
+  "compilerDiagnostics": [],
+  "analyzerDiagnostics": [
+    {
+      "id": "CA1068",
+      "message": "Method \u0027RoslynMcp.Host.Stdio.Tools.WorkspaceTools.CloseWorkspace(RoslynMcp.Core.Services.IWorkspaceExecutionGate, RoslynMcp.Roslyn.Contracts.IWorkspaceManager, RoslynMcp.Core.Services.IDotnetCommandRunner, string, bool, Microsoft.Extensions.Logging.ILoggerFactory?, System.Threading.CancellationToken, RoslynMcp.Core.Services.IUnexpectedExceptionReporter?, System.Func\u003Cstring, System.Diagnostics.Process[]\u003E?, System.TimeSpan?)\u0027 should take CancellationToken as the last parameter",
+      "severity": "Info",
+      "category": "Design",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 132,
+      "startColumn": 32,
+      "endLine": 132,
+      "endColumn": 46,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 132,
+        "startColumn": 32,
+        "endLine": 132,
+        "endColumn": 46,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    },
+    {
+      "id": "CA1068",
+      "message": "Method \u0027RoslynMcp.Host.Stdio.Tools.WorkspaceTools.GetWorkspaceReadinessReport(RoslynMcp.Core.Services.IWorkspaceExecutionGate, RoslynMcp.Roslyn.Contracts.IWorkspaceManager, string?, System.Threading.CancellationToken, RoslynMcp.Core.Services.IUnexpectedExceptionReporter?)\u0027 should take CancellationToken as the last parameter",
+      "severity": "Info",
+      "category": "Design",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 423,
+      "startColumn": 40,
+      "endLine": 423,
+      "endColumn": 67,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 423,
+        "startColumn": 40,
+        "endLine": 423,
+        "endColumn": 67,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    },
+    {
+      "id": "CA1873",
+      "message": "Evaluation of this argument may be expensive and unnecessary if logging is disabled",
+      "severity": "Info",
+      "category": "Performance",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 333,
+      "startColumn": 28,
+      "endLine": 337,
+      "endColumn": 37,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 333,
+        "startColumn": 28,
+        "endLine": 337,
+        "endColumn": 37,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    },
+    {
+      "id": "CA1068",
+      "message": "Method \u0027RoslynMcp.Host.Stdio.Tools.WorkspaceTools.CloseWorkspace(RoslynMcp.Core.Services.IWorkspaceExecutionGate, RoslynMcp.Roslyn.Contracts.IWorkspaceManager, RoslynMcp.Core.Services.IDotnetCommandRunner, string, bool, Microsoft.Extensions.Logging.ILoggerFactory?, System.Threading.CancellationToken, RoslynMcp.Core.Services.IUnexpectedExceptionReporter?, System.Func\u003Cstring, System.Diagnostics.Process[]\u003E?, System.TimeSpan?)\u0027 should take CancellationToken as the last parameter",
+      "severity": "Info",
+      "category": "Design",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 132,
+      "startColumn": 32,
+      "endLine": 132,
+      "endColumn": 46,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 132,
+        "startColumn": 32,
+        "endLine": 132,
+        "endColumn": 46,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    },
+    {
+      "id": "CA1068",
+      "message": "Method \u0027RoslynMcp.Host.Stdio.Tools.WorkspaceTools.GetWorkspaceReadinessReport(RoslynMcp.Core.Services.IWorkspaceExecutionGate, RoslynMcp.Roslyn.Contracts.IWorkspaceManager, string?, System.Threading.CancellationToken, RoslynMcp.Core.Services.IUnexpectedExceptionReporter?)\u0027 should take CancellationToken as the last parameter",
+      "severity": "Info",
+      "category": "Design",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 423,
+      "startColumn": 40,
+      "endLine": 423,
+      "endColumn": 67,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 423,
+        "startColumn": 40,
+        "endLine": 423,
+        "endColumn": 67,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    },
+    {
+      "id": "CA1873",
+      "message": "Evaluation of this argument may be expensive and unnecessary if logging is disabled",
+      "severity": "Info",
+      "category": "Performance",
+      "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+      "startLine": 333,
+      "startColumn": 28,
+      "endLine": 337,
+      "endColumn": 37,
+      "location": {
+        "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\src\\RoslynMcp.Host.Stdio\\Tools\\WorkspaceTools.cs",
+        "startLine": 333,
+        "startColumn": 28,
+        "endLine": 337,
+        "endColumn": 37,
+        "containingMember": null,
+        "previewText": null,
+        "classification": null
+      }
+    }
+  ],
+  "totalErrors": 0,
+  "totalWarnings": 0,
+  "totalInfo": 6,
+  "compilerErrors": 0,
+  "analyzerErrors": 0,
+  "workspaceErrors": 0
+}
+```
+
+**Source Code:**
+```csharp
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Security;
+using RoslynMcp.Roslyn.Contracts;
+
+namespace RoslynMcp.Host.Stdio.Tools;
+
+[McpServerToolType]
+public static class WorkspaceTools
+{
+    private const int _autoPrewarmProjectThreshold = 50;
+    private const int _defaultSupportBundleChangeCap = 20;
+    private const int _maxSupportBundleChangeCap = 50;
+    private const int _defaultSupportBundleDriftCap = 25;
+    private const int _maxSupportBundleDriftCap = 100;
+    private static readonly TimeSpan s_processDrainTimeout = TimeSpan.FromSeconds(10);
+
+    /// <remarks>
+    /// <para>Set autoRestore=true to run dotnet restore plus one follow-up reload when the loaded status reports restoreRequired=true.</para>
+    /// <para>Set prewarm=true to run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, solutions with more than 50 projects are prewarmed automatically. The response includes a prewarm result block only when warming ran.</para>
+    /// <para>DocumentCount note: the per-project DocumentCount often exceeds the Compile item count reported by evaluate_msbuild_items by about 3, because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit Compile items.</para>
+    /// <para>Sessions persist for the lifetime of the stdio host process - there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the configured concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES) forced an eviction. When a previously valid workspaceId returns "Workspace was not found", call workspace_load again rather than treating it as an error.</para>
+    /// <para>Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj into a Roslyn workspace session for semantic analysis. Idempotent by path: loading an already-loaded file returns the existing workspaceId. Returns a lean summary; pass verbose=true for the full project tree.")]
+    [McpToolMetadata("workspace", "stable", false, false,
+        "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
+    public static Task<string> LoadWorkspace(
+        McpServer server,
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IWorkspaceWarmService warmService,
+        IDotnetCommandRunner commandRunner,
+        [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
+        [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
+        [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
+        [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
+        [Description("Requests one-level sanctioned-root expansion for a sibling worktree. This takes effect only when the server operator also sets ROSLYNMCP_ALLOW_ROOT_EXPANSION=true; client input alone never widens the boundary. Higher ancestors and filesystem roots are never widened.")] bool expandSanctionedRoots = false,
+        [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
+        IProgress<ProgressNotificationValue>? progress = null,
+        CancellationToken ct = default)
+    {
+        return gate.RunLoadGateAsync(async c =>
+        {
+            // workspace-load stage emissions: clients see "validating-path → opening-workspace
+            // → checking-restore → done" instead of waiting silently for a ~45s P95 cold load
+            // on large solutions (OrchardCore, etc.). The stage labels are kebab-case and
+            // stable; total is the stage count so client progress bars track correctly. The
+            // opt-in or auto-large-solution prewarm path adds "prewarming-workspace" before
+            // "done". For omitted prewarm, the project-count threshold can only be evaluated
+            // after load returns, so the progress denominator may expand from 4 to 5 on
+            // >50-project solutions.
+            // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
+            // doesn't expose intra-load progress and adding it would balloon scope past the
+            // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
+            var totalStages = prewarm == true ? 5 : 4;
+            ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
+            ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
+            var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
+            ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
+            status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
+            if (expandSanctionedRoots)
+            {
+                // preview-apply-token-write-path-toctou: record the load-time expansion grant so a
+                // later *_apply redemption re-derives the SAME boundary that admitted this
+                // workspace. Without it, every document of an expansion-loaded sibling worktree
+                // sits outside the un-widened roots and every apply would be refused.
+                RootExpansionGrantRegistry.Grant(status.WorkspaceId);
+            }
+
+            var shouldPrewarm = ShouldPrewarmAfterLoad(prewarm, status);
+            var resolvedTotalStages = shouldPrewarm ? 5 : totalStages;
+            WorkspaceWarmResult? prewarmResult = null;
+            if (shouldPrewarm)
+            {
+                ProgressHelper.ReportStage(progress, 3, resolvedTotalStages, "prewarming-workspace");
+                prewarmResult = await gate.RunReadAsync(
+                    status.WorkspaceId,
+                    warmCt => warmService.WarmAsync(status.WorkspaceId, projects: null, warmCt),
+                    c).ConfigureAwait(false);
+            }
+
+            ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
+            return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
+        }, ct);
+    }
+
+    /// <remarks>
+    /// <para>Pass verbose=false for a compact readiness/version/count projection; the default verbose=true preserves the full project tree.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Workspace-scoped calls auto-reload stale state by default. Use this for an explicit reload; autoRestore=true runs dotnet restore and reloads once when restoreRequired=true.")]
+    [McpToolMetadata("workspace", "stable", false, false,
+        "Reload an existing workspace session from disk.")]
+    public static Task<string> ReloadWorkspace(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+        [Description("When true (default), preserve the full per-project response. Pass false for readiness, version, and aggregate counts without the project tree.")] bool verbose = true,
+        CancellationToken ct = default)
+    {
+        // Reload acquires both the global load gate AND the per-workspace write lock so that
+        // any in-flight readers on this workspace complete before the solution is replaced.
+        return gate.RunLoadGateAsync(outerCt =>
+            gate.RunWriteAsync(workspaceId, async innerCt =>
+            {
+                var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
+                status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
+                return SerializeWorkspaceLoadResult(status, verbose, prewarmResult: null);
+            }, outerCt), ct);
+    }
+
+    /// <remarks>
+    /// <para>drainProcesses=true runs `dotnet build-server shutdown` AND terminates any detached test-runner processes (testhost / vstest.console) whose executable lives under the loaded path directory, after session removal. On Windows this is what releases the MSBuild build-server and test-host file-system locks.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to also release MSBuild build-server and test-host file locks - required before `git worktree remove` in sweep teardown sequences.")]
+    [McpToolMetadata("workspace", "stable", false, true,
+        "Close a loaded workspace session and release resources.")]
+    public static Task<string> CloseWorkspace(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true, run `dotnet build-server shutdown` AND kill detached testhost/vstest.console processes rooted under the loaded path's directory after session removal, to release MSBuild build-server and test-host out-of-process file locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
+        ILoggerFactory? loggerFactory = null,
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        // Seam: lets tests inject a fake process enumerator. Production default enumerates live
+        // processes by name. Not surfaced to MCP callers — no [Description], so the schema omits it.
+        Func<string, Process[]>? getProcessesByName = null,
+        // Seam: production cleanup is bounded independently of the request lifetime. Tests use a
+        // short timeout to prove that a stuck drain cannot retain the load gate indefinitely.
+        TimeSpan? processDrainTimeout = null)
+    {
+        var logger = CreateLogger(loggerFactory);
+        getProcessesByName ??= Process.GetProcessesByName;
+        var cleanupTimeout = processDrainTimeout ?? s_processDrainTimeout;
+        if (cleanupTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(processDrainTimeout),
+                processDrainTimeout,
+                "Process drain timeout must be positive.");
+        }
+
+        // Close acquires both the global load gate AND the per-workspace write lock so that
+        // no reader is in flight when the workspace's lock entry is dropped from the registry.
+        // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
+        // released before being removed from the registry.
+        //
+        // CAPTURE-BEFORE-CLOSE: workspace.Close(workspaceId) removes the session from the
+        // internal registry. Resolve LoadedPath BEFORE calling Close so the working directory
+        // for the drain step is available even after the session is gone.
+        return gate.RunLoadGateAsync(async outerCt =>
+        {
+            string? loadedPath = null;
+            var json = await gate.RunWriteAsync(
+                workspaceId,
+                async innerCt =>
+                {
+                    // Capture the loaded path before close removes the session from the registry.
+                    if (drainProcesses)
+                    {
+                        try { loadedPath = workspace.GetStatus(workspaceId).LoadedPath; }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            // An unknown/already-closed workspace is reflected by success=false below.
+                            // Do not emit raw exception detail for this expected lookup miss.
+                        }
+                    }
+
+                    var closed = workspace.Close(workspaceId);
+                    return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
+                },
+                outerCt,
+                applyStalenessPolicy: false).ConfigureAwait(false);
+            gate.RemoveGate(workspaceId);
+
+            if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))
+            {
+                var workingDirectory = Path.GetDirectoryName(loadedPath);
+                if (!string.IsNullOrWhiteSpace(workingDirectory))
+                {
+                    using var cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
+                    cleanupCts.CancelAfter(cleanupTimeout);
+                    Exception? cleanupFailure = null;
+                    try
+                    {
+                        var drain = await commandRunner.RunAsync(
+                            workingDirectory,
+                            string.Empty,
+                            ["build-server", "shutdown"],
+                            cleanupCts.Token).ConfigureAwait(false);
+                        if (!drain.Succeeded)
+                        {
+                            cleanupFailure = new InvalidOperationException(
+                                $"Process drain exited with code {drain.ExitCode}.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Workspace removal is the commit point. Cleanup observes caller cancellation
+                        // and its own timeout, but neither can roll the committed close result back.
+                        cleanupFailure = ex;
+                    }
+
+                    // Second drain sub-step: `dotnet test` spawns detached testhost.exe /
+                    // vstest.console.exe child processes that survive build-server shutdown and
+                    // keep tests/.../bin file handles open, blocking `git worktree remove` on
+                    // Windows. Terminate any whose executable lives under this working directory.
+                    if (!cleanupCts.IsCancellationRequested)
+                    {
+                        cleanupFailure ??= TryKillDetachedTestHosts(
+                            workingDirectory,
+                            getProcessesByName,
+                            logger,
+                            workspaceId,
+                            cleanupCts.Token);
+                    }
+
+                    if (cleanupFailure is not null)
+                    {
+                        ReportProcessDrainFailure(exceptionReporter, cleanupFailure);
+                    }
+                }
+            }
+
+            return json;
+        }, ct);
+    }
+
+    private static void ReportProcessDrainFailure(
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Exception exception) =>
+        UnexpectedExceptionReporting.Report(
+            exceptionReporter,
+            exception,
+            UnexpectedExceptionCategory.WorkspaceCloseProcessDrain);
+
+    /// <summary>
+    /// Best-effort termination of detached <c>testhost</c> / <c>vstest.console</c> processes whose
+    /// executable resides under <paramref name="workingDirectory"/>. These are spawned by
+    /// <c>dotnet test</c> and survive <c>dotnet build-server shutdown</c>, holding
+    /// <c>tests/.../bin</c> file locks that block <c>git worktree remove</c> on Windows.
+    /// </summary>
+    /// <remarks>
+    /// Entirely non-fatal: the workspace close has already succeeded by the time this runs, so any
+    /// enumeration / inspection / kill failure is swallowed at Debug. <see cref="Process.MainModule"/>
+    /// throws <see cref="System.ComponentModel.Win32Exception"/> for protected or already-exited
+    /// processes — those are SKIPPED (never kill-all on an inaccessible path). The
+    /// <paramref name="getProcessesByName"/> seam lets tests inject a fake enumerator.
+    /// </remarks>
+    private static Exception? TryKillDetachedTestHosts(
+        string workingDirectory,
+        Func<string, Process[]> getProcessesByName,
+        ILogger? logger,
+        string workspaceId,
+        CancellationToken cancellationToken)
+    {
+        Exception? firstFailure = null;
+        // Boundary guard: only kill processes that are TRUE DESCENDANTS of workingDirectory.
+        // A bare StartsWith(workingDirectory) false-positives on a sibling worktree whose path
+        // is a string-prefix (e.g. workingDirectory ".../wt-foo" vs sibling ".../wt-foo-bar"),
+        // which would Kill an unrelated worktree's testhost tree mid-test-run. Normalize to a
+        // full path and append exactly one separator so the prefix can only match a child path.
+        // .worktrees/ holds multiple concurrent sibling worktrees during parallel sweeps.
+        string workingDirectoryPrefix;
+        try
+        {
+            workingDirectoryPrefix =
+                Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+        }
+        catch (Exception ex)
+        {
+            // A malformed working directory cannot be normalized — skip the drain entirely
+            // rather than fall back to an unguarded match.
+            return ex;
+        }
+
+        // Match both the .NET-Core test host ("testhost") and the legacy console runner
+        // ("vstest.console"). Names are extensionless on Process; .exe on Windows, bare on Unix.
+        foreach (var processName in new[] { "testhost", "vstest.console" })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Process[] candidates;
+            try
+            {
+                candidates = getProcessesByName(processName);
+            }
+            catch (Exception ex)
+            {
+                firstFailure ??= ex;
+                continue;
+            }
+
+            foreach (var process in candidates)
+            {
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // MainModule access throws Win32Exception for protected/exited processes —
+                    // skip those rather than risk terminating an unrelated process.
+                    var executablePath = process.MainModule?.FileName;
+                    if (string.IsNullOrEmpty(executablePath))
+                    {
+                        continue;
+                    }
+
+                    // Compare full paths against the separator-terminated working-directory
+                    // prefix so only true descendants match — never a bare string prefix that
+                    // would catch a sibling worktree (".../wt-foo" vs ".../wt-foo-bar").
+                    var fullExecutablePath = Path.GetFullPath(executablePath);
+                    if (!fullExecutablePath.StartsWith(workingDirectoryPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    process.Kill(entireProcessTree: true);
+                    logger?.LogDebug(
+                        "workspace_close terminated detached {ProcessName} (pid {ProcessId}) for workspace {WorkspaceId}.",
+                        processName,
+                        process.Id,
+                        workspaceId);
+                }
+                catch (Exception ex)
+                {
+                    firstFailure ??= ex;
+                }
+                finally
+                {
+                    try
+                    {
+                        process.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        firstFailure ??= ex;
+                    }
+                }
+            }
+        }
+
+        return firstFailure;
+    }
+
+    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceListDto)), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "List active workspace sessions.")]
+    public static Task<CallToolResult> ListWorkspaces(
+        IWorkspaceManager workspace,
+        [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
+    {
+        var workspaces = workspace.ListWorkspaces();
+        if (verbose)
+        {
+            var verbosePayload = new WorkspaceListVerboseDto(workspaces.Count, workspaces);
+            return Task.FromResult(StructuredToolResult.Create(verbosePayload));
+        }
+
+        var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
+        var payload = new WorkspaceListDto(summaries.Count, summaries);
+        return Task.FromResult(StructuredToolResult.Create(payload));
+    }
+
+    /// <remarks>
+    /// <para>Pass verbose=true for the full per-project tree and workspace diagnostics.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description("Cheap health check after workspace_load - call this first before compile_check or heavy tools. Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Inspect status, diagnostics, and stale-state information for a workspace.")]
+    public static Task<CallToolResult> GetWorkspaceStatus(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
+            return verbose
+                ? StructuredToolResult.Create(status)
+                : StructuredToolResult.Create(WorkspaceStatusSummaryDto.From(status));
+        }, ct);
+    }
+
+    [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceStatusSummaryDto)), Description(
+        "Alias for workspace_status with verbose=false — same summary JSON (isReady, restoreHint, solutionFileName, error counts). Use for agent bootstrap right after workspace_load.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Lean workspace readiness summary (alias of workspace_status verbose=false).")]
+    public static Task<CallToolResult> GetWorkspaceHealth(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        CancellationToken ct = default) =>
+        GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
+
+    /// <remarks>
+    /// <para>Uses existing read-side workspace probes only; it does not run tests or dotnet build by default.</para>
+    /// <para>If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_readiness_report", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceReadinessReportDto)), Description("First-run/onboarding readiness report for a loaded workspace, distinct from the incident-focused workspace_support_bundle. Returns one verdict - ready, restore-needed, build-needed, or analyzer-limited - plus limitations and next workflows.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "First-run workspace readiness report with verdict, limitations, and next workflows.")]
+    public static Task<CallToolResult> GetWorkspaceReadinessReport(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        [Description("Optional workspace session identifier returned by workspace_load. Omit only when zero or one workspace is loaded; pass explicitly when multiple workspaces are active.")] string? workspaceId = null,
+        CancellationToken ct = default,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+    {
+        var loadedSummaries = workspace.ListWorkspaces()
+            .Select(WorkspaceStatusSummaryDto.From)
+            .ToArray();
+        var resolvedWorkspaceId = ResolveOptionalWorkspaceId(workspaceId, loadedSummaries);
+        if (resolvedWorkspaceId is null)
+        {
+            var status = loadedSummaries.Length == 0
+                ? "no-workspace-loaded"
+                : "workspace-id-required";
+            var report = WorkspaceReadinessReportBuilder.CreateWithoutTarget(status, workspaceId, loadedSummaries);
+            return Task.FromResult(StructuredToolResult.Create(report));
+        }
+
+        if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
+        {
+            var report = WorkspaceReadinessReportBuilder.CreateWithoutTarget(
+                "workspace-not-found",
+                resolvedWorkspaceId,
+                loadedSummaries);
+            return Task.FromResult(StructuredToolResult.Create(report));
+        }
+
+        return gate.RunReadAsync(resolvedWorkspaceId, async c =>
+        {
+            var status = await workspace.GetStatusAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
+            var summary = WorkspaceStatusSummaryDto.From(status);
+            int? sourceGeneratedDocumentCount = null;
+            string? sourceGeneratedProbeLimitation = null;
+            try
+            {
+                var generatedDocuments = await workspace.GetSourceGeneratedDocumentsAsync(
+                    resolvedWorkspaceId,
+                    projectName: null,
+                    c).ConfigureAwait(false);
+                sourceGeneratedDocumentCount = generatedDocuments.Count;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var detail = UnexpectedExceptionReporting.Report(
+                    exceptionReporter,
+                    ex,
+                    UnexpectedExceptionCategory.WorkspaceReadiness).Public;
+                sourceGeneratedProbeLimitation =
+                    $"source_generated_documents probe was skipped after {detail.Category}. " +
+                    "Run source_generated_documents directly after resolving readiness blockers. " +
+                    $"correlationId={detail.CorrelationId}";
+            }
+
+            var report = WorkspaceReadinessReportBuilder.Create(
+                requestedWorkspaceId: workspaceId,
+                loadedWorkspaces: loadedSummaries,
+                status: status,
+                summary: summary,
+                sourceGeneratedDocumentCount: sourceGeneratedDocumentCount,
+                sourceGeneratedProbeLimitation: sourceGeneratedProbeLimitation);
+
+            return StructuredToolResult.Create(report);
+        }, ct);
+    }
+
+    /// <remarks>
+    /// <para>Also reports the loaded path and workspace/surface version. Does not include source snippets.</para>
+    /// <para>If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.</para>
+    /// </remarks>
+    [McpServerTool(Name = "workspace_support_bundle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
+        UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceSupportBundleDto)), Description("Incident-diagnosis bundle for an existing workspace session, distinct from the first-run workspace_readiness_report. Composes readiness, drift status, a capped change ledger, versions, diagnostics totals, and next-action hints.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.")]
+    public static Task<CallToolResult> GetWorkspaceSupportBundle(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+// ... [243 more lines truncated]
+```
+
+Review the code for:
+1. **Correctness**: Logic errors, edge cases, null handling
+2. **Security**: Injection risks, input validation, sensitive data exposure
+3. **Performance**: Unnecessary allocations, N+1 queries, missing async/await
+4. **Thread Safety**: Race conditions, shared mutable state
+5. **Design**: SOLID violations, coupling issues, missing abstractions
+6. **Maintainability**: Readability, naming, documentation gaps
+7. **Error Handling**: Missing try/catch, swallowed exceptions
+8. **Testing**: Testability concerns, missing validation
+
+For each issue found, specify the line number, severity (critical/major/minor/suggestion), and proposed fix.

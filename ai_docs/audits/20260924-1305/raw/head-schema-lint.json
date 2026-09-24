@@ -1,0 +1,2962 @@
+[
+  {
+    "name": "add_central_package_version_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "packageId",
+      "version"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "add_package_reference_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "packageId",
+      "version"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "add_pragma_suppression",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "diagnosticId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "add_project_reference_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "referencedProjectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "add_target_framework_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "targetFramework"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "analyze_control_flow",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "endLine"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "analyze_data_flow",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "endLine"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "analyze_snippet",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "code"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_code_action",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_composite",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_composite_preview",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_multi_file_edit",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "fileEdits"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_project_mutation",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_text_edit",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "edits"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "apply_with_verify",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "build_project",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "projectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "build_workspace",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "bulk_replace_type_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "bulk_replace_type_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "oldTypeName",
+      "newTypeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "callers_callees",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "change_signature_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "op"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "change_type_namespace_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "typeName",
+      "fromNamespace",
+      "toNamespace"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "code_fix_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "code_fix_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "diagnosticId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "compile_check",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "create_file_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "create_file_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "filePath",
+      "content"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "delete_file_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "delete_file_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "dependency_inversion_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName",
+      "interfaceProjectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "diagnostic_details",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "diagnosticId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "document_symbols",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "enclosing_symbol",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "evaluate_csharp",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "code"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "evaluate_msbuild_items",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "itemType"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "evaluate_msbuild_property",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "propertyName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_and_wire_interface_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName",
+      "targetProjectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_interface_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_interface_cross_project_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_interface_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName",
+      "interfaceName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_method_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_method_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn",
+      "endLine",
+      "endColumn",
+      "methodName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_shared_expression_to_helper_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "exampleFilePath",
+      "exampleStartLine",
+      "exampleStartColumn",
+      "exampleEndLine",
+      "exampleEndColumn",
+      "helperName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_type_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "extract_type_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName",
+      "memberNames",
+      "newTypeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_base_members",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_consumers",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_dead_fields",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "param 'usageKind' lists fixed choices in prose but has no enum",
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_dead_locals",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_duplicate_helpers",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_duplicated_code",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_duplicated_methods",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_implementations",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_overloads",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "typeMetadataName",
+      "memberName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_overrides",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_property_writes",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_references",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_references_bulk",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "symbols"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_reflection_usages",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_shared_members",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_type_consumers",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "typeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_type_mutations",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_type_usages",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "find_unused_symbols",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "fix_all_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "fix_all_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "diagnosticId",
+      "scope"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "format_check",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "format_document_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "format_document_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "format_range_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "format_range_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn",
+      "endLine",
+      "endColumn"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_code_actions",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_cohesion_metrics",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_completions",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_complexity_metrics",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_coupling_metrics",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_di_registrations",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_editorconfig_options",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_msbuild_properties",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_namespace_dependencies",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_nuget_dependencies",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_operations",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_prompt_text",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "promptName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_source_text",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_symbol_outline",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_syntax_tree",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "get_test_coverage_map",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "go_to_definition",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "goto_type_definition",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "impact_analysis",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "list_analyzers",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "member_hierarchy",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "migrate_package_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "oldPackageId",
+      "newPackageId",
+      "newVersion"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "move_file_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "move_file_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "sourceFilePath",
+      "targetFilePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "move_type_to_file_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "move_type_to_file_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "sourceFilePath",
+      "typeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "move_type_to_project_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "sourceFilePath",
+      "typeName",
+      "targetProjectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "nuget_vulnerability_scan",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "organize_usings_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "organize_usings_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "parameter_object_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "parameterNames",
+      "newTypeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "pragma_scope_widen",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "diagnosticId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "preview_code_action",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "startLine",
+      "startColumn",
+      "actionIndex"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "preview_multi_file_edit",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "fileEdits"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "preview_multi_file_edit_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "preview_record_field_addition",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "recordMetadataName",
+      "newFieldName",
+      "newFieldType"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "probe_position",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "column"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "project_diagnostics",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "project_graph",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "recommend_workflow",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "task"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "record_field_add_with_satellites_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "typeMetadataName",
+      "newFieldName",
+      "newFieldType"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_central_package_version_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "packageId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_dead_code_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_dead_code_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "symbolHandles"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_interface_member_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "interfaceMemberHandle"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_package_reference_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "packageId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_project_reference_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "referencedProjectName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "remove_target_framework_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "targetFramework"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "rename_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "rename_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "newName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "replace_invocation_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "oldMethod",
+      "newMethod"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "replace_string_literals_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "replacements"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "restructure_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "pattern",
+      "goal"
+    ],
+    "issues": [
+      "param 'goal' lists fixed choices in prose but has no enum",
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "revert_apply_by_sequence",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "sequenceNumber"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "revert_last_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_first_test_file_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "serviceMetadataName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_test_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_test_batch_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "testProjectName",
+      "targets"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_test_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "testProjectName",
+      "targetTypeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_type_apply",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "scaffold_type_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "typeName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "security_analyzer_status",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "security_diagnostics",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "semantic_grep",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "pattern"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "semantic_search",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "query"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "server_heartbeat",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "server_info",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "set_conditional_property_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "propertyName",
+      "value",
+      "condition"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "readOnlyHint=true on a name that implies mutation",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "set_diagnostic_severity",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "diagnosticId",
+      "severity",
+      "filePath"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "set_editorconfig_option",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "key",
+      "value"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "set_project_property_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "projectName",
+      "propertyName",
+      "value"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "readOnlyHint=true on a name that implies mutation",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "source_generated_documents",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "split_class_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "typeName",
+      "memberNames",
+      "newFileName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "split_service_with_di_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "sourceFilePath",
+      "sourceType",
+      "partitions"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "suggest_refactorings",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_impact_sweep",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_info",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_refactor_preview",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "operations"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_relationships",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_search",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "query"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "symbol_signature_help",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_coverage",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_discover",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_reference_map",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_related",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "param 'column' lists fixed choices in prose but has no enum",
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_related_files",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePaths"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "test_run",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "trace_exception_flow",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "exceptionTypeMetadataName"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "type_hierarchy",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "validate_recent_git_changes",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "validate_workspace",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "verify_pragma_suppresses",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId",
+      "filePath",
+      "line",
+      "diagnosticId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_changes",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_close",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "param 'getProcessesByName' has no description",
+      "param 'getProcessesByName' has no type",
+      "param 'processDrainTimeout' has no description",
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_drift_check",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_fork_apply",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId",
+      "previewToken"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_health",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_list",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_load",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "path"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_readiness_report",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_reload",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  },
+  {
+    "name": "workspace_status",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_support_bundle",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "required": [],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)"
+    ]
+  },
+  {
+    "name": "workspace_warm",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "required": [
+      "workspaceId"
+    ],
+    "issues": [
+      "additionalProperties not false (unknown args not rejected by schema)",
+      "no outputSchema"
+    ]
+  }
+]

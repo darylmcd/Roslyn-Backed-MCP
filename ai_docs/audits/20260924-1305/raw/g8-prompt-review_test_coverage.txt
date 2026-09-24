@@ -1,0 +1,326 @@
+Review test coverage for this workspace and identify gaps.
+
+**Project Filter:** RoslynMcp.Tests
+
+**Discovered Tests:**
+```json
+[
+  {
+    "displayName": "InheritedTestMethod",
+    "fullyQualifiedName": "RoslynMcp.ShardDiscoveryFixtures.InheritedTestBase.InheritedTestMethod",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\DiscoveryFixtures.cs",
+    "line": 9
+  },
+  {
+    "displayName": "CustomAttributedTestMethod",
+    "fullyQualifiedName": "RoslynMcp.ShardDiscoveryFixtures.CustomAttributedTestClass.CustomAttributedTestMethod",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\DiscoveryFixtures.cs",
+    "line": 27
+  },
+  {
+    "displayName": "ParameterizedTestMethod",
+    "fullyQualifiedName": "RoslynMcp.ShardDiscoveryFixtures.ParameterizedTestClass.ParameterizedTestMethod",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.ShardDiscoveryFixtures\\DiscoveryFixtures.cs",
+    "line": 38
+  },
+  {
+    "displayName": "VerifyActionlintScript_DeclaresPinnedVersionAndPerRidArchiveAndBinaryHashes",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlintScript_DeclaresPinnedVersionAndPerRidArchiveAndBinaryHashes",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 9
+  },
+  {
+    "displayName": "JustfileAndCiPolicy_WireTheActionlintGateIntoRequiredValidation",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.JustfileAndCiPolicy_WireTheActionlintGateIntoRequiredValidation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 34
+  },
+  {
+    "displayName": "VerifyActionlint_CachedBinaryHashMismatch_FailsClosedWithoutAttemptingDownload",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_CachedBinaryHashMismatch_FailsClosedWithoutAttemptingDownload",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 70
+  },
+  {
+    "displayName": "VerifyActionlint_RoslynMcpActionlintPathOverride_HashMismatchFailsClosedAndNeverRuns",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_RoslynMcpActionlintPathOverride_HashMismatchFailsClosedAndNeverRuns",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 100
+  },
+  {
+    "displayName": "VerifyActionlint_ChmodFailure_ReportsBoundedDiagnosticWithoutNetworkAccess",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_ChmodFailure_ReportsBoundedDiagnosticWithoutNetworkAccess",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 129
+  },
+  {
+    "displayName": "VerifyActionlint_UnsupportedPlatform_FailsClosedBeforeFilesystemOrNetworkMutation",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_UnsupportedPlatform_FailsClosedBeforeFilesystemOrNetworkMutation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 153
+  },
+  {
+    "displayName": "VerifyActionlint_SupportedPlatformArchitecture_UsesMatchingPin",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_SupportedPlatformArchitecture_UsesMatchingPin",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 184
+  },
+  {
+    "displayName": "VerifyActionlint_UnpinnedPlatformArchitecture_FailsClosedBeforeFilesystemOrNetworkMutation",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_UnpinnedPlatformArchitecture_FailsClosedBeforeFilesystemOrNetworkMutation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 217
+  },
+  {
+    "displayName": "VerifyActionlint_TarExtractionFailure_ReportsBoundedDiagnosticBeforeExecution",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_TarExtractionFailure_ReportsBoundedDiagnosticBeforeExecution",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 247
+  },
+  {
+    "displayName": "VerifyActionlint_ArchiveWithoutExpectedBinary_FailsClosedAfterSuccessfulExtraction",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_ArchiveWithoutExpectedBinary_FailsClosedAfterSuccessfulExtraction",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 274
+  },
+  {
+    "displayName": "VerifyActionlint_ColdDownloadThenCacheHit_LintsRealWorkflowsAndStaysOfflineOnRerun",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_ColdDownloadThenCacheHit_LintsRealWorkflowsAndStaysOfflineOnRerun",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 316
+  },
+  {
+    "displayName": "VerifyActionlint_ForcedDownloadFailure_TripsBeforeNetworkAccess",
+    "fullyQualifiedName": "RoslynMcp.Tests.ActionlintGateContractTests.VerifyActionlint_ForcedDownloadFailure_TripsBeforeNetworkAccess",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ActionlintGateContractTests.cs",
+    "line": 341
+  },
+  {
+    "displayName": "GetSymbolOutline_Alias_ReturnsSamePayloadAsDocumentSymbols_PlusDeprecation",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.GetSymbolOutline_Alias_ReturnsSamePayloadAsDocumentSymbols_PlusDeprecation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 44
+  },
+  {
+    "displayName": "FindDuplicatedCode_Alias_ReturnsSamePayloadAsFindDuplicatedMethods_PlusDeprecation",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.FindDuplicatedCode_Alias_ReturnsSamePayloadAsFindDuplicatedMethods_PlusDeprecation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 72
+  },
+  {
+    "displayName": "GetTestCoverageMap_Alias_ReturnsSamePayloadAsTestCoverage_PlusDeprecation",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.GetTestCoverageMap_Alias_ReturnsSamePayloadAsTestCoverage_PlusDeprecation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 102
+  },
+  {
+    "displayName": "Catalog_RegistersAllThreeAliases",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.Catalog_RegistersAllThreeAliases",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 133
+  },
+  {
+    "displayName": "DocumentSymbols_Canonical_ReturnsDeprecationNull",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.DocumentSymbols_Canonical_ReturnsDeprecationNull",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 167
+  },
+  {
+    "displayName": "GetSymbolOutline_Alias_DeprecationFieldShape",
+    "fullyQualifiedName": "RoslynMcp.Tests.AliasToolsTests.GetSymbolOutline_Alias_DeprecationFieldShape",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AliasToolsTests.cs",
+    "line": 189
+  },
+  {
+    "displayName": "CreateFailureMessage_RedactsExceptionTextAndCarriesContract",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisFlowFailureRedactionTests.CreateFailureMessage_RedactsExceptionTextAndCarriesContract",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisFlowFailureRedactionTests.cs",
+    "line": 25
+  },
+  {
+    "displayName": "CreateFailureMessage_ReportsToServerSinkWithFlowAnalysisCategory",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisFlowFailureRedactionTests.CreateFailureMessage_ReportsToServerSinkWithFlowAnalysisCategory",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisFlowFailureRedactionTests.cs",
+    "line": 45
+  },
+  {
+    "displayName": "CreateFailureMessage_NullReporter_FallsBackToUnavailableCorrelationId",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisFlowFailureRedactionTests.CreateFailureMessage_NullReporter_FallsBackToUnavailableCorrelationId",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisFlowFailureRedactionTests.cs",
+    "line": 64
+  },
+  {
+    "displayName": "DetailedSyntaxTreeScan_MixedFailure_RetainsHealthyDataAndReportsSafeCompleteness",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisScanCompletenessTests.DetailedSyntaxTreeScan_MixedFailure_RetainsHealthyDataAndReportsSafeCompleteness",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisScanCompletenessTests.cs",
+    "line": 24
+  },
+  {
+    "displayName": "DetailedSyntaxTreeScan_Cancelled_PropagatesCancellation",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisScanCompletenessTests.DetailedSyntaxTreeScan_Cancelled_PropagatesCancellation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisScanCompletenessTests.cs",
+    "line": 62
+  },
+  {
+    "displayName": "NuGetDetailedScan_MixedFailure_RetainsHealthyProjectsAndCompatibilityProjectionFailsClosed",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisScanCompletenessTests.NuGetDetailedScan_MixedFailure_RetainsHealthyProjectsAndCompatibilityProjectionFailsClosed",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisScanCompletenessTests.cs",
+    "line": 83
+  },
+  {
+    "displayName": "NuGetDetailedScan_Cancelled_PropagatesCancellation",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisScanCompletenessTests.NuGetDetailedScan_Cancelled_PropagatesCancellation",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisScanCompletenessTests.cs",
+    "line": 122
+  },
+  {
+    "displayName": "DiagnosticDetails_Accepts_LineColumn_And_StartLineStartColumn_Identically",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.DiagnosticDetails_Accepts_LineColumn_And_StartLineStartColumn_Identically",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 38
+  },
+  {
+    "displayName": "DiagnosticDetails_Accepts_Matching_Values_From_Both_Alias_Names",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.DiagnosticDetails_Accepts_Matching_Values_From_Both_Alias_Names",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 81
+  },
+  {
+    "displayName": "DiagnosticDetails_Rejects_Missing_Position",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.DiagnosticDetails_Rejects_Missing_Position",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 107
+  },
+  {
+    "displayName": "DiagnosticDetails_Rejects_Conflicting_Alias_Values",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.DiagnosticDetails_Rejects_Conflicting_Alias_Values",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 129
+  },
+  {
+    "displayName": "ImpactAnalysis_DefaultMode_ReturnsReferencesAndDeclarationsArrays",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.ImpactAnalysis_DefaultMode_ReturnsReferencesAndDeclarationsArrays",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 155
+  },
+  {
+    "displayName": "ImpactAnalysis_SummaryMode_OmitsArraysAndKeepsCounts",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.ImpactAnalysis_SummaryMode_OmitsArraysAndKeepsCounts",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 183
+  },
+  {
+    "displayName": "ImpactAnalysis_SummaryMode_ProducesSmallerPayloadThanDefault",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.ImpactAnalysis_SummaryMode_ProducesSmallerPayloadThanDefault",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 227
+  },
+  {
+    "displayName": "ImpactAnalysis_NonSummary_HonorsDeclarationsLimit_WithHasMore",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.ImpactAnalysis_NonSummary_HonorsDeclarationsLimit_WithHasMore",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 259
+  },
+  {
+    "displayName": "ImpactAnalysis_RejectsInvalidDeclarationsLimit",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.ImpactAnalysis_RejectsInvalidDeclarationsLimit",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 307
+  },
+  {
+    "displayName": "FindTypeMutations_UnresolvedSymbolHandle_UsesCanonicalMessage",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.FindTypeMutations_UnresolvedSymbolHandle_UsesCanonicalMessage",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 326
+  },
+  {
+    "displayName": "GoToDefinition_CaretOnWhitespace_ReportsPositionSpecificMessage",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalysisToolsTests.GoToDefinition_CaretOnWhitespace_ReportsPositionSpecificMessage",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalysisToolsTests.cs",
+    "line": 340
+  },
+  {
+    "displayName": "ListAnalyzers_TotalRules_IsIdempotentAcrossBackToBackCalls",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerInfoToolsTests.ListAnalyzers_TotalRules_IsIdempotentAcrossBackToBackCalls",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerInfoToolsTests.cs",
+    "line": 44
+  },
+  {
+    "displayName": "ListAnalyzers_RuleIdSets_AreIdenticalAcrossBackToBackCalls",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerInfoToolsTests.ListAnalyzers_RuleIdSets_AreIdenticalAcrossBackToBackCalls",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerInfoToolsTests.cs",
+    "line": 61
+  },
+  {
+    "displayName": "ListAnalyzers_UnfilteredTotalRules_AtLeastAsLargeAsAnyFilteredCall",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerInfoToolsTests.ListAnalyzers_UnfilteredTotalRules_AtLeastAsLargeAsAnyFilteredCall",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerInfoToolsTests.cs",
+    "line": 85
+  },
+  {
+    "displayName": "ListAnalyzers_WhitespaceOnlyProjectFilter_TreatedAsNoFilter",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerInfoToolsTests.ListAnalyzers_WhitespaceOnlyProjectFilter_TreatedAsNoFilter",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerInfoToolsTests.cs",
+    "line": 115
+  },
+  {
+    "displayName": "AnalyzerLoadFailure_ReturnsSecretSafeRuleAndCapturedDiagnostic",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerInfoToolsTests.AnalyzerLoadFailure_ReturnsSecretSafeRuleAndCapturedDiagnostic",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerInfoToolsTests.cs",
+    "line": 129
+  },
+  {
+    "displayName": "Retarget_LeasesAreUniquelyKeyedPerLoad_AndDisposeIsIdempotent",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests.Retarget_LeasesAreUniquelyKeyedPerLoad_AndDisposeIsIdempotent",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerShadowLoaderLifecycleTests.cs",
+    "line": 50
+  },
+  {
+    "displayName": "Retarget_ExternalAnalyzer_PreservesRoslynDefaultLoader",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests.Retarget_ExternalAnalyzer_PreservesRoslynDefaultLoader",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerShadowLoaderLifecycleTests.cs",
+    "line": 105
+  },
+  {
+    "displayName": "SweepAbandonedRoots_LockedStaleLease_LogsRedactedFailureAndContinues",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests.SweepAbandonedRoots_LockedStaleLease_LogsRedactedFailureAndContinues",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerShadowLoaderLifecycleTests.cs",
+    "line": 148
+  },
+  {
+    "displayName": "WorkspaceCloseAndReload_ReclaimAnalyzerShadowRoots",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests.WorkspaceCloseAndReload_ReclaimAnalyzerShadowRoots",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerShadowLoaderLifecycleTests.cs",
+    "line": 208
+  },
+  {
+    "displayName": "ReclamationTimeout_PreservesLastDeletionError",
+    "fullyQualifiedName": "RoslynMcp.Tests.AnalyzerShadowLoaderLifecycleTests.ReclamationTimeout_PreservesLastDeletionError",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\AnalyzerShadowLoaderLifecycleTests.cs",
+    "line": 283
+  },
+  {
+    "displayName": "ApplyTextEdit_VerifyFalse_OmitsVerificationField",
+    "fullyQualifiedName": "RoslynMcp.Tests.ApplyTextEditVerifyTests.ApplyTextEdit_VerifyFalse_OmitsVerificationField",
+    "filePath": "<repo>\\.worktrees\\surface-test-20260924T130517Z-ro\\tests\\RoslynMcp.Tests\\ApplyTextEditVerifyTests.cs",
+    "line": 32
+  }
+]
+[Showing 50 of 2724 items]
+```
+
+Use this workflow:
+1. Review the discovered tests above to understand current test coverage areas.
+2. Call `test_coverage` to run tests with code coverage collection (requires coverlet.collector).
+3. Analyze the coverage report to identify uncovered source files and methods.
+4. For each uncovered area, use `document_symbols` and `symbol_info` to understand the code structure.
+5. Use `scaffold_test_preview` to generate test stubs for uncovered types.
+6. After scaffolding, call `scaffold_test_apply` to create the test files.
+7. Use `test_run` to verify the new tests compile and run (they will initially fail or be skipped).
+8. Prioritize coverage for:
+   - Public API surface (high-impact if broken)
+   - Complex methods (use `get_complexity_metrics` to identify high-complexity code)
+   - Security-sensitive code (use `security_diagnostics` to identify these areas)
+   - Recently changed code (high risk of regression)
+
+Focus on meaningful coverage that validates behavior, not just line coverage.
