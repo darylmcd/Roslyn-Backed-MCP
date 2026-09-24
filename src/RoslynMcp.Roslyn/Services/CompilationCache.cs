@@ -36,16 +36,20 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class CompilationCache : ICompilationCache, IDisposable
 {
     private readonly IWorkspaceManager _workspaceManager;
-    private readonly Func<Project, Task<CompilationSnapshot?>> _compilationFactory;
+    private readonly Func<Project, Task<Compilation?>> _compilationFactory;
+    private readonly Func<Project, Task<CompilationSnapshot?>> _snapshotFactory;
     private readonly Func<string, Project, Task<CompilationWithAnalyzers?>> _analyzerFactory;
 
-    private sealed record CompilationEntry(int Version, Lazy<Task<CompilationSnapshot?>> Compilation);
-    private sealed record AnalyzerEntry(int Version, Lazy<Task<CompilationWithAnalyzers?>> Bound);
+    private sealed record CacheEntry<T>(int Version, Lazy<Task<T>> Value);
 
-    // Two parallel maps. Splitting them lets a service that only needs the compiler snapshot
-    // (e.g., dead-code analysis) skip warming the analyzer pipeline.
-    private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CompilationEntry> _compilations = new();
-    private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), AnalyzerEntry> _analyzerBound = new();
+    // Three parallel maps, one per product. The plain map holds the Solution-owned compilation
+    // every symbol consumer needs (a symbol from any other compilation resolves zero references
+    // through SymbolFinder against the Solution). The snapshot map holds the generator-rerun
+    // compilation that only diagnostic surfaces may read. The analyzer-bound map is separate so a
+    // service that only needs a compilation skips warming the analyzer pipeline.
+    private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CacheEntry<Compilation?>> _compilations = new();
+    private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CacheEntry<CompilationSnapshot?>> _snapshots = new();
+    private readonly ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CacheEntry<CompilationWithAnalyzers?>> _analyzerBound = new();
 
     public CompilationCache(IWorkspaceManager workspaceManager)
         : this(workspaceManager, compilationFactory: null, analyzerFactory: null)
@@ -58,7 +62,9 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         Func<string, Project, Task<CompilationWithAnalyzers?>>? analyzerFactory)
     {
         _workspaceManager = workspaceManager;
-        _compilationFactory = compilationFactory is null
+        _compilationFactory = compilationFactory
+            ?? (static project => project.GetCompilationAsync(CancellationToken.None));
+        _snapshotFactory = compilationFactory is null
             ? static project => SourceGeneratorCompilation.CreateAsync(project, CancellationToken.None)
             : async project =>
             {
@@ -86,80 +92,69 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         _workspaceManager.WorkspaceReloaded -= Invalidate;
     }
 
-    public async Task<Compilation?> GetCompilationAsync(
+    public Task<Compilation?> GetCompilationAsync(
         string workspaceId,
         Project project,
         CancellationToken ct) =>
-        (await GetCompilationSnapshotAsync(workspaceId, project, ct).ConfigureAwait(false))?.Compilation;
+        GetOrCreateShared(_compilations, workspaceId, project, () => _compilationFactory(project), ct);
 
     public Task<CompilationSnapshot?> GetCompilationSnapshotAsync(
         string workspaceId,
         Project project,
+        CancellationToken ct) =>
+        GetOrCreateShared(_snapshots, workspaceId, project, () => _snapshotFactory(project), ct);
+
+    public Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(
+        string workspaceId,
+        Project project,
+        CancellationToken ct) =>
+        GetOrCreateShared(_analyzerBound, workspaceId, project, () => _analyzerFactory(workspaceId, project), ct);
+
+    /// <summary>
+    /// Returns the shared task for <paramref name="project"/> at the current workspace version
+    /// from <paramref name="map"/>, installing one built by <paramref name="factory"/> when the
+    /// slot is empty or stale, and observes it through the caller's own token.
+    /// </summary>
+    private Task<T> GetOrCreateShared<T>(
+        ConcurrentDictionary<(string WorkspaceId, ProjectId ProjectId), CacheEntry<T>> map,
+        string workspaceId,
+        Project project,
+        Func<Task<T>> factory,
         CancellationToken ct)
     {
         var version = _workspaceManager.GetCurrentVersion(workspaceId);
         var key = (workspaceId, project.Id);
 
-        if (_compilations.TryGetValue(key, out var existing) && existing.Version == version)
+        if (map.TryGetValue(key, out var existing) && existing.Version == version)
         {
-            return ObserveWithCallerToken(existing.Compilation.Value, ct);
+            return ObserveWithCallerToken(existing.Value.Value, ct);
         }
 
-        // An already-canceled caller must not pay for — or install — a compile pass it can never
+        // An already-canceled caller must not pay for — or install — a build pass it can never
         // observe. The shared task below is deliberately started with CancellationToken.None, so
         // once it is running nothing can stop it; short-circuiting here mirrors
         // ObserveWithCallerToken's own already-canceled check and restores the pre-cache behavior
-        // of handing a canceled token straight to Roslyn.
-        ct.ThrowIfCancellationRequested();
+        // of handing a canceled token straight to Roslyn. Returned as a canceled task rather than
+        // thrown so every public entry point reports cancellation through its task.
+        if (ct.IsCancellationRequested)
+        {
+            return Task.FromCanceled<T>(ct);
+        }
 
         // Lazy is load-bearing: AddOrUpdate may invoke its factories more than once, so starting
         // Roslyn work while constructing a candidate would still let losing racers compile.
         // Only the entry returned by AddOrUpdate has Value evaluated.
-        var candidate = new CompilationEntry(
+        var candidate = new CacheEntry<T>(
             version,
-            new Lazy<Task<CompilationSnapshot?>>(
-                () => _compilationFactory(project),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-        var entry = _compilations.AddOrUpdate(
+            new Lazy<Task<T>>(factory, LazyThreadSafetyMode.ExecutionAndPublication));
+        var entry = map.AddOrUpdate(
             key,
             candidate,
             (_, current) => current.Version >= version ? current : candidate);
-        var shared = entry.Version == version
-            ? entry.Compilation.Value
-            : candidate.Compilation.Value;
-        EvictWhenBroken(_compilations, key, entry.Version == version ? entry : candidate, shared);
+        var owner = entry.Version == version ? entry : candidate;
+        var shared = owner.Value.Value;
+        EvictWhenBroken(map, key, owner, shared);
         return ObserveWithCallerToken(shared, ct);
-    }
-
-    public async Task<CompilationWithAnalyzers?> GetCompilationWithAnalyzersAsync(string workspaceId, Project project, CancellationToken ct)
-    {
-        var version = _workspaceManager.GetCurrentVersion(workspaceId);
-        var key = (workspaceId, project.Id);
-
-        if (_analyzerBound.TryGetValue(key, out var existing) && existing.Version == version)
-        {
-            return await ObserveWithCallerToken(existing.Bound.Value, ct).ConfigureAwait(false);
-        }
-
-        // An already-canceled caller must not pay for — or install — an analyzer-bound build pass
-        // it can never observe. The shared task below is started detached via
-        // CancellationToken.None, so once it is running nothing can stop it.
-        ct.ThrowIfCancellationRequested();
-
-        var candidate = new AnalyzerEntry(
-            version,
-            new Lazy<Task<CompilationWithAnalyzers?>>(
-                () => _analyzerFactory(workspaceId, project),
-                LazyThreadSafetyMode.ExecutionAndPublication));
-        var entry = _analyzerBound.AddOrUpdate(
-            key,
-            candidate,
-            (_, current) => current.Version >= version ? current : candidate);
-        var shared = entry.Version == version
-            ? entry.Bound.Value
-            : candidate.Bound.Value;
-        EvictWhenBroken(_analyzerBound, key, entry.Version == version ? entry : candidate, shared);
-        return await ObserveWithCallerToken(shared, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -206,8 +201,8 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
     /// Removes <paramref name="entry"/> from <paramref name="map"/> if its shared task ends up
     /// canceled or faulted, so the next caller re-populates instead of replaying the failure
     /// until the workspace version bumps. The removal is a compare-and-remove against the exact
-    /// entry (both <c>CompilationEntry</c> and <c>AnalyzerEntry</c> are records with structural
-    /// equality over version + task identity), so a newer entry installed concurrently by a
+    /// entry (<c>CacheEntry&lt;T&gt;</c> is a record with structural equality over version + lazy
+    /// identity), so a newer entry installed concurrently by a
     /// version bump is never collateral damage.
     /// </summary>
     private static void EvictWhenBroken<TEntry>(
@@ -272,6 +267,14 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
             if (key.WorkspaceId == workspaceId)
             {
                 _compilations.TryRemove(key, out _);
+            }
+        }
+
+        foreach (var key in _snapshots.Keys)
+        {
+            if (key.WorkspaceId == workspaceId)
+            {
+                _snapshots.TryRemove(key, out _);
             }
         }
 

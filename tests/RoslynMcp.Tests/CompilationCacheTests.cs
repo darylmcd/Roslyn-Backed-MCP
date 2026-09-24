@@ -101,6 +101,52 @@ public sealed class CompilationCacheTests
     }
 
     [TestMethod]
+    public async Task GetCompilationAsync_ReturnsSolutionOwnedCompilation()
+    {
+        var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
+
+        var cached = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        var owned = await project.GetCompilationAsync(default);
+
+        Assert.AreSame(owned, cached,
+            "The plain slot must serve the Solution-owned compilation: symbols from any other " +
+            "compilation resolve zero references through SymbolFinder against the Solution.");
+    }
+
+    [TestMethod]
+    public async Task PlainAndSnapshotSlots_AreCachedIndependently()
+    {
+        var (_, project, ws) = CreateCacheWithProject(initialVersion: 1);
+        var starts = 0;
+        using var cache = new CompilationCache(
+            ws,
+            p =>
+            {
+                Interlocked.Increment(ref starts);
+                return p.GetCompilationAsync(CancellationToken.None);
+            },
+            analyzerFactory: null);
+
+        var plain = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        Assert.AreEqual(1, starts, "The plain slot must populate on its own.");
+
+        var snapshot = await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default);
+        Assert.AreEqual(2, starts,
+            "The snapshot slot must not reuse the plain slot's entry; it caches its own product.");
+        Assert.IsNotNull(snapshot);
+        Assert.IsTrue(snapshot!.GeneratorDiagnostics.IsEmpty);
+
+        Assert.AreSame(plain, await cache.GetCompilationAsync(ws.WorkspaceId, project, default));
+        Assert.AreSame(snapshot, await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default));
+        Assert.AreEqual(2, starts, "Repeat reads at the same version must hit their own slot.");
+
+        cache.Invalidate(ws.WorkspaceId);
+        _ = await cache.GetCompilationAsync(ws.WorkspaceId, project, default);
+        _ = await cache.GetCompilationSnapshotAsync(ws.WorkspaceId, project, default);
+        Assert.AreEqual(4, starts, "Invalidate must clear both the plain and the snapshot slot.");
+    }
+
+    [TestMethod]
     public async Task GetCompilationWithAnalyzersAsync_ReturnsNull_WhenProjectHasNoAnalyzers()
     {
         var (cache, project, ws) = CreateCacheWithProject(initialVersion: 1);
