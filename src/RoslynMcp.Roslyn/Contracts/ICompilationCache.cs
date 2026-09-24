@@ -43,10 +43,18 @@ namespace RoslynMcp.Roslyn.Contracts;
 public interface ICompilationCache
 {
     /// <summary>
-    /// Returns the cached generated compilation plus diagnostics reported by source generators.
+    /// DIAGNOSTIC-ONLY. Returns a cached compilation produced by re-running the project's source
+    /// generators, plus the generator-driver diagnostics that
+    /// <see cref="Compilation.GetDiagnostics(CancellationToken)"/> does not include.
+    /// </summary>
+    /// <remarks>
+    /// The returned <see cref="CompilationSnapshot.Compilation"/> is NOT owned by the project's
+    /// <see cref="Solution"/>: its generated syntax trees are fresh instances. Symbols taken from it
+    /// resolve zero references through <c>SymbolFinder</c> against the solution, so it must feed
+    /// diagnostic reporting only. Every symbol consumer uses <see cref="GetCompilationAsync"/>.
     /// Implementations that do not execute generators explicitly retain source compatibility
     /// through this default projection.
-    /// </summary>
+    /// </remarks>
     async Task<CompilationSnapshot?> GetCompilationSnapshotAsync(
         string workspaceId,
         Project project,
@@ -59,8 +67,15 @@ public interface ICompilationCache
     }
 
     /// <summary>
-    /// Returns the cached <see cref="Compilation"/> for the given project, or computes and caches it.
+    /// Returns the cached Solution-owned <see cref="Compilation"/> for the given project (the
+    /// instance <c>project.GetCompilationAsync()</c> yields), or computes and caches it.
     /// </summary>
+    /// <remarks>
+    /// This is the only compilation a symbol consumer may use: a symbol passed to
+    /// <c>SymbolFinder</c> with the project's <see cref="Solution"/> must come from a compilation
+    /// that solution owns, or it resolves zero references. Diagnostic surfaces that need
+    /// generator-rerun parity use <see cref="GetCompilationSnapshotAsync"/> instead.
+    /// </remarks>
     /// <param name="workspaceId">The workspace session identifier the project belongs to.</param>
     /// <param name="project">The Roslyn project whose compilation is requested.</param>
     /// <param name="ct">Cancellation token.</param>
