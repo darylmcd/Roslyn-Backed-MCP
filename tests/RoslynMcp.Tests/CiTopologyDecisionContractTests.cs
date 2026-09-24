@@ -55,7 +55,6 @@ public sealed class CiTopologyDecisionContractTests
 
     [TestMethod]
     [TestCategory("Process")]
-    [DataRow("CHANGELOG.md")]
     [DataRow("skills/review/SKILL.md")]
     [DataRow(".claude/skills/release-cut/SKILL.md")]
     [DataRow("agents/audit-phase-runner.md")]
@@ -73,6 +72,99 @@ public sealed class CiTopologyDecisionContractTests
 
         Assert.IsFalse(decision.DocsOnly, $"'{path}' is behavior-bearing and must force full validation.");
         Assert.AreEqual("Code PR: four hosted Windows and two hosted Linux shards.", decision.Reason);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task ChangelogOnly_RoutesDocsWhereTheVersionGatesRunAsync()
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(("CHANGELOG.md", null)),
+            reportedChangedFileCount: 1);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsTrue(decision.DocsOnly);
+        Assert.IsFalse(decision.EvidenceOnly);
+        AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task EvidenceOnlyPullRequest_SkipsBuildAndTestLegsAsync()
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(
+                ("ai_docs/audits/20260924-1305/raw/capture.txt", null),
+                ("ai_docs/audits/20260924-1305/findings.json", null),
+                ("ai_docs/reports/summary.md", null),
+                ("ai_docs/items/some-row.md", null),
+                ("audit-reports/20260924T130517Z_repo_mcp-server-surface-test.md", null)),
+            reportedChangedFileCount: 5);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsTrue(decision.DocsOnly, "Evidence-only implies docs_only so docs-conditioned steps keep their semantics.");
+        Assert.IsTrue(decision.EvidenceOnly);
+        Assert.AreEqual("Evidence-only PR: pwsh lint only; build and test legs skipped.", decision.Reason);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("ai_docs/backlog.md")]
+    [DataRow("ai_docs/items/backlog-d-fragment-schema.md")]
+    [DataRow("audit-reports/_latest-promotion-scorecard.json")]
+    [DataRow("docs/setup.md")]
+    public async Task EvidenceMixedWithATestConsumedDocPath_RoutesDocsAsync(string docsPath)
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(("ai_docs/audits/run/raw/capture.txt", null), (docsPath, null)),
+            reportedChangedFileCount: 2);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsTrue(decision.DocsOnly);
+        Assert.IsFalse(decision.EvidenceOnly, $"'{docsPath}' is read by tests and must keep the docs route.");
+        AssertExactDocsOnlyPullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task EvidenceMixedWithCode_RoutesFullValidationAsync()
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(("ai_docs/audits/run/raw/capture.txt", null), ("src/Foo.cs", null)),
+            reportedChangedFileCount: 2);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsFalse(decision.DocsOnly);
+        Assert.IsFalse(decision.EvidenceOnly);
+        AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task Rename_CodeIntoAnEvidenceRoot_ForcesFullValidationAsync()
+    {
+        var result = await RunTopologyAsync(
+            "pull_request",
+            changedFilesJson: SinglePage(("ai_docs/audits/moved.cs", "src/Foo.cs")),
+            reportedChangedFileCount: 1);
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsFalse(decision.DocsOnly);
+        Assert.IsFalse(decision.EvidenceOnly);
     }
 
     [TestMethod]
@@ -504,6 +596,7 @@ public sealed class CiTopologyDecisionContractTests
 
     private sealed record CiTopologyDecision(
         [property: JsonPropertyName("docs_only")] bool DocsOnly,
+        [property: JsonPropertyName("evidence_only")] bool EvidenceOnly,
         [property: JsonPropertyName("runner_matrix")] CiTopologyLeg[] RunnerMatrix,
         [property: JsonPropertyName("reason")] string Reason);
 

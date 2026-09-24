@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-24T14:28:45Z
+**updated_at:** 2026-09-24T15:33:16Z
 
 ## Agent contract
 

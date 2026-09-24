@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       docs_only: ${{ steps.decide.outputs.docs_only }}
+      evidence_only: ${{ steps.decide.outputs.evidence_only }}
       runner_matrix: ${{ steps.decide.outputs.runner_matrix }}
     steps:
       - name: Check out repository
@@ -78,6 +79,8 @@ jobs:
           $matrixJson = $decision.runner_matrix | ConvertTo-Json -Compress -Depth 6 -AsArray
           "docs_only=$($decision.docs_only.ToString().ToLowerInvariant())" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "evidence_only=$($decision.evidence_only.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "runner_matrix=$matrixJson" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "::notice title=Validation route::$($decision.reason)"
@@ -85,6 +88,9 @@ jobs:
   validate:
     name: validate-leg (${{ matrix.leg.name }})
     needs: route
+    # Evidence-only PRs (audit output, backlog item details, report archives that no test reads)
+    # skip every build/test leg; the evidence_lint job validates them instead.
+    if: needs.route.outputs.evidence_only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -110,6 +116,15 @@ jobs:
         if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'
         shell: pwsh
         run: ./eng/verify-changelog-fragments.ps1
+
+      # The docs route passes -TestShardOnly to verify-release.ps1, which skips its release gates.
+      # CHANGELOG.md is docs tier, so run the two gates that guard it here.
+      - name: Verify release version gates
+        if: matrix.leg.artifact_owner == true && needs.route.outputs.docs_only == 'true'
+        shell: pwsh
+        run: |
+          ./eng/verify-version-drift.ps1
+          ./eng/verify-breaking-version-bump.ps1
 
       - name: Validate AI docs
         if: matrix.leg.artifact_owner == true
@@ -284,6 +299,29 @@ jobs:
 
   # Stable branch-protection context. Dynamic leg names are intentionally not
   # required individually; this aggregator fails unless the complete matrix did.
+  # Evidence-only PRs change only paths no test or eng/ script reads (see
+  # eng/resolve-ci-topology.ps1 and CiEvidenceTierConsumerContractTests). They get
+  # platform-neutral pwsh checks only: no .NET setup, build, or test shards.
+  evidence_lint:
+    name: evidence-lint
+    needs: route
+    if: needs.route.outputs.evidence_only == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify changelog contract
+        shell: pwsh
+        run: ./eng/verify-changelog-fragments.ps1
+
+      - name: Validate AI docs
+        shell: pwsh
+        run: ./eng/verify-ai-docs.ps1
+
   validate-gate:
     # A dispatch/schedule run may target a feature-branch SHA but validates only
     # one informational Linux leg. Give it a different check context so it can
@@ -293,6 +331,7 @@ jobs:
       - route
       - validate
       - sdk_floor
+      - evidence_lint
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -304,6 +343,18 @@ jobs:
           $validateResult = '${{ needs.validate.result }}'
           $sdkFloorResult = '${{ needs.sdk_floor.result }}'
           $docsOnly = '${{ needs.route.outputs.docs_only }}' -eq 'true'
+          $evidenceOnly = '${{ needs.route.outputs.evidence_only }}' -eq 'true'
+          $evidenceLintResult = '${{ needs.evidence_lint.result }}'
+          if ($evidenceOnly) {
+            # Evidence route: the lint job is the whole validation; build/test and the SDK floor
+            # must have been skipped, never failed or cancelled.
+            if ($routeResult -ne 'success' -or $evidenceLintResult -ne 'success' -or
+                $validateResult -ne 'skipped' -or $sdkFloorResult -ne 'skipped') {
+              throw "Evidence-only validation did not succeed (route: $routeResult; evidence lint: $evidenceLintResult; matrix: $validateResult; SDK floor: $sdkFloorResult)."
+            }
+            Write-Host 'Evidence-only route: routing and evidence lint succeeded; build and test legs skipped by design.'
+            exit 0
+          }
           $sdkFloorSucceeded = $sdkFloorResult -eq 'success' -or ($docsOnly -and $sdkFloorResult -eq 'skipped')
           if ($routeResult -ne 'success' -or $validateResult -ne 'success' -or -not $sdkFloorSucceeded) {
             throw "Validation did not fully succeed (route: $routeResult; matrix: $validateResult; SDK floor: $sdkFloorResult)."

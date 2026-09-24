@@ -6,7 +6,8 @@ This document is the canonical validation and merge-gating contract.
 
 | Event / trust state | Validation topology | Coverage / network |
 |---|---|---|
-| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json`, excluding behavior-bearing paths) | Two hosted Linux class shards; exact-floor probe skipped | Coverage and `Network` tests skipped; publish/audit skipped |
+| Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe skipped | Not applicable |
+| Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Two hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe skipped | Coverage and `Network` tests skipped; publish/audit skipped |
 | Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe | Coverage and live `Network` tests enabled |
 
@@ -18,7 +19,12 @@ Rules:
 - Keep the repository-level self-hosted runner inventory empty while this repository remains public under a personal account. Any future hybrid lane requires the infrastructure-enforced authorization and disposable-worker boundaries documented in `docs/self-hosted-runner.md` before registration.
 - Classify both `filename` and `previous_filename` from the pull-request files API. A source-to-doc rename is code-bearing because its removed source path still requires full validation.
 - Require the files API record count to equal `pull_request.changed_files` and remain below the endpoint's 3,000-file cap before selecting the docs-only route. A capped or incomplete enumeration is code-bearing and receives full validation.
-- Treat root `CHANGELOG.md` and behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix. Release assembly/version checks therefore cannot be bypassed by the policy-doc route.
+- Treat behavior-bearing Markdown under `skills/`, `.claude/skills/`, `agents/`, `.claude/agents/`, and `.github/prompts/` as code-bearing. Those paths receive the full Windows/Linux matrix.
+- Root `CHANGELOG.md` is docs tier. The docs route's artifact owner runs `verify-version-drift.ps1` and `verify-breaking-version-bump.ps1`, the gates `verify-release.ps1 -TestShardOnly` skips, so release version checks cannot be bypassed.
+- A pull request takes the highest tier any of its paths (including rename origins) needs: code > docs > evidence.
+- The evidence tier is limited to paths no test or `eng/` script reads. Files inside evidence roots that CI does read stay docs tier through `$evidenceExclusions` in `eng/resolve-ci-topology.ps1` (currently `ai_docs/items/backlog-d-fragment-schema.md` and `audit-reports/_latest-promotion-scorecard.json`). `CiEvidenceTierConsumerContractTests` fails on any new reference to an evidence root until it is classified.
+- Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
+- On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix and SDK-floor probe were skipped, never failed or cancelled.
 - Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
 
 The routing decision itself -- leg construction, docs-only classification, and the fail-closed
@@ -40,7 +46,7 @@ The router emits typed leg fields. Keep their concerns separate:
 
 - Windows runs four concurrent class shards; Linux runs two.
 - All six code pull-request shards run on separate GitHub-hosted runners.
-- Policy-only documentation PRs run the same complete class partition as two Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically.
+- Policy-only documentation PRs run the same complete class partition as two Linux shards. Do not restore a zero-test docs route: repository tests consume Markdown contracts, and future consumers must be covered automatically. The evidence route is the one zero-test route; it is safe only for paths `CiEvidenceTierConsumerContractTests` proves no test reads.
 - `eng/get-test-shard-plan.ps1` reads compiled MSTest metadata. It must fail on an invalid index/count, missing assembly, unreadable metadata, unsafe class name, zero discovered classes, empty shard, overlap, or incomplete assignment.
 - Shards use exact MSTest `ClassName` predicates. Do not use `FullyQualifiedName~` prefix matching.
 - `eng/ci.runsettings` enables `TreatNoTestsAsError`; an accidentally empty filter is a failure.
