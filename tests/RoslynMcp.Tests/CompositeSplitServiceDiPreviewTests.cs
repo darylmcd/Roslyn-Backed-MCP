@@ -200,6 +200,288 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Facade_Preserves_Sibling_Types_Base_List_And_Constants()
+    {
+        // Regression for split-service-with-di-facade-drops-sibling-types: the facade used to be
+        // synthesized as a fresh compilation unit holding only the split class, so every other
+        // type in the file, the class's base list, and its constants were deleted.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "ShapeService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n" +
+            "\n" +
+            "public interface IShapeService\n" +
+            "{\n" +
+            "    int Area(int side);\n" +
+            "    int Perimeter(int side);\n" +
+            "}\n" +
+            "\n" +
+            "/// <summary>Computes square metrics.</summary>\n" +
+            "public sealed class ShapeService : IShapeService\n" +
+            "{\n" +
+            "    public const int Sides = 4;\n" +
+            "\n" +
+            "    public int Area(int side) => side * side;\n" +
+            "\n" +
+            "    public int Perimeter(int side) => side * Sides;\n" +
+            "}\n" +
+            "\n" +
+            "public sealed class ShapeConsumer\n" +
+            "{\n" +
+            "    private readonly IShapeService _shapes;\n" +
+            "\n" +
+            "    public ShapeConsumer(IShapeService shapes) => _shapes = shapes;\n" +
+            "\n" +
+            "    public int Describe(int side) => _shapes.Area(side) + _shapes.Perimeter(side);\n" +
+            "}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "ShapeService",
+            new[]
+            {
+                new SplitServicePartition("ShapeAreaService", new[] { "Area" }),
+                new SplitServicePartition("ShapePerimeterService", new[] { "Perimeter" }),
+            },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+
+        Assert.IsFalse(facadeContents.Contains('\r', StringComparison.Ordinal),
+            "The facade rewrite must keep the source file's LF line endings (no mixed CRLF from synthesized members).");
+        StringAssert.Contains(facadeContents, "public interface IShapeService",
+            "The sibling interface declared in the same file must survive the facade rewrite.");
+        StringAssert.Contains(facadeContents, "int Area(int side);",
+            "The sibling interface's members must survive untouched.");
+        StringAssert.Contains(facadeContents, "public sealed class ShapeConsumer",
+            "The sibling class declared in the same file must survive the facade rewrite.");
+        StringAssert.Contains(facadeContents, "public int Describe(int side) => _shapes.Area(side) + _shapes.Perimeter(side);",
+            "The sibling class body must be preserved verbatim.");
+        StringAssert.Contains(facadeContents, "public sealed class ShapeService : IShapeService",
+            "The facade must keep the original base list.");
+        StringAssert.Contains(facadeContents, "/// <summary>Computes square metrics.</summary>",
+            "The facade must keep the original type's doc comment.");
+        StringAssert.Contains(facadeContents, "public const int Sides = 4;",
+            "The facade must keep constants declared on the source type.");
+        StringAssert.Contains(facadeContents, "_shapeAreaService.Area(side)",
+            "Facade must forward Area to the area partition.");
+        StringAssert.Contains(facadeContents, "_shapePerimeterService.Perimeter(side)",
+            "Facade must forward Perimeter to the perimeter partition.");
+
+        // The rewritten facade file must still compile alongside the new partition files.
+        await workspace.ReloadAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, "SampleLib", StringComparison.Ordinal));
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics(CancellationToken.None)
+            .Where(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Select(diagnostic => diagnostic.ToString())
+            .ToArray();
+        Assert.AreEqual(0, errors.Length,
+            $"Split output must compile. Errors:\n{string.Join("\n", errors)}\n--- facade ---\n{facadeContents}");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Facade_Injects_Retained_Constructor_Assigned_Field()
+    {
+        // A field used by both a migrated and a retained method stays on the facade. The original
+        // constructor that assigned it is dropped, so the facade constructor must inject it —
+        // otherwise the retained method reads a never-assigned (null) field at runtime.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "LoggedService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n" +
+            "\n" +
+            "public sealed class LoggedService\n" +
+            "{\n" +
+            "    private readonly System.IO.TextWriter _log;\n" +
+            "\n" +
+            "    public LoggedService(System.IO.TextWriter log)\n" +
+            "    {\n" +
+            "        _log = log;\n" +
+            "    }\n" +
+            "\n" +
+            "    public void Moved() => _log.WriteLine(\"moved\");\n" +
+            "\n" +
+            "    public void Kept() => _log.WriteLine(\"kept\");\n" +
+            "}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "LoggedService",
+            new[] { new SplitServicePartition("MovedService", new[] { "Moved" }) },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        StringAssert.Contains(facadeContents, "public LoggedService(MovedService movedService, System.IO.TextWriter log)",
+            $"The facade constructor must inject the retained field its dropped constructor assigned.\n--- facade ---\n{facadeContents}");
+        StringAssert.Contains(facadeContents, "_log = log;",
+            "The facade constructor must assign the retained field.");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Qualifies_Field_Named_Like_Its_Parameter()
+    {
+        // A field with no leading underscore maps to a same-named constructor parameter. An
+        // unqualified `log = log;` assigns the parameter to itself and leaves the field null.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "PlainLoggedService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n\npublic sealed class PlainLoggedService\n{\n    private readonly System.IO.TextWriter log;\n\n" +
+            "    public PlainLoggedService(System.IO.TextWriter log)\n    {\n        this.log = log;\n    }\n\n" +
+            "    public void Moved() => log.WriteLine(\"moved\");\n\n    public void Kept() => log.WriteLine(\"kept\");\n}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "PlainLoggedService",
+            new[] { new SplitServicePartition("PlainMovedService", new[] { "Moved" }) },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        var partitionContents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib", "PlainMovedService.cs"), CancellationToken.None);
+        foreach (var (label, contents) in new[] { ("facade", facadeContents), ("partition", partitionContents) })
+        {
+            StringAssert.Contains(contents, "this.log = log;",
+                $"The {label} constructor must qualify the field so the parameter is not assigned to itself.\n--- {label} ---\n{contents}");
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(contents, @"(?<![.\w])log = log;"),
+                $"The {label} constructor must not emit a self-assignment.\n--- {label} ---\n{contents}");
+        }
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Refuses_Constructor_Shapes_The_Facade_Cannot_Reproduce()
+    {
+        // The facade replaces every instance constructor with a generated one, so any shape it
+        // cannot reproduce faithfully must be refused rather than silently emitted: primary or
+        // chained constructors (CS8862/CS7036), constructor logic beyond parameter-to-field
+        // copies, shared mutable state, and constructor parameter-name collisions.
+        var cases = new (string TypeName, string Source, string ExpectedFragment)[]
+        {
+            ("PrimaryService",
+                "namespace SampleLib;\n\npublic sealed class PrimaryService(int seed)\n{\n    public int A() => seed;\n    public int B() => seed + 1;\n}\n",
+                "primary constructor"),
+            ("ChainedService",
+                "namespace SampleLib;\n\npublic abstract class ChainedBase\n{\n    protected ChainedBase(int seed) { }\n}\n\n" +
+                "public sealed class ChainedService : ChainedBase\n{\n    public ChainedService() : base(1) { }\n    public int A() => 1;\n    public int B() => 2;\n}\n",
+                "base(1)"),
+            // Retained get-only property assigned by the dropped constructor would stay unset.
+            ("PropertyService",
+                "namespace SampleLib;\n\npublic sealed class PropertyService\n{\n    public PropertyService(string name) { Name = name; }\n" +
+                "    public string Name { get; }\n    public int A() => 1;\n    public int B() => Name.Length;\n}\n",
+                "does more than copy parameters"),
+            // A computed (non-parameter) assignment cannot become a DI constructor parameter.
+            ("ComputedService",
+                "namespace SampleLib;\n\npublic sealed class ComputedService\n{\n    private readonly System.Collections.Generic.List<int> _items;\n" +
+                "    public ComputedService() { _items = new System.Collections.Generic.List<int>(); }\n" +
+                "    public int A() => _items.Count;\n    public int B() => _items.Count + 1;\n}\n",
+                "does more than copy parameters"),
+            // Mutable state used by a moved and a kept method would be duplicated.
+            ("CounterService",
+                "namespace SampleLib;\n\npublic sealed class CounterService\n{\n    private int _count;\n" +
+                "    public void A() => _count++;\n    public int B() => _count;\n}\n",
+                "_count"),
+            // A non-private mutable field used only by a moved method stays on the facade (part of
+            // the type's surface) AND is copied into the partition: two copies of one state.
+            ("PublicCounterService",
+                "namespace SampleLib;\n\npublic sealed class PublicCounterService\n{\n    public int Count;\n" +
+                "    public void A() => Count++;\n    public int B() => 2;\n}\n",
+                "Count"),
+            // Mutable state used by moved methods in two different partitions would be duplicated.
+            ("TwoPartitionCounterService",
+                "namespace SampleLib;\n\npublic sealed class TwoPartitionCounterService\n{\n    private int _count;\n" +
+                "    public void A() => _count++;\n    public int B() => _count;\n    public int C() => 3;\n}\n",
+                "_count"),
+            // A readonly initializer creates one object per owner: the lock stops excluding.
+            ("SharedLockService",
+                "namespace SampleLib;\n\npublic sealed class SharedLockService\n{\n    private readonly object _sync = new();\n" +
+                "    public void A() { lock (_sync) { } }\n    public void B() { lock (_sync) { } }\n}\n",
+                "_sync"),
+            // The constructor overrides an initializer; neither generated constructor injects an
+            // initialized field, so the constructor's value would be silently replaced by 3.
+            ("InitializedRetainedService",
+                "namespace SampleLib;\n\npublic sealed class InitializedRetainedService\n{\n    private readonly int _retries = 3;\n" +
+                "    public InitializedRetainedService(int retries) { _retries = retries; }\n" +
+                "    public int A() => 1;\n    public int B() => _retries;\n}\n",
+                "_retries"),
+            ("InitializedMigratedService",
+                "namespace SampleLib;\n\npublic sealed class InitializedMigratedService\n{\n    private readonly int _retries = 3;\n" +
+                "    public InitializedMigratedService(int retries) { _retries = retries; }\n" +
+                "    public int A() => _retries;\n    public int B() => 2;\n}\n",
+                "_retries"),
+            // Retained field and partition map to the same facade constructor parameter.
+            ("CollidingService",
+                "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _collidingServicePart;\n" +
+                "    public CollidingService(string collidingServicePart) { _collidingServicePart = collidingServicePart; }\n" +
+                "    public int A() => 1;\n    public int B() => _collidingServicePart.Length;\n}\n",
+                "declared twice"),
+        };
+
+        // Cases that need a second partition (method "B") to reproduce cross-partition sharing.
+        var twoPartitionCases = new HashSet<string>(StringComparer.Ordinal) { "TwoPartitionCounterService" };
+
+        foreach (var (typeName, source, expectedFragment) in cases)
+        {
+            var partitions = twoPartitionCases.Contains(typeName)
+                ? new[]
+                {
+                    new SplitServicePartition(typeName + "Part", new[] { "A" }),
+                    new SplitServicePartition(typeName + "Reader", new[] { "B" }),
+                }
+                : new[] { new SplitServicePartition(typeName + "Part", new[] { "A" }) };
+            await using var workspace = CreateIsolatedWorkspaceCopy();
+            var serviceFilePath = workspace.GetPath("SampleLib", typeName + ".cs");
+            await File.WriteAllTextAsync(serviceFilePath, source, CancellationToken.None);
+            await workspace.LoadAsync(CancellationToken.None);
+
+            var service = CreateSymbolRefactorService(new CompositePreviewStore());
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.PreviewSplitServiceWithDiAsync(
+                workspace.WorkspaceId,
+                serviceFilePath,
+                typeName,
+                partitions,
+                hostRegistrationFile: null,
+                CancellationToken.None));
+            StringAssert.Contains(ex.Message, expectedFragment, $"Refusal for '{typeName}' must explain the unsupported constructor shape.");
+        }
+    }
+
+    [TestMethod]
     public async Task Split_Service_With_Di_Preview_Returns_Warning_When_Registration_Not_Found()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

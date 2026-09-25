@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-25T03:53:34Z
+**updated_at:** 2026-09-25T12:50:21Z
 
 ## Agent contract
 
@@ -49,7 +49,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `find-type-consumers-mutations-generator-blind` | High | compilation-cache-generator-rerun-blinds-unused-analysis | **Fix find_type_consumers and find_type_mutations empty results in generator projects** — resolve the type through the solution compilation instead of the cache's generator-rerun compilation. [type: bug] [source: mcp-surface-audit 20260924-1305] | M | items/find-type-consumers-mutations-generator-blind.md |
-| `split-service-with-di-facade-drops-sibling-types` | High | — | **Stop split_service_with_di_preview from deleting sibling types** — rewrite the facade in place in the original compilation unit instead of emitting a fresh unit holding only the split class. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/split-service-with-di-facade-drops-sibling-types.md |
+| `split-service-with-di-ctor-injection-precision` | High | — | **Make split_service_with_di constructors match the original** — inject only ctor-assigned fields, keep original parameter types and null guards, refuse ctor overloads. [type: bug] [source: 20260925 split-service cold review] | M | items/split-service-with-di-ctor-injection-precision.md |
 
 ## Medium
 
@@ -131,6 +131,8 @@
 | `netanalyzers-package-duplicates-sdk-analyzers` | Medium | — | **Drop the redundant Microsoft.CodeAnalysis.NetAnalyzers package reference** — the SDK already injects the identical 10.0.401 analyzers, so every CA diagnostic is reported twice. [type: chore] [source: mcp-surface-audit 20260924-1305] | S | items/netanalyzers-package-duplicates-sdk-analyzers.md |
 | `surface-test-skill-prompt-drift` | Medium | — | **Fix drift in the shipped mcp-server-surface-test skill** — ready-state gate, wrong apply route, mis-described get_test_coverage_map, and a --full dispatch agent the plugin never ships. [type: docs] [source: mcp-surface-audit 20260924-1305] | S | items/surface-test-skill-prompt-drift.md |
 | `change-signature-callsite-rewrites-enclosing-invocation` | Medium | — | **Rewrite only real invocations in change_signature_preview** — a method-group or nameof reference must not make the preview edit the enclosing call's arguments. [type: bug] [source: backlog-remediate 20260924T162035Z] | S | items/change-signature-callsite-rewrites-enclosing-invocation.md |
+| `split-service-with-di-refuse-unsupported-method-shapes` | Medium | — | **Refuse moved-method shapes split_service_with_di cannot compile** — kept/base/static member refs, static/override/explicit-interface/generic methods, ref/out args. [type: bug] [source: 20260925 split-service cold review] | M | items/split-service-with-di-refuse-unsupported-method-shapes.md |
+| `split-service-with-di-refuse-colliding-inputs-outputs` | Medium | — | **Refuse partial types and colliding outputs in split_service_with_di** — partial source type, existing partition file, facade field-name clash. [type: bug] [source: 20260925 split-service cold review] | S | items/split-service-with-di-refuse-colliding-inputs-outputs.md |
 
 ## Low
 
@@ -346,6 +348,7 @@
 | `prompt-shim-json-options-and-type-describer-dedup` | Low | — | **Align get_prompt_text argument binding with prompts/get** — use the SDK prompt-binder JSON options and share one expected-JSON-type describer between PromptShimTools and PromptBindingStageAdapter. [type: chore] [source: backlog-remediate 20260924T162035Z] | M | items/prompt-shim-json-options-and-type-describer-dedup.md |
 | `composite-failed-apply-displaces-undo-target` | Low | — | **Define revert_last_apply after a failed composite apply** — a failed apply_composite leaves an uncommitted undo snapshot that displaces the previous apply's revert target. [type: bug] [source: backlog-remediate 20260924T162035Z] | M | items/composite-failed-apply-displaces-undo-target.md |
 | `verify-actionlint-per-worktree-download` | Low | — | **Cache the pinned actionlint binary outside the worktree** — every fresh integration/executor worktree re-downloads it, and a transient download failure fails the whole gate. [type: chore] [source: backlog-remediate 20260924T162035Z] | S | items/verify-actionlint-per-worktree-download.md |
+| `split-service-with-di-identity-semantics` | Low | — | **Refuse splits that change identity semantics** — moved methods using this, record source types, one instance fanned into several. [type: bug] [source: 20260925 split-service cold review] | S | items/split-service-with-di-identity-semantics.md |
 
 ## Defer
 
