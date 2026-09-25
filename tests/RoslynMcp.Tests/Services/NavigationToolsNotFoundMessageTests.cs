@@ -15,7 +15,13 @@ namespace RoslynMcp.Tests.Services;
 /// exercises a not-found path and asserts the locator field appears in the message and the legacy
 /// "at the specified location" wording is gone.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-26: [DoNotParallelize] removed. Every test method reads the
+// assembly-shared sample workspace (synchronized WorkspaceIdCache) through a tool entry point that
+// runs under WorkspaceExecutionGate.RunReadAsync (AnalysisTools.GetCallersCallees/AnalyzeImpact,
+// ConsumerAnalysisTools.FindConsumers, SymbolTools.GetSymbolRelationships/GetMemberHierarchy/
+// GetSignatureHelp), which admits concurrent readers. No method loads/closes a workspace, redeems
+// a preview token, or writes a static, environment variable, or file. Validated by a bounded
+// repeated run alongside parallel-enabled sibling classes (see PR validation notes).
 [TestClass]
 public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBase
 {
