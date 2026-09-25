@@ -280,17 +280,67 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             "Facade must forward Perimeter to the perimeter partition.");
 
         // The rewritten facade file must still compile alongside the new partition files.
-        await workspace.ReloadAsync(CancellationToken.None);
-        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
-        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, "SampleLib", StringComparison.Ordinal));
-        var compilation = await project.GetCompilationAsync(CancellationToken.None);
-        Assert.IsNotNull(compilation);
-        var errors = compilation.GetDiagnostics(CancellationToken.None)
-            .Where(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
-            .Select(diagnostic => diagnostic.ToString())
-            .ToArray();
-        Assert.AreEqual(0, errors.Length,
-            $"Split output must compile. Errors:\n{string.Join("\n", errors)}\n--- facade ---\n{facadeContents}");
+        await AssertSampleLibCompilesAsync(workspace, $"--- facade ---\n{facadeContents}");
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Generated_Constructors_Reproduce_The_Source_Constructor()
+    {
+        // Both generated constructors must reproduce exactly the source constructor's copies:
+        // the original parameter type (List<int>, not the field's IEnumerable<int>), the original
+        // `?? throw` guard, only the declarators the constructor assigned (`_a`, not `_b`), and
+        // no parameter for a field the constructor never assigned (`_calls`), which DI could
+        // never resolve.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "InjectionService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n\npublic sealed class InjectionService\n{\n" +
+            "    private readonly System.Collections.Generic.IEnumerable<int> _items;\n" +
+            "    private readonly string _a, _b;\n" +
+            "    private int _calls;\n\n" +
+            "    public InjectionService(System.Collections.Generic.List<int> items, string a)\n    {\n" +
+            "        _a = a;\n" +
+            "        _items = items ?? throw new System.ArgumentNullException(nameof(items));\n    }\n\n" +
+            "    public string Moved() { _calls++; return _a + _b + System.Linq.Enumerable.Count(_items) + _calls; }\n\n" +
+            "    public int Kept() => System.Linq.Enumerable.Count(_items);\n}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "InjectionService",
+            new[] { new SplitServicePartition("InjectionMovedService", new[] { "Moved" }) },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        var partitionContents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib", "InjectionMovedService.cs"), CancellationToken.None);
+        var evidence = $"--- facade ---\n{facadeContents}\n--- partition ---\n{partitionContents}";
+        const string guard = "_items = items ?? throw new System.ArgumentNullException(nameof(items));";
+
+        StringAssert.Contains(partitionContents,
+            "public InjectionMovedService(System.Collections.Generic.List<int> items, string a)",
+            $"The partition constructor must take the source parameters, in source order, and nothing else.\n{evidence}");
+        StringAssert.Contains(partitionContents, guard, $"The partition constructor must keep the null guard.\n{evidence}");
+        StringAssert.Contains(partitionContents, "this._a = a;", $"The partition must assign the constructor-copied declarator.\n{evidence}");
+        Assert.IsTrue(
+            partitionContents.IndexOf("this._a = a;", StringComparison.Ordinal) < partitionContents.IndexOf(guard, StringComparison.Ordinal),
+            $"Assignments must keep source statement order so the same guard throws first.\n{evidence}");
+        StringAssert.Contains(facadeContents,
+            "public InjectionService(InjectionMovedService injectionMovedService, System.Collections.Generic.List<int> items)",
+            $"The facade constructor must inject the retained field with its source parameter type.\n{evidence}");
+        StringAssert.Contains(facadeContents, guard, $"The facade constructor must keep the null guard.\n{evidence}");
+
+        await AssertSampleLibCompilesAsync(workspace, evidence);
     }
 
     [TestMethod]
@@ -444,6 +494,23 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 "    public InitializedMigratedService(int retries) { _retries = retries; }\n" +
                 "    public int A() => _retries;\n    public int B() => 2;\n}\n",
                 "_retries"),
+            // A copied parameter default naming a source-type constant would not compile in the partition.
+            ("ConstDefaultService",
+                "namespace SampleLib;\n\npublic sealed class ConstDefaultService\n{\n    private const int Def = 3;\n    private readonly int _n;\n" +
+                "    public ConstDefaultService(int n = Def) { _n = n; }\n    public int A() => _n;\n    public int B() => 2;\n}\n",
+                "'Def'"),
+            // `x = x;` assigns the parameter to itself; it is not a copy into the same-named field.
+            ("SelfAssignService",
+                "namespace SampleLib;\n\npublic sealed class SelfAssignService\n{\n    private readonly int x;\n" +
+                "#pragma warning disable CS1717\n    public SelfAssignService(int x) { x = x; }\n#pragma warning restore CS1717\n" +
+                "    public int A() => this.x;\n    public int B() => 2;\n}\n",
+                "does more than copy parameters"),
+            // Constructor overloads would collapse into the single generated facade constructor.
+            ("OverloadedService",
+                "namespace SampleLib;\n\npublic sealed class OverloadedService\n{\n    private readonly string _name;\n" +
+                "    public OverloadedService() { }\n    public OverloadedService(string name) { _name = name; }\n" +
+                "    public int A() => 1;\n    public int B() => _name.Length;\n}\n",
+                "2 instance constructors"),
             // Retained field and partition map to the same facade constructor parameter.
             ("CollidingService",
                 "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _collidingServicePart;\n" +
@@ -529,6 +596,21 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
             restructureService,
             compositeStore,
             DiRegistrationService);
+    }
+
+    private static async Task AssertSampleLibCompilesAsync(IsolatedWorkspaceScope workspace, string evidence)
+    {
+        await workspace.ReloadAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var project = solution.Projects.Single(candidate => string.Equals(candidate.Name, "SampleLib", StringComparison.Ordinal));
+        var compilation = await project.GetCompilationAsync(CancellationToken.None);
+        Assert.IsNotNull(compilation);
+        var errors = compilation.GetDiagnostics(CancellationToken.None)
+            .Where(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .Select(diagnostic => diagnostic.ToString())
+            .ToArray();
+        Assert.AreEqual(0, errors.Length,
+            $"Split output must compile. Errors:\n{string.Join("\n", errors)}\n{evidence}");
     }
 
     private static async Task ApplyMutationsAsync(CompositePreviewStore store, string token, CancellationToken ct)
