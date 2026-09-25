@@ -9,7 +9,12 @@ namespace RoslynMcp.Tests;
 ///   * The Debug payload must always be populated so callers can see the parsed tokens,
 ///     applied predicates, and fallback strategy.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-25: [DoNotParallelize] removed. Every test method here reads the
+// shared sample workspace through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync)
+// and calls the read-only CodePatternAnalyzer.SemanticSearchAsync. None calls
+// WorkspaceManager.LoadAsync/Close, an *_apply tool, or mutates UndoService/ChangeTracker/
+// PreviewStore, env vars, or process state. Validated by a >=3x repeated run alongside
+// parallel-enabled sibling classes (see PR notes).
 [TestClass]
 public sealed class SemanticSearchFallbackTests : SharedWorkspaceTestBase
 {
