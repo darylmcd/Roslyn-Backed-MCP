@@ -11,7 +11,14 @@ namespace RoslynMcp.Tests;
 ///   - Extract method: NOT AVAILABLE (provider requires internal IDE services)
 ///   - Introduce local variable: NOT AVAILABLE (provider requires internal IDE services)
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-24: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) and
+// only calls CodeActionService.GetCodeActionsAsync / PreviewCodeActionAsync — in-memory previews with
+// no apply, no disk write, no reload/version bump. At most one preview token lands in the thread-safe
+// shared bounded PreviewStore, as parallel preview classes (FixAllServiceGuidanceTests,
+// PreviewRouteBindingEditingProducerTests) already do. No direct WorkspaceManager.LoadAsync/Close,
+// no static or environment state. Validated by a bounded repeated (3x) concurrent run alongside its
+// wave-24 siblings, green every time.
 [TestClass]
 public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
 {

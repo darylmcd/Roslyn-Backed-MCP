@@ -5,7 +5,16 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-24: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) and
+// loads samples/SecurityTestProject, which no other test class loads, once in ClassInit. Every
+// SecurityDiagnosticService call is read-only (diagnostics + MSBuild evaluation, no *_apply, no
+// reload, no PreviewStore/UndoService/ChangeTracker writes). The one disk-writing test edits a
+// csproj only inside its own per-test SampleSolution copy (CreateSampleSolutionCopy under
+// TestTempRoot.Current) and closes that session itself. Registry/catalog tests read immutable static
+// tables; its SecurityDiagnosticService instance is class-local. No environment variables or child
+// processes. Validated by a bounded repeated (3x) concurrent run alongside its wave-24 siblings,
+// green every time.
 [TestClass]
 [TestCategory("RepoSolution")]
 public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase

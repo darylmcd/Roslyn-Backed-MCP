@@ -2,7 +2,14 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-24: [DoNotParallelize] removed. Every navigation test only reads the
+// assembly-shared SampleSolution through the synchronized WorkspaceIdCache (ReferenceService /
+// SymbolRelationshipService / GetProjectGraph are read-only; no *_apply, no reload, no PreviewStore,
+// UndoService or ChangeTracker writes). Source_Generated_Documents_Are_Listed_For_Project loads and
+// builds samples/GeneratedDocumentSolution through a child `dotnet build`; no other test class loads
+// or builds that fixture, and methods within a class run sequentially, so its obj/bin output has a
+// single writer. No static or environment state. Validated by a bounded repeated (3x) concurrent run
+// alongside its wave-24 siblings, green every time.
 [TestClass]
 public class SemanticExpansionTests : SharedWorkspaceTestBase
 {
