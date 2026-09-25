@@ -274,6 +274,88 @@ public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
             $"caller file has 2 invocations (svc.Compute + a.Compute); CallsiteUpdates must reflect that");
     }
 
+    /// <summary>
+    /// Regression for `change-signature-add-skips-same-document-impls`: when the interface,
+    /// its implementations and its callers all live in ONE document, the builder used to
+    /// re-resolve each declaration/caller against the already-edited document using the
+    /// ORIGINAL syntax tree and spans. After the first edit every later declaration was
+    /// silently skipped (leaving CS0535) and callers were undercounted.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_OnInterfaceMethod_UpdatesSameDocumentImplementationsAndCallers()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var fixturePath = workspace.GetPath("SampleLib", "SameDocumentChangeSignatureFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public interface ISameDocService",
+                "{",
+                "    int Compute(int a, int b);",
+                "}",
+                "",
+                "public class SameDocServiceA : ISameDocService",
+                "{",
+                "    public int Compute(int a, int b) => a + b;",
+                "}",
+                "",
+                "public class SameDocServiceB : ISameDocService",
+                "{",
+                "    public int Compute(int a, int b) => a * b;",
+                "}",
+                "",
+                "public class SameDocCaller",
+                "{",
+                "    public int UseInterface(ISameDocService svc) => svc.Compute(1, 2);",
+                "    public int UseA(SameDocServiceA a) => a.Compute(3, 4);",
+                "    public int UseB(SameDocServiceB b) => b.Compute(5, 6);",
+                "}",
+                "",
+            }));
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 9); // `Compute` on interface
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "c",
+            ParameterType: "int",
+            Position: 2,
+            NewName: null,
+            DefaultValue: "0");
+
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+
+        Assert.IsNotNull(preview.PreviewToken);
+        Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates summary must be populated");
+        var fileUpdate = preview.CallsiteUpdates.SingleOrDefault(
+            u => u.FilePath.EndsWith("SameDocumentChangeSignatureFixture.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(fileUpdate, "fixture file must appear in CallsiteUpdates");
+        Assert.AreEqual(3, fileUpdate.CallsiteCount,
+            "all 3 same-document invocations (svc/a/b.Compute) must be counted, matching find_references");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "    int Compute(int a, int b, int c = 0);",
+            $"interface declaration must gain the parameter; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int b, int c = 0) => a + b;",
+            $"implementation A must gain the parameter (else CS0535); got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int b, int c = 0) => a * b;",
+            $"implementation B must gain the parameter (else CS0535); got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "svc.Compute(1, 2, 0)",
+            $"interface caller must be rewritten; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "a.Compute(3, 4, 0)",
+            $"implementation A caller must be rewritten; got:\n{postApplyText}");
+        StringAssert.Contains(postApplyText, "b.Compute(5, 6, 0)",
+            $"implementation B caller must be rewritten; got:\n{postApplyText}");
+    }
+
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_PreservesBodyBraceLineBreak()
     {
