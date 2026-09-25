@@ -56,7 +56,7 @@
         "headOid": "ae3016809817cf27dc6b6abaf68bb1276645c215",
         "gatedTree": "1533125f47c6b53568a03e59e4a2d4c07c9c237c",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-compilation-cache-generator-rerun-blinds-unused-analysis-pr1613-20260924T205048946Z-41588.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-compilation-cache-generator-rerun-blinds-unused-analysis-pr1613-20260924T205048946Z-41588.log",
         "gatedAt": "2026-09-24T21:27:54.936Z"
       }
     },
@@ -104,7 +104,7 @@
         "headOid": "8e2b56f1008aa452ddc3a31bd8260841c0e16c47",
         "gatedTree": "e8fe34282c4675cf3ed0670642e871f7100ea9fe",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-sanctioned-roots-unconfigured-error-misattributed-pr1612-20260924T234748701Z-5180.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-sanctioned-roots-unconfigured-error-misattributed-pr1612-20260924T234748701Z-5180.log",
         "gatedAt": "2026-09-25T00:02:35.988Z"
       }
     },
@@ -154,7 +154,7 @@
         "headOid": "986d44f7bd1c9a9675e42179aa512852b1d29c59",
         "gatedTree": "2678f5a8407dd6ed1f5011d2f40df4967d9d5dce",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-prompt-argument-binding-spec-strings-and-names-pr1614-20260925T002238368Z-56984.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-prompt-argument-binding-spec-strings-and-names-pr1614-20260925T002238368Z-56984.log",
         "gatedAt": "2026-09-25T00:35:40.608Z"
       }
     },
@@ -189,7 +189,7 @@
       "dependsOn": [],
       "branch": "remediation/split-service-with-di-facade-drops-sibling-types",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1616",
       "mergedAt": null,
       "notes": "held: review cap (2 fix cycles) reached. PR #1616 closed unmerged; branch remediation/split-service-with-di-facade-drops-sibling-types kept at b4f9b43c (sibling types/base list/constants preserved; primary/chained ctors, ctor logic, shared mutable fields, param collisions refused). Open: HIGH ctor copy into a field WITH an initializer (SymbolRefactorService.cs:899/965) accepted but never injected - refuse it; MEDIUM non-private mutable field used only by a moved method duplicated on facade+partition (:874/:993); LOW multi-declarator over-injection (:1024); LOW ctor-overload collapse undocumented.",
       "fileSetHash": "78f2d493e33b6f56c7e2deb5f75f278b4109eafad3eb386f552c32b23fb3d6c3",
@@ -240,7 +240,7 @@
         "headOid": "67e1166379213e166de494294bd4781a1e0d07ec",
         "gatedTree": "f7644ecb5c269df1e4aaa3aa1a3e90455569a2be",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-change-signature-add-skips-same-document-impls-pr1617-20260925T003704088Z-56716.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-change-signature-add-skips-same-document-impls-pr1617-20260925T003704088Z-56716.log",
         "gatedAt": "2026-09-25T00:47:44.670Z"
       }
     },
@@ -288,7 +288,7 @@
         "headOid": "a097f4622aea6995747636b58163de7d287b6005",
         "gatedTree": "a4a89787c81bd5ddcaff67c022dc098c7ac2a798",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-restructure-preview-splice-without-parenthesization-pr1615-20260925T004909007Z-44560.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-restructure-preview-splice-without-parenthesization-pr1615-20260925T004909007Z-44560.log",
         "gatedAt": "2026-09-25T00:59:57.204Z"
       }
     },
@@ -336,7 +336,7 @@
         "headOid": "d2100bf8ee3ccbcd3e48dc8df53fbfc2c55fce3a",
         "gatedTree": "f555bd174b0aada2ec333d9e94918c0963036814",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-replace-invocation-rewrites-replacement-body-pr1618-20260925T010121565Z-36664.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-replace-invocation-rewrites-replacement-body-pr1618-20260925T010121565Z-36664.log",
         "gatedAt": "2026-09-25T01:12:08.673Z"
       }
     },
@@ -384,7 +384,7 @@
         "headOid": "7976cccc3f49e57c82a4bb2dfc79fc89d37971c1",
         "gatedTree": "9524f5615ee272fb6de930d3f5fff35f94a0d3fc",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-apply-composite-no-undo-capture-pr1619-20260925T011331986Z-38432.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-apply-composite-no-undo-capture-pr1619-20260925T011331986Z-38432.log",
         "gatedAt": "2026-09-25T01:24:07.334Z"
       }
     },
@@ -432,7 +432,7 @@
         "headOid": "d082793bc70f7c0e99ad10dc3a97946388a2869e",
         "gatedTree": "77702da6c16e2a3bf4f8367f9dd4a16c82ff1e19",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-change-type-namespace-emits-invalid-syntax-pr1620-20260925T012530666Z-42556.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-change-type-namespace-emits-invalid-syntax-pr1620-20260925T012530666Z-42556.log",
         "gatedAt": "2026-09-25T01:36:02.694Z"
       }
     },
@@ -480,7 +480,7 @@
         "headOid": "a4217cedf8b3850172ffcdf8548ff2804ffdaad7",
         "gatedTree": "029836a6534f2438b9219c1e7901f30d55c2df7c",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-24-pr1623-20260925T013727740Z-46040.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-24-pr1623-20260925T013727740Z-46040.log",
         "gatedAt": "2026-09-25T01:48:00.813Z"
       }
     },
@@ -528,7 +528,7 @@
         "headOid": "6f116c5f033a012f02415fae52c641996fdacbce",
         "gatedTree": "00756b4cee8b6688cc97818ba988feb586082028",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-25-pr1621-20260925T014923201Z-57012.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-25-pr1621-20260925T014923201Z-57012.log",
         "gatedAt": "2026-09-25T01:59:55.767Z"
       }
     },
@@ -576,7 +576,7 @@
         "headOid": "16f2d7bae3563ff34ef244a84d6373ef472f1091",
         "gatedTree": "8c26494d459387c6340b75a3d98762d0c4992c09",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-26-pr1622-20260925T020120190Z-47156.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-26-pr1622-20260925T020120190Z-47156.log",
         "gatedAt": "2026-09-25T02:11:51.985Z"
       }
     },
@@ -624,7 +624,7 @@
         "headOid": "f2e011cd737aeea863fee43be4f355f268ecbd59",
         "gatedTree": "63a74b21bf6cbdaf75d4c249248836d190a9196b",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-27-pr1625-20260925T021315475Z-36524.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-27-pr1625-20260925T021315475Z-36524.log",
         "gatedAt": "2026-09-25T02:23:54.065Z"
       }
     },
@@ -672,7 +672,7 @@
         "headOid": "4a9ccb0514ccbab002b98189affb59591b36d7be",
         "gatedTree": "6b1f3e87723766386bfb1e38c759ef383eb1555a",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-28-pr1626-20260925T022518531Z-38084.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-28-pr1626-20260925T022518531Z-38084.log",
         "gatedAt": "2026-09-25T02:35:45.596Z"
       }
     },
@@ -719,7 +719,7 @@
         "headOid": "16bd4a65108b3a38cd2cd56858cbd3f15c4e7633",
         "gatedTree": "26d49fc565da8f22d810a97d36f7a38a4c884804",
         "exit": 0,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-29-pr1624-20260925T023708957Z-44824.log",
+        "log": "<user>/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/b10807a3-5005-463a-aca7-ca9527980553/scratchpad/20260924T162035Z_backlog-remediate/gate-logs/gate-donotparallelize-audit-wave-29-pr1624-20260925T023708957Z-44824.log",
         "gatedAt": "2026-09-25T02:47:32.667Z"
       }
     }
