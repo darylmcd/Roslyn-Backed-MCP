@@ -70,7 +70,7 @@ internal sealed class PromptBindingStageAdapter
             {
                 if (!parameter.HasDefaultValue)
                 {
-                    throw InvalidParameters(promptName);
+                    throw MissingArgument(promptName, parameter.Name!);
                 }
 
                 continue;
@@ -78,18 +78,50 @@ internal sealed class PromptBindingStageAdapter
 
             try
             {
-                _ = JsonSerializer.Deserialize(value.GetRawText(), parameter.ParameterType);
+                // Validate with the SAME options the SDK prompt binder uses. Program.cs registers
+                // prompts via WithPromptsFromAssembly() without serializer options, so the SDK binds
+                // with McpJsonUtilities.DefaultOptions (NumberHandling = AllowReadingFromString).
+                // The MCP spec models prompt arguments as strings, so "19" for an int parameter is
+                // valid input; strict default options would reject what the binder accepts. If the
+                // host ever passes custom options to WithPromptsFromAssembly, follow them here.
+                _ = JsonSerializer.Deserialize(
+                    value.GetRawText(),
+                    parameter.ParameterType,
+                    McpJsonUtilities.DefaultOptions);
             }
             catch (Exception ex) when (ex is JsonException or NotSupportedException)
             {
-                throw InvalidParameters(promptName);
+                throw InvalidArgumentValue(promptName, parameter.Name!, parameter.ParameterType);
             }
         }
     }
 
-    private static McpProtocolException InvalidParameters(string promptName) =>
+    private static McpProtocolException MissingArgument(string promptName, string argumentName) =>
         new(
-            $"Invalid parameters for prompt '{promptName}'. " +
-            "Provide every required argument using the advertised parameter types.",
+            $"Missing required argument '{argumentName}' for prompt '{promptName}'.",
             McpErrorCode.InvalidParams);
+
+    // Never echo the caller-supplied value: it may carry secrets (see the sanitization contract).
+    private static McpProtocolException InvalidArgumentValue(
+        string promptName,
+        string argumentName,
+        Type parameterType) =>
+        new(
+            $"Invalid value for argument '{argumentName}' of prompt '{promptName}': " +
+            $"expected {GetExpectedJsonType(parameterType)}.",
+            McpErrorCode.InvalidParams);
+
+    private static string GetExpectedJsonType(Type parameterType)
+    {
+        var effectiveType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        if (effectiveType == typeof(string) || effectiveType == typeof(char) || effectiveType.IsEnum)
+            return $"a JSON string ({effectiveType.Name})";
+        if (effectiveType == typeof(bool))
+            return "a JSON boolean (Boolean)";
+        if (effectiveType.IsPrimitive || effectiveType == typeof(decimal))
+            return $"a JSON number or numeric string ({effectiveType.Name})";
+        if (effectiveType.IsArray || typeof(System.Collections.IEnumerable).IsAssignableFrom(effectiveType))
+            return $"a JSON array ({effectiveType.Name})";
+        return $"a JSON object ({effectiveType.Name})";
+    }
 }
