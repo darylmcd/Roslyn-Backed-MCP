@@ -31,7 +31,7 @@ public sealed class PluginPackageAllowlistTests
 
             Assert.AreNotEqual(0, result.ExitCode,
                 "Repo-internal allowlist entries such as ai_docs/** must be rejected.");
-            StringAssert.Contains(result.StdErr + result.StdOut, "repo-internal path");
+            StringAssert.Contains(result.AllOutput, "repo-internal path");
         }
         finally
         {
@@ -54,7 +54,7 @@ public sealed class PluginPackageAllowlistTests
 
             Assert.AreNotEqual(0, result.ExitCode,
                 "Candidate cache contents must fail when a repo-internal source file is present.");
-            StringAssert.Contains(result.StdErr + result.StdOut, "non-allowlisted file");
+            StringAssert.Contains(result.AllOutput, "non-allowlisted file");
         }
         finally
         {

@@ -74,29 +74,11 @@ internal static class TestFixtureFileSystem
             }
         }
 
-        var startInfo = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("mklink");
-        startInfo.ArgumentList.Add("/J");
-        startInfo.ArgumentList.Add(linkPath);
-        startInfo.ArgumentList.Add(targetPath);
-
-        using var process = System.Diagnostics.Process.Start(startInfo);
-        if (process is null || !process.WaitForExit(milliseconds: 5_000))
-        {
-            process?.Kill(entireProcessTree: true);
-            return false;
-        }
-
-        return process.ExitCode == 0 && Directory.Exists(linkPath);
+        // Symbolic links need Developer Mode or elevation; a junction needs neither. Created
+        // in-process: a process launch here is a load-sensitive failure that callers turn into a
+        // silent Assert.Inconclusive.
+        WindowsDirectoryJunction.Create(linkPath, targetPath);
+        return true;
     }
 
     public static bool TryCreateDirectorySymbolicLink(string linkPath, string targetPath)

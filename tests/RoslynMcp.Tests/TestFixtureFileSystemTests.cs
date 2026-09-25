@@ -4,6 +4,66 @@ namespace RoslynMcp.Tests;
 public sealed class TestFixtureFileSystemTests
 {
     [TestMethod]
+    public void WindowsDirectoryJunction_Create_ResolvesToTargetWithoutLaunchingAProcess()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("NTFS junctions are Windows-only.");
+            return;
+        }
+
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(TestFixtureFileSystemTests),
+            Guid.NewGuid().ToString("N"));
+        var target = Path.Combine(fixtureRoot, "target");
+        var link = Path.Combine(fixtureRoot, "link");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "probe.txt"), "through-the-junction");
+
+        try
+        {
+            WindowsDirectoryJunction.Create(link, target);
+
+            var linkInfo = new DirectoryInfo(link);
+            Assert.IsTrue(
+                linkInfo.Attributes.HasFlag(FileAttributes.ReparsePoint),
+                "The link must be a reparse point, not a plain directory.");
+            Assert.AreEqual(
+                Path.GetFullPath(target),
+                Path.GetFullPath(linkInfo.ResolveLinkTarget(returnFinalTarget: true)!.FullName),
+                "The junction must resolve to its target.");
+            Assert.AreEqual(
+                "through-the-junction",
+                File.ReadAllText(Path.Combine(link, "probe.txt")),
+                "Content under the target must be reachable through the junction.");
+
+            IOException? occupied = null;
+            try
+            {
+                WindowsDirectoryJunction.Create(target, link);
+            }
+            catch (IOException ex)
+            {
+                occupied = ex;
+            }
+
+            Assert.IsNotNull(occupied, "Creating a junction over an existing directory must fail.");
+            Assert.IsTrue(
+                File.Exists(Path.Combine(target, "probe.txt")),
+                "A refused junction must never delete the directory already at its path.");
+            StringAssert.Contains(
+                occupied.Message,
+                target,
+                "A failed junction must name the path it could not create, never degrade to a bare timeout.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     public void DeleteDirectoryIfExists_LockedReadOnlyFile_RetriesAndSurfacesTerminalFailure()
     {
         if (!OperatingSystem.IsWindows())

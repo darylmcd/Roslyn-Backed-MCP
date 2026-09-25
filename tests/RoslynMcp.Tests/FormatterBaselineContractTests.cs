@@ -41,6 +41,15 @@ public sealed class FormatterBaselineContractTests
     private static readonly TimeSpan _drainTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// Bound on a process fixture publishing its readiness handshake. Each nested fixture level is a
+    /// PowerShell cold start, which takes tens of seconds under full-suite load, so this is generous;
+    /// a readiness wait returns as soon as the handshake lands and costs nothing on a quiet host.
+    /// Never fold fixture start-up into a short timeout under test: that timeout then races the
+    /// cold starts instead of measuring the behavior it names.
+    /// </summary>
+    private static readonly TimeSpan _fixtureReadinessTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
     /// Process names that contend for the same MSBuild/NuGet/compiler-server resources the
     /// generator needs. Matched by name because that is all <see cref="Process"/> exposes without
     /// elevated access.
@@ -364,6 +373,7 @@ public sealed class FormatterBaselineContractTests
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixtureRoot);
         var childPidPath = Path.Combine(fixtureRoot, "child.pid");
+        var readyPath = Path.Combine(fixtureRoot, "ready");
         var releasePath = Path.Combine(fixtureRoot, "release");
         Process? outerProcess = null;
         try
@@ -380,7 +390,7 @@ public sealed class FormatterBaselineContractTests
                 """);
             var outerScript = Path.Combine(fixtureRoot, "emit-marker-and-exit.ps1");
             await File.WriteAllTextAsync(outerScript, """
-                param([string]$ChildScript, [string]$ReleasePath, [string]$ChildPidPath)
+                param([string]$ChildScript, [string]$ReleasePath, [string]$ChildPidPath, [string]$ReadyPath, [int]$ReadinessSeconds)
                 $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
                 $info.UseShellExecute = $false
                 $info.CreateNoWindow = $true
@@ -388,13 +398,16 @@ public sealed class FormatterBaselineContractTests
                     $info.ArgumentList.Add($argument)
                 }
                 $child = [Diagnostics.Process]::Start($info)
-                $deadline = [DateTime]::UtcNow.AddSeconds(10)
+                $deadline = [DateTime]::UtcNow.AddSeconds($ReadinessSeconds)
                 while (!(Test-Path -LiteralPath $ChildPidPath) -and [DateTime]::UtcNow -lt $deadline) {
                     Start-Sleep -Milliseconds 25
                 }
                 if (!(Test-Path -LiteralPath $ChildPidPath)) { exit 9 }
                 [Console]::Error.WriteLine("##format-phase## format start elapsedMs=1 childPid=$($child.Id)")
+                [Console]::Error.Flush()
                 $child.Dispose()
+                [IO.File]::WriteAllText($ReadyPath + '.tmp', '')
+                [IO.File]::Move($ReadyPath + '.tmp', $ReadyPath)
                 Start-Sleep -Seconds 60
                 """);
 
@@ -408,7 +421,8 @@ public sealed class FormatterBaselineContractTests
             };
             foreach (var argument in new[]
             {
-                "-NoProfile", "-File", outerScript, childScript, releasePath, childPidPath,
+                "-NoProfile", "-File", outerScript, childScript, releasePath, childPidPath, readyPath,
+                ((int)_fixtureReadinessTimeout.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
             })
             {
                 startInfo.ArgumentList.Add(argument);
@@ -416,6 +430,17 @@ public sealed class FormatterBaselineContractTests
 
             outerProcess = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Could not start inherited-pipe fixture.");
+
+            // The 2-second generator timeout below must start only once the fixture sits in its
+            // "hung in the format phase" state. Starting it at launch raced two PowerShell cold starts
+            // against it: under load the harness killed the tree before the nested child ever
+            // published its pid. The marker is already buffered in the unread stderr pipe here.
+            Assert.IsTrue(
+                await WaitForFileAsync(readyPath, _fixtureReadinessTimeout),
+                "The fixture did not publish its readiness handshake "
+                + $"(outerExited={outerProcess.HasExited}, childPidPublished={File.Exists(childPidPath)}).");
+            Assert.IsTrue(File.Exists(childPidPath), "The nested child did not publish its handshake.");
+
             var competingProcess = new CompetingProcess(123456789, "dotnet");
             var timeout = await Assert.ThrowsExactlyAsync<TimeoutException>(() =>
                 RunGeneratorCheckAsync(
@@ -423,9 +448,6 @@ public sealed class FormatterBaselineContractTests
                         outerProcess,
                         TimeSpan.FromSeconds(2),
                         () => [competingProcess])));
-            Assert.IsTrue(
-                await WaitForFileAsync(childPidPath, TimeSpan.FromSeconds(10)),
-                "The nested child did not publish its handshake.");
 
             var childProcessId = int.Parse(
                 await File.ReadAllTextAsync(childPidPath),
@@ -520,7 +542,9 @@ public sealed class FormatterBaselineContractTests
                 param([string]$ReleasePath, [string]$GrandchildPidPath)
                 [IO.File]::WriteAllText($GrandchildPidPath + '.tmp', [string]$PID)
                 [IO.File]::Move($GrandchildPidPath + '.tmp', $GrandchildPidPath)
-                $deadline = [DateTime]::UtcNow.AddMinutes(1)
+                # Outlives the ~30 s bounded drain plus load-inflated overhead before the test's
+                # still-alive assertion; the finally block releases it explicitly.
+                $deadline = [DateTime]::UtcNow.AddMinutes(5)
                 while (!(Test-Path -LiteralPath $ReleasePath) -and [DateTime]::UtcNow -lt $deadline) {
                     Start-Sleep -Milliseconds 50
                 }
@@ -570,7 +594,7 @@ public sealed class FormatterBaselineContractTests
                 ?? throw new InvalidOperationException("Could not start inherited-pipe fixture.");
 
             Assert.IsTrue(
-                await WaitForFileAsync(grandchildPidPath, TimeSpan.FromSeconds(10)),
+                await WaitForFileAsync(grandchildPidPath, _fixtureReadinessTimeout),
                 "The grandchild did not publish its handshake.");
 
             var stopwatch = Stopwatch.StartNew();
