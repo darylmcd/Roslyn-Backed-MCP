@@ -301,9 +301,25 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         IReadOnlyList<MethodDeclarationSyntax> MethodDeclarations,
         IReadOnlyList<FieldDeclarationSyntax> FieldDeclarations,
         IReadOnlyDictionary<string, SplitServicePartition> MemberToPartition,
+        IReadOnlyDictionary<string, ConstructorInjection> ConstructorInjections,
         string NamespaceName,
         string SourceDirectory,
         SyntaxList<UsingDirectiveSyntax> Usings);
+
+    /// <summary>
+    /// One <c>field = parameter</c> copy from the source type's constructor. The generated facade
+    /// and partition constructors reproduce it verbatim: the original <see cref="Parameter"/>
+    /// (type, name, attributes, default) and the original <see cref="Value"/> (so a
+    /// <c>?? throw</c> guard survives). <see cref="ParameterIndex"/> and
+    /// <see cref="StatementIndex"/> keep the original parameter and assignment order, so optional
+    /// parameters stay last and the first failing guard is still the one that throws.
+    /// </summary>
+    private sealed record ConstructorInjection(
+        string FieldName,
+        ParameterSyntax Parameter,
+        int ParameterIndex,
+        int StatementIndex,
+        ExpressionSyntax Value);
 
     private async Task<SplitServiceContext> ResolveSplitServiceContextAsync(
         string workspaceId,
@@ -372,6 +388,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 "cannot carry onto the facade constructor. Remove the chained initializer, then split.");
         }
 
+        var constructorInjections = CollectConstructorInjections(typeDeclaration, sourceType, fieldDeclarations);
+
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)
             ?? throw new InvalidOperationException($"Source file '{sourceFilePath}' must have a parent directory.");
 
@@ -382,6 +400,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             methodDeclarations,
             fieldDeclarations,
             memberToPartition,
+            constructorInjections,
             GetNamespaceName(typeDeclaration),
             sourceDirectory,
             StripLeadingTriviaFromFirstUsing(root.Usings));
@@ -389,8 +408,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
 
     // 1) Create partition files. Each partition file emits the requested methods PLUS any
     //    instance fields those methods reference (split-service-with-di-broken-output). When
-    //    a partition migrates one or more uninitialized fields, BuildPartitionFile also
-    //    synthesizes a constructor that accepts and assigns them so the partition compiles.
+    //    the source constructor copied parameters into any of those fields, BuildPartitionFile
+    //    also emits a constructor reproducing exactly those copies.
     private static void EmitPartitionFiles(
         SplitServiceContext context,
         IReadOnlyList<SplitServicePartition> partitions,
@@ -410,8 +429,15 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             var referencedFields = ResolveFieldsReferencedByMethods(context.FieldDeclarations, rawPartitionMethods);
 
             var partitionFilePath = Path.Combine(context.SourceDirectory, $"{partition.TypeName}.cs");
+            var partitionInjections = referencedFields
+                .SelectMany(field => field.Declaration.Variables)
+                .Select(declarator => context.ConstructorInjections.GetValueOrDefault(declarator.Identifier.ValueText))
+                .OfType<ConstructorInjection>()
+                .ToArray();
+            RefuseInjectionsNamingSourceMembers(context.TypeDeclaration, partition.TypeName, partitionInjections);
+
             var partitionContent = BuildPartitionFile(
-                context.NamespaceName, partition.TypeName, referencedFields, partitionMethods, context.Usings);
+                context.NamespaceName, partition.TypeName, referencedFields, partitionInjections, partitionMethods, context.Usings);
             mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent));
             changes.Add(new FileChangeDto(partitionFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, partitionContent, partitionFilePath)));
         }
@@ -730,24 +756,22 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         string namespaceName,
         string partitionTypeName,
         IReadOnlyList<FieldDeclarationSyntax> referencedFields,
+        IReadOnlyList<ConstructorInjection> partitionInjections,
         IReadOnlyList<MethodDeclarationSyntax> methods,
         SyntaxList<UsingDirectiveSyntax> usings)
     {
         // split-service-with-di-broken-output: assemble fields + (optional) ctor + methods so the
-        // partition file compiles when its migrated methods reference instance fields. Fields
-        // with their own initializer (`= new()`) keep the initializer and are NOT plumbed
-        // through the constructor; uninitialized fields become constructor parameters and are
-        // assigned in the synthesized ctor body. When no uninitialized fields remain the ctor
-        // is omitted entirely so we don't conflict with the implicit default constructor.
+        // partition file compiles when its migrated methods reference instance fields.
+        // split-service-with-di-ctor-injection-precision: the partition constructor reproduces
+        // exactly the source constructor's copies into the migrated fields. A field the source
+        // constructor never assigned stays unassigned here too, rather than becoming a DI
+        // parameter nothing can resolve. No copies means no constructor (implicit default).
         var partitionMembers = new List<MemberDeclarationSyntax>();
         partitionMembers.AddRange(referencedFields.Select(field => NormalizeForPartition(field)));
 
-        var ctorEligibleFields = referencedFields
-            .Where(field => !FieldHasInitializer(field))
-            .ToArray();
-        if (ctorEligibleFields.Length > 0)
+        if (partitionInjections.Count > 0)
         {
-            partitionMembers.Add(BuildPartitionConstructor(partitionTypeName, ctorEligibleFields));
+            partitionMembers.Add(BuildInjectingConstructor(partitionTypeName, partitionInjections));
         }
 
         partitionMembers.AddRange(methods);
@@ -761,73 +785,39 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         return compilationUnit.NormalizeWhitespace().ToFullString() + Environment.NewLine;
     }
 
-    private static bool FieldHasInitializer(FieldDeclarationSyntax field)
+    /// <summary>
+    /// Builds a constructor that reproduces the given source-constructor copies: one parameter per
+    /// distinct source parameter (in source order, so optional parameters stay last) and one
+    /// assignment per field, in source statement order, using the source right-hand side verbatim.
+    /// Targets are always <c>this.</c>-qualified: the constructor may also declare partition
+    /// parameters, and any parameter named like a field would otherwise capture the assignment
+    /// (<c>repo = repo;</c> assigns the parameter to itself and leaves the field null).
+    /// </summary>
+    private static ConstructorDeclarationSyntax BuildInjectingConstructor(
+        string typeName, IReadOnlyList<ConstructorInjection> injections)
     {
-        return field.Declaration.Variables.Any(declarator => declarator.Initializer is not null);
-    }
+        var parameters = injections
+            .OrderBy(injection => injection.ParameterIndex)
+            .Select(injection => injection.Parameter)
+            .DistinctBy(parameter => parameter.Identifier.ValueText, StringComparer.Ordinal)
+            .Select(parameter => parameter.WithoutTrivia())
+            .ToArray();
 
-    private static ConstructorDeclarationSyntax BuildPartitionConstructor(
-        string partitionTypeName, IReadOnlyList<FieldDeclarationSyntax> ctorFields)
-    {
-        // Synthesize one parameter per migrated field-without-initializer, matching the facade's
-        // `LowerFirst` naming convention. A field named `_channel` becomes parameter `channel`
-        // with body `_channel = channel;`. Multi-declarator fields produce one parameter per
-        // declarator (rare but supported).
-        var parameters = new List<ParameterSyntax>();
-        var assignments = new List<StatementSyntax>();
-        foreach (var field in ctorFields)
-        {
-            foreach (var declarator in field.Declaration.Variables)
-            {
-                if (declarator.Initializer is not null)
-                {
-                    // Mixed-initializer field (`int _a, _b = 1;`) — only the uninitialized
-                    // declarator should be plumbed through the ctor.
-                    continue;
-                }
-
-                var fieldName = declarator.Identifier.ValueText;
-                var paramName = ParameterNameFromFieldName(fieldName);
-                parameters.Add(SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-                    .WithType(field.Declaration.Type));
-                // A field without a leading underscore (`repo`) maps to a same-named parameter;
-                // an unqualified `repo = repo;` would assign the parameter to itself (CS1717) and
-                // leave the field null.
-                ExpressionSyntax target = paramName == fieldName
-                    ? SyntaxFactory.MemberAccessExpression(
+        var assignments = injections
+            .OrderBy(injection => injection.StatementIndex)
+            .Select(injection => (StatementSyntax)SyntaxFactory.ExpressionStatement(
+                SyntaxFactory.AssignmentExpression(
+                    SyntaxKind.SimpleAssignmentExpression,
+                    SyntaxFactory.MemberAccessExpression(
                         SyntaxKind.SimpleMemberAccessExpression,
                         SyntaxFactory.ThisExpression(),
-                        SyntaxFactory.IdentifierName(fieldName))
-                    : SyntaxFactory.IdentifierName(fieldName);
-                assignments.Add(SyntaxFactory.ExpressionStatement(
-                    SyntaxFactory.AssignmentExpression(
-                        SyntaxKind.SimpleAssignmentExpression,
-                        target,
-                        SyntaxFactory.IdentifierName(paramName))));
-            }
-        }
+                        SyntaxFactory.IdentifierName(injection.FieldName)),
+                    injection.Value.WithoutTrivia())));
 
-        return SyntaxFactory.ConstructorDeclaration(partitionTypeName)
+        return SyntaxFactory.ConstructorDeclaration(typeName)
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
             .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters)))
             .WithBody(SyntaxFactory.Block(assignments));
-    }
-
-    private static string ParameterNameFromFieldName(string fieldName)
-    {
-        // Strip leading underscore(s) and lowercase the first remaining char so `_channel`
-        // becomes `channel` and `_FooBar` becomes `fooBar`. Identifiers that are pure
-        // underscores or empty fall back to `value` so we never emit an invalid parameter name.
-        if (string.IsNullOrEmpty(fieldName))
-        {
-            return "value";
-        }
-        var stripped = fieldName.TrimStart('_');
-        if (stripped.Length == 0)
-        {
-            return "value";
-        }
-        return LowerFirst(stripped);
     }
 
     /// <summary>
@@ -882,7 +872,9 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         // the facade when the field stays there (a kept member uses it, or it is non-private/static
         // and so part of the type's surface). Copies of mutable state diverge, and so do copies of
         // an initializer (`= new()` yields one object per owner, splitting locks and collections).
-        // Only a readonly, constructor-injected field keeps one shared value across owners.
+        // Only a readonly, constructor-injected field is resolved from DI for each owner; that is
+        // one shared value only under a singleton registration (tracked by
+        // split-service-with-di-identity-semantics for transient/scoped lifetimes).
         var fieldOwners = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var partition in partitions)
         {
@@ -928,30 +920,20 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 "Move every member that uses it into the same partition, or make it a readonly field assigned from a constructor parameter.");
         }
 
-        // Instance fields that stay on the facade without an initializer were assigned by the
-        // dropped constructor(s); inject them through the facade constructor exactly as
-        // BuildPartitionConstructor does for partitions, or they would stay null at runtime.
+        // Fields that stay on the facade and were assigned by the dropped source constructor are
+        // injected through the facade constructor exactly as partitions inject theirs
+        // (BuildInjectingConstructor), or they would stay null at runtime.
         var retainedFieldNames = context.FieldDeclarations
             .Where(field => !IsDroppedField(field))
             .SelectMany(field => field.Declaration.Variables)
             .Select(declarator => declarator.Identifier.ValueText)
             .ToHashSet(StringComparer.Ordinal);
-        var initializedFieldNames = context.FieldDeclarations
-            .SelectMany(field => field.Declaration.Variables)
-            .Where(declarator => declarator.Initializer is not null)
-            .Select(declarator => declarator.Identifier.ValueText)
-            .ToHashSet(StringComparer.Ordinal);
-        var ctorAssignedNames = CollectInjectableConstructorAssignments(
-            originalDeclaration, sourceType, migratedFieldNames, retainedFieldNames, initializedFieldNames);
-        var retainedCtorFields = context.FieldDeclarations
-            .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.ConstKeyword)) &&
-                !IsDroppedField(field) &&
-                field.Declaration.Variables.Any(declarator =>
-                    declarator.Initializer is null && ctorAssignedNames.Contains(declarator.Identifier.ValueText)))
+        var retainedInjections = context.ConstructorInjections.Values
+            .Where(injection => retainedFieldNames.Contains(injection.FieldName))
             .ToArray();
 
         var facadeMembers = new List<MemberDeclarationSyntax>();
-        facadeMembers.AddRange(BuildFacadeInjectionMembers(sourceType, partitions, retainedCtorFields));
+        facadeMembers.AddRange(BuildFacadeInjectionMembers(sourceType, partitions, retainedInjections));
         foreach (var member in originalDeclaration.Members)
         {
             switch (member)
@@ -980,72 +962,154 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     }
 
     /// <summary>
-    /// The facade drops every instance constructor, so it can only reproduce a constructor that
-    /// does nothing but copy parameters into fields (<c>_x = x;</c> or <c>_x = x ?? throw ...;</c>).
-    /// Returns the assigned field names; throws when a constructor does anything else (guard
-    /// clauses, computed values, property assignments, event subscriptions), which the facade
-    /// would otherwise silently lose.
+    /// The facade drops the instance constructor and each partition gets a generated one, so the
+    /// split can only reproduce a single constructor that does nothing but copy parameters into
+    /// instance fields (<c>_x = x;</c> or <c>_x = x ?? throw ...;</c>). Returns those copies keyed
+    /// by field name; throws on constructor overloads (which would collapse into one generated
+    /// constructor) and on any other constructor logic (guard clauses, computed values, property
+    /// assignments, event subscriptions), which the split would otherwise silently lose.
     /// </summary>
-    private static HashSet<string> CollectInjectableConstructorAssignments(
+    private static Dictionary<string, ConstructorInjection> CollectConstructorInjections(
         TypeDeclarationSyntax typeDeclaration,
         string sourceType,
-        IReadOnlySet<string> migratedFieldNames,
-        IReadOnlySet<string> retainedFieldNames,
-        IReadOnlySet<string> initializedFieldNames)
+        IReadOnlyList<FieldDeclarationSyntax> instanceFields)
     {
-        var assigned = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var ctor in typeDeclaration.Members.OfType<ConstructorDeclarationSyntax>().Where(ctor => !IsStatic(ctor.Modifiers)))
+        var injections = new Dictionary<string, ConstructorInjection>(StringComparer.Ordinal);
+        var instanceConstructors = typeDeclaration.Members.OfType<ConstructorDeclarationSyntax>()
+            .Where(ctor => !IsStatic(ctor.Modifiers))
+            .ToArray();
+        if (instanceConstructors.Length > 1)
         {
-            var parameterNames = ctor.ParameterList.Parameters
-                .Select(parameter => parameter.Identifier.ValueText)
-                .ToHashSet(StringComparer.Ordinal);
-            IEnumerable<ExpressionSyntax?> expressions = ctor.ExpressionBody is { } arrow
-                ? [arrow.Expression]
-                : (ctor.Body?.Statements ?? default).Select(statement => (statement as ExpressionStatementSyntax)?.Expression);
+            throw new InvalidOperationException(
+                $"'{sourceType}' declares {instanceConstructors.Length} instance constructors; split_service_with_di_preview " +
+                "generates a single facade constructor and cannot preserve an overload set. Reduce it to one constructor, then split.");
+        }
 
-            foreach (var expression in expressions)
+        if (instanceConstructors.Length == 0)
+        {
+            return injections;
+        }
+
+        var ctor = instanceConstructors[0];
+        var declarators = instanceFields
+            .SelectMany(field => field.Declaration.Variables)
+            .ToDictionary(declarator => declarator.Identifier.ValueText, StringComparer.Ordinal);
+        var parameters = ctor.ParameterList.Parameters;
+        IEnumerable<ExpressionSyntax?> expressions = ctor.ExpressionBody is { } arrow
+            ? [arrow.Expression]
+            : (ctor.Body?.Statements ?? default).Select(statement => (statement as ExpressionStatementSyntax)?.Expression);
+
+        var statementIndex = 0;
+        foreach (var expression in expressions)
+        {
+            var parameterIndex = -1;
+            var target = expression is AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assignment &&
+                (parameterIndex = CopiedParameterIndex(assignment.Right, parameters)) >= 0
+                    ? assignment.Left switch
+                    {
+                        // An unqualified name that matches a parameter IS the parameter (`x = x;`
+                        // is a CS1717 self-assignment), not a copy into a same-named field.
+                        IdentifierNameSyntax identifier when CopiedParameterIndex(identifier, parameters) < 0 =>
+                            identifier.Identifier.ValueText,
+                        MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText,
+                        _ => null,
+                    }
+                    : null;
+            if (target is null || !declarators.TryGetValue(target, out var declarator) || injections.ContainsKey(target))
             {
-                var target = expression is AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assignment &&
-                    IsParameterCopy(assignment.Right, parameterNames)
-                        ? assignment.Left switch
-                        {
-                            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-                            MemberAccessExpressionSyntax { Expression: ThisExpressionSyntax } access => access.Name.Identifier.ValueText,
-                            _ => null,
-                        }
-                        : null;
-                if (target is null || !(migratedFieldNames.Contains(target) || retainedFieldNames.Contains(target)))
-                {
-                    throw new InvalidOperationException(
-                        $"A constructor of '{sourceType}' does more than copy parameters into fields ('{expression?.ToString() ?? "non-expression statement"}'); " +
-                        "split_service_with_di_preview replaces it with a generated facade constructor and cannot carry that logic. " +
-                        "Reduce the constructor to field assignments from parameters, then split.");
-                }
+                throw new InvalidOperationException(
+                    $"A constructor of '{sourceType}' does more than copy parameters into fields ('{expression?.ToString() ?? "non-expression statement"}'); " +
+                    "split_service_with_di_preview replaces it with a generated facade constructor and cannot carry that logic. " +
+                    "Reduce the constructor to one assignment per field from a parameter, then split.");
+            }
 
-                // Both generated constructors (facade and partition) inject only uninitialized
-                // fields, so a constructor value that overrides an initializer would be lost.
-                if (initializedFieldNames.Contains(target))
-                {
-                    throw new InvalidOperationException(
-                        $"A constructor of '{sourceType}' assigns field '{target}', which also has an initializer; " +
-                        "the generated constructors inject only uninitialized fields, so the constructor's value would be lost. " +
-                        "Remove the initializer or the constructor assignment, then split.");
-                }
+            // The generated constructors assign only what the source constructor assigned; a
+            // copy that overrides an initializer would leave each owner with a different value
+            // depending on construction order, so refuse it.
+            if (declarator.Initializer is not null)
+            {
+                throw new InvalidOperationException(
+                    $"A constructor of '{sourceType}' assigns field '{target}', which also has an initializer; " +
+                    "the generated constructors cannot reproduce an initializer overridden by the constructor. " +
+                    "Remove the initializer or the constructor assignment, then split.");
+            }
 
-                assigned.Add(target);
+            var value = ((AssignmentExpressionSyntax)expression!).Right;
+            injections[target] = new ConstructorInjection(target, parameters[parameterIndex], parameterIndex, statementIndex++, value);
+        }
+
+        return injections;
+    }
+
+    /// <summary>
+    /// A partition constructor carries the source parameters and <c>?? throw</c> values verbatim,
+    /// but the partition does not carry the source type's other members. Refuses when a copied
+    /// parameter type, default value, attribute, or guard names a member of the source type
+    /// (a constant default, a static guard helper, a nested type), which would not compile there.
+    /// </summary>
+    private static void RefuseInjectionsNamingSourceMembers(
+        TypeDeclarationSyntax sourceDeclaration,
+        string partitionTypeName,
+        IReadOnlyList<ConstructorInjection> partitionInjections)
+    {
+        var sourceMemberNames = sourceDeclaration.Members
+            .SelectMany(member => member switch
+            {
+                BaseFieldDeclarationSyntax field => field.Declaration.Variables.Select(declarator => declarator.Identifier.ValueText),
+                MethodDeclarationSyntax method => [method.Identifier.ValueText],
+                PropertyDeclarationSyntax property => [property.Identifier.ValueText],
+                EventDeclarationSyntax @event => [@event.Identifier.ValueText],
+                BaseTypeDeclarationSyntax nested => [nested.Identifier.ValueText],
+                DelegateDeclarationSyntax @delegate => [@delegate.Identifier.ValueText],
+                _ => [],
+            })
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var injection in partitionInjections)
+        {
+            var parameterName = injection.Parameter.Identifier.ValueText;
+            var sourceMember = new SyntaxNode[] { injection.Parameter, injection.Value }
+                .SelectMany(node => node.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+                .Select(name => name.Identifier.ValueText)
+                .FirstOrDefault(name => name != parameterName && sourceMemberNames.Contains(name));
+            if (sourceMember is not null)
+            {
+                throw new InvalidOperationException(
+                    $"The constructor copy into '{injection.FieldName}' ('{injection.Parameter} => {injection.Value}') names " +
+                    $"'{sourceMember}', a member of the source type that partition '{partitionTypeName}' would not contain. " +
+                    "Inline or move that value out of the source type, then split.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Index of the constructor parameter a right-hand side copies (<c>x</c> or
+    /// <c>x ?? throw ...</c>), or -1 when the value is anything else.
+    /// </summary>
+    private static int CopiedParameterIndex(ExpressionSyntax value, SeparatedSyntaxList<ParameterSyntax> parameters)
+    {
+        var copied = value switch
+        {
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            BinaryExpressionSyntax { RawKind: (int)SyntaxKind.CoalesceExpression, Left: IdentifierNameSyntax left, Right: ThrowExpressionSyntax } =>
+                left.Identifier.ValueText,
+            _ => null,
+        };
+        if (copied is null)
+        {
+            return -1;
+        }
+
+        for (var index = 0; index < parameters.Count; index++)
+        {
+            if (string.Equals(parameters[index].Identifier.ValueText, copied, StringComparison.Ordinal))
+            {
+                return index;
             }
         }
 
-        return assigned;
+        return -1;
     }
-
-    private static bool IsParameterCopy(ExpressionSyntax value, IReadOnlySet<string> parameterNames) => value switch
-    {
-        IdentifierNameSyntax identifier => parameterNames.Contains(identifier.Identifier.ValueText),
-        BinaryExpressionSyntax { RawKind: (int)SyntaxKind.CoalesceExpression, Left: IdentifierNameSyntax left, Right: ThrowExpressionSyntax } =>
-            parameterNames.Contains(left.Identifier.ValueText),
-        _ => false,
-    };
 
     private static bool IsStatic(SyntaxTokenList modifiers) =>
         modifiers.Any(token => token.IsKind(SyntaxKind.StaticKeyword));
@@ -1059,7 +1123,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     private static IEnumerable<MemberDeclarationSyntax> BuildFacadeInjectionMembers(
         string sourceType,
         IReadOnlyList<SplitServicePartition> partitions,
-        IReadOnlyList<FieldDeclarationSyntax> retainedCtorFields)
+        IReadOnlyList<ConstructorInjection> retainedInjections)
     {
         // Private readonly field per partition, injected via constructor.
         var fieldMembers = partitions
@@ -1082,8 +1146,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                     SyntaxKind.SimpleAssignmentExpression,
                     SyntaxFactory.IdentifierName($"_{LowerFirst(partition.TypeName)}"),
                     SyntaxFactory.IdentifierName(LowerFirst(partition.TypeName))))));
-        // Retained fields reuse the partition constructor's parameter/assignment synthesis.
-        var retainedInjection = BuildPartitionConstructor(sourceType, retainedCtorFields);
+        // Retained fields reproduce the source constructor's copies, exactly as partitions do.
+        var retainedInjection = BuildInjectingConstructor(sourceType, retainedInjections);
         var partitionParameterNames = ctorParameters.Select(parameter => parameter.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
         var collision = retainedInjection.ParameterList.Parameters
             .FirstOrDefault(parameter => partitionParameterNames.Contains(parameter.Identifier.ValueText));

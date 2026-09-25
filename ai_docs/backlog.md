@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-25T12:50:21Z
+**updated_at:** 2026-09-25T13:53:53Z
 
 ## Agent contract
 
@@ -49,7 +49,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `find-type-consumers-mutations-generator-blind` | High | compilation-cache-generator-rerun-blinds-unused-analysis | **Fix find_type_consumers and find_type_mutations empty results in generator projects** — resolve the type through the solution compilation instead of the cache's generator-rerun compilation. [type: bug] [source: mcp-surface-audit 20260924-1305] | M | items/find-type-consumers-mutations-generator-blind.md |
-| `split-service-with-di-ctor-injection-precision` | High | — | **Make split_service_with_di constructors match the original** — inject only ctor-assigned fields, keep original parameter types and null guards, refuse ctor overloads. [type: bug] [source: 20260925 split-service cold review] | M | items/split-service-with-di-ctor-injection-precision.md |
 
 ## Medium
 

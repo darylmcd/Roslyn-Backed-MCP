@@ -21,3 +21,4 @@
 ## Context
 
 Filed 2026-09-25 while shipping the sibling-types fix.
+2026-09-25 cold review (ctor-injection-precision): partition files copy only file-level usings (context.Usings); usings declared inside the namespace block are dropped, so moved code relying on them fails to compile. Add to this row's acceptance (copy namespace-scoped usings or refuse).
