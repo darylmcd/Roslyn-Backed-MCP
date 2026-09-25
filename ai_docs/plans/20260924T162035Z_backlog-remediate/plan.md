@@ -85,3 +85,35 @@ Stanza: `plan/donotparallelize-audit-wave-28.md`
 ### 15. donotparallelize-audit-wave-29
 
 Stanza: `plan/donotparallelize-audit-wave-29.md`
+
+## Retrospective
+
+**Result:** 14 of 15 initiatives merged, 1 deferred (held at the review cap). 14 backlog rows closed (8 High, 6 Medium). Mode: parallel, one generation, `--max-parallel 3`. Base `e24f0d0a`.
+
+| Initiative | Route | PR | Merge | Review |
+|---|---|---|---|---|
+| compilation-cache-generator-rerun-blinds-unused-analysis | deepen | #1613 | b8aaee58 | pass (1 low) |
+| sanctioned-roots-unconfigured-error-misattributed | direct | #1612 | 99a95c6e | pass (1 low) |
+| prompt-argument-binding-spec-strings-and-names | deepen | #1614 | 2c5c6f9a | pass (1 medium dup) |
+| split-service-with-di-facade-drops-sibling-types | direct | #1616 closed | — | fail x3 → deferred (held) |
+| change-signature-add-skips-same-document-impls | direct | #1617 | f4c17b38 | pass |
+| restructure-preview-splice-without-parenthesization | direct | #1615 | fb5c3de5 | pass (1 medium) |
+| replace-invocation-rewrites-replacement-body | direct | #1618 | 95223846 | pass |
+| apply-composite-no-undo-capture | direct | #1619 | 1161a502 | pass (1 medium, 1 low) |
+| change-type-namespace-emits-invalid-syntax | direct | #1620 | 0be67322 | pass |
+| donotparallelize-audit-wave-24..29 | direct | #1623 #1621 #1622 #1625 #1626 #1624 | e501b700 6b2fc0e5 181f3d98 28f37839 c7940527 e338ef1d | pass (low stale run-history comments) |
+
+**Selection:** count=15 → 9 High + waves 24-29. Skipped `coverlet-net10-session-end-crash-upgrade` (execution-blocked: no stable `coverlet.collector` after 10.0.1) plus the static skip set (35 execution-blocked, dep-blocked `find-type-consumers-mutations-generator-blind` + `donotparallelize-audit-wave-40`, 5 defer-band). `find-type-consumers-mutations-generator-blind` is now unblocked and likely fixed as a side effect of #1613 — re-verify before implementing.
+
+**Planning:** 2 deepened, 13 direct. Cold plan review first returned `status: error` — both deepened stanzas exceeded the 5120 B stanza cap (7435 B, 5959 B); trimmed via `stanza-merge`, re-review passed-with-warnings (1 warn accepted: prompt row's two shapes share one function; wave-29 anchor `TestAssemblyFixtureTests.cs` had no `[DoNotParallelize]`, dropped from Scope).
+
+**Execution incidents:**
+- A machine reboot killed workflow `wf_86b4302e-d09` mid-wave-2. Recovery: released the stale CI lock (holder was the dead change-signature executor), finished the two cut-off legs (split-service, change-signature) inline from their intact uncommitted work with targeted tests + cold review, relaunched the 9 untouched initiatives via `exec-args --retry-ids` (`wf_77a8de86-550`, all landable).
+- Pre-reboot, split-service's executor timed out at 3600 s `ci-lock-acquire` while change-signature held the aggregate CI lock ~60+ min running a sharded full gate — lock starvation even at `--max-parallel 3`.
+- split-service: 3 cold reviews (cycle 0 + 2 fix cycles, orchestrator-implemented). Each fix cycle closed the prior findings but the reviewer found another silent constructor-loss shape; held at the cap with branch `b4f9b43c` kept and findings noted on the row.
+
+**Landing:** strict per-PR `integration-gate` (`just ci`) + `land`, in plan order; all 14 tree-verified. #1612's gate failed 3x on infra before passing: transient SSL failure downloading actionlint into the fresh integration worktree; the registered-as-row flake `formatter-baseline-nested-child-handshake-flake` (2nd occurrence); 7 process-spawn timeouts from concurrent TradeWise / DotNet-Network-Documentation gates pinning the CPU. Added a pre-gate CPU load-wait (< 60% for 3 samples); after that every gate passed first try at ~11 min each.
+
+**Deviations:** two executor legs finished by the orchestrator (no executor gate; targeted tests + cold review + per-PR integration gate ran full `just ci`). Landing loop gated on machine load (not in the prompt).
+
+**Roslyn tools:** orchestrator `server_info` (prefix `mcp__plugin_roslyn-mcp_roslyn__`); deepeners/reviewers/executors used `workspace_load`, `compile_check`, `find_references`, `symbol_search` per their notes; anchor reads for direct stanzas were textual.
