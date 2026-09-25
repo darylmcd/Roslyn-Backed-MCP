@@ -11,7 +11,13 @@ namespace RoslynMcp.Tests;
 /// 759-document solution). The fix detects post-promotion builtin types and returns an empty
 /// envelope with a <c>Hint</c> field instead of enumerating the unbounded reference set.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-29: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync)
+// and only calls SymbolRelationshipService.GetSymbolRelationshipsAsync, a read-only query — no
+// *_apply, no reload, no disk writes, no UndoService/ChangeTracker/PreviewStore writes, no
+// environment or static mutation (its two statics are class-local paths/ids set once in
+// ClassInitialize). Validated by a bounded repeated (3x) concurrent run alongside its wave-29
+// sibling and parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class SymbolRelationshipsBuiltinTypeSuppressionTests : SharedWorkspaceTestBase
 {
