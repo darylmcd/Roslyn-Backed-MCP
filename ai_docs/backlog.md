@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-25T02:48:19Z
+**updated_at:** 2026-09-25T02:57:59Z
 
 ## Agent contract
 
@@ -131,6 +131,7 @@
 | `build-output-parser-drops-locationless-errors` | Medium | — | **Parse location-less MSBuild/NuGet errors in DotnetOutputParser** — accept 'project.csproj : error NU1201: …' lines so a failed build never reports errorCount 0. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/build-output-parser-drops-locationless-errors.md |
 | `netanalyzers-package-duplicates-sdk-analyzers` | Medium | — | **Drop the redundant Microsoft.CodeAnalysis.NetAnalyzers package reference** — the SDK already injects the identical 10.0.401 analyzers, so every CA diagnostic is reported twice. [type: chore] [source: mcp-surface-audit 20260924-1305] | S | items/netanalyzers-package-duplicates-sdk-analyzers.md |
 | `surface-test-skill-prompt-drift` | Medium | — | **Fix drift in the shipped mcp-server-surface-test skill** — ready-state gate, wrong apply route, mis-described get_test_coverage_map, and a --full dispatch agent the plugin never ships. [type: docs] [source: mcp-surface-audit 20260924-1305] | S | items/surface-test-skill-prompt-drift.md |
+| `change-signature-callsite-rewrites-enclosing-invocation` | Medium | — | **Rewrite only real invocations in change_signature_preview** — a method-group or nameof reference must not make the preview edit the enclosing call's arguments. [type: bug] [source: backlog-remediate 20260924T162035Z] | S | items/change-signature-callsite-rewrites-enclosing-invocation.md |
 
 ## Low
 
@@ -343,6 +344,10 @@
 | `test-reference-map-counts-synthesized-members` | Low | — | **Exclude implicit/synthesized members from test_reference_map coverage** — record <Clone>$, PrintMembers, Deconstruct, implicit ctors and interface members deflate coveragePercent. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/test-reference-map-counts-synthesized-members.md |
 | `symbol-locator-mixed-input-silently-accepted` | Low | — | **Reject mixed or partial symbol locators** — metadataName + filePath without line/column is silently resolved by precedence although descriptions call the locators mutually exclusive. [type: bug] [source: mcp-surface-audit 20260924-1305] | S | items/symbol-locator-mixed-input-silently-accepted.md |
 | `mcp-surface-audit-2026-09-24-info-digest` | Low | — | **Triage the 2026-09-24 surface-audit Info digest** — confirm or close the unconfirmed signals and decide the small Info nits. [type: bug] [source: mcp-surface-audit 20260924-1305] | M | items/mcp-surface-audit-2026-09-24-info-digest.md |
+| `restructure-qualified-name-capture-parenthesized` | Low | — | **Treat qualified-name captures as primary in restructure_preview** — `global::System` / `A.B` captures spliced into a receiver slot must not be parenthesized into non-compiling code. [type: bug] [source: backlog-remediate 20260924T162035Z] | S | items/restructure-qualified-name-capture-parenthesized.md |
+| `prompt-shim-json-options-and-type-describer-dedup` | Low | — | **Align get_prompt_text argument binding with prompts/get** — use the SDK prompt-binder JSON options and share one expected-JSON-type describer between PromptShimTools and PromptBindingStageAdapter. [type: chore] [source: backlog-remediate 20260924T162035Z] | M | items/prompt-shim-json-options-and-type-describer-dedup.md |
+| `composite-failed-apply-displaces-undo-target` | Low | — | **Define revert_last_apply after a failed composite apply** — a failed apply_composite leaves an uncommitted undo snapshot that displaces the previous apply's revert target. [type: bug] [source: backlog-remediate 20260924T162035Z] | M | items/composite-failed-apply-displaces-undo-target.md |
+| `verify-actionlint-per-worktree-download` | Low | — | **Cache the pinned actionlint binary outside the worktree** — every fresh integration/executor worktree re-downloads it, and a transient download failure fails the whole gate. [type: chore] [source: backlog-remediate 20260924T162035Z] | S | items/verify-actionlint-per-worktree-download.md |
 
 ## Defer
 
