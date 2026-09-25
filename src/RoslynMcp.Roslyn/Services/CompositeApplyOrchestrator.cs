@@ -13,19 +13,22 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
     private readonly IChangeTracker? _changeTracker;
     private readonly ILogger<CompositeApplyOrchestrator>? _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
+    private readonly IUndoService? _undoService;
 
     public CompositeApplyOrchestrator(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
         IChangeTracker? changeTracker = null,
         ILogger<CompositeApplyOrchestrator>? logger = null,
-        IUnexpectedExceptionReporter? exceptionReporter = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null,
+        IUndoService? undoService = null)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
         _changeTracker = changeTracker;
         _logger = logger;
         _exceptionReporter = exceptionReporter;
+        _undoService = undoService;
     }
 
     public async Task<ApplyResultDto> ApplyCompositeAsync(string previewToken, CancellationToken ct)
@@ -49,6 +52,7 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         var appliedFiles = new List<string>();
         try
         {
+            await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
             await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
             return await CompleteApplyAsync(
                 previewToken,
@@ -60,6 +64,44 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         {
             return ProjectFailure(ex, appliedFiles, mutations.Count);
         }
+    }
+
+    /// <summary>
+    /// apply-composite-no-undo-capture: registers ONE pre-apply snapshot covering every file the
+    /// composite touches, before the first write, so <c>revert_last_apply</c> restores this
+    /// composite instead of the previous apply. The snapshot is committed to revert history when
+    /// <see cref="CompleteApplyAsync"/> records the change. Files the composite creates snapshot
+    /// as absent (revert deletes them); files it deletes snapshot their bytes (revert recreates them).
+    /// </summary>
+    private async Task CaptureUndoSnapshotAsync(
+        string workspaceId,
+        IReadOnlyList<CompositeFileMutation> mutations,
+        CancellationToken ct)
+    {
+        if (_undoService is null)
+        {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fileSnapshots = new List<FileSnapshotDto>(mutations.Count);
+        foreach (var mutation in mutations)
+        {
+            // First occurrence wins: a later mutation of the same path must not re-snapshot state
+            // that an earlier mutation in this composite would already have changed.
+            var normalizedPath = Path.GetFullPath(mutation.FilePath);
+            if (seen.Add(normalizedPath))
+            {
+                fileSnapshots.Add(await FileSnapshotCapture.CaptureAsync(normalizedPath, fallbackTextFactory: null, ct)
+                    .ConfigureAwait(false));
+            }
+        }
+
+        _undoService.CaptureBeforeApply(
+            workspaceId,
+            $"Composite operation ({fileSnapshots.Count} files)",
+            preApplySolution: null,
+            fileSnapshots);
     }
 
     private async Task ApplyMutationsAsync(

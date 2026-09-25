@@ -390,6 +390,84 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.AreEqual("class New { }\n", Encoding.UTF8.GetString(afterBytes));
     }
 
+    /// <summary>
+    /// Regression guard for <c>apply-composite-no-undo-capture</c>: the composite apply recorded a
+    /// change but never captured an undo snapshot, so <c>revert_last_apply</c> immediately after
+    /// <c>apply_composite_preview</c> reverted the PREVIOUS apply instead. The revert must restore the
+    /// composite's modified, created, and deleted files, leave the previous apply intact, and the
+    /// composite must appear in <c>workspace_changes</c>.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyComposite_RevertLastApply_Restores_Composite_Files_Not_Previous_Apply()
+    {
+        const string workspaceId = "ws-1";
+        var workspace = new RecordingWorkspaceManager();
+        using var changeTracker = new ChangeTracker(workspace);
+        using var undoService = new UndoService(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<UndoService>.Instance,
+            workspace,
+            changeTracker);
+
+        // A previous, independently revertable apply on an unrelated file.
+        var priorPath = Path.Combine(_tempDir, "prior.cs");
+        await File.WriteAllTextAsync(priorPath, "prior-original");
+        undoService.CaptureBeforeApply(
+            workspaceId,
+            "prior apply",
+            preApplySolution: null,
+            [FileSnapshotDto.FromExistingBytes(priorPath, await File.ReadAllBytesAsync(priorPath))]);
+        await File.WriteAllTextAsync(priorPath, "prior-applied");
+        changeTracker.RecordChange(workspaceId, "prior apply", [priorPath], "apply_text_edit");
+
+        // Composite: modify an existing file, create a new one, delete an existing one.
+        var modifiedPath = Path.Combine(_tempDir, "modified.cs");
+        var createdPath = Path.Combine(_tempDir, "sub", "created.cs");
+        var deletedPath = Path.Combine(_tempDir, "deleted.cs");
+        var modifiedOriginal = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble()
+            .Concat(Encoding.UTF8.GetBytes("class Modified { }\n"))
+            .ToArray();
+        await File.WriteAllBytesAsync(modifiedPath, modifiedOriginal);
+        await File.WriteAllTextAsync(deletedPath, "class Deleted { }\n");
+
+        var store = new CompositePreviewStore();
+        var token = store.Store(
+            workspaceId,
+            1,
+            "composite",
+            [
+                new CompositeFileMutation(modifiedPath, "class Modified { int X; }\n", DeleteFile: false),
+                new CompositeFileMutation(createdPath, "class Created { }\n", DeleteFile: false),
+                new CompositeFileMutation(deletedPath, null, DeleteFile: true),
+            ]);
+        var orchestrator = new CompositeApplyOrchestrator(
+            workspace,
+            store,
+            changeTracker,
+            undoService: undoService);
+
+        var result = await orchestrator.ApplyCompositeAsync(token, CancellationToken.None);
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.IsTrue(File.Exists(createdPath));
+        Assert.IsFalse(File.Exists(deletedPath));
+
+        // (3) workspace_changes records the composite apply.
+        var changes = changeTracker.GetChanges(workspaceId);
+        Assert.HasCount(2, changes);
+        Assert.AreEqual("apply_composite_preview", changes[^1].ToolName);
+        CollectionAssert.AreEquivalent(
+            new[] { modifiedPath, createdPath, deletedPath },
+            changes[^1].AffectedFiles.ToArray());
+
+        // (1) revert_last_apply restores the composite's files.
+        Assert.IsTrue(await undoService.RevertAsync(workspaceId, CancellationToken.None));
+        CollectionAssert.AreEqual(modifiedOriginal, await File.ReadAllBytesAsync(modifiedPath));
+        Assert.IsFalse(File.Exists(createdPath), "A file the composite created must be removed on revert.");
+        Assert.AreEqual("class Deleted { }\n", await File.ReadAllTextAsync(deletedPath));
+
+        // (2) The previous apply is untouched.
+        Assert.AreEqual("prior-applied", await File.ReadAllTextAsync(priorPath));
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
@@ -446,8 +524,8 @@ public sealed class CompositeApplyOrchestratorTests
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
-        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
-        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public int GetCurrentVersion(string workspaceId) => 1;
+        public void RestoreVersion(string workspaceId, int version) { }
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
