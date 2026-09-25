@@ -790,10 +790,19 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 var paramName = ParameterNameFromFieldName(fieldName);
                 parameters.Add(SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
                     .WithType(field.Declaration.Type));
+                // A field without a leading underscore (`repo`) maps to a same-named parameter;
+                // an unqualified `repo = repo;` would assign the parameter to itself (CS1717) and
+                // leave the field null.
+                ExpressionSyntax target = paramName == fieldName
+                    ? SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.ThisExpression(),
+                        SyntaxFactory.IdentifierName(fieldName))
+                    : SyntaxFactory.IdentifierName(fieldName);
                 assignments.Add(SyntaxFactory.ExpressionStatement(
                     SyntaxFactory.AssignmentExpression(
                         SyntaxKind.SimpleAssignmentExpression,
-                        SyntaxFactory.IdentifierName(fieldName),
+                        target,
                         SyntaxFactory.IdentifierName(paramName))));
             }
         }
@@ -869,18 +878,54 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 migratedFieldNames.Contains(declarator.Identifier.ValueText) &&
                 !identifiersInRetainedMembers.Contains(declarator.Identifier.ValueText));
 
-        // A mutable field used by both a moved method and a kept member would be copied into the
-        // partition AND kept on the facade: two independent copies of one piece of state.
-        var sharedMutableField = context.FieldDeclarations
-            .Where(field => !field.Modifiers.Any(token => token.Kind() is SyntaxKind.ReadOnlyKeyword or SyntaxKind.ConstKeyword))
-            .SelectMany(field => field.Declaration.Variables)
-            .Select(declarator => declarator.Identifier.ValueText)
-            .FirstOrDefault(name => migratedFieldNames.Contains(name) && identifiersInRetainedMembers.Contains(name));
-        if (sharedMutableField is not null)
+        // Every owner of a field gets its own copy: each partition whose moved methods use it, plus
+        // the facade when the field stays there (a kept member uses it, or it is non-private/static
+        // and so part of the type's surface). Copies of mutable state diverge, and so do copies of
+        // an initializer (`= new()` yields one object per owner, splitting locks and collections).
+        // Only a readonly, constructor-injected field keeps one shared value across owners.
+        var fieldOwners = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var partition in partitions)
+        {
+            var methods = partitionedMethods
+                .Where(method => memberToPartition[method.Identifier.ValueText].TypeName == partition.TypeName)
+                .ToArray();
+            foreach (var declarator in ResolveFieldsReferencedByMethods(context.FieldDeclarations, methods)
+                .SelectMany(field => field.Declaration.Variables))
+            {
+                var name = declarator.Identifier.ValueText;
+                if (!fieldOwners.TryGetValue(name, out var owners))
+                {
+                    fieldOwners[name] = owners = new HashSet<string>(StringComparer.Ordinal);
+                }
+
+                owners.Add(partition.TypeName);
+            }
+        }
+
+        foreach (var field in context.FieldDeclarations.Where(field => !IsDroppedField(field)))
+        {
+            foreach (var declarator in field.Declaration.Variables)
+            {
+                if (fieldOwners.TryGetValue(declarator.Identifier.ValueText, out var owners))
+                {
+                    owners.Add(sourceType);
+                }
+            }
+        }
+
+        var duplicatedState = context.FieldDeclarations
+            .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.ConstKeyword)))
+            .SelectMany(field => field.Declaration.Variables.Select(declarator => (
+                Name: declarator.Identifier.ValueText,
+                IsShareable: field.Modifiers.Any(token => token.IsKind(SyntaxKind.ReadOnlyKeyword)) && declarator.Initializer is null)))
+            .FirstOrDefault(entry => !entry.IsShareable &&
+                fieldOwners.TryGetValue(entry.Name, out var owners) && owners.Count > 1);
+        if (duplicatedState.Name is not null)
         {
             throw new InvalidOperationException(
-                $"Mutable field '{sharedMutableField}' is used both by a moved method and by a member that stays on '{sourceType}'; " +
-                "splitting would duplicate its state. Make it readonly, or move every member that uses it into the same partition.");
+                $"Field '{duplicatedState.Name}' would be copied into {string.Join(" and ", fieldOwners[duplicatedState.Name].Order(StringComparer.Ordinal))}; " +
+                "it is mutable or has an initializer, so each copy would hold separate state. " +
+                "Move every member that uses it into the same partition, or make it a readonly field assigned from a constructor parameter.");
         }
 
         // Instance fields that stay on the facade without an initializer were assigned by the
@@ -891,7 +936,13 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             .SelectMany(field => field.Declaration.Variables)
             .Select(declarator => declarator.Identifier.ValueText)
             .ToHashSet(StringComparer.Ordinal);
-        var ctorAssignedNames = CollectInjectableConstructorAssignments(originalDeclaration, sourceType, migratedFieldNames, retainedFieldNames);
+        var initializedFieldNames = context.FieldDeclarations
+            .SelectMany(field => field.Declaration.Variables)
+            .Where(declarator => declarator.Initializer is not null)
+            .Select(declarator => declarator.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
+        var ctorAssignedNames = CollectInjectableConstructorAssignments(
+            originalDeclaration, sourceType, migratedFieldNames, retainedFieldNames, initializedFieldNames);
         var retainedCtorFields = context.FieldDeclarations
             .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.ConstKeyword)) &&
                 !IsDroppedField(field) &&
@@ -939,7 +990,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         TypeDeclarationSyntax typeDeclaration,
         string sourceType,
         IReadOnlySet<string> migratedFieldNames,
-        IReadOnlySet<string> retainedFieldNames)
+        IReadOnlySet<string> retainedFieldNames,
+        IReadOnlySet<string> initializedFieldNames)
     {
         var assigned = new HashSet<string>(StringComparer.Ordinal);
         foreach (var ctor in typeDeclaration.Members.OfType<ConstructorDeclarationSyntax>().Where(ctor => !IsStatic(ctor.Modifiers)))
@@ -968,6 +1020,16 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                         $"A constructor of '{sourceType}' does more than copy parameters into fields ('{expression?.ToString() ?? "non-expression statement"}'); " +
                         "split_service_with_di_preview replaces it with a generated facade constructor and cannot carry that logic. " +
                         "Reduce the constructor to field assignments from parameters, then split.");
+                }
+
+                // Both generated constructors (facade and partition) inject only uninitialized
+                // fields, so a constructor value that overrides an initializer would be lost.
+                if (initializedFieldNames.Contains(target))
+                {
+                    throw new InvalidOperationException(
+                        $"A constructor of '{sourceType}' assigns field '{target}', which also has an initializer; " +
+                        "the generated constructors inject only uninitialized fields, so the constructor's value would be lost. " +
+                        "Remove the initializer or the constructor assignment, then split.");
                 }
 
                 assigned.Add(target);

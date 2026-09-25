@@ -343,6 +343,48 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
     }
 
     [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Qualifies_Field_Named_Like_Its_Parameter()
+    {
+        // A field with no leading underscore maps to a same-named constructor parameter. An
+        // unqualified `log = log;` assigns the parameter to itself and leaves the field null.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var serviceFilePath = workspace.GetPath("SampleLib", "PlainLoggedService.cs");
+        await File.WriteAllTextAsync(
+            serviceFilePath,
+            "namespace SampleLib;\n\npublic sealed class PlainLoggedService\n{\n    private readonly System.IO.TextWriter log;\n\n" +
+            "    public PlainLoggedService(System.IO.TextWriter log)\n    {\n        this.log = log;\n    }\n\n" +
+            "    public void Moved() => log.WriteLine(\"moved\");\n\n    public void Kept() => log.WriteLine(\"kept\");\n}\n",
+            CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+        var preview = await service.PreviewSplitServiceWithDiAsync(
+            workspace.WorkspaceId,
+            serviceFilePath,
+            "PlainLoggedService",
+            new[] { new SplitServicePartition("PlainMovedService", new[] { "Moved" }) },
+            hostRegistrationFile: null,
+            CancellationToken.None);
+
+        await ApplyMutationsAsync(compositeStore, preview.PreviewToken, CancellationToken.None);
+
+        var facadeContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
+        var partitionContents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib", "PlainMovedService.cs"), CancellationToken.None);
+        foreach (var (label, contents) in new[] { ("facade", facadeContents), ("partition", partitionContents) })
+        {
+            StringAssert.Contains(contents, "this.log = log;",
+                $"The {label} constructor must qualify the field so the parameter is not assigned to itself.\n--- {label} ---\n{contents}");
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(contents, @"(?<![.\w])log = log;"),
+                $"The {label} constructor must not emit a self-assignment.\n--- {label} ---\n{contents}");
+        }
+    }
+
+    [TestMethod]
     public async Task Split_Service_With_Di_Preview_Refuses_Constructor_Shapes_The_Facade_Cannot_Reproduce()
     {
         // The facade replaces every instance constructor with a generated one, so any shape it
@@ -374,6 +416,34 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 "namespace SampleLib;\n\npublic sealed class CounterService\n{\n    private int _count;\n" +
                 "    public void A() => _count++;\n    public int B() => _count;\n}\n",
                 "_count"),
+            // A non-private mutable field used only by a moved method stays on the facade (part of
+            // the type's surface) AND is copied into the partition: two copies of one state.
+            ("PublicCounterService",
+                "namespace SampleLib;\n\npublic sealed class PublicCounterService\n{\n    public int Count;\n" +
+                "    public void A() => Count++;\n    public int B() => 2;\n}\n",
+                "Count"),
+            // Mutable state used by moved methods in two different partitions would be duplicated.
+            ("TwoPartitionCounterService",
+                "namespace SampleLib;\n\npublic sealed class TwoPartitionCounterService\n{\n    private int _count;\n" +
+                "    public void A() => _count++;\n    public int B() => _count;\n    public int C() => 3;\n}\n",
+                "_count"),
+            // A readonly initializer creates one object per owner: the lock stops excluding.
+            ("SharedLockService",
+                "namespace SampleLib;\n\npublic sealed class SharedLockService\n{\n    private readonly object _sync = new();\n" +
+                "    public void A() { lock (_sync) { } }\n    public void B() { lock (_sync) { } }\n}\n",
+                "_sync"),
+            // The constructor overrides an initializer; neither generated constructor injects an
+            // initialized field, so the constructor's value would be silently replaced by 3.
+            ("InitializedRetainedService",
+                "namespace SampleLib;\n\npublic sealed class InitializedRetainedService\n{\n    private readonly int _retries = 3;\n" +
+                "    public InitializedRetainedService(int retries) { _retries = retries; }\n" +
+                "    public int A() => 1;\n    public int B() => _retries;\n}\n",
+                "_retries"),
+            ("InitializedMigratedService",
+                "namespace SampleLib;\n\npublic sealed class InitializedMigratedService\n{\n    private readonly int _retries = 3;\n" +
+                "    public InitializedMigratedService(int retries) { _retries = retries; }\n" +
+                "    public int A() => _retries;\n    public int B() => 2;\n}\n",
+                "_retries"),
             // Retained field and partition map to the same facade constructor parameter.
             ("CollidingService",
                 "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _collidingServicePart;\n" +
@@ -382,8 +452,18 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 "declared twice"),
         };
 
+        // Cases that need a second partition (method "B") to reproduce cross-partition sharing.
+        var twoPartitionCases = new HashSet<string>(StringComparer.Ordinal) { "TwoPartitionCounterService" };
+
         foreach (var (typeName, source, expectedFragment) in cases)
         {
+            var partitions = twoPartitionCases.Contains(typeName)
+                ? new[]
+                {
+                    new SplitServicePartition(typeName + "Part", new[] { "A" }),
+                    new SplitServicePartition(typeName + "Reader", new[] { "B" }),
+                }
+                : new[] { new SplitServicePartition(typeName + "Part", new[] { "A" }) };
             await using var workspace = CreateIsolatedWorkspaceCopy();
             var serviceFilePath = workspace.GetPath("SampleLib", typeName + ".cs");
             await File.WriteAllTextAsync(serviceFilePath, source, CancellationToken.None);
@@ -394,7 +474,7 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 workspace.WorkspaceId,
                 serviceFilePath,
                 typeName,
-                new[] { new SplitServicePartition(typeName + "Part", new[] { "A" }) },
+                partitions,
                 hostRegistrationFile: null,
                 CancellationToken.None));
             StringAssert.Contains(ex.Message, expectedFragment, $"Refusal for '{typeName}' must explain the unsupported constructor shape.");
