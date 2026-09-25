@@ -19,3 +19,11 @@
 ## Context
 
 - Facade is built as SyntaxFactory.CompilationUnit().WithUsings(usings) + WrapInNamespace(classDecl) and NormalizeWhitespace()'d, then written over the original file.
+
+## Remediation attempt 2026-09-24 (plan `20260924T162035Z_backlog-remediate`) — held at review cap
+
+- Branch `remediation/split-service-with-di-facade-drops-sibling-types` (head `b4f9b43c`, PR #1616 closed unmerged) carries a reviewed-but-held fix: the facade now replaces only the source type's declaration node, so sibling types, base list and constants survive; retained ctor-assigned fields are injected through the facade constructor; primary/chained constructors, constructor logic beyond `field = param` copies, mutable fields shared by moved + kept members, and parameter-name collisions are refused.
+- Open findings from the cycle-2 cold review (fix these, then re-review):
+  - HIGH: a constructor copy into a field that HAS an initializer (`private readonly int _retries = 3; ctor: _retries = retries;`) is accepted by `CollectInjectableConstructorAssignments` but never injected (`retainedCtorFields` filters `Initializer is null`) — the ctor value is silently lost. Refuse it (or inject regardless of initializer) and add a refusal case.
+  - MEDIUM: a non-private non-readonly field used only by a moved method is copied into the partition and kept on the facade (not droppable), duplicating state; `sharedMutableField` only checks names referenced by kept members.
+  - LOW: multi-declarator fields over-inject uninitialized declarators the ctor never assigned; multiple instance-ctor overloads collapse into one facade ctor (undocumented).
