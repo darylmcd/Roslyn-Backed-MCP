@@ -275,7 +275,9 @@ public sealed class RestructureService : IRestructureService
             if (TryMatch(_pattern, node, captures))
             {
                 MatchCount++;
-                var substituted = Substitute(_goal, captures);
+                // restructure-preview-splice-without-parenthesization: the substituted goal lands
+                // in the matched node's slot, which may bind tighter than the goal does.
+                var substituted = ParenthesizeForSlot(Substitute(_goal, captures), node);
                 return substituted.WithLeadingTrivia(node.GetLeadingTrivia()).WithTrailingTrivia(node.GetTrailingTrivia());
             }
 
@@ -408,12 +410,69 @@ public sealed class RestructureService : IRestructureService
                 {
                     if (_captures.TryGetValue(match.Groups["name"].Value, out var captured))
                     {
-                        return captured.WithTriviaFrom(node);
+                        // restructure-preview-splice-without-parenthesization: pre-fix the capture
+                        // was spliced verbatim, so `__a__ + 1` -> `__a__ * 3` over `a + b + 1`
+                        // emitted `a + b * 3`. The placeholder is a primary expression, so any
+                        // looser capture needs parentheses when its slot is an operator operand.
+                        return ParenthesizeForSlot(captured, node).WithTriviaFrom(node);
                     }
                 }
                 return base.VisitIdentifierName(node);
             }
         }
+
+        /// <summary>
+        /// Wraps <paramref name="replacement"/> in parentheses when it is an expression that binds
+        /// looser than a primary expression AND <paramref name="slot"/> (the original node it
+        /// replaces, still attached to its parent) is an operand position of an operator. Slots
+        /// that accept any expression (arguments, initializers, statements, assignment right-hand
+        /// sides) and non-expression positions (types, names) are left untouched, so no redundant
+        /// parentheses appear there. Conservative by design: an operand slot always gets
+        /// parentheses for a non-primary replacement, even when precedence would allow omitting them.
+        /// </summary>
+        private static SyntaxNode ParenthesizeForSlot(SyntaxNode replacement, SyntaxNode slot)
+        {
+            if (replacement is not ExpressionSyntax expression || IsPrimaryExpression(expression) || !IsOperandSlot(slot))
+            {
+                return replacement;
+            }
+
+            return SyntaxFactory.ParenthesizedExpression(expression.WithoutTrivia()).WithTriviaFrom(expression);
+        }
+
+        private static bool IsPrimaryExpression(ExpressionSyntax expression) => expression switch
+        {
+            IdentifierNameSyntax or GenericNameSyntax or PredefinedTypeSyntax => true,
+            LiteralExpressionSyntax or InterpolatedStringExpressionSyntax => true,
+            ParenthesizedExpressionSyntax or TupleExpressionSyntax => true,
+            MemberAccessExpressionSyntax or InvocationExpressionSyntax or ElementAccessExpressionSyntax => true,
+            ThisExpressionSyntax or BaseExpressionSyntax => true,
+            TypeOfExpressionSyntax or DefaultExpressionSyntax or SizeOfExpressionSyntax or CheckedExpressionSyntax => true,
+            ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax => true,
+            // x++, x--, x! — postfix operators bind as tightly as primary expressions.
+            PostfixUnaryExpressionSyntax => true,
+            _ => false,
+        };
+
+        private static bool IsOperandSlot(SyntaxNode slot) => slot.Parent switch
+        {
+            BinaryExpressionSyntax binary => binary.Left == slot ||
+                // The right side of `is` / `as` is a type, not an operand.
+                !(binary.IsKind(SyntaxKind.IsExpression) || binary.IsKind(SyntaxKind.AsExpression)),
+            AssignmentExpressionSyntax assignment => assignment.Left == slot,
+            PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or AwaitExpressionSyntax => true,
+            RangeExpressionSyntax => true,
+            CastExpressionSyntax cast => cast.Expression == slot,
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Expression == slot,
+            ConditionalAccessExpressionSyntax conditionalAccess => conditionalAccess.Expression == slot,
+            InvocationExpressionSyntax invocation => invocation.Expression == slot,
+            ElementAccessExpressionSyntax elementAccess => elementAccess.Expression == slot,
+            ConditionalExpressionSyntax conditional => conditional.Condition == slot,
+            IsPatternExpressionSyntax isPattern => isPattern.Expression == slot,
+            SwitchExpressionSyntax switchExpression => switchExpression.GoverningExpression == slot,
+            WithExpressionSyntax withExpression => withExpression.Expression == slot,
+            _ => false,
+        };
     }
 }
 
