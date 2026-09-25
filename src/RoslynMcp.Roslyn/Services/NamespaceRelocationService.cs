@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 
@@ -309,7 +310,16 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
             // No relocation but sibling types remain in the same declaration. We must extract the
             // type into its own namespace declaration within the same file.
             var updatedRoot = MoveTypeIntoNewNamespaceInSameFile(sourceRoot, containingNs, typeDecl, toNamespace);
-            return (solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedRoot), siblingTypesRemaining);
+
+            // The synthesized namespace declarations carry Formatter.Annotation; format only
+            // those spans so keyword/brace spacing and member indentation follow the project's
+            // editorconfig instead of the trivia-free SyntaxFactory shape (`namespaceX.Y{`).
+            var formattedDocument = await Formatter.FormatAsync(
+                sourceDocument.WithSyntaxRoot(updatedRoot),
+                Formatter.Annotation,
+                options: null,
+                cancellationToken: ct).ConfigureAwait(false);
+            return (formattedDocument.Project.Solution, siblingTypesRemaining);
         }
 
         // Relocating: write a new file for the relocated type and either remove the type from the
@@ -352,8 +362,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// <summary>
     /// When the source file keeps other types but the relocated type stays in the same file,
     /// extract the target type into its own namespace declaration appended to the compilation
-    /// unit. Both the existing file-scoped / block namespace and the new sibling namespace
-    /// remain readable after rewrite.
+    /// unit. A file-scoped source namespace is converted to block form first: C# forbids mixing
+    /// file-scoped and block namespace declarations in one file (CS8955), and a file can hold at
+    /// most one file-scoped declaration. Every synthesized declaration carries
+    /// <see cref="Formatter.Annotation"/>; the caller must run <see cref="Formatter"/> over it.
     /// </summary>
     private static CompilationUnitSyntax MoveTypeIntoNewNamespaceInSameFile(
         CompilationUnitSyntax root,
@@ -361,19 +373,60 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         TypeDeclarationSyntax typeDecl,
         string toNamespace)
     {
-        // Remove the type from its current namespace.
-        var trimmedNs = ns.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepLeadingTrivia)!;
+        var endOfLine = root.DescendantTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.EndOfLineTrivia)) is var eol
+            && eol.IsKind(SyntaxKind.EndOfLineTrivia)
+            ? eol
+            : SyntaxFactory.EndOfLine(Environment.NewLine);
+
+        // Remove the type from its current namespace. Its trivia (doc comments included) travels
+        // with the node into the new declaration, so none is left behind — keeping it would
+        // duplicate the doc comment and orphan a blank line before the closing brace.
+        BaseNamespaceDeclarationSyntax trimmedNs = ns.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepNoTrivia)!;
+        if (trimmedNs is NamespaceDeclarationSyntax block)
+        {
+            trimmedNs = block.WithCloseBraceToken(block.CloseBraceToken.WithAdditionalAnnotations(Formatter.Annotation));
+        }
+        else if (trimmedNs is FileScopedNamespaceDeclarationSyntax fileScoped)
+        {
+            // Drop the blank line that followed `namespace X;` so the block opens cleanly.
+            if (fileScoped.Externs.Count == 0 && fileScoped.Usings.Count == 0 &&
+                fileScoped.Members.FirstOrDefault() is { } firstMember)
+            {
+                fileScoped = fileScoped.ReplaceNode(firstMember, firstMember.WithLeadingTrivia(
+                    firstMember.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine)));
+            }
+
+            trimmedNs = SyntaxFactory.NamespaceDeclaration(
+                    fileScoped.AttributeLists,
+                    fileScoped.Modifiers,
+                    fileScoped.NamespaceKeyword,
+                    fileScoped.Name,
+                    SyntaxFactory.Token(SyntaxKind.OpenBraceToken)
+                        .WithTrailingTrivia(fileScoped.SemicolonToken.TrailingTrivia),
+                    fileScoped.Externs,
+                    fileScoped.Usings,
+                    fileScoped.Members,
+                    SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine),
+                    semicolonToken: default)
+                .WithAdditionalAnnotations(Formatter.Annotation);
+        }
+
         var rootAfterRemove = root.ReplaceNode(ns, trimmedNs);
 
-        // Append a new block-namespace declaration for the relocated type. Block syntax is used
-        // because a single file can have at most one file-scoped namespace declaration; if the
-        // existing one is file-scoped we must fall back to a block-scoped sibling.
+        // Append a new block-namespace declaration for the relocated type, reusing the file's own
+        // line terminator for the separator and the final newline.
         var appended = SyntaxFactory.NamespaceDeclaration(SyntaxFactory.ParseName(toNamespace))
-            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl))
-            .WithLeadingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine));
+            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl.WithLeadingTrivia(
+                typeDecl.GetLeadingTrivia().SkipWhile(IsWhitespaceOrEndOfLine))))
+            .WithCloseBraceToken(SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithTrailingTrivia(endOfLine))
+            .WithLeadingTrivia(endOfLine)
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
         return rootAfterRemove.AddMembers(appended);
     }
+
+    private static bool IsWhitespaceOrEndOfLine(SyntaxTrivia trivia) =>
+        trivia.IsKind(SyntaxKind.WhitespaceTrivia) || trivia.IsKind(SyntaxKind.EndOfLineTrivia);
 
     /// <summary>
     /// Build a fresh compilation unit for the relocated type with a file-scoped destination
