@@ -11,7 +11,13 @@ namespace RoslynMcp.Tests;
 /// structured empty preview (empty token, empty changes list, descriptive Description)
 /// matching the shape used by FixAllService.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-27: [DoNotParallelize] removed. Both methods only call
+// StringLiteralReplaceService.PreviewReplaceAsync on the shared sample workspace obtained through
+// the synchronized WorkspaceIdCache; the zero-match path returns an empty preview without storing
+// a PreviewStore token, and the empty-list path throws before touching the workspace. The
+// class-owned service instance is created once in ClassInit. No LoadAsync/ReloadAsync/Close, no
+// *_apply, no static or environment mutation. Verified with 3x repeated concurrent runs alongside
+// wave-27 siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class StringLiteralReplaceServiceTests : SharedWorkspaceTestBase
 {

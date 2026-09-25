@@ -4,7 +4,13 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-27: [DoNotParallelize] removed. Each data row loads its own
+// GUID-unique sample copy (IsolatedWorkspaceScope, closed and deleted on dispose), creates its own
+// GUID-unique sanctioned root, and stands up its own in-memory MCP host whose SecurityOptions are
+// per-host DI singletons. The tool rejects the out-of-root path in ClientRootPathValidator before
+// dispatching to the per-test fake write service, so nothing is written. No shared-workspace
+// reload, no static or environment mutation. Verified with 3x repeated concurrent runs alongside
+// wave-27 siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class SuppressionToolsTests : IsolatedWorkspaceTestBase
 {

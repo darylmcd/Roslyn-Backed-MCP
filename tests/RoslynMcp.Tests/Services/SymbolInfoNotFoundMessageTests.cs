@@ -12,7 +12,12 @@ namespace RoslynMcp.Tests.Services;
 /// Post-fix the message names the locator field (filePath:line:col, symbolHandle, or
 /// metadataName) so callers can correlate the failure with the input they sent.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-27: [DoNotParallelize] removed. Every method only calls the
+// read-only SymbolTools.GetSymbolInfo (read-gated) against the shared sample workspace obtained
+// through the synchronized WorkspaceIdCache, and each lookup is expected to miss. No
+// LoadAsync/ReloadAsync/Close, no *_apply, no static, environment or filesystem mutation
+// (DisposeServices is a no-op). Verified with 3x repeated concurrent runs alongside wave-27
+// siblings and parallel-enabled classes, green every time.
 [TestClass]
 public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
 {
