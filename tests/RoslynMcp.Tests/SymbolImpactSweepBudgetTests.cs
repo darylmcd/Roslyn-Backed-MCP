@@ -10,7 +10,13 @@ namespace RoslynMcp.Tests;
 /// budgets: `summary=true` drops per-ref preview text; `maxItemsPerCategory` caps
 /// each list independently.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-28: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
+// only calls ImpactSweepService.SweepAsync, a read-only reference/mapper/diagnostic walk — no
+// *_apply, no reload, no disk writes, no UndoService/ChangeTracker writes. Its ImpactSweepService
+// and CompilationCache instances are class-local. Validated by a bounded repeated (3x) concurrent
+// run alongside its wave-28 siblings and parallel-enabled workspace-loading classes, green every
+// time.
 [TestClass]
 public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
 {
