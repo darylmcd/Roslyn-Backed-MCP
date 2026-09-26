@@ -414,37 +414,6 @@
       "notes": null
     },
     {
-      "id": "invalid-operation-throw-sites-lack-public-message",
-      "order": 14,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "invalid-operation-throw-sites-lack-public-message"
-      ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
       "id": "workspace-close-schema-leaks-test-seams",
       "order": 15,
       "status": "pending",
@@ -1007,6 +976,19 @@
       {
         "id": "v5-major-release-contract-prereqs",
         "reason": "execution-blocked"
+      }
+    ],
+    "splits": [
+      {
+        "parent": "invalid-operation-throw-sites-lack-public-message",
+        "children": [
+          "project-mutation-refusals-public-message",
+          "cross-project-refactoring-refusals-public-message",
+          "file-create-and-scaffold-refusals-public-message",
+          "change-signature-refusals-public-message",
+          "project-name-not-found-misleading-reload-advice",
+          "get-prompt-text-unknown-prompt-public-message"
+        ]
       }
     ]
   }
