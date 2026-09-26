@@ -12,7 +12,6 @@
 ## Acceptance
 
 - [ ] symbol_search{limit:-3} → message names 'limit' and the valid range
-- [ ] analyze_snippet{kind:'bogusKind'} names the valid kinds
 - [ ] evaluate_csharp{timeoutSeconds:-1} states 'must be greater than 0'
 - [ ] An analyzer or test guards against new plain `throw new ArgumentException(msg)` without paramName in Host.Stdio tool paths
 
@@ -23,3 +22,4 @@
 ## Context
 
 - ToolErrorHandler.BuildSafeArgumentMessage intentionally redacts raw ArgumentException messages (they may echo inputs); only PublicArgumentException passes through. The fix is at the throw sites, not in the redaction layer.
+2026-09-26: analyze_snippet bogus-kind acceptance moved to public-argument-exception-core-move (needs PublicArgumentException in Core).

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-26T23:53:02Z
+**updated_at:** 2026-09-26T23:56:34Z
 
 ## Agent contract
 
@@ -137,6 +137,7 @@
 | `change-signature-refusals-public-message` | Medium | format-range-refuses-on-unrelated-line-count-change | **Return change_signature and format_range refusals verbatim** — reorder/validation refusals state their reason instead of the generic fallback. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/change-signature-refusals-public-message.md |
 | `project-name-not-found-misleading-reload-advice` | Medium | — | **Report unknown project names and symbol handles as NotFound** — build_project/test_run/rename_preview stop advising workspace_reload for a missing project or handle. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
 | `get-prompt-text-unknown-prompt-public-message` | Medium | — | **List available prompts on an unknown get_prompt_text name** — throw PublicArgumentException so the redaction layer keeps the list. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | S | items/get-prompt-text-unknown-prompt-public-message.md |
+| `public-argument-exception-core-move` | Medium | argument-exception-throw-sites-lack-public-message | **Move PublicArgumentException to Core and publish Roslyn-layer argument refusals** — analyze_snippet bad kind and go_to_definition/enclosing_symbol line bounds name the parameter and valid values. [type: bug] [source: argument-exception-throw-sites-lack-public-message] | M | items/public-argument-exception-core-move.md |
 
 ## Low
 
