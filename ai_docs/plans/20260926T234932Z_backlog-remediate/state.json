@@ -697,22 +697,29 @@
       "backlogRowsClosed": [
         "unknown-projectname-silently-empty"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Helpers/ProjectFilterHelper.cs",
+        "src/RoslynMcp.Roslyn/Services/AnalyzerInfoService.cs",
+        "src/RoslynMcp.Roslyn/Services/DiagnosticQueryService.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AnalyzerInfoToolsTests.cs",
+        "tests/RoslynMcp.Tests/DiagnosticQueryServiceRegressionTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,

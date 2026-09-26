@@ -8,7 +8,7 @@
 
 ## Acceptance
 
-- [ ] project_diagnostics(projectName=NoSuchProject) → InvalidArgument naming the loaded projects
+- [ ] project_diagnostics(projectName=NoSuchProject) → InvalidArgument with compile_check's public 'No loaded project matches parameter projectName … workspace_status' message (the redaction layer does not echo caller input or the project list)
 - [ ] list_analyzers same
 - [ ] Regression test
 
