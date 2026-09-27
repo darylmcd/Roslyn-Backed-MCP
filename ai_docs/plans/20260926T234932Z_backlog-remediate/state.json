@@ -3,12 +3,12 @@
   "generatedAt": "2026-09-26T23:49:33.876Z",
   "backlogSnapshot": "2026-09-25T13:53:53Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
   "completed": false,
-  "reviewStatus": "pending",
-  "readyForExecute": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "find-type-consumers-mutations-generator-blind",
@@ -43,7 +43,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "3ed98edb5e758dd2ee1cbb1304ec6fdab94df4e692faef31085f3697ac615ccc",
+      "stanzaHash": "5fbbf1c98653504bb7c81853d155e37f0b05bf4fa0caf2ce193661fb1f92bff8",
+      "reviewedStanzaHash": "5fbbf1c98653504bb7c81853d155e37f0b05bf4fa0caf2ce193661fb1f92bff8"
     },
     {
       "id": "donotparallelize-audit-wave-30",
@@ -78,7 +81,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e04e92ca1da126835f59d631aadc36b78d3f07d257a4e400aaae249b6173d76f",
+      "stanzaHash": "d0c588f3a5099c06271e3ff4aa205ca489535266ebb0232b2e936e4c179550ed",
+      "reviewedStanzaHash": "d0c588f3a5099c06271e3ff4aa205ca489535266ebb0232b2e936e4c179550ed"
     },
     {
       "id": "donotparallelize-audit-wave-31",
@@ -113,7 +119,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "25f9ae1379404c063dbc7cb38c9774d22c7cfd5760126961fdb2bcdd0e2b9450",
+      "stanzaHash": "68b98259d97d9a62d1b2e639d886addcfdecdbf2bee933c6ee3a4182da78f623",
+      "reviewedStanzaHash": "68b98259d97d9a62d1b2e639d886addcfdecdbf2bee933c6ee3a4182da78f623"
     },
     {
       "id": "donotparallelize-audit-wave-32",
@@ -148,7 +157,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "116858464c150fa3f073f3dd103d26914611c0cb85a33ea0f10a55a31ba8c966",
+      "stanzaHash": "5c300bbc375fb2e0ae2135308ff32c68677612a1d6a1a044d5c85b82f883b0f0",
+      "reviewedStanzaHash": "5c300bbc375fb2e0ae2135308ff32c68677612a1d6a1a044d5c85b82f883b0f0"
     },
     {
       "id": "donotparallelize-audit-wave-33",
@@ -183,7 +195,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "49d5f82cc9f8f54424cf4428b4111e791344a61064a041bbb6b9f12e900de3a3",
+      "stanzaHash": "39debebf12b3d19a47740ed5436746628b121ea5de8e53c7860cc9872936baa0",
+      "reviewedStanzaHash": "39debebf12b3d19a47740ed5436746628b121ea5de8e53c7860cc9872936baa0"
     },
     {
       "id": "donotparallelize-audit-wave-34",
@@ -218,7 +233,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "20fca10e78e952bfc2a815d2491652c2d8c00ff7ebebb2c0a7ed432d376ae067",
+      "stanzaHash": "0c57e94f397030235c89360a35f953c9325c619b9d3b2677a3db5b9ed981121b",
+      "reviewedStanzaHash": "0c57e94f397030235c89360a35f953c9325c619b9d3b2677a3db5b9ed981121b"
     },
     {
       "id": "donotparallelize-audit-wave-35",
@@ -253,7 +271,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "dc79b33f6b32e95fbcc5fb1449cda6ada0fdf23b2b169dab027a758192817146",
+      "stanzaHash": "901f7a6f5336658a0034d0d056a9a52af54b043971e897806238cab2c9e21917",
+      "reviewedStanzaHash": "901f7a6f5336658a0034d0d056a9a52af54b043971e897806238cab2c9e21917"
     },
     {
       "id": "donotparallelize-audit-wave-36",
@@ -288,7 +309,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "c21264a540298e141b80b8bc767ffee586328af1e2d37519c049947dd5041b4d",
+      "stanzaHash": "a882e246b20433c3ddfb52295071b91f9f820e5f220f05bfb4661e5785fe9964",
+      "reviewedStanzaHash": "a882e246b20433c3ddfb52295071b91f9f820e5f220f05bfb4661e5785fe9964"
     },
     {
       "id": "donotparallelize-audit-wave-37",
@@ -323,7 +347,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "734bbbb8e18f98f5c69bbce071cccc0986a70d58ef514d62b590ac1583baba97",
+      "stanzaHash": "10dec392355d3db3d9f212c5342c04b4735c246e927b07f94aed20c38f26baf8",
+      "reviewedStanzaHash": "10dec392355d3db3d9f212c5342c04b4735c246e927b07f94aed20c38f26baf8"
     },
     {
       "id": "donotparallelize-audit-wave-38",
@@ -358,7 +385,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "2b3c140ded07696e6d959d26e83e1dff37ddeed3d4df8a4173a240dc4a0b97a4",
+      "stanzaHash": "55d56d8770fcfa0a1cab68a4a9e5b727aad6a2197ebdde80a18c0bc59a154c0e",
+      "reviewedStanzaHash": "55d56d8770fcfa0a1cab68a4a9e5b727aad6a2197ebdde80a18c0bc59a154c0e"
     },
     {
       "id": "donotparallelize-audit-wave-39",
@@ -393,7 +423,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "ba9264cd940ebf7992d833861457d759b97ff8daad01a5cf53c360fc1b8af6ce",
+      "stanzaHash": "6f31651bd4bb44bce97b4fb41325935e759341b3c4875e898b731afe44870078",
+      "reviewedStanzaHash": "6f31651bd4bb44bce97b4fb41325935e759341b3c4875e898b731afe44870078"
     },
     {
       "id": "docs-only-allowlist-throws-instead-of-fallback",
@@ -428,7 +461,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "155b07c7a7a86a600828206f65014034c06fece85a00e2fa1d38b86f275a7aa5",
+      "stanzaHash": "464f94f256c574877ba2f1c00b9d5a60dd824e833eb02c44497407158060dbbf",
+      "reviewedStanzaHash": "464f94f256c574877ba2f1c00b9d5a60dd824e833eb02c44497407158060dbbf"
     },
     {
       "id": "argument-exception-throw-sites-lack-public-message",
@@ -474,7 +510,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "2a8f9df6750c839ecc8273f9f8156de25bae3e52c19b07a32374a308aad8dafa",
+      "stanzaHash": "bc45614a5e743bb3dac26f1b993217a63a9a5681b945e87c711229cda9519589",
+      "reviewedStanzaHash": "bc45614a5e743bb3dac26f1b993217a63a9a5681b945e87c711229cda9519589"
     },
     {
       "id": "workspace-close-schema-leaks-test-seams",
@@ -510,7 +549,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "12acff143f33c0d650bf57ab0348fdb231e45c41d37890bceb24bdc1ea4c71d7",
+      "stanzaHash": "e3f2053a493832783a5c44b61b2f475e9c0463b12398f1d5b2bc4b80dd0d9cd7",
+      "reviewedStanzaHash": "e3f2053a493832783a5c44b61b2f475e9c0463b12398f1d5b2bc4b80dd0d9cd7"
     },
     {
       "id": "unknown-tool-arguments-silently-ignored",
@@ -548,7 +590,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "d06d2fe6565b97dd29d2886092a1ef5a5a30313f350b56adffe0eef8a26f8384",
+      "stanzaHash": "9e68ac363d305c694fe5935de1e98296090747e08f3c001a86baa7c907dd9328",
+      "reviewedStanzaHash": "9e68ac363d305c694fe5935de1e98296090747e08f3c001a86baa7c907dd9328"
     },
     {
       "id": "find-implementations-corlib-guard-blocks-source-anchor",
@@ -583,7 +628,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "fe0f8897d24d74d50fbf7fbb0a701875b3ccf029145f52d6523371b36b0fcc6d",
+      "stanzaHash": "2760688c91ecb1a127657d3eac89cd12460d09503fa81a5acef468e45fbeee69",
+      "reviewedStanzaHash": "2760688c91ecb1a127657d3eac89cd12460d09503fa81a5acef468e45fbeee69"
     },
     {
       "id": "di-registrations-factory-lambda-impl-misattributed",
@@ -618,7 +666,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "ded317fe8bad4e34ae4232da4067e6861a278fb24a5051aac012f396bd504629",
+      "stanzaHash": "3b9a2366d8ed26649aeb00ab3e2bb3f4fcf4a752cfcab80f90c0badb5b1d5e68",
+      "reviewedStanzaHash": "3b9a2366d8ed26649aeb00ab3e2bb3f4fcf4a752cfcab80f90c0badb5b1d5e68"
     },
     {
       "id": "find-duplicate-helpers-outermost-call-false-positive",
@@ -653,7 +704,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "f31113a26d43cc416e4696c6b279a833627d3b9839364d83d88487477169bb8f",
+      "stanzaHash": "febba56ff50f4c5bd9070b94481035cd667eda8bff7568013d256d0d5f59937c",
+      "reviewedStanzaHash": "febba56ff50f4c5bd9070b94481035cd667eda8bff7568013d256d0d5f59937c"
     },
     {
       "id": "coupling-summary-rollup-limited-to-page",
@@ -688,7 +742,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "062ff854ef3451918ac7b5572cb7d624afb30c6b6026de36a7871866d5778c9f",
+      "stanzaHash": "917910a6ca80b73355ab8257335da789eb12ec1fd75b2344b6c225a387c230e2",
+      "reviewedStanzaHash": "917910a6ca80b73355ab8257335da789eb12ec1fd75b2344b6c225a387c230e2"
     },
     {
       "id": "unknown-projectname-silently-empty",
@@ -726,7 +783,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "7b1c0d227a6c4c20ed239baaf9e409a7c1b135d2090159d9afd80253a003a45f",
+      "stanzaHash": "daa45f411232d0409a9022b793b6b22cfe834d94af9cdbb6b8526d05dc03e8ea",
+      "reviewedStanzaHash": "daa45f411232d0409a9022b793b6b22cfe834d94af9cdbb6b8526d05dc03e8ea"
     },
     {
       "id": "find-dead-locals-captured-by-local-function",
@@ -761,7 +821,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "58158fa546b94937b524fe676a710ecd2f565a6e766563bd390d3a303cee3eb2",
+      "stanzaHash": "63587e5871f4fba6715f52e9621a85cdc51a091f7a6c9e6c3ad7da8513a891ca",
+      "reviewedStanzaHash": "63587e5871f4fba6715f52e9621a85cdc51a091f7a6c9e6c3ad7da8513a891ca"
     },
     {
       "id": "callers-callees-field-initializer-callers-dropped",
@@ -796,7 +859,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "166326e5ab2db6ae2c386e28d1570dc230af11709d3c0dd31744bb056de645f7",
+      "stanzaHash": "1ceefb9f832b335ec8c9f2243f70edf93294b624fcb6d868f07e5b3f8f5622ea",
+      "reviewedStanzaHash": "1ceefb9f832b335ec8c9f2243f70edf93294b624fcb6d868f07e5b3f8f5622ea"
     },
     {
       "id": "flow-analysis-silent-region-narrowing",
@@ -833,7 +899,10 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "481cff2f8e400b23a1897ae390d8b3d59f13232c31c756bf58ec184c89d9c3e7",
+      "stanzaHash": "59ab3f931d8d8f218260147fa34f602f234e2b7267f92031810c2cf9187322b5",
+      "reviewedStanzaHash": "59ab3f931d8d8f218260147fa34f602f234e2b7267f92031810c2cf9187322b5"
     },
     {
       "id": "validation-tools-error-envelope-not-iserror",
@@ -872,14 +941,94 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "e52c74e66ea1c81dd38e55212fcb8bae45e2adc3ffa57f83a712e115d6e183a3",
+      "stanzaHash": "82c1b93e41aba90ba52638f286054296bddf2c16de59a8af5face3a32020e598",
+      "reviewedStanzaHash": "82c1b93e41aba90ba52638f286054296bddf2c16de59a8af5face3a32020e598"
     }
   ],
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 6,
+        "b": 25,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs"
+        ]
+      },
+      {
+        "a": 8,
+        "b": 15,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs"
+        ]
+      },
+      {
+        "a": 9,
+        "b": 25,
+        "sharedFiles": [
+          "tests/RoslynMcp.Tests/WorkspaceEvictionAutoRetryTests.cs"
+        ]
+      },
+      {
+        "a": 13,
+        "b": 17,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs"
+        ]
+      },
+      {
+        "a": 19,
+        "b": 22,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 1,
+      "7": 0,
+      "8": 1,
+      "9": 1,
+      "10": 0,
+      "11": 0,
+      "12": 0,
+      "13": 1,
+      "15": 1,
+      "16": 0,
+      "17": 1,
+      "18": 0,
+      "19": 1,
+      "20": 0,
+      "21": 0,
+      "22": 1,
+      "23": 0,
+      "24": 0,
+      "25": 2
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      20,
+      21,
+      23,
+      24
+    ]
   },
   "selection": {
     "requestedCount": "auto",
@@ -1111,5 +1260,114 @@
         ]
       }
     ]
-  }
+  },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 3,
+    "info": 10
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "(plan)",
+      "severity": "warn",
+      "rule": "C2-graph-disagreement",
+      "evidence": "stored conflictGraph.edges empty; Scope union yields 5 edges (6-25, 8-15, 9-25, 13-17, 19-22)",
+      "resolved": true,
+      "resolution": "conflictGraph refreshed via bsweep-state.mjs generations --persist; generations already separate every edge"
+    },
+    {
+      "initiativeId": "argument-exception-throw-sites-lack-public-message",
+      "severity": "warn",
+      "rule": "3",
+      "evidence": "companion-trigger files edited; Scope neither lists README companions nor states drop reason",
+      "resolved": true,
+      "resolution": "Scope now states README companions dropped: no surface count moves"
+    },
+    {
+      "initiativeId": "validation-tools-error-envelope-not-iserror",
+      "severity": "warn",
+      "rule": "3",
+      "evidence": "ValidationTools.cs matches *Tools.cs companion trigger; no drop reason",
+      "resolved": true,
+      "resolution": "Scope now states README companions dropped: no surface count moves"
+    },
+    {
+      "initiativeId": "argument-exception-throw-sites-lack-public-message",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "gate-forced-companion RS0030 holds against live source; evidence only promised in stanza"
+    },
+    {
+      "initiativeId": "argument-exception-throw-sites-lack-public-message",
+      "severity": "info",
+      "rule": "anchor",
+      "evidence": "stale Risks cross-references",
+      "resolved": true,
+      "resolution": "Risks updated"
+    },
+    {
+      "initiativeId": "validation-tools-error-envelope-not-iserror",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "degree 2 without heroic-last"
+    },
+    {
+      "initiativeId": "donotparallelize-audit-wave-34",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "shared ValidationToolsIntegrationTests.cs unacknowledged",
+      "resolved": true,
+      "resolution": "Risks acknowledges the shared file"
+    },
+    {
+      "initiativeId": "donotparallelize-audit-wave-37",
+      "severity": "info",
+      "rule": "C2",
+      "evidence": "shared WorkspaceEvictionAutoRetryTests.cs unacknowledged",
+      "resolved": true,
+      "resolution": "Risks acknowledges the shared file"
+    },
+    {
+      "initiativeId": "unknown-projectname-silently-empty",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "~11 deferred FilterProjects silent-empty callers lack a backlog row",
+      "resolution": "filed as spin-off row at closeout"
+    },
+    {
+      "initiativeId": "find-implementations-corlib-guard-blocks-source-anchor",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "no README drop reason",
+      "resolved": true,
+      "resolution": "Scope states drop reason"
+    },
+    {
+      "initiativeId": "coupling-summary-rollup-limited-to-page",
+      "severity": "info",
+      "rule": "3",
+      "evidence": "no README drop reason",
+      "resolved": true,
+      "resolution": "Scope states drop reason"
+    },
+    {
+      "initiativeId": "find-type-consumers-mutations-generator-blind",
+      "severity": "info",
+      "rule": "anchor",
+      "evidence": "test-only change labeled Fixed",
+      "resolved": true,
+      "resolution": "category Maintenance, entry reworded as regression cover"
+    },
+    {
+      "initiativeId": "(plan)",
+      "severity": "info",
+      "rule": "anchor",
+      "evidence": "#1-#3 anchors resolve"
+    }
+  ],
+  "conflictGraphInputHash": "005284e6fb010d8e9bbc14273c6933cdf56c3798d18eab9bdf85d41aa58aefce",
+  "planHash": "b0ab723d1e44acb28a67006c13c5115f222204b790f1c4ea0254a90d8f7f19b7",
+  "backlogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
+  "reviewedPlanHash": "b0ab723d1e44acb28a67006c13c5115f222204b790f1c4ea0254a90d8f7f19b7",
+  "reviewedBacklogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080"
 }
