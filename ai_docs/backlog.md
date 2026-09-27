@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-26T23:58:21Z
+**updated_at:** 2026-09-27T03:21:11Z
 
 ## Agent contract
 
@@ -138,6 +138,8 @@
 | `project-name-not-found-misleading-reload-advice` | Medium | — | **Report unknown project names and symbol handles as NotFound** — build_project/test_run/rename_preview stop advising workspace_reload for a missing project or handle. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
 | `get-prompt-text-unknown-prompt-public-message` | Medium | — | **List available prompts on an unknown get_prompt_text name** — throw PublicArgumentException so the redaction layer keeps the list. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | S | items/get-prompt-text-unknown-prompt-public-message.md |
 | `public-argument-exception-core-move` | Medium | argument-exception-throw-sites-lack-public-message | **Move PublicArgumentException to Core and publish Roslyn-layer argument refusals** — analyze_snippet bad kind and go_to_definition/enclosing_symbol line bounds name the parameter and valid values. [type: bug] [source: argument-exception-throw-sites-lack-public-message] | M | items/public-argument-exception-core-move.md |
+| `change-signature-primary-constructor-parameters` | Medium | — | **Support primary-constructor parameters in change_signature_preview** — rewrite a record/class primary constructor's ParameterList and its construction sites, or refuse specifically [type: bug] [source: TradeWise bl-2752 2026-09-27] | M | items/change-signature-primary-constructor-parameters.md |
+| `analyzer-shadow-isolation-misses-loaded-generators` | Medium | — | **Release analyzer/generator DLL locks on workspace_close** — source-generator assemblies still load from their original package path, so closing the workspace leaves them locked [type: bug] [source: TradeWise plan 20260927T021440Z] | M | items/analyzer-shadow-isolation-misses-loaded-generators.md |
 
 ## Low
 
