@@ -8,7 +8,17 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-32: [DoNotParallelize] removed. Every workspace-backed test loads
+// its own GUID-unique SampleSolution copy (CreateSampleSolutionCopy / CreateIsolatedWorkspaceAsync),
+// writes fixtures only inside it, and WorkspaceManager LoadAsync/Close act only on that session.
+// Only the preview side of TypeExtractionService runs — no *_apply, no reload, no UndoService or
+// ChangeTracker write (the one ApplyExtractMethod call is refused on route before any mutation).
+// Tokens are redeemed from the bounded (20-entry), oldest-first-evicting PreviewStore immediately
+// after the preview, so displacing one would need 20 newer previews inside that window. The roots
+// tests build private McpRootsTestServerFactory pairs over GUID-named directories; no static or
+// environment mutation.
+// Validated by a bounded repeated (3x) concurrent run alongside its wave-32 siblings and
+// parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 {

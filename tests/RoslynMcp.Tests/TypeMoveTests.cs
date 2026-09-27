@@ -8,7 +8,16 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-32: [DoNotParallelize] removed. Every workspace-backed test loads
+// its own GUID-unique SampleSolution copy (CreateIsolatedWorkspaceCopy) and WorkspaceManager
+// LoadAsync/Close act only on that session; the two ApplyRefactoringAsync calls write only that
+// copy's files, and UndoService/ChangeTracker state is keyed by workspaceId. Each apply redeems
+// its token immediately after the preview, and the bounded (20-entry) PreviewStore evicts
+// oldest-first, so displacing it would need 20 newer previews inside that window. The roots-boundary
+// test builds a private McpRootsTestServerFactory pair over a GUID-named root; ToolExecutionTestHarness
+// metrics are AsyncLocal-scoped. No shared-workspace reload, static or environment mutation.
+// Validated by a bounded repeated (3x) concurrent run alongside its wave-32 siblings and
+// parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
 {
