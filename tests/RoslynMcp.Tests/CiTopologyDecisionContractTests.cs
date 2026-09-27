@@ -337,6 +337,7 @@ public sealed class CiTopologyDecisionContractTests
         var decision = ParseDecision(result.StdOut);
 
         Assert.IsFalse(decision.DocsOnly);
+        Assert.IsFalse(decision.EvidenceOnly);
         Assert.AreEqual(
             "Merge queue: full code-PR topology (no trusted changed-file set).",
             decision.Reason);

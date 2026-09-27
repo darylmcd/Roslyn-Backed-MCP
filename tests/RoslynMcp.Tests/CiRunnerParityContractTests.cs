@@ -315,6 +315,9 @@ public sealed class CiRunnerParityContractTests
         StringAssert.Contains(
             GetNamedStepBlock(validate, "Verify release build (pull request)"),
             "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'");
+        StringAssert.Contains(
+            GetNamedStepBlock(validate, "Verify release build (pull request)"),
+            "CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}");
         var format = GetNamedStepBlock(validate, "Verify changed-file formatting");
         StringAssert.Contains(format, "github.event.merge_group.base_sha");
         StringAssert.Contains(

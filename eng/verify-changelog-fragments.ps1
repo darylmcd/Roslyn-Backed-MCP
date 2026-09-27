@@ -56,6 +56,11 @@ function Get-ChangedPaths {
     $paths = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     $baseCandidates = [System.Collections.Generic.List[string]]::new()
+    # Merge-queue runs have no GITHUB_BASE_REF; ci.yml passes the group's own base commit so the
+    # changed-path set excludes changes from groups queued ahead (matching the format gate).
+    if (-not [string]::IsNullOrWhiteSpace($env:CHANGELOG_BASE_SHA)) {
+        $baseCandidates.Add($env:CHANGELOG_BASE_SHA)
+    }
     if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_BASE_REF)) {
         $baseCandidates.Add("origin/$($env:GITHUB_BASE_REF)")
         $baseCandidates.Add($env:GITHUB_BASE_REF)
