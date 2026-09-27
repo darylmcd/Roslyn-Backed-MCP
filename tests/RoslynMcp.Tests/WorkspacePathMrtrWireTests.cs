@@ -39,8 +39,13 @@ namespace RoslynMcp.Tests;
 ///   flight surfaces as protocol cancellation, never as a tool-error envelope.</item>
 /// </list>
 /// </summary>
+// donotparallelize-audit-wave-38: [DoNotParallelize] removed. Every test builds its own in-memory MCP client/server
+// harness over a private ServiceCollection (per-test SecurityOptions and FailClosedWorkspaceManagerStub, no TestBase
+// services). The only mutable statics are on the private nested SyntheticWorkspaceLoadTools, which no other class
+// can reach, and MSTest's class-level scope keeps this class's own methods sequential. Discovery fixtures live in
+// per-test GUID directories, so the static SolutionDiscoveryHelper root-scan cache never shares a key with another
+// class. Verified with repeated (3x) runs of this class alongside its donotparallelize-audit-wave-38 siblings.
 [TestClass]
-[DoNotParallelize]
 public sealed class WorkspacePathMrtrWireTests
 {
     // The fake tool deliberately reuses the workspace_load name so the recovery pipeline's

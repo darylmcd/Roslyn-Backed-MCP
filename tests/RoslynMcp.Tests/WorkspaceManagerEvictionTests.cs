@@ -48,6 +48,14 @@ namespace RoslynMcp.Tests;
 /// both timestamps embedded in the envelope message.
 /// </para>
 /// </summary>
+// donotparallelize-audit-wave-38: retained. HostRecycled_AnyLookup_Throws_WorkspaceEvicted_WithoutLoadedAt and
+// HostRecycled_ButLiveSessionExists_TypoStillThrowsWorkspaceNotFoundException call
+// WorkspaceEvictionRegistry.PublishRecycleContext(previousRecycleReason: "graceful") on the process-wide static
+// registry, and TestCleanup/NeverLoaded_AndNoRecycle call WorkspaceEvictionRegistry.Reset(). WorkspaceManager's
+// lookup-miss path (WorkspaceManager.cs, `WasHostRecycled && activeCount == 0`) reads that static from every
+// manager instance, so a parallel class asserting WorkspaceNotFoundException on an empty manager (e.g.
+// NegativeEdgeCaseTests, WorkspaceExecutionGateTests) would receive WorkspaceEvictedException inside the
+// publish window, and a parallel Reset() would erase this class's published signal mid-assertion.
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceManagerEvictionTests
@@ -74,12 +82,9 @@ public sealed class WorkspaceManagerEvictionTests
     /// that provider.
     /// <para>
     /// This class is also marked <see cref="DoNotParallelizeAttribute"/> at the class
-    /// level so it cannot race with itself; combined with the parallel-class scope
-    /// declared in <c>AssemblyInfo.cs</c>, the only window where another class could
-    /// observe a stale recycle signal is between the test body's
-    /// <see cref="WorkspaceEvictionRegistry.PublishRecycleContext"/> call and this
-    /// cleanup running. Each publishing test wraps its setup in a try/finally for
-    /// belt-and-suspenders safety.
+    /// level, so MSTest runs it in the serial phase after every parallel class and no
+    /// other class can observe the recycle signal a test body publishes. This cleanup
+    /// then restores the cold-start state before the next serial class runs.
     /// </para>
     /// </summary>
     [TestCleanup]
