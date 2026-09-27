@@ -18,7 +18,14 @@ namespace RoslynMcp.Tests;
 /// <c>RoslynMcp.Roslyn.csproj</c>.
 /// </para>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-30: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
+// only calls TestReferenceMapService.BuildAsync, a read-only query, plus the pure static
+// BuildPaginatedResult seam. Its CompilationCache is class-private (only subscribing to the shared
+// WorkspaceManager's Closed/Reloaded events) — no *_apply, no reload/close, no disk writes, no
+// UndoService/ChangeTracker/PreviewStore writes, no environment or static mutation (its two statics
+// are set once in ClassInitialize). Validated by a bounded repeated (3x) concurrent run alongside
+// its wave-30 sibling and parallel-enabled workspace-loading classes, green every time.
 [TestClass]
 public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
 {
