@@ -26,6 +26,16 @@ namespace RoslynMcp.Tests;
 /// larger integration suites.
 /// </para>
 /// </remarks>
+// donotparallelize-audit-wave-30: the class stays parallel-enabled; the three method-level
+// [DoNotParallelize] opt-outs on the ApplyByTokenAsync_*Snapshot/Boundary tests are RETAINED. Each
+// overwrites the process-global static SecurityOptionsSnapshot.Value (a single volatile field) for
+// its duration. That field is read by ToolDispatch.RevalidateChangedPathsAsync on every *_apply
+// token redemption (ToolDispatch.cs, `var securityOptions = SecurityOptionsSnapshot.Value`) and by
+// server_info's PathBoundary (ServerTools.cs). A concurrently running class that redeems a real
+// PreviewStore token (PeekChangedPaths enumerates the write set) would be refused with
+// ArgumentException against the fabricated boundary, and two overlapping save/restore pairs can
+// lose an update and leave a stale boundary set for the rest of the run. Removing the opt-out is
+// only safe once the snapshot is injected rather than static.
 [TestClass]
 public sealed class ToolDispatchTests
 {

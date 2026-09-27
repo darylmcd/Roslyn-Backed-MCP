@@ -25,8 +25,16 @@ namespace RoslynMcp.Tests;
 /// that the application <c>_meta</c> is not promoted onto the protocol result <c>_meta</c>, the
 /// era discriminator behavior, and that nothing sensitive leaks.
 /// </summary>
+// donotparallelize-audit-wave-30: [DoNotParallelize] removed. Neither test touches the assembly-shared
+// WorkspaceManager: each harness builds its own ServiceCollection/McpServer over the in-memory
+// transport, WorkspaceFastFails loads two fresh SampleSolution copies into a class-private
+// WorkspaceManager (closed in finally), and its sanctioned root is a per-harness SecurityOptions
+// singleton — never the process-global SecurityOptionsSnapshot. Every path it writes is a
+// Guid-named directory under TestTempRoot.Current, so SolutionDiscoveryHelper's static root-scan
+// cache only ever sees keys unique to this class. No env-var, static, or child-process mutation.
+// Validated by a bounded repeated (3x) concurrent run alongside its wave-30 sibling and
+// parallel-enabled workspace-loading classes, green every time.
 [TestClass]
-[DoNotParallelize]
 public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 {
     private const string ToolName = "synthetic_unexpected_failure";
