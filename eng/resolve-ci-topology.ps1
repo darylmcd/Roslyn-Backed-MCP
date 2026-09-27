@@ -26,7 +26,7 @@ test_shard_count) -- unchanged from the pre-extraction inline script.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('pull_request', 'workflow_dispatch', 'schedule')]
+    [ValidateSet('pull_request', 'merge_group', 'workflow_dispatch', 'schedule')]
     [string] $EventName,
 
     # JSON array of pages, each page itself a JSON array of GitHub pull-request file records
@@ -171,12 +171,24 @@ function Get-EnumeratedChangedPaths {
 function Resolve-CiTopologyDecision {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('pull_request', 'workflow_dispatch', 'schedule')]
+        [ValidateSet('pull_request', 'merge_group', 'workflow_dispatch', 'schedule')]
         [string] $EventName,
         [string] $ChangedFilesJson = '[]',
         [Nullable[int]] $ReportedChangedFileCount,
         [switch] $EnumerationFailed
     )
+
+    if ($EventName -eq 'merge_group') {
+        # A merge-queue group carries no pull-request file listing to verify, so it fails closed to
+        # the full code-PR matrix: the queue is the last gate before main and must never take the
+        # docs-only or evidence-only shortcut on an unverified changed-file set.
+        return [ordered]@{
+            docs_only     = $false
+            evidence_only = $false
+            runner_matrix = @($codePullRequest)
+            reason        = 'Merge queue: full code-PR topology (no trusted changed-file set).'
+        }
+    }
 
     if ($EventName -ne 'pull_request') {
         return [ordered]@{

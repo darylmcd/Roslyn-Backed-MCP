@@ -9,6 +9,7 @@ This document is the canonical validation and merge-gating contract.
 | Evidence-only pull request (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus the exclusions below) | One pwsh `evidence-lint` job (changelog contract + `verify-ai-docs.ps1`); no .NET setup, build, or test legs; exact-floor probe skipped | Not applicable |
 | Policy-only documentation pull request (Markdown / `ai_docs/**/*.json` / the tracked promotion scorecard, excluding behavior-bearing paths) | Two hosted Linux class shards plus the version-drift and breaking-version gates; exact-floor probe skipped | Coverage and `Network` tests skipped; publish/audit skipped |
 | Any code-bearing pull request | Four hosted Windows shards + two hosted Linux shards + one concurrent exact-SDK-floor build/workspace probe | Coverage and `Network` tests skipped |
+| Merge-queue group (`merge_group`) | Always the full code-bearing topology (no trusted changed-file set, so no docs-only/evidence-only route) | Coverage and `Network` tests skipped |
 | Manual dispatch / weekly schedule (Mon 05:45 UTC) | One unsharded hosted Linux suite + one concurrent exact-SDK-floor build/workspace probe | Coverage and live `Network` tests enabled |
 
 Rules:
@@ -26,6 +27,7 @@ Rules:
 - Never use workflow-level `paths`/`paths-ignore` to skip validation. The required `validate` check would never report and the pull request would stay blocked; skips must happen inside the workflow with `validate-gate` still reporting.
 - On the evidence route `validate-gate` passes only when `evidence-lint` succeeded and the build/test matrix and SDK-floor probe were skipped, never failed or cancelled.
 - Keep the pull-request `validate-gate` check named `validate`. Dispatch/schedule runs must emit `validate-informational` so an informational one-leg run cannot satisfy the pull-request ruleset context.
+- Merge-queue groups (`merge_group`) also report `validate`: the ruleset's merge queue waits on that context. The group is tested on the queued base plus every group ahead of it, which is the current-`main` integration check; do not duplicate it with a local full gate before enqueueing. The changed-file format gate diffs against `github.event.merge_group.base_sha`.
 
 The routing decision itself -- leg construction, docs-only classification, and the fail-closed
 count-mismatch/cap guard -- is a pure function in `eng/resolve-ci-topology.ps1`. The `route` job's

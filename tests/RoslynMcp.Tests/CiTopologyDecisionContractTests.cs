@@ -327,6 +327,24 @@ public sealed class CiTopologyDecisionContractTests
 
     [TestMethod]
     [TestCategory("Process")]
+    public async Task MergeGroup_RoutesFullCodeTopologyWithoutAFileListingAsync()
+    {
+        // A merge-queue run has no pull-request file listing to trust, so it must fail closed to
+        // the full code-PR matrix -- never the docs-only or evidence-only shortcut.
+        var result = await RunTopologyAsync("merge_group");
+
+        AssertSucceeded(result);
+        var decision = ParseDecision(result.StdOut);
+
+        Assert.IsFalse(decision.DocsOnly);
+        Assert.AreEqual(
+            "Merge queue: full code-PR topology (no trusted changed-file set).",
+            decision.Reason);
+        AssertExactCodePullRequestMatrix(decision.RunnerMatrix);
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
     public async Task PullRequestWithoutReportedCountOrEnumerationFailed_FailsClosedAsync()
     {
         var result = await RunTopologyAsync(
