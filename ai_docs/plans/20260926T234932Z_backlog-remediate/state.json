@@ -435,9 +435,10 @@
       "backlogRowsClosed": [
         "docs-only-allowlist-throws-instead-of-fallback"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "productionFiles": [
-        "eng/verify-release.ps1"
+        "eng/verify-release.ps1",
+        "eng/docs-only-test-classes.txt"
       ],
       "testFilesAdded": 1,
       "testFiles": [
@@ -463,8 +464,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "155b07c7a7a86a600828206f65014034c06fece85a00e2fa1d38b86f275a7aa5",
-      "stanzaHash": "464f94f256c574877ba2f1c00b9d5a60dd824e833eb02c44497407158060dbbf",
-      "reviewedStanzaHash": "464f94f256c574877ba2f1c00b9d5a60dd824e833eb02c44497407158060dbbf"
+      "stanzaHash": "71df02138adf1406e60113633ede21c6ee5d07c7dc85d854d6c8ccb94a12a12f",
+      "reviewedStanzaHash": "71df02138adf1406e60113633ede21c6ee5d07c7dc85d854d6c8ccb94a12a12f",
+      "amendments": [
+        {
+          "at": "2026-09-27T01:22:17.746Z",
+          "finding": "spec scope-overshoot: diff edits eng/docs-only-test-classes.txt header comment outside Scope",
+          "reason": "Scope amended per reviewer suggestedFix: the allowlist header states the old fail-closed contract, which the fix makes false",
+          "previousStanzaHash": "464f94f256c574877ba2f1c00b9d5a60dd824e833eb02c44497407158060dbbf",
+          "stanzaHash": "71df02138adf1406e60113633ede21c6ee5d07c7dc85d854d6c8ccb94a12a12f"
+        }
+      ]
     },
     {
       "id": "argument-exception-throw-sites-lack-public-message",
@@ -512,8 +522,17 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "2a8f9df6750c839ecc8273f9f8156de25bae3e52c19b07a32374a308aad8dafa",
-      "stanzaHash": "bc45614a5e743bb3dac26f1b993217a63a9a5681b945e87c711229cda9519589",
-      "reviewedStanzaHash": "bc45614a5e743bb3dac26f1b993217a63a9a5681b945e87c711229cda9519589"
+      "stanzaHash": "72ef9ba72cb1cef8b40e7120d66b2f4e37114b1268fce673aadf6dce1776207c",
+      "reviewedStanzaHash": "72ef9ba72cb1cef8b40e7120d66b2f4e37114b1268fce673aadf6dce1776207c",
+      "amendments": [
+        {
+          "at": "2026-09-27T01:22:17.872Z",
+          "finding": "executor planning-defect: inline section 5176 bytes over 5120 cap; Risks cell corrupted by review-remediation splice",
+          "reason": "orchestrator splice bug repaired (garbled tail removed, one redundant sentence dropped); section now 5003 bytes; no Approach/Scope change",
+          "previousStanzaHash": "bc45614a5e743bb3dac26f1b993217a63a9a5681b945e87c711229cda9519589",
+          "stanzaHash": "72ef9ba72cb1cef8b40e7120d66b2f4e37114b1268fce673aadf6dce1776207c"
+        }
+      ]
     },
     {
       "id": "workspace-close-schema-leaks-test-seams",
@@ -1366,8 +1385,8 @@
     }
   ],
   "conflictGraphInputHash": "005284e6fb010d8e9bbc14273c6933cdf56c3798d18eab9bdf85d41aa58aefce",
-  "planHash": "b0ab723d1e44acb28a67006c13c5115f222204b790f1c4ea0254a90d8f7f19b7",
+  "planHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
   "backlogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
-  "reviewedPlanHash": "b0ab723d1e44acb28a67006c13c5115f222204b790f1c4ea0254a90d8f7f19b7",
+  "reviewedPlanHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
   "reviewedBacklogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080"
 }
