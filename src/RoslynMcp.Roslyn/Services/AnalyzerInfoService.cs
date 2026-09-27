@@ -30,7 +30,7 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.ResolveProjects(solution, projectFilter);
 
         // Collect all unique analyzers across projects
         var analyzersByAssembly = new Dictionary<string, List<AnalyzerRuleDto>>(StringComparer.OrdinalIgnoreCase);

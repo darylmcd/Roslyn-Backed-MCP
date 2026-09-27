@@ -6,7 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 namespace RoslynMcp.Tests;
@@ -123,6 +125,36 @@ public sealed class AnalyzerInfoToolsTests : SharedWorkspaceTestBase
         Assert.AreEqual(unfilteredTotal, whitespaceFilteredTotal,
             $"A whitespace-only projectFilter must yield the same totalRules as no filter. Unfiltered={unfilteredTotal}, WhitespaceFiltered={whitespaceFilteredTotal}.");
         Assert.IsTrue(whitespaceFilteredTotal > 0, "Whitespace-only projectFilter must not silently return zero rules.");
+    }
+
+    /// <summary>
+    /// unknown-projectname-silently-empty: a non-blank <c>projectName</c> that matches no loaded
+    /// project must return the same InvalidArgument envelope as <c>compile_check</c>, not an
+    /// empty analyzer list.
+    /// </summary>
+    [TestMethod]
+    public async Task ListAnalyzers_Tool_WithUnknownProject_ReturnsInvalidArgumentEnvelope()
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "list_analyzers",
+            () => AnalyzerInfoTools.ListAnalyzers(
+                WorkspaceExecutionGate,
+                AnalyzerInfoService,
+                WorkspaceId,
+                projectName: "DoesNotExist",
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", root.GetProperty("category").GetString());
+        Assert.AreEqual("list_analyzers", root.GetProperty("tool").GetString());
+        var message = root.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "projectName");
+        StringAssert.Contains(message, "workspace_status");
+        Assert.IsFalse(message.Contains("DoesNotExist", StringComparison.Ordinal));
     }
 
     [TestMethod]
