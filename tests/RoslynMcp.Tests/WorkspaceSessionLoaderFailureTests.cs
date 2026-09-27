@@ -22,7 +22,14 @@ namespace RoslynMcp.Tests;
 /// still see the original workspace's <see cref="Microsoft.CodeAnalysis.Solution"/>.
 /// </para>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-39: [DoNotParallelize] removed. The single test builds a private WorkspaceManager
+// (own PreviewStore, FileWatcherService, options and the nested ThrowAfterFirstCallLoader double) and never touches
+// the TestBase services or WorkspaceIdCache. The loader's CallCount is per-instance, WorkspaceManager holds no
+// mutable statics, and the lookup path never reaches the static WorkspaceEvictionRegistry because the session stays
+// loaded. Its one shared resource is the checked-in samples/SampleSolution: the load's MSBuild design-time build
+// writes obj/ artifacts there, as does the TestBase manager's cached load that parallel readers trigger. Verified
+// with repeated warm (5x) and cold (3x, samples obj/bin cleaned first) runs alongside its wave-39 siblings and the
+// parallel SampleSolution readers IntegrationTests_WorkspaceCore/IntegrationTests_SymbolNavigation.
 [TestClass]
 public sealed class WorkspaceSessionLoaderFailureTests
 {
