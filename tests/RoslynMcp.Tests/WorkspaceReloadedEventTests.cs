@@ -14,6 +14,14 @@ namespace RoslynMcp.Tests;
 /// restore package upgrade), but they keep the invalidation plumbing honest so the
 /// symptom class doesn't regress.
 /// </summary>
+// donotparallelize-audit-wave-39: retained. Reload_Fires_WorkspaceReloaded_Event_With_Current_WorkspaceId,
+// Reload_Handler_Exception_Does_Not_Break_Reload_Path, Reload_Bumps_Workspace_Version and
+// Close_Handler_Exception_Does_Not_Suppress_Later_Subscribers call ReloadAsync/Close on the SampleSolution session
+// held by the assembly-shared TestBase WorkspaceManager (via the shared WorkspaceIdCache). Parallel readers of that
+// session (IntegrationTests_SymbolNavigation, IntegrationTests_WorkspaceCore, WorkspaceResourceTests) cache its
+// workspaceId in ClassInitialize, so a concurrent reload swaps the solution under an in-flight query and the Close
+// evicts the id they hold; with the opt-out removed, IntegrationTests_SymbolNavigation.Find_Implementations_Of_IAnimal
+// observed 0 implementations. Reload_Fires also asserts exactly one WorkspaceReloaded event on the shared manager.
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceReloadedEventTests : TestBase
