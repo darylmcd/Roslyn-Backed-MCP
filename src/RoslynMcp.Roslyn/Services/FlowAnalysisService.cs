@@ -57,7 +57,10 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             WrittenOutside: SymbolNames(result.WrittenOutside),
             Captured: SymbolNames(result.Captured),
             CapturedInside: SymbolNames(result.CapturedInside),
-            UnsafeAddressTaken: SymbolNames(result.UnsafeAddressTaken));
+            UnsafeAddressTaken: SymbolNames(result.UnsafeAddressTaken),
+            Warning: resolution.NarrowingWarning,
+            EffectiveStartLine: resolution.EffectiveStartLine,
+            EffectiveEndLine: resolution.EffectiveEndLine);
     }
 
     public async Task<ControlFlowAnalysisDto> AnalyzeControlFlowAsync(
@@ -142,6 +145,15 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
                 "If return/exit points are listed, the region still exits via those paths.";
         }
 
+        // flow-analysis-silent-region-narrowing: the narrowing notice leads, and any
+        // Roslyn-result warning above is appended rather than overwritten.
+        if (resolution.NarrowingWarning is not null)
+        {
+            warning = warning is null
+                ? resolution.NarrowingWarning
+                : resolution.NarrowingWarning + " " + warning;
+        }
+
         return new ControlFlowAnalysisDto(
             Succeeded: result.Succeeded,
             StartPointIsReachable: result.StartPointIsReachable,
@@ -149,20 +161,26 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             EntryPoints: entryPoints,
             ExitPoints: exitPoints,
             ReturnStatements: returnStatements,
-            Warning: warning);
+            Warning: warning,
+            EffectiveStartLine: resolution.EffectiveStartLine,
+            EffectiveEndLine: resolution.EffectiveEndLine);
     }
 
     /// <summary>
     /// Resolution result for a flow-analysis request: either a statement range
     /// (<see cref="FirstStatement"/> + <see cref="LastStatement"/>) or an expression body
     /// (<see cref="ExpressionBody"/>) lifted from a `=> expr` member. Exactly one of the
-    /// two cases is populated.
+    /// two cases is populated. <see cref="NarrowingWarning"/> and the effective line pair are
+    /// set only when the requested range spanned multiple blocks and was narrowed to one.
     /// </summary>
     private sealed record AnalysisRegion(
         SyntaxNode? FirstStatement,
         SyntaxNode? LastStatement,
         ExpressionSyntax? ExpressionBody,
-        SemanticModel Model);
+        SemanticModel Model,
+        string? NarrowingWarning = null,
+        int? EffectiveStartLine = null,
+        int? EffectiveEndLine = null);
 
     private async Task<AnalysisRegion> ResolveAnalysisRegionAsync(
         string workspaceId, string filePath, int startLine, int endLine, CancellationToken ct)
@@ -246,7 +264,8 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
 
         if (!ShareCommonBlock(first, last))
         {
-            // Group statements by their immediate block parent and pick the largest group
+            // Group statements by their immediate block parent and pick the largest group.
+            // Ties keep the first group in document order (OrderByDescending is stable).
             var groups = statements
                 .GroupBy(s => s.Parent)
                 .Where(g => g.Key is BlockSyntax)
@@ -261,8 +280,26 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             }
 
             var blockStatements = groups.OrderBy(s => s.SpanStart).ToList();
+            var requestedFirst = first;
+            var requestedLast = last;
             first = blockStatements.First();
             last = blockStatements.Last();
+
+            // flow-analysis-silent-region-narrowing: the analyzed region is no longer the
+            // requested one, so report the effective range instead of narrowing silently.
+            var effectiveStartLine = first.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            var effectiveEndLine = last.GetLocation().GetLineSpan().EndLinePosition.Line + 1;
+
+            return new AnalysisRegion(
+                FirstStatement: first,
+                LastStatement: last,
+                ExpressionBody: null,
+                Model: semanticModel,
+                NarrowingWarning: BuildNarrowingWarning(
+                    startLine, endLine, effectiveStartLine, effectiveEndLine,
+                    statements, first, last, requestedFirst, requestedLast),
+                EffectiveStartLine: effectiveStartLine,
+                EffectiveEndLine: effectiveEndLine);
         }
 
         return new AnalysisRegion(
@@ -270,6 +307,37 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             LastStatement: last,
             ExpressionBody: null,
             Model: semanticModel);
+    }
+
+    private static string BuildNarrowingWarning(
+        int startLine,
+        int endLine,
+        int effectiveStartLine,
+        int effectiveEndLine,
+        IReadOnlyList<SyntaxNode> requestedStatements,
+        SyntaxNode effectiveFirst,
+        SyntaxNode effectiveLast,
+        SyntaxNode requestedFirst,
+        SyntaxNode requestedLast)
+    {
+        // A statement nested inside the chosen group (e.g. the body of an `if`) is still
+        // analyzed; only statements outside the effective span were dropped.
+        var effectiveStart = effectiveFirst.SpanStart;
+        var effectiveEnd = effectiveLast.Span.End;
+        var droppedCount = requestedStatements.Count(s => s.SpanStart < effectiveStart || s.Span.End > effectiveEnd);
+
+        var spansMultipleMembers = !ReferenceEquals(
+            requestedFirst.FirstAncestorOrSelf<MemberDeclarationSyntax>(),
+            requestedLast.FirstAncestorOrSelf<MemberDeclarationSyntax>());
+
+        var message =
+            $"The requested range {startLine}-{endLine} spans multiple blocks, so the analysis was narrowed to " +
+            $"lines {effectiveStartLine}-{effectiveEndLine} (the largest group of statements sharing one block); " +
+            $"{droppedCount} statement(s) in the requested range were not analyzed.";
+
+        return spansMultipleMembers
+            ? message + " The requested range also spans more than one member; narrow it to a single method body."
+            : message + " Narrow the range to statements within a single block to analyze exactly what was requested.";
     }
 
     private static bool ShareCommonBlock(SyntaxNode a, SyntaxNode b)
