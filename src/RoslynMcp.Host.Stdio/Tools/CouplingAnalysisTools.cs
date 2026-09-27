@@ -21,7 +21,7 @@ public static class CouplingAnalysisTools
         ICouplingAnalysisService couplingAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name (case-insensitive exact match)")] string? projectName = null,
-        [Description("Maximum number of results to return (default: 100)")] int limit = 100,
+        [Description("Maximum number of per-type results to return (default: 100). Ignored when summary=true: the rollup always covers every analyzed type.")] int limit = 100,
         [Description("When true, exclude MSBuild test projects (IsTestProject / test framework packages) from analysis")] bool excludeTestProjects = false,
         [Description("When true, include interface types alongside classes/structs/records")] bool includeInterfaces = false,
         [Description("When true, return per-project rollup counts (typeCount, avgInstability, stableCount, balancedCount, unstableCount, isolatedCount) without per-type detail rows. 10-100x smaller payload on multi-project solutions.")] bool summary = false,
@@ -29,8 +29,11 @@ public static class CouplingAnalysisTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            // Summary mode returns no per-type rows, so the rollup must see every analyzed type:
+            // passing `limit` here would silently cap the totals at the first page.
+            var effectiveLimit = summary ? int.MaxValue : limit;
             var result = await couplingAnalysisService.GetCouplingMetricsResultAsync(
-                workspaceId, projectName, limit, excludeTestProjects, includeInterfaces, c);
+                workspaceId, projectName, effectiveLimit, excludeTestProjects, includeInterfaces, c);
             var results = result.Metrics;
 
             // Summary mode: per-project rollup with classification buckets, no per-type detail rows.
