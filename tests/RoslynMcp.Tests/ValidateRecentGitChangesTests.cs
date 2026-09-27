@@ -14,6 +14,13 @@ namespace RoslynMcp.Tests;
 /// from <c>git status --porcelain</c> and falls back to full-workspace scope when git is
 /// unavailable or the solution is outside a git repo.
 /// </summary>
+// donotparallelize-audit-wave-33: retained.
+// ValidateRecentGitChangesAsync_AmbientRepositoryOverrides_DoNotEscapeSolutionScope sets the
+// process-global GIT_DIR and GIT_WORK_TREE environment variables to missing paths for the
+// duration of a validation call. Every git child process started meanwhile by any concurrently
+// running class inherits them: GitFixtureRunner.RunGitCapture -> PwshScriptRunner.RunExecutableAsync
+// does not strip ambient GIT_* overrides (only GitChangedFilesCollector does), so a sibling
+// fixture's `git init` / `git add` / `git commit` would target the missing repository and fail.
 [TestClass]
 [DoNotParallelize]
 public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
