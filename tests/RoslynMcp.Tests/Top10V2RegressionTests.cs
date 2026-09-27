@@ -10,7 +10,15 @@ namespace RoslynMcp.Tests;
 /// Regression coverage for the v2 top-10 remediation pass (post-PR-#150). Smaller, focused
 /// asserts live alongside their feature; this file batches the cross-cutting smoke tests.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-31: [DoNotParallelize] removed. Read-only tests (GetProject,
+// GetDiRegistrations cache, source-file-lines resource) touch the assembly-shared SampleSolution
+// only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and never reload,
+// close, or write it; the DiRegistrationService scan cache is keyed per workspace id + version.
+// Both apply-with-verify tests run *_apply and disk writes only against a per-test
+// CreateIsolatedWorkspaceAsync copy under TestTempRoot, and UndoService/PreviewStore state is
+// keyed by that isolated workspace id or preview token. No environment or static mutation (the one
+// static is a class-local id set once in ClassInitialize). Validated by a bounded repeated (3x)
+// concurrent run alongside its wave-31 siblings and parallel-enabled workspace classes, green each time.
 [TestClass]
 public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
 {
