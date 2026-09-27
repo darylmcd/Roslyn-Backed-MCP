@@ -350,6 +350,87 @@ public sealed class DuplicateHelperDetectionTests
     }
 
     [TestMethod]
+    public async Task FindDuplicateHelpers_OutermostCallEndingPipeline_IsNotDetected()
+    {
+        // Regression (find-duplicate-helpers-outermost-call-false-positive): the outermost
+        // call is Enumerable.ToArray, but its receiver is a pipeline built from a
+        // same-type call — the helper does real work and forwards none of its inputs.
+        const string source = """
+            using System.Linq;
+            namespace Sample;
+            internal static class EntryBuilder
+            {
+                public static string[] BuildEntries() => GetParameters().Where(p => p.Length > 0).Select(p => p.Trim()).ToArray();
+                public static string[] BuildEntriesFrom(string[] items) => items.Where(p => p.Length > 0).ToArray();
+                private static string[] GetParameters() => new[] { "a", " b " };
+            }
+            """;
+
+        var hits = await FindHitsWithLinqAsync(source);
+
+        Assert.AreEqual(0, hits.Count,
+            "Pipeline-terminating calls must not read as re-wraps. Got: " + string.Join(", ", hits.Select(h => h.SymbolName)));
+    }
+
+    [TestMethod]
+    public async Task FindDuplicateHelpers_TrueEnumerableReWrap_IsDetected_InStaticAndReducedForms()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using System.Linq;
+            namespace Sample;
+            internal static class SequenceHelper
+            {
+                public static T[] Materialize<T>(IEnumerable<T> x) => Enumerable.ToArray(x);
+                public static T[] MaterializeReduced<T>(this IEnumerable<T> x) => x.ToArray();
+            }
+            """;
+
+        var hits = await FindHitsWithLinqAsync(source);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "Materialize", "MaterializeReduced" },
+            hits.Select(h => h.SymbolName).ToArray());
+        Assert.IsTrue(hits.All(h => h.CanonicalTarget.Contains("ToArray", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task FindDuplicateHelpers_ConstantOrUnforwardedArguments_AreNotDetected()
+    {
+        // Recorded choice: literal/constant arguments are NOT allowed extras. No existing
+        // positive case needs them, and `s => s.Split(',')` specializes the target rather
+        // than re-wrapping it. A helper that drops one of its parameters is likewise not
+        // a pure forwarder.
+        const string source = """
+            namespace Sample;
+            internal static class StringHelper
+            {
+                public static string[] SplitCsv(string s) => s.Split(',');
+                public static bool IsBlankIgnoring(string s, int unused) => string.IsNullOrWhiteSpace(s);
+                public static bool IsBlank(string s) => string.IsNullOrWhiteSpace(s);
+            }
+            """;
+
+        var hits = await FindHitsWithLinqAsync(source);
+
+        Assert.AreEqual(1, hits.Count, "Got: " + string.Join(", ", hits.Select(h => h.SymbolName)));
+        Assert.AreEqual("IsBlank", hits[0].SymbolName);
+    }
+
+    private static async Task<IReadOnlyList<DuplicateHelperDto>> FindHitsWithLinqAsync(string source)
+    {
+        var linqReference = MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location);
+        var compileErrors = await GetCompilationErrorsAsync(source, linqReference);
+        Assert.AreEqual(string.Empty, compileErrors, "Fixture must compile so the operation tree binds.");
+
+        var analyzer = BuildAnalyzerWithSource(source, linqReference);
+        return await analyzer.FindDuplicateHelpersAsync(
+            WorkspaceId,
+            new DuplicateHelperAnalysisOptions(),
+            default);
+    }
+
+    [TestMethod]
     public async Task FindDuplicateHelpers_LimitCapsResults()
     {
         // Confirm the `Limit` option clamps the result count even when more hits exist.
