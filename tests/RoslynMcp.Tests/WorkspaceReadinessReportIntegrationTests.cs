@@ -5,6 +5,12 @@ using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-38: retained. RepoSolution_ReadinessReport_ReturnsOnboardingPayload loads the real
+// repository solution (RoslynMcp.slnx) into the assembly-shared TestBase WorkspaceManager and closes it in a
+// finally block. WorkspaceManager.LoadAsync deduplicates sessions by path, so a concurrent class loading the same
+// solution (ExpandedSurfaceIntegrationTests_RepoSolutionAnalysis, ValidationIntegrationTests) would receive the same
+// workspaceId and have it evicted mid-test by this class's Close. The Process tests also spawn child `dotnet build`
+// processes that contend with other full-solution MSBuild loads for the shared build servers.
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceReadinessReportIntegrationTests : IsolatedWorkspaceTestBase
