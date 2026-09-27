@@ -17,7 +17,14 @@ namespace RoslynMcp.Tests;
 /// which would strip the reference automatically) so the stripper's own strip-count and
 /// diagnostic-emission behavior can be exercised in isolation.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-32: [DoNotParallelize] removed. Each test opens its own
+// GUID-unique SampleSolution copy under TestTempRoot.Current through a private MSBuildWorkspace
+// (WorkspaceSessionLoader), never through WorkspaceManager, so no shared session, slot or cache
+// is touched. The csproj injection and StripAsync's TryApplyChanges write only that copy, the
+// analyzer shadow lease is rooted at a per-lease GUID directory, the diagnostics queue is
+// test-local, and MsBuildInitializer is a lock-guarded one-time registration. Validated by a
+// bounded repeated (3x) concurrent run alongside its wave-32 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class UnresolvedAnalyzerReferenceStripperTests : IsolatedWorkspaceTestBase
 {
