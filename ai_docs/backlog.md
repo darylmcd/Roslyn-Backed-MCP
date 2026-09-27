@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-27T02:32:19Z
+**updated_at:** 2026-09-27T05:24:16Z
 
 ## Agent contract
 
@@ -49,6 +49,7 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `find-type-consumers-mutations-generator-blind` | High | compilation-cache-generator-rerun-blinds-unused-analysis | **Fix find_type_consumers and find_type_mutations empty results in generator projects** — resolve the type through the solution compilation instead of the cache's generator-rerun compilation. [type: bug] [source: mcp-surface-audit 20260924-1305] | M | items/find-type-consumers-mutations-generator-blind.md |
+| `ci-merge-group-validate-support` | High | — | **Report the required validate check on merge_group events** — add the merge_group trigger, route it to the full code topology, and emit the validate context so the approved merge queue can be enabled. [type: ci] [source: operator decision 2026-09-27] | M | items/ci-merge-group-validate-support.md |
 
 ## Medium
 
