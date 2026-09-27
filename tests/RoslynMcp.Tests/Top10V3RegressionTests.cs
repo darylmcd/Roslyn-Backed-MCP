@@ -10,7 +10,14 @@ namespace RoslynMcp.Tests;
 /// symbol-search-payload-meta response shape wrap, the filePaths parameter on
 /// get_complexity_metrics, and the new format_check tool.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-31: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and only
+// calls read-only queries — SymbolTools.SearchSymbols, AdvancedAnalysisTools.GetComplexityMetrics,
+// RefactoringTools.FormatCheck — under WorkspaceExecutionGate. No *_apply, no reload/close, no disk
+// writes, no UndoService/ChangeTracker/PreviewStore writes; ToolExecutionTestHarness metrics are
+// AsyncLocal-scoped, and the one static is a class-local id set once in ClassInitialize. Validated
+// by a bounded repeated (3x) concurrent run alongside its wave-31 siblings and parallel-enabled
+// workspace classes, green each time.
 [TestClass]
 public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
 {
