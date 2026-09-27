@@ -210,4 +210,132 @@ public class ExpressionBodiedSamples
             FlowAnalysisService.AnalyzeDataFlowAsync(
                 WorkspaceId, TargetFilePath, startLine: 0, endLine: 5, CancellationToken.None));
     }
+
+    private const string TwoMethodFixture = """
+    public int FirstMethod(int a)
+    {
+        var x = a + 1; // MARK-FIRST-START
+        return x;
+    }
+
+    public int SecondMethod(int b)
+    {
+        var y = b * 2; // MARK-SECOND-START
+        var z = y + 1;
+        return z; // MARK-SECOND-END
+    }
+""";
+
+    [TestMethod]
+    public async Task FlowAnalysis_RangeSpanningTwoMethods_ReportsNarrowedEffectiveRange()
+    {
+        // flow-analysis-silent-region-narrowing: pre-fix, a range starting in FirstMethod and
+        // ending in SecondMethod was silently narrowed to SecondMethod's statements (the largest
+        // single-block group) with no trace in either DTO.
+        await WithAugmentedFixtureAsync(TwoMethodFixture, async lines =>
+        {
+            var requestedStart = LineOf(lines, "MARK-FIRST-START");
+            var effectiveStart = LineOf(lines, "MARK-SECOND-START");
+            var requestedEnd = LineOf(lines, "MARK-SECOND-END");
+
+            var dataFlow = await FlowAnalysisService.AnalyzeDataFlowAsync(
+                WorkspaceId, TargetFilePath, requestedStart, requestedEnd, CancellationToken.None);
+
+            Assert.IsTrue(dataFlow.Succeeded);
+            Assert.AreEqual(effectiveStart, dataFlow.EffectiveStartLine);
+            Assert.AreEqual(requestedEnd, dataFlow.EffectiveEndLine);
+            Assert.IsNotNull(dataFlow.Warning, "A narrowed data-flow region must carry a warning.");
+            StringAssert.Contains(dataFlow.Warning, $"{requestedStart}-{requestedEnd}");
+            StringAssert.Contains(dataFlow.Warning, $"{effectiveStart}-{requestedEnd}");
+            StringAssert.Contains(dataFlow.Warning, "2 statement(s)");
+            StringAssert.Contains(dataFlow.Warning, "more than one member");
+            Assert.IsFalse(dataFlow.Warning.Contains(TargetFilePath, StringComparison.OrdinalIgnoreCase),
+                "The warning must not echo the file path.");
+
+            var controlFlow = await FlowAnalysisService.AnalyzeControlFlowAsync(
+                WorkspaceId, TargetFilePath, requestedStart, requestedEnd, CancellationToken.None);
+
+            Assert.IsTrue(controlFlow.Succeeded);
+            Assert.AreEqual(effectiveStart, controlFlow.EffectiveStartLine);
+            Assert.AreEqual(requestedEnd, controlFlow.EffectiveEndLine);
+            Assert.IsNotNull(controlFlow.Warning);
+            StringAssert.StartsWith(controlFlow.Warning, dataFlow.Warning,
+                "The narrowing notice must lead the control-flow warning.");
+            // SecondMethod ends in `return z;`, so the Roslyn fall-through warning must survive
+            // alongside the narrowing notice rather than being overwritten.
+            StringAssert.Contains(controlFlow.Warning, "EndPointIsReachable is false");
+            Assert.AreEqual(1, controlFlow.ReturnStatements.Count,
+                "Only SecondMethod's return is inside the effective region.");
+        });
+    }
+
+    [TestMethod]
+    public async Task FlowAnalysis_RangeWithinOneMethod_LeavesNarrowingFieldsNull()
+    {
+        await WithAugmentedFixtureAsync(TwoMethodFixture, async lines =>
+        {
+            var start = LineOf(lines, "MARK-SECOND-START");
+            var end = LineOf(lines, "MARK-SECOND-END");
+
+            var dataFlow = await FlowAnalysisService.AnalyzeDataFlowAsync(
+                WorkspaceId, TargetFilePath, start, end, CancellationToken.None);
+
+            Assert.IsTrue(dataFlow.Succeeded);
+            Assert.IsNull(dataFlow.Warning);
+            Assert.IsNull(dataFlow.EffectiveStartLine);
+            Assert.IsNull(dataFlow.EffectiveEndLine);
+
+            // The new optional fields must be absent from the wire shape when unset.
+            var json = System.Text.Json.JsonSerializer.Serialize(dataFlow, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            });
+            Assert.IsFalse(json.Contains("\"warning\"", StringComparison.Ordinal), json);
+            Assert.IsFalse(json.Contains("effectiveStartLine", StringComparison.Ordinal), json);
+            Assert.IsFalse(json.Contains("effectiveEndLine", StringComparison.Ordinal), json);
+
+            var controlFlow = await FlowAnalysisService.AnalyzeControlFlowAsync(
+                WorkspaceId, TargetFilePath, start, end, CancellationToken.None);
+
+            Assert.IsTrue(controlFlow.Succeeded);
+            Assert.IsNull(controlFlow.EffectiveStartLine);
+            Assert.IsNull(controlFlow.EffectiveEndLine);
+            Assert.IsFalse(controlFlow.Warning?.Contains("narrowed", StringComparison.Ordinal) ?? false,
+                $"A single-method range must not report narrowing. Actual: {controlFlow.Warning}");
+        });
+    }
+
+    /// <summary>
+    /// Appends <paramref name="members"/> to the fixture class, reloads, runs
+    /// <paramref name="body"/> with the augmented file's lines, then restores the fixture so
+    /// the fixed-line tests above keep their offsets.
+    /// </summary>
+    private static async Task WithAugmentedFixtureAsync(string members, Func<string[], Task> body)
+    {
+        var originalContent = await File.ReadAllTextAsync(TargetFilePath, CancellationToken.None);
+        var augmented = originalContent.TrimEnd().TrimEnd('}', '\r', '\n')
+            + Environment.NewLine
+            + Environment.NewLine
+            + members.ReplaceLineEndings(Environment.NewLine) + Environment.NewLine
+            + "}" + Environment.NewLine;
+
+        try
+        {
+            await File.WriteAllTextAsync(TargetFilePath, augmented, CancellationToken.None);
+            await WorkspaceManager.ReloadAsync(WorkspaceId, CancellationToken.None);
+            await body(augmented.Split('\n'));
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(TargetFilePath, originalContent, CancellationToken.None);
+            await WorkspaceManager.ReloadAsync(WorkspaceId, CancellationToken.None);
+        }
+    }
+
+    private static int LineOf(string[] lines, string marker)
+    {
+        var index = Array.FindIndex(lines, l => l.Contains(marker, StringComparison.Ordinal));
+        Assert.IsTrue(index >= 0, $"Could not locate marker '{marker}' in the augmented fixture.");
+        return index + 1;
+    }
 }
