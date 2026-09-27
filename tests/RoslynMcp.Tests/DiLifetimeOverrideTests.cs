@@ -287,21 +287,16 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// get-di-registrations-multi-registration-overcounting Bug 2 (c): lambda body using BOTH
-    /// <c>GetRequiredService&lt;T&gt;</c> and <c>GetService&lt;T&gt;</c> still resolves to a
-    /// real implementation type (the first recognized service-locator call wins). The walk
-    /// must terminate cleanly without exception when multiple calls are present.
+    /// di-registrations-factory-lambda-impl-misattributed: a factory lambda that CONSTRUCTS the
+    /// implementation reports the constructed type — a <c>GetRequiredService&lt;T&gt;()</c>
+    /// call used as a constructor argument is a dependency, not the implementation.
     /// </summary>
     [TestMethod]
-    public async Task Factory_Lambda_With_Mixed_GetRequiredService_And_GetService_Resolves()
+    public async Task Factory_Lambda_Constructing_Impl_From_Resolved_Dependency_Reports_Constructed_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
 
-        // Lambda constructs CompositeWrapper from an inner CompositeImpl pulled via
-        // GetRequiredService, plus a side-channel GetService<ISnapshotReader>() that is
-        // ignored. The resolved impl should be one of CompositeImpl/ISnapshotReader — the
-        // assertion is "non-factory string is returned", not the precise selection.
         await WriteRegistrationFileAsync(
             workspace,
             "RegistrationsAlpha.cs",
@@ -314,26 +309,21 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
 
         var iCompositeEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IComposite", StringComparison.Ordinal));
         Assert.IsNotNull(iCompositeEntry, "Expected a registration entry for IComposite.");
-        Assert.AreNotEqual("factory", iCompositeEntry.ImplementationType,
-            "Lambda body containing GetRequiredService<T> must resolve T even when other calls are present.");
-        Assert.AreEqual("CompositeImpl", ImplementationLeaf(iCompositeEntry.ImplementationType),
-            "First recognized service-locator call (GetRequiredService<CompositeImpl>) supplies the resolved impl type.");
+        Assert.AreEqual("CompositeWrapper", ImplementationLeaf(iCompositeEntry.ImplementationType),
+            "The constructed CompositeWrapper is the implementation; the GetRequiredService<CompositeImpl>() ctor argument is only a dependency.");
     }
 
     /// <summary>
-    /// get-di-registrations-multi-registration-overcounting Bug 2 (d): lambda whose body has
-    /// NO recognizable <c>GetRequiredService&lt;T&gt;</c> / <c>GetService&lt;T&gt;</c> call
-    /// falls back to <c>"factory"</c> rather than throwing.
+    /// di-registrations-factory-lambda-impl-misattributed: a dependency-free construction
+    /// (<c>sp =&gt; new OpaqueImpl()</c>) reports the constructed type instead of the opaque
+    /// <c>"factory"</c> sentinel.
     /// </summary>
     [TestMethod]
-    public async Task Factory_Lambda_Without_Service_Locator_Falls_Back_To_Factory_String()
+    public async Task Factory_Lambda_Constructing_Impl_Without_Dependencies_Reports_Constructed_Type()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
         await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
 
-        // Lambda body constructs a new OpaqueImpl directly — no GetRequiredService/GetService
-        // call. The resolved impl must fall back to "factory" rather than throw or return a
-        // bogus type name.
         await WriteRegistrationFileAsync(
             workspace,
             "RegistrationsAlpha.cs",
@@ -346,8 +336,67 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
 
         var iOpaqueEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IOpaque", StringComparison.Ordinal));
         Assert.IsNotNull(iOpaqueEntry, "Expected a registration entry for IOpaque.");
+        Assert.AreEqual("OpaqueImpl", ImplementationLeaf(iOpaqueEntry.ImplementationType),
+            "A lambda returning new OpaqueImpl() must surface OpaqueImpl as the impl type.");
+    }
+
+    /// <summary>
+    /// di-registrations-factory-lambda-impl-misattributed: a block-body lambda resolves the
+    /// type of its <c>return</c> expression; a service-locator call assigned to a local is a
+    /// dependency and never the implementation.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_Block_Body_Reports_Returned_Construction_Type()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IComposite>(sp =>\n        {\n            var inner = sp.GetRequiredService<CompositeImpl>();\n            return new CompositeWrapper(inner);\n        });\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iCompositeEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IComposite", StringComparison.Ordinal));
+        Assert.IsNotNull(iCompositeEntry, "Expected a registration entry for IComposite.");
+        Assert.AreEqual("CompositeWrapper", ImplementationLeaf(iCompositeEntry.ImplementationType),
+            "Block-body lambdas resolve the returned construction, not the locally-resolved dependency.");
+    }
+
+    /// <summary>
+    /// A factory lambda whose returned expression is neither a construction nor a direct
+    /// service-locator forward (helper call, ambiguous conditional) falls back to the
+    /// <c>"factory"</c> sentinel instead of guessing from a nested resolution.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_Returning_Unrecognized_Shape_Falls_Back_To_Factory_String()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services, bool wrap)\n    {\n        services.AddSingleton<IOpaque>(sp => OpaqueFactory.Create(sp.GetRequiredService<CompositeImpl>()));\n        services.AddSingleton<IComposite>(sp => wrap ? new CompositeWrapper(sp.GetRequiredService<CompositeImpl>()) : new CompositeImpl());\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iOpaqueEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IOpaque", StringComparison.Ordinal));
+        Assert.IsNotNull(iOpaqueEntry, "Expected a registration entry for IOpaque.");
         Assert.AreEqual("factory", iOpaqueEntry.ImplementationType,
-            "Lambdas without a GetRequiredService/GetService forwarding call must fall back to the \"factory\" sentinel.");
+            "A helper-call return must fall back to \"factory\", not the nested GetRequiredService<CompositeImpl>() dependency.");
+
+        var iCompositeEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IComposite", StringComparison.Ordinal));
+        Assert.IsNotNull(iCompositeEntry, "Expected a registration entry for IComposite.");
+        Assert.AreEqual("factory", iCompositeEntry.ImplementationType,
+            "An ambiguous conditional return must fall back to \"factory\".");
     }
 
     [TestMethod]
@@ -601,6 +650,11 @@ public sealed class CompositeWrapper : IComposite
 
 public interface IOpaque { }
 public sealed class OpaqueImpl : IOpaque { }
+
+public static class OpaqueFactory
+{
+    public static IOpaque Create(CompositeImpl dependency) => new OpaqueImpl();
+}
 """;
         await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "DiShim.cs"), shim, ct).ConfigureAwait(false);
     }
