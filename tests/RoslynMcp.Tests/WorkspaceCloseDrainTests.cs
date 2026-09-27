@@ -16,7 +16,15 @@ namespace RoslynMcp.Tests;
 /// <see cref="IDotnetCommandRunner.RunAsync"/> with <c>build-server shutdown</c> after
 /// the session is removed, and with <c>drainProcesses=false</c> (the default) it does not.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-36: [DoNotParallelize] removed. The workspace manager, execution
+// gate, command runner and exception reporter are all per-test fakes, so no shared session or
+// server state is touched. The helper processes are copies of PING.EXE / sleep under a per-test
+// GUID directory, and the getProcessesByName seam hands the drain only those pids, so a drain
+// can never reach another class's process. The single seam-less test drains a fake workspace
+// rooted at %TEMP%\repo, whose kill filter only matches testhost/vstest.console executables under
+// that directory, which no test in this assembly launches. Validated by a bounded repeated (3x)
+// concurrent run alongside its wave-36 siblings and parallel-enabled workspace-loading classes,
+// green every time.
 [TestClass]
 public sealed class WorkspaceCloseDrainTests
 {

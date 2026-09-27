@@ -382,4 +382,52 @@ public class ConcreteThing : ThingBase, IThing
         Assert.IsFalse(fullRoot.TryGetProperty("summary", out _),
             "summary=false must NOT emit a `summary` field.");
     }
+
+    [TestMethod]
+    public async Task GetCouplingMetrics_SummaryMode_RollsUpEveryTypeRegardlessOfLimit()
+    {
+        // coupling-summary-rollup-limited-to-page: summary=true returns no per-type rows, so its
+        // totals must cover every analyzed type. Before the fix the tool forwarded `limit` to the
+        // service, which truncates with .Take(limit), so the rollup silently counted one page.
+        var uncapped = await CouplingAnalysisService.GetCouplingMetricsAsync(
+            WorkspaceId, projectFilter: null, limit: int.MaxValue,
+            excludeTestProjects: false, includeInterfaces: false, CancellationToken.None);
+        Assert.IsTrue(uncapped.Count > 1,
+            $"Sample workspace must expose more than one type for this regression; got {uncapped.Count}.");
+
+        const int limit = 1;
+        var summaryJson = await CouplingAnalysisTools.GetCouplingMetrics(
+            WorkspaceExecutionGate,
+            CouplingAnalysisService,
+            WorkspaceId,
+            projectName: null,
+            limit: limit,
+            excludeTestProjects: false,
+            includeInterfaces: false,
+            summary: true,
+            ct: CancellationToken.None);
+
+        using var summaryDoc = JsonDocument.Parse(summaryJson);
+        var root = summaryDoc.RootElement;
+
+        Assert.AreEqual(uncapped.Count, root.GetProperty("totalTypes").GetInt32(),
+            $"summary totalTypes must equal the uncapped type count, not limit={limit}.");
+
+        var expectedByProject = uncapped
+            .GroupBy(m => m.ProjectName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var projects = root.GetProperty("projects");
+        Assert.AreEqual(expectedByProject.Count, projects.GetArrayLength(),
+            "summary must report every project that owns an analyzed type.");
+        Assert.AreEqual(expectedByProject.Count, root.GetProperty("projectCount").GetInt32());
+
+        foreach (var project in projects.EnumerateArray())
+        {
+            var name = project.GetProperty("projectName").GetString()!;
+            Assert.IsTrue(expectedByProject.TryGetValue(name, out var expectedCount),
+                $"Unexpected project in summary: {name}.");
+            Assert.AreEqual(expectedCount, project.GetProperty("typeCount").GetInt32(),
+                $"typeCount for {name} must equal the uncapped per-project count.");
+        }
+    }
 }

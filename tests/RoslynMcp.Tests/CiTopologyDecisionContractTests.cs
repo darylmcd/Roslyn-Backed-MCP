@@ -397,6 +397,112 @@ public sealed class CiTopologyDecisionContractTests
     }
 
     [TestMethod]
+    [TestCategory("Process")]
+    [DataRow("missing", "is missing")]
+    [DataRow("empty", "is empty")]
+    [DataRow("unknown-class", "absent from the test assembly: RoslynMcp.Tests.NoSuchClass")]
+    public async Task DocsOnlyAllowlist_Unusable_FallsBackToFullSuiteWithWarningAsync(string mode, string expectedWarning)
+    {
+        var allowlistContents = mode switch
+        {
+            "missing" => null,
+            "empty" => "# comments and blank lines only\n\n   \n",
+            "unknown-class" => "RoslynMcp.Tests.KnownClass\nRoslynMcp.Tests.NoSuchClass\n",
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
+        };
+
+        var outcome = await ResolveDocsOnlyTestClassesAsync(allowlistContents);
+
+        Assert.IsTrue(
+            outcome.FellBack,
+            $"An unusable ({mode}) allowlist must fall back to the full suite instead of selecting classes.");
+        Assert.IsEmpty(outcome.Classes);
+        Assert.HasCount(1, outcome.Warnings);
+        StringAssert.Contains(outcome.Warnings[0], expectedWarning);
+        StringAssert.Contains(outcome.Warnings[0], "Falling back to the full suite.");
+    }
+
+    [TestMethod]
+    [TestCategory("Process")]
+    public async Task DocsOnlyAllowlist_AllClassesDiscovered_SelectsAllowlistWithoutWarningAsync()
+    {
+        var outcome = await ResolveDocsOnlyTestClassesAsync(
+            "# header\nRoslynMcp.Tests.KnownClass\n  RoslynMcp.Tests.OtherKnownClass  \n");
+
+        Assert.IsFalse(outcome.FellBack);
+        CollectionAssert.AreEqual(
+            new[] { "RoslynMcp.Tests.KnownClass", "RoslynMcp.Tests.OtherKnownClass" },
+            outcome.Classes);
+        Assert.IsEmpty(outcome.Warnings);
+    }
+
+    /// <summary>
+    /// Extracts <c>Resolve-DocsOnlyTestClasses</c> from <c>eng/verify-release.ps1</c> through the
+    /// PowerShell AST (running the whole verifier would build and test the solution) and invokes it
+    /// against a temp allowlist with a fixed discovered-class set.
+    /// </summary>
+    private static async Task<DocsOnlyResolution> ResolveDocsOnlyTestClassesAsync(string? allowlistContents)
+    {
+        var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fixtureRoot = Path.Combine(
+            TestTempRoot.Current,
+            nameof(CiTopologyDecisionContractTests),
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fixtureRoot);
+        try
+        {
+            var allowlistPath = Path.Combine(fixtureRoot, "docs-only-test-classes.txt");
+            if (allowlistContents is not null)
+            {
+                await File.WriteAllTextAsync(allowlistPath, allowlistContents);
+            }
+
+            const string Command =
+                "$ErrorActionPreference = 'Stop'; " +
+                "$tokens = $null; $errors = $null; " +
+                "$ast = [System.Management.Automation.Language.Parser]::ParseFile(" +
+                "$env:ROSLYNMCP_VERIFY_RELEASE, [ref]$tokens, [ref]$errors); " +
+                "if ($errors.Count -gt 0) { throw 'verify-release.ps1 has parse errors.' }; " +
+                "$function = $ast.Find({ param($node) " +
+                "$node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and " +
+                "$node.Name -eq 'Resolve-DocsOnlyTestClasses' }, $true); " +
+                "if ($null -eq $function) { throw 'Resolve-DocsOnlyTestClasses not found.' }; " +
+                ". ([scriptblock]::Create($function.Extent.Text)); " +
+                "$warnings = $null; " +
+                "$selection = Resolve-DocsOnlyTestClasses -AllowlistPath $env:ROSLYNMCP_ALLOWLIST " +
+                "-DiscoveredClassNames @('RoslynMcp.Tests.KnownClass', 'RoslynMcp.Tests.OtherKnownClass') " +
+                "-WarningVariable warnings -WarningAction SilentlyContinue; " +
+                "[pscustomobject]@{ " +
+                "fell_back = ($null -eq $selection); " +
+                "classes = @(if ($null -ne $selection) { $selection.Classes }); " +
+                "warnings = @($warnings | ForEach-Object { $_.Message }) " +
+                "} | ConvertTo-Json -Compress";
+
+            var result = await PwshScriptRunner.RunAsync(
+                ["-NoProfile", "-NonInteractive", "-Command", Command],
+                workingDirectory: repositoryRoot,
+                environment: new Dictionary<string, string?>
+                {
+                    ["ROSLYNMCP_VERIFY_RELEASE"] = Path.Combine(repositoryRoot, "eng", "verify-release.ps1"),
+                    ["ROSLYNMCP_ALLOWLIST"] = allowlistPath,
+                },
+                timeout: _processTimeout,
+                description: "docs-only allowlist resolver");
+
+            Assert.AreEqual(
+                0,
+                result.ExitCode,
+                $"Resolve-DocsOnlyTestClasses must never fail the run. stdout={result.StdOut} stderr={result.StdErr}");
+            return JsonSerializer.Deserialize<DocsOnlyResolution>(result.StdOut)
+                ?? throw new InvalidOperationException("Allowlist resolver returned JSON null.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(fixtureRoot);
+        }
+    }
+
+    [TestMethod]
     public void DocsOnlyTestSelectionSwitch_IsPassedOnlyByTheDocsOnlyPullRequestBranch()
     {
         var repositoryRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -599,6 +705,11 @@ public sealed class CiTopologyDecisionContractTests
         [property: JsonPropertyName("evidence_only")] bool EvidenceOnly,
         [property: JsonPropertyName("runner_matrix")] CiTopologyLeg[] RunnerMatrix,
         [property: JsonPropertyName("reason")] string Reason);
+
+    private sealed record DocsOnlyResolution(
+        [property: JsonPropertyName("fell_back")] bool FellBack,
+        [property: JsonPropertyName("classes")] string[] Classes,
+        [property: JsonPropertyName("warnings")] string[] Warnings);
 
     private sealed record CiTopologyLeg(
         [property: JsonPropertyName("name")] string Name,

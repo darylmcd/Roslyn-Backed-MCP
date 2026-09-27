@@ -11,7 +11,11 @@ namespace RoslynMcp.Tests;
 /// workspace on cleanup without invalidating the shared <c>SharedWorkspaceTestBase</c>
 /// cache that other test classes depend on.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-37: [DoNotParallelize] removed. Every test method loads, applies to and
+// closes only its own CreateSampleSolutionCopy session in the assembly-shared WorkspaceManager (cap 64,
+// ConcurrentDictionary-backed session table), and every assertion filters by that copy's unique path or
+// workspace id; the directory-link roots are unique TestTempRoot.Current subpaths. It never touches the
+// WorkspaceIdCache shared sample workspace, a static cache, an env var or a child process.
 [TestClass]
 public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
 {

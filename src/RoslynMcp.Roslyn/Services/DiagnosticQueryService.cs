@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -117,13 +118,15 @@ internal sealed class DiagnosticQueryService
     {
         // Cache repeated queries by workspace version and the complete filter tuple.
         var version = _workspace.GetCurrentVersion(workspaceId);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        // Reject an unknown project before any cache work; a blank filter means the whole solution.
+        var projects = ProjectFilterHelper.ResolveProjects(solution, filters.Project);
         var cachedResult = GetCachedResult(workspaceId, version, filters);
         if (cachedResult is not null)
         {
             return cachedResult;
         }
 
-        var solution = _workspace.GetCurrentSolution(workspaceId);
         // Default to Info so totals align with the returned rows. Hidden diagnostics remain
         // excluded, and the host tool owns page-size bounding.
         DiagnosticSeverity? minSeverity = ParseSeverity(filters.Severity) ?? DiagnosticSeverity.Info;
@@ -134,13 +137,13 @@ internal sealed class DiagnosticQueryService
             ct).ConfigureAwait(false);
         var projectResults = await CollectProjectResultsAsync(
             workspaceId,
-            solution,
+            projects,
             filters,
             minSeverity,
             ct).ConfigureAwait(false);
 
         // Only a whole-solution scan is complete enough for detail lookup reuse.
-        if (filters.Project is null && filters.File is null)
+        if (string.IsNullOrWhiteSpace(filters.Project) && filters.File is null)
         {
             CacheDiagnostics(
                 workspaceId,
@@ -179,15 +182,12 @@ internal sealed class DiagnosticQueryService
 
     private async Task<IReadOnlyList<DiagnosticProjectAnalysisResult>> CollectProjectResultsAsync(
         string workspaceId,
-        Solution solution,
+        IReadOnlyList<Project> projects,
         DiagnosticQueryFilters filters,
         DiagnosticSeverity? minSeverity,
         CancellationToken ct)
     {
-        var projectTasks = solution.Projects
-            .Where(project =>
-                filters.Project is null
-                || string.Equals(project.Name, filters.Project, StringComparison.OrdinalIgnoreCase))
+        var projectTasks = projects
             .Select(project => _projectAnalyzer.AnalyzeAsync(
                 workspaceId,
                 project,

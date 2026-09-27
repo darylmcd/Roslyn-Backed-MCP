@@ -21,6 +21,13 @@ namespace RoslynMcp.Tests;
 /// sample-solution copy so toggling <c>RestoreRaceWaitMs</c> cannot bleed into other
 /// test classes.
 /// </summary>
+// [DoNotParallelize] retained: LoadAsync_NoRestoreArtifacts_DoesNotDelayLoad and
+// LoadAsync_WaitDisabled_DoesNotWaitEvenWithInFlightWriter assert a 10000 ms wall-clock ceiling on
+// MSBuildWorkspace solution load, which shares the test process's CPU and MSBuild evaluation with
+// every concurrently running class. With the opt-out removed, a concurrent run beside other
+// workspace-loading classes failed the ceiling (Elapsed: 12244 ms) on a scrubbed, artefact-free copy.
+// ReloadAsync_WithAutoRestore_ClearsRestoreRequiredAfterPackageVersionEdit also spawns a child
+// `dotnet restore`.
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase

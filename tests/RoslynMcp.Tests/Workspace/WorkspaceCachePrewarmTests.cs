@@ -11,7 +11,16 @@ namespace RoslynMcp.Tests.Workspace;
 /// Regression coverage for <c>workspace-cache-prewarm-on-load</c>: callers can opt into the
 /// warm-start profile directly on <c>workspace_load</c>, while the default load path stays cold.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-35: [DoNotParallelize] removed. The two real-load tests each load
+// their own GUID-unique IsolatedWorkspaceScope copy through workspace_load (EvictPolicy.Strict,
+// autoRestore=false, so no dotnet child process), warm only that workspace id, and close it in
+// finally; the shared test WorkspaceManager's 64-workspace cap is never approached. The
+// path-authorized MCP server is a lock-guarded, create-once fixture session that is only read.
+// The three threshold tests run entirely on per-test fakes (FakeWorkspaceManager,
+// PassthroughWorkspaceExecutionGate, RecordingWorkspaceWarmService, ThrowingDotnetCommandRunner).
+// No shared-workspace reload, no *_apply, no static or environment mutation. Validated by a
+// bounded repeated (3x) concurrent run alongside its wave-35 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
 {

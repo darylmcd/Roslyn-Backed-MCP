@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -747,7 +748,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     /// <summary>
     /// Inspects a method declaration and, when its host is a static helper class,
     /// its effective accessibility is non-public, and its body is a single
-    /// ≤ 2-statement delegation to a non-source-declared method, returns a
+    /// ≤ 2-statement delegation to a non-source-declared method that forwards exactly
+    /// the helper's own parameters, returns a
     /// <see cref="DuplicateHelperDto"/>. Returns <see langword="null"/> otherwise.
     /// </summary>
     private static DuplicateHelperDto? TryClassifyHelperAsDuplicate(
@@ -811,6 +813,12 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         if (IsFrameworkGlueWrapperTarget(targetSymbol, analysisOptions.ExcludeFrameworkWrappers))
             return null;
 
+        // A re-wrap forwards the helper's own inputs to the target. An outermost call
+        // that merely terminates a pipeline (`GetParameters().Where(..).Select(..).ToArray()`)
+        // or specializes the target with extra arguments is real work, not a re-wrap.
+        if (!ForwardsOnlyHelperParameters(invocation, methodSymbol, semanticModel, ct))
+            return null;
+
         var lineSpan = methodDecl.Identifier.GetLocation().GetLineSpan();
         var confidence = statementCount <= 1 ? "high" : "medium";
 
@@ -824,6 +832,68 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             CanonicalTarget: targetSymbol.ToDisplayString(),
             CanonicalTargetAssembly: targetAssembly.Name,
             Confidence: confidence);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the delegation invocation's receiver (for an
+    /// instance call) and every explicitly supplied argument (including the receiver of a
+    /// reduced extension call, which the operation tree models as the first argument) are
+    /// direct references to <paramref name="helper"/>'s own parameters, and every helper
+    /// parameter is forwarded. Implicit conversions are looked through; implicit
+    /// optional-parameter defaults are ignored because the helper does not write them.
+    /// Literal/constant arguments are rejected: a helper such as <c>s =&gt; s.Split(',')</c>
+    /// specializes the target rather than re-wrapping it.
+    /// </summary>
+    private static bool ForwardsOnlyHelperParameters(
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol helper,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        if (semanticModel.GetOperation(invocation, ct) is not IInvocationOperation operation)
+            return false;
+
+        var forwarded = new HashSet<IParameterSymbol>(SymbolEqualityComparer.Default);
+
+        if (operation.Instance is not null && !TryAddForwardedParameter(operation.Instance, helper, forwarded))
+            return false;
+
+        foreach (var argument in operation.Arguments)
+        {
+            switch (argument.ArgumentKind)
+            {
+                case ArgumentKind.DefaultValue:
+                    continue;
+                case ArgumentKind.ParamArray when argument.Value is IArrayCreationOperation { IsImplicit: true } paramsArray:
+                    foreach (var element in paramsArray.Initializer?.ElementValues ?? [])
+                    {
+                        if (!TryAddForwardedParameter(element, helper, forwarded))
+                            return false;
+                    }
+                    continue;
+                default:
+                    if (!TryAddForwardedParameter(argument.Value, helper, forwarded))
+                        return false;
+                    continue;
+            }
+        }
+
+        return forwarded.Count == helper.Parameters.Length;
+    }
+
+    private static bool TryAddForwardedParameter(IOperation value, IMethodSymbol helper, HashSet<IParameterSymbol> forwarded)
+    {
+        while (value is IConversionOperation { IsImplicit: true } conversion)
+            value = conversion.Operand;
+
+        if (value is not IParameterReferenceOperation { Parameter: var parameter }
+            || !SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, helper))
+        {
+            return false;
+        }
+
+        forwarded.Add(parameter);
+        return true;
     }
 
     /// <summary>

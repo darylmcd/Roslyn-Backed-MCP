@@ -22,6 +22,11 @@ internal static class SymbolServiceHelpers
         var node = root.FindNode(location.SourceSpan);
         while (node is not null)
         {
+            if (node is BaseFieldDeclarationSyntax fieldDeclaration)
+            {
+                return GetDeclaredFieldSymbol(fieldDeclaration, model, location, ct);
+            }
+
             if (node is MemberDeclarationSyntax or LocalFunctionStatementSyntax)
             {
                 return model.GetDeclaredSymbol(node, ct);
@@ -29,6 +34,24 @@ internal static class SymbolServiceHelpers
             node = node.Parent;
         }
         return null;
+    }
+
+    // A field/event-field declaration declares no symbol itself: each symbol hangs off one of its
+    // VariableDeclaratorSyntax children, so GetDeclaredSymbol(fieldDeclaration) is always null.
+    // Attribute the location to the declarator whose span contains it (the initializer of
+    // `int a = F(), b = G();` maps G() to b); a location outside every declarator (the declared
+    // type, an attribute) falls back to the first declarator.
+    private static ISymbol? GetDeclaredFieldSymbol(
+        BaseFieldDeclarationSyntax fieldDeclaration,
+        SemanticModel model,
+        Location location,
+        CancellationToken ct)
+    {
+        var variables = fieldDeclaration.Declaration.Variables;
+        if (variables.Count == 0) return null;
+
+        var declarator = variables.FirstOrDefault(v => v.Span.Contains(location.SourceSpan.Start)) ?? variables[0];
+        return model.GetDeclaredSymbol(declarator, ct);
     }
 
     public static async Task<IReadOnlyList<RoslynMcp.Core.Models.LocationDto>> SymbolsToLocationsAsync(

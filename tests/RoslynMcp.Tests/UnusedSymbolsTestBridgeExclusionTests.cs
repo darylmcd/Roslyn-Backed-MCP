@@ -12,7 +12,14 @@ namespace RoslynMcp.Tests;
 /// the matches. The negative control <c>BuildSelectStatement</c> (no suffix) must still
 /// surface under the default filter, proving the guard is exact-suffix and bounded.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-33: [DoNotParallelize] removed. Every test method reads the
+// assembly-shared SampleSolution only through the synchronized WorkspaceIdCache
+// (LoadSharedSampleWorkspaceAsync) and only calls UnusedCodeAnalyzer.FindUnusedSymbolsAsync, a
+// read-only query whose only statics are readonly lookup tables — no *_apply, no
+// WorkspaceManager.LoadAsync/ReloadAsync/Close, no disk writes, no UndoService/ChangeTracker/
+// PreviewStore writes, no environment or static mutation. The same query already runs in the
+// parallel-enabled BacklogFixTests. Validated by a bounded repeated (3x) concurrent run alongside
+// its wave-33 sibling ValidateWorkspaceChangeTrackerReconcileTests, green every time.
 [TestClass]
 public sealed class UnusedSymbolsTestBridgeExclusionTests : SharedWorkspaceTestBase
 {

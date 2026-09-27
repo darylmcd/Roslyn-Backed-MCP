@@ -22,7 +22,15 @@ namespace RoslynMcp.Tests.Workspace;
 /// <see langword="true"/> after the probe reads the newest on-disk entry directly.
 /// </para>
 /// </remarks>
-[DoNotParallelize]
+// donotparallelize-audit-wave-36: [DoNotParallelize] removed. Every test builds its own
+// WorkspaceManager (own PreviewStore/FileWatcherService, never the TestBase singleton), its own
+// WorkspaceCacheStore under a per-test GUID directory in TestTempRoot.Current, and its own
+// SampleSolution copy, so workspace ids, cache entries and fixture files are all test-private.
+// AmbientGateMetrics is AsyncLocal-scoped; InitializeServices is lock-guarded and idempotent and
+// DisposeServices is a no-op; MSBuild registration is the lock-guarded MsBuildInitializer. No
+// *_apply, reload of a shared session, environment or static mutation. Validated by a bounded
+// repeated (3x) concurrent run alongside its wave-36 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class WorkspaceLoadCacheFastPathTests : TestBase
 {

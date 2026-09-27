@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -372,12 +373,11 @@ public sealed class DiRegistrationService : IDiRegistrationService
             if (args.Count > 0 &&
                 args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
             {
-                // get-di-registrations-multi-registration-overcounting: when the lambda body
-                // forwards to GetRequiredService<T>() / GetService<T>(), resolve T as the
-                // implementation type. e.g. AddSingleton<ISnapshotReader>(sp =>
-                // sp.GetRequiredService<FileSnapshotReader>()) reports FileSnapshotReader as the
-                // winning impl rather than the opaque "factory" sentinel. Falls back to
-                // "factory" when no recognizable forwarding call is present.
+                // Resolve the implementation from the lambda's returned expression: a forward
+                // (sp => sp.GetRequiredService<FileSnapshotReader>()) reports
+                // FileSnapshotReader; a construction (sp => new Foo(sp.GetRequiredService<Bar>()))
+                // reports Foo, never its Bar dependency. Falls back to the opaque "factory"
+                // sentinel for any other returned shape.
                 implType = TryResolveLambdaReturnType(args[0].Expression, semanticModel, ct) ?? "factory";
             }
             else if (args.Count > 0)
@@ -517,42 +517,86 @@ public sealed class DiRegistrationService : IDiRegistrationService
     }
 
     /// <summary>
-    /// get-di-registrations-multi-registration-overcounting: when a single-type-arg
-    /// <c>AddSingleton/AddScoped/AddTransient&lt;TService&gt;</c> overload receives a factory
-    /// lambda whose body forwards to <c>GetRequiredService&lt;T&gt;()</c> or
-    /// <c>GetService&lt;T&gt;()</c>, return <c>T</c>'s display string as the resolved
-    /// implementation type. The walk inspects every invocation inside the lambda's body, so
-    /// expressions that wrap the resolution (e.g. <c>() =&gt; new Foo(sp.GetRequiredService&lt;Bar&gt;())</c>)
-    /// still resolve to the implementation. Returns <c>null</c> when no recognizable
-    /// service-locator call is present so the caller can fall back to <c>"factory"</c>.
+    /// Resolves the implementation type a single-type-arg
+    /// <c>AddSingleton/AddScoped/AddTransient&lt;TService&gt;</c> factory lambda produces, from
+    /// the expression the lambda RETURNS (the expression body, or every <c>return</c> statement
+    /// of a block body — returns inside nested lambdas / local functions are ignored):
+    /// <list type="bullet">
+    ///   <item><description>an object creation (<c>sp =&gt; new Foo(sp.GetRequiredService&lt;Bar&gt;())</c>)
+    ///   resolves to the created type (<c>Foo</c>); service-locator calls used as constructor
+    ///   arguments are dependencies, not the implementation;</description></item>
+    ///   <item><description>a direct forward (<c>sp =&gt; sp.GetRequiredService&lt;T&gt;()</c> or
+    ///   <c>GetService&lt;T&gt;()</c>, optionally null-forgiven or parenthesized) resolves to
+    ///   <c>T</c>.</description></item>
+    /// </list>
+    /// Any other returned shape (helper-method call, conditional, cast, ...) or block-body
+    /// returns that disagree yield <c>null</c> so the caller falls back to <c>"factory"</c>.
     /// </summary>
     private static string? TryResolveLambdaReturnType(
         ExpressionSyntax lambdaExpression, SemanticModel semanticModel, CancellationToken ct)
     {
-        // Walk every invocation in the lambda body. The lambda may be a single-expression body
-        // (`sp => sp.GetRequiredService<T>()`) or a block body. Either way, DescendantNodes
-        // over the entire lambda subtree surfaces nested service-locator calls.
-        foreach (var invocation in lambdaExpression.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        if (lambdaExpression is not AnonymousFunctionExpressionSyntax lambda)
+            return null;
+
+        IEnumerable<ExpressionSyntax?> returnedExpressions = lambda.ExpressionBody is { } expressionBody
+            ? [expressionBody]
+            : lambda.Block is { } block
+                ? block
+                    .DescendantNodes(static node => node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+                    .OfType<ReturnStatementSyntax>()
+                    .Select(static ret => ret.Expression)
+                : [];
+
+        string? resolved = null;
+        foreach (var returned in returnedExpressions)
         {
-            if (ct.IsCancellationRequested) return null;
+            if (ct.IsCancellationRequested || returned is null)
+                return null;
 
-            if (semanticModel.GetSymbolInfo(invocation, ct).Symbol is not IMethodSymbol method)
-                continue;
+            var candidate = ResolveFactoryReturnedExpressionType(returned, semanticModel, ct);
+            if (candidate is null ||
+                (resolved is not null && !string.Equals(resolved, candidate, StringComparison.Ordinal)))
+            {
+                return null;
+            }
 
-            if (method.Name is not ("GetRequiredService" or "GetService"))
-                continue;
-
-            if (method.TypeArguments.Length != 1)
-                continue;
-
-            var resolved = method.TypeArguments[0];
-            if (resolved is IErrorTypeSymbol)
-                continue;
-
-            return resolved.ToDisplayString();
+            resolved = candidate;
         }
 
-        return null;
+        return resolved;
+    }
+
+    private static string? ResolveFactoryReturnedExpressionType(
+        ExpressionSyntax returned, SemanticModel semanticModel, CancellationToken ct)
+    {
+        while (true)
+        {
+            if (returned is ParenthesizedExpressionSyntax parenthesized)
+                returned = parenthesized.Expression;
+            else if (returned is PostfixUnaryExpressionSyntax suppressed && suppressed.IsKind(SyntaxKind.SuppressNullableWarningExpression))
+                returned = suppressed.Operand;
+            else
+                break;
+        }
+
+        switch (returned)
+        {
+            case BaseObjectCreationExpressionSyntax creation:
+                {
+                    var created = semanticModel.GetTypeInfo(creation, ct).Type;
+                    return created is null or IErrorTypeSymbol ? null : created.ToDisplayString();
+                }
+            case InvocationExpressionSyntax invocation
+                when semanticModel.GetSymbolInfo(invocation, ct).Symbol is IMethodSymbol
+                {
+                    Name: "GetRequiredService" or "GetService",
+                    TypeArguments.Length: 1,
+                } method
+                && method.TypeArguments[0] is not IErrorTypeSymbol:
+                return method.TypeArguments[0].ToDisplayString();
+            default:
+                return null;
+        }
     }
 
     /// <summary>

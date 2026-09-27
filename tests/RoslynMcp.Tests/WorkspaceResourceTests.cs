@@ -4,7 +4,13 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-39: [DoNotParallelize] removed. Every test method only reads the shared SampleSolution
+// workspace obtained through the assembly-shared, synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) via the
+// WorkspaceResources read handlers (status, workspaces, projects, diagnostics, source file). No *_apply/edit writes,
+// no direct WorkspaceManager.LoadAsync/ReloadAsync/Close, no static/environment/process state; the workspaces-list
+// assertions accept any session count >= 1. Classes that reload or close that shared session keep [DoNotParallelize]
+// and run in MSTest's serial phase. Verified with repeated (5x) runs alongside its wave-39 siblings and the
+// parallel SampleSolution readers IntegrationTests_WorkspaceCore/IntegrationTests_SymbolNavigation.
 [TestClass]
 public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
 {

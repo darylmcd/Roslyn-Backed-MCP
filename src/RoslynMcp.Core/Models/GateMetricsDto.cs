@@ -74,6 +74,13 @@ namespace RoslynMcp.Core.Models;
 /// demand when <paramref name="AutoResolution"/> is <c>auto-loaded</c>. <see langword="null"/>
 /// otherwise. Lets profiling isolate the cold on-demand-load cost from ordinary request timing.
 /// </param>
+/// <param name="UnknownArguments">
+/// unknown-tool-arguments-silently-ignored: argument names the caller sent that the tool's
+/// advertised <c>inputSchema.properties</c> does not declare. The SDK binder drops such keys, so
+/// a typo (e.g. <c>severty</c>) would otherwise be silently ignored. Each entry carries the
+/// closest declared name when one is within a small edit distance. The call is not rejected;
+/// this is a warning channel. <see langword="null"/> when every argument name was recognized.
+/// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
@@ -86,4 +93,15 @@ public sealed record GateMetricsDto(
     bool? CacheHit = null,
     bool? ReloadConfirmedNotFound = null,
     string? AutoResolution = null,
-    long? AutoLoadElapsedMs = null);
+    long? AutoLoadElapsedMs = null,
+    IReadOnlyList<UnknownArgumentDto>? UnknownArguments = null);
+
+/// <summary>
+/// One tool-call argument name that the tool's input schema does not declare.
+/// </summary>
+/// <param name="Name">The argument name exactly as the caller sent it.</param>
+/// <param name="Suggestion">
+/// The closest declared argument name (edit distance of at most 2, case-insensitive), or
+/// <see langword="null"/> when no declared name is close enough.
+/// </param>
+public sealed record UnknownArgumentDto(string Name, string? Suggestion = null);

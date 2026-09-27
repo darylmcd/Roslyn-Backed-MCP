@@ -113,6 +113,50 @@ public sealed class DiagnosticQueryServiceRegressionTests
         Assert.IsFalse(warningFloor.CompilerDiagnostics.Any(diagnostic => diagnostic.Id == "CS0169"));
     }
 
+    /// <summary>
+    /// unknown-projectname-silently-empty: <c>project_diagnostics</c> must reject a non-blank
+    /// <c>projectName</c> that matches no loaded project with the compile_check InvalidArgument
+    /// envelope instead of returning all-zero totals, while a blank filter still scans the
+    /// whole solution.
+    /// </summary>
+    [TestMethod]
+    public async Task ProjectDiagnostics_Tool_WithUnknownProject_ReturnsInvalidArgumentEnvelopeAsync()
+    {
+        using var workspace = new AdhocWorkspace();
+        var project = CreateDiagnosticProject(workspace, analyzer: null, escalateWarningToError: false);
+        var solution = project.Solution.WithDocumentText(project.DocumentIds.Single(),
+            SourceText.From("internal sealed class Probe { private int unused; }"));
+        Assert.IsTrue(workspace.TryApplyChanges(solution));
+        var manager = new VersionedWorkspaceManager("unknown-project", workspace.CurrentSolution, 1);
+        using var cache = new CompilationCache(manager);
+        var service = new DiagnosticService(manager, cache,
+            new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance));
+        var gate = new PassThroughWorkspaceExecutionGate();
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "project_diagnostics",
+            () => AnalysisTools.GetProjectDiagnostics(gate, service, manager.WorkspaceId,
+                projectName: "DoesNotExist", ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", root.GetProperty("category").GetString());
+        Assert.AreEqual("project_diagnostics", root.GetProperty("tool").GetString());
+        var message = root.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "projectName");
+        StringAssert.Contains(message, "workspace_status");
+        Assert.IsFalse(message.Contains("DoesNotExist", StringComparison.Ordinal));
+
+        var whole = await service.GetDiagnosticsAsync(manager.WorkspaceId, null, null, null, null, CancellationToken.None);
+        var blank = await service.GetDiagnosticsAsync(manager.WorkspaceId, " ", null, null, null, CancellationToken.None);
+        Assert.IsTrue(whole.TotalWarnings > 0, "Fixture must produce a warning so blank-vs-whole is meaningful.");
+        Assert.AreEqual(whole.TotalWarnings, blank.TotalWarnings);
+        Assert.AreEqual(whole.CompilerDiagnostics.Count, blank.CompilerDiagnostics.Count);
+    }
+
     [TestMethod]
     [DataRow(false, false)]
     [DataRow(true, false)]

@@ -24,8 +24,16 @@ namespace RoslynMcp.Tests;
 /// files no longer leak into <c>ChangedFilePaths</c>; non-git directories preserve
 /// the existing unfiltered behavior.
 /// </summary>
+// donotparallelize-audit-wave-33: [DoNotParallelize] removed. Every test method creates, loads,
+// edits, and disposes only its own isolated SampleSolution copy (CreateIsolatedWorkspaceCopy /
+// CreateIsolatedWorkspaceAsync) — the same per-test load/apply/close shape as the parallel
+// IsolatedWorkspaceTestBase classes (e.g. EditUndoIntegrationTests). ChangeTracker writes
+// (Clear/RecordChange) are keyed by that private workspace id on a ConcurrentDictionary; git
+// fixtures live under the copy's own root; the observability sink, MCP harness, and
+// FailClosedWorkspaceManagerStub are per-test instances. No environment or static mutation, no
+// shared-workspace reload/close. Validated by a bounded repeated (3x) concurrent run alongside its
+// wave-33 sibling UnusedSymbolsTestBridgeExclusionTests, green every time.
 [TestClass]
-[DoNotParallelize]
 public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;

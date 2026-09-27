@@ -229,6 +229,46 @@ function Assert-TestResultFile {
     }
 }
 
+# Resolves the docs-only route's test-class allowlist against the classes discovered in the
+# compiled test assembly. Returns an object whose Classes property holds the allowlisted names,
+# or $null when the allowlist cannot be trusted (missing, empty, or naming a class absent from
+# the assembly). $null means "run the full suite": an unclassifiable allowlist costs time, never
+# coverage, and never fails the run on its own.
+function Resolve-DocsOnlyTestClasses {
+    param(
+        [Parameter(Mandatory)]
+        [string]$AllowlistPath,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$DiscoveredClassNames
+    )
+
+    if (-not (Test-Path -LiteralPath $AllowlistPath -PathType Leaf)) {
+        Write-Warning "Docs-only test allowlist is missing: $AllowlistPath. Falling back to the full suite."
+        return $null
+    }
+
+    $allowlist = @(Get-Content -LiteralPath $AllowlistPath |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' -and -not $_.StartsWith('#') })
+    if ($allowlist.Count -eq 0) {
+        Write-Warning "Docs-only test allowlist is empty: $AllowlistPath. Falling back to the full suite."
+        return $null
+    }
+
+    $discoveredClasses = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]$DiscoveredClassNames,
+        [System.StringComparer]::Ordinal)
+    $unknownClasses = @($allowlist | Where-Object { -not $discoveredClasses.Contains($_) })
+    if ($unknownClasses.Count -gt 0) {
+        Write-Warning ("Docs-only test allowlist names classes absent from the test assembly: {0}. Falling back to the full suite." -f ($unknownClasses -join ', '))
+        return $null
+    }
+
+    return [pscustomobject]@{ Classes = [string[]]$allowlist }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
 $testProject = Join-Path $repoRoot "tests\RoslynMcp.Tests\RoslynMcp.Tests.csproj"
@@ -400,32 +440,24 @@ if ($TestShardCount -gt 1) {
     if ($DocsOnlyTestSelection) {
         # Docs-only route: run the declared documentation-contract allowlist on shard 0 only.
         # Selecting on one shard by construction avoids a zero-match shard (an empty vstest match
-        # writes no TRX and would trip Assert-TestResultFile). Fail closed on any bad allowlist.
-        $allowlistPath = Join-Path $PSScriptRoot 'docs-only-test-classes.txt'
-        if (-not (Test-Path -LiteralPath $allowlistPath -PathType Leaf)) {
-            throw "Docs-only test allowlist is missing: $allowlistPath"
-        }
-        $allowlist = @(Get-Content -LiteralPath $allowlistPath |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_ -ne '' -and -not $_.StartsWith('#') })
-        if ($allowlist.Count -eq 0) {
-            throw "Docs-only test allowlist is empty: $allowlistPath"
-        }
-        $discoveredClasses = [System.Collections.Generic.HashSet[string]]::new(
-            [string[]]@($testShardPlan.TestClasses | ForEach-Object { $_.ClassName }),
-            [System.StringComparer]::Ordinal)
-        $unknownClasses = @($allowlist | Where-Object { -not $discoveredClasses.Contains($_) })
-        if ($unknownClasses.Count -gt 0) {
-            throw "Docs-only test allowlist names classes absent from the test assembly: $($unknownClasses -join ', ')"
-        }
+        # writes no TRX and would trip Assert-TestResultFile). An allowlist that cannot be trusted
+        # (missing, empty, or naming an absent class) fails closed to the unsharded full suite on
+        # shard 0, so a bad allowlist costs time, never coverage.
+        $docsOnlySelection = Resolve-DocsOnlyTestClasses `
+            -AllowlistPath (Join-Path $PSScriptRoot 'docs-only-test-classes.txt') `
+            -DiscoveredClassNames @($testShardPlan.TestClasses | ForEach-Object { $_.ClassName })
         if ($TestShardIndex -ne 0) {
             $skipTestRun = $true
-            Write-Host "Docs-only selection: allowlist runs on shard 0; nothing to run on shard $TestShardIndex"
+            Write-Host "Docs-only selection: shard 0 owns the docs-only test run; nothing to run on shard $TestShardIndex"
+        }
+        elseif ($null -eq $docsOnlySelection) {
+            Write-Host 'Docs-only selection: allowlist unusable; running the full unsharded suite on shard 0.'
         }
         else {
-            $docsOnlyFilter = (@($allowlist | ForEach-Object { "ClassName=$_" })) -join '|'
+            $docsOnlyClasses = @($docsOnlySelection.Classes)
+            $docsOnlyFilter = (@($docsOnlyClasses | ForEach-Object { "ClassName=$_" })) -join '|'
             $testFilter = "($docsOnlyFilter)&$testFilter"
-            Write-Host "Docs-only selection: running $($allowlist.Count) allowlisted classes on shard 0."
+            Write-Host "Docs-only selection: running $($docsOnlyClasses.Count) allowlisted classes on shard 0."
         }
     }
     else {

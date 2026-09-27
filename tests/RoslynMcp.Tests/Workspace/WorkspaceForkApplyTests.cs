@@ -9,7 +9,18 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-35: [DoNotParallelize] removed. Each fork-apply test loads its own
+// GUID-unique IsolatedWorkspaceScope copy, stores a token-keyed preview for that workspace id only,
+// and runs workspace_fork_apply under the per-workspace write gate. The fork is created under the
+// copy's own .roslynmcp/forks directory, the static ForkApplyLocks entry is keyed by that unique
+// source root, and the retained fork workspace is closed and deleted in finally. The fork's real
+// `dotnet restore` targets only the fork directory — the same shape parallel-enabled
+// CrossProjectRefactoringIntegrationTests and ScaffoldingFirstTestFileTests already run
+// concurrently. Validation receives explicit appliedFiles, so the shared ChangeTracker is not read.
+// The remaining tests are pure (ShouldRetainFork) or run on per-test fake command runners. No
+// shared-workspace reload or close, no static or environment mutation. Validated by a bounded
+// repeated (3x) concurrent run alongside its wave-35 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class WorkspaceForkApplyTests : IsolatedWorkspaceTestBase
 {

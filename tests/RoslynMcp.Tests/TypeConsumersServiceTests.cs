@@ -1,6 +1,12 @@
 namespace RoslynMcp.Tests;
 
-[DoNotParallelize]
+// donotparallelize-audit-wave-31: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (LoadSharedSampleWorkspaceAsync) and
+// only calls TypeConsumersService.FindTypeConsumersAsync, a read-only query — no *_apply, no
+// reload/close, no disk writes, no UndoService/ChangeTracker/PreviewStore writes, no environment or
+// static mutation (its static is a class-local id set once in ClassInitialize; ClassCleanup's
+// DisposeServices is a documented no-op). Validated by a bounded repeated (3x) concurrent run
+// alongside its wave-31 siblings and parallel-enabled workspace classes, green each time.
 [TestClass]
 public sealed class TypeConsumersServiceTests : SharedWorkspaceTestBase
 {

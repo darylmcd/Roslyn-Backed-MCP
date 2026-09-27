@@ -31,7 +31,12 @@ namespace RoslynMcp.Tests;
 /// "already tracking N workspaces" and recover nothing.
 /// </para>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-37: [DoNotParallelize] removed. Every test method constructs its own
+// WorkspaceManager (cap 1), WorkspaceExecutionGate and test-runner double against fresh
+// CreateSampleSolutionCopy paths, and eviction records live in that manager's instance-owned
+// _evictedWorkspaces table. The only process-wide input, WorkspaceEvictionRegistry, is read-only here
+// and consulted solely when a manager has zero live sessions; every test keeps a live session at lookup
+// time. No assembly-shared workspace, static cache, env var or child process is touched.
 [TestClass]
 public sealed class WorkspaceEvictionAutoRetryTests
 {
