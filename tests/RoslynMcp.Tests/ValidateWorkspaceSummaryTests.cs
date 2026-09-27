@@ -9,7 +9,15 @@ namespace RoslynMcp.Tests;
 /// drops <c>ErrorDiagnostics</c> + <c>DiscoveredTests</c> when true; counts +
 /// <c>OverallStatus</c> still surface the verdict.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-34: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and only
+// calls WorkspaceValidationService.ValidateAsync with runTests: false — in-memory compile_check,
+// project diagnostics and related-test discovery, so no child `dotnet build`/`dotnet test` rewrites the
+// in-repo fixture's obj/ tree. The null-changedFilePaths case only reads ChangeTracker.GetChanges and, when
+// that is non-empty, a read-only `git status`. No *_apply, no reload/close, no disk writes, no environment
+// mutation; its two statics are class-local (workspace id and its own WorkspaceValidationService) set once
+// in ClassInitialize. Validated by a bounded repeated (3x) concurrent run alongside parallel-enabled
+// workspace-loading and sample-copying classes, green every time.
 [TestClass]
 public sealed class ValidateWorkspaceSummaryTests : SharedWorkspaceTestBase
 {

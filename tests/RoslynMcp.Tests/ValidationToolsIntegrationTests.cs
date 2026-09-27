@@ -5,6 +5,16 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-34: retained. Every method except BuildProject_SampleLib_Returns_Result is a
+// read through the synchronized WorkspaceIdCache, but that one calls ValidationTools.BuildProject, which spawns
+// a real child `dotnet build <SampleLib.csproj> --nologo` (BuildService: implicit restore + build, no
+// --no-restore) against the IN-REPO samples/SampleSolution shared workspace, rewriting SampleLib's obj/ tree.
+// Parallel-enabled classes concurrently call CreateSampleSolutionCopy, whose TestFixtureFileSystem.CopyDirectory
+// skips only bin/ and copies obj/ file-by-file, so a concurrent restore/build can hand them a torn or vanished
+// obj/ artifact; the per-workspace GatedCommandExecutor gate does not cover those plain file copies. A 3x run
+// with the opt-out removed alongside seven parallel-enabled sample-copying classes stayed green, so this is a
+// code-level hazard rather than an observed flake. Lifting the opt-out requires moving that build onto a
+// private CreateSampleSolutionCopy workspace.
 [DoNotParallelize]
 [TestClass]
 public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
