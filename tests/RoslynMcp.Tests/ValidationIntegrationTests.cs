@@ -4,6 +4,22 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
+// donotparallelize-audit-wave-34: retained. Four methods spawn real child `dotnet` processes against IN-REPO
+// shared fixtures rather than private copies:
+// - Build_Workspace_Returns_Structured_Success (`dotnet build`) and Test_Run_Returns_Structured_Success
+//   (`dotnet test`, implicit restore + build) rewrite samples/SampleSolution's obj/ tree, which parallel-enabled
+//   classes copy file-by-file through CreateSampleSolutionCopy (TestFixtureFileSystem.CopyDirectory skips only
+//   bin/), so a concurrent restore/build can hand them a torn or vanished obj/ artifact.
+// - Build_Workspace_Returns_Parsed_Diagnostics_For_Broken_Solution loads BuildFailureSolution without
+//   globalProperties; WorkspaceManager.LoadAsync deduplicates by path, so it shares that session with
+//   HighValueCoverageIntegrationTests.CompileCheck_BuildFailureSolution_Reports_Errors, which closes it in a
+//   finally block — overlapping would close the session under this test's build.
+// - ReleaseConfiguration_AnalyzerReference_Loads_From_Shadow_Copy runs a child `dotnet build` of the
+//   repository's own RoslynMcp.Host.Stdio (which rebuilds its ServerSurfaceCatalogAnalyzer project reference)
+//   and then opens that analyzer DLL with FileShare.None; any concurrent handle on the in-repo DLL (another
+//   repository-solution load's shadow-copy read, or a concurrent repository build) fails the exclusive open.
+// Lifting the opt-out requires private copies/sessions for all four (e.g. CreateSampleSolutionCopy, non-empty
+// globalProperties to skip load dedup).
 [DoNotParallelize]
 [TestClass]
 public class ValidationIntegrationTests : SharedWorkspaceTestBase
