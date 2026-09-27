@@ -65,6 +65,10 @@ internal static class StructuredDispatchPipeline
                 context.Params.Arguments);
         }
 
+        // Compare the caller's own argument names with the tool's advertised schema once, after
+        // alias normalization and before recovery or auto-resolution adds keys of its own.
+        RecordUnknownArguments(context, toolName, logger);
+
         // Detect missing workspace_load.path before the SDK binder turns it into a generic
         // arguments failure that cannot safely be mapped back to an allowlisted input field.
         var workspacePathRecovery = await StructuredCallElicitationCoordinator
@@ -164,6 +168,25 @@ internal static class StructuredDispatchPipeline
         var result = await next(context, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         return new DispatchOutcome(result, IsEarlyTerminal: false);
+    }
+
+    private static void RecordUnknownArguments(
+        RequestContext<CallToolRequestParams> context,
+        string toolName,
+        ILogger? logger)
+    {
+        var unknown = UnknownArgumentDetector.Detect(context, toolName);
+        if (unknown is null || AmbientGateMetrics.Current is not { } metrics)
+        {
+            return;
+        }
+
+        metrics.UnknownArguments = unknown;
+        logger?.LogWarning(
+            "Tool {ToolName} received {Count} argument name(s) its schema does not declare: {Names}",
+            toolName,
+            unknown.Count,
+            string.Join(", ", unknown.Select(static entry => entry.Name)));
     }
 
     private static Task<CallToolResult?> TryRecoverMissingWorkspaceIdFromPathAsync(

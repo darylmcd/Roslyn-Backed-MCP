@@ -131,6 +131,13 @@ public sealed class GateMetricsBuilder
     public long? AutoLoadElapsedMs { get; set; }
 
     /// <summary>
+    /// unknown-tool-arguments-silently-ignored: set by the structured dispatch pipeline when the
+    /// caller's original arguments include names the tool's input schema does not declare.
+    /// <see langword="null"/> when every argument name was recognized.
+    /// </summary>
+    public IReadOnlyList<UnknownArgumentDto>? UnknownArguments { get; set; }
+
+    /// <summary>
     /// Starts a balanced gate-hold interval. Nested intervals contribute one wall-clock span.
     /// </summary>
     public IDisposable TrackGate(string gateMode, long queuedMs)
@@ -175,5 +182,5 @@ public sealed class GateMetricsBuilder
         }
     }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution, AutoLoadElapsedMs);
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution, AutoLoadElapsedMs, UnknownArguments);
 }
