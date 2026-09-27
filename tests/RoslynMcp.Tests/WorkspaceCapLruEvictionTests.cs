@@ -28,7 +28,15 @@ namespace RoslynMcp.Tests;
 /// event revokes session-scoped authorization state without requiring a close-tool call.
 /// </para>
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-36: [DoNotParallelize] removed. Each test constructs its own
+// capped WorkspaceManager (and its own WorkspaceExecutionGate) over fresh SampleSolution copies,
+// so the cap semaphore, LRU order and eviction are private to the test. The one static it
+// touches, RootExpansionGrantRegistry, is a ConcurrentDictionary keyed by the manager's
+// Guid-generated workspace id, and the test revokes its own id in finally; the MCP roots server
+// is an in-memory per-test harness whose SecurityOptions are injected, not read from the
+// environment. No shared-session reload, *_apply, env-var or child-process use. Validated by a
+// bounded repeated (3x) concurrent run alongside its wave-36 siblings and parallel-enabled
+// workspace-loading classes, green every time.
 [TestClass]
 public sealed class WorkspaceCapLruEvictionTests
 {
