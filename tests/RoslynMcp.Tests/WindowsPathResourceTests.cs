@@ -14,7 +14,14 @@ namespace RoslynMcp.Tests;
 /// reasonable client might send. Existing happy-path tests live in
 /// <c>WorkspaceResourceTests</c>; these extend coverage to additional edge cases.
 /// </summary>
-[DoNotParallelize]
+// donotparallelize-audit-wave-35: [DoNotParallelize] removed. The class reads the assembly-shared
+// SampleSolution only through the synchronized WorkspaceIdCache (GetOrLoadWorkspaceIdAsync) and
+// only calls WorkspaceResources.GetSourceFile / GetSourceFileLines, which read document text under
+// WorkspaceExecutionGate.RunReadAsync — no *_apply, no reload or close, no disk writes, no
+// UndoService/ChangeTracker/PreviewStore writes, no environment mutation (its one static is the
+// class-local workspace id set once in ClassInitialize). Validated by a bounded repeated (3x)
+// concurrent run alongside its wave-35 siblings and parallel-enabled workspace-loading classes,
+// green every time.
 [TestClass]
 public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
 {
