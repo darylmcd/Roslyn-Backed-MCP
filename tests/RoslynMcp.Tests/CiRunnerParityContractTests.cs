@@ -170,8 +170,10 @@ public sealed class CiRunnerParityContractTests
         var formatStep = GetNamedStepBlock(validate, "Verify changed-file formatting");
         StringAssert.Contains(
             formatStep,
-            "if: github.event_name == 'pull_request' && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'");
-        StringAssert.Contains(formatStep, "./eng/verify-changed-format.ps1 -BaseRef origin/${{ github.base_ref }} -NoRestore");
+            "if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'");
+        StringAssert.Contains(
+            formatStep,
+            "./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore");
         StringAssert.Contains(
             justfile,
             "verify-changed-format:\n" +
@@ -283,14 +285,14 @@ public sealed class CiRunnerParityContractTests
     }
 
     [TestMethod]
-    public void ValidateGate_UsesTheRequiredNameOnlyForPullRequests()
+    public void ValidateGate_UsesTheRequiredNameOnlyForPullRequestsAndMergeQueue()
     {
         var workflow = LoadCiWorkflow();
         var gate = GetJobBlock(workflow, "validate-gate");
 
         StringAssert.Contains(
             gate,
-            "name: ${{ github.event_name == 'pull_request' && 'validate' || 'validate-informational' }}");
+            "name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'validate' || 'validate-informational' }}");
         StringAssert.Contains(gate, "- route\n");
         StringAssert.Contains(gate, "- validate\n");
         StringAssert.Contains(gate, "- sdk_floor\n");
@@ -304,12 +306,32 @@ public sealed class CiRunnerParityContractTests
     }
 
     [TestMethod]
+    public void MergeQueue_RunsThePullRequestShapedValidation()
+    {
+        var workflow = LoadCiWorkflow();
+        StringAssert.Contains(workflow, "\n  merge_group:\n", "The merge queue must trigger ci so the required validate check reports.");
+
+        var validate = GetJobBlock(workflow, "validate");
+        StringAssert.Contains(
+            GetNamedStepBlock(validate, "Verify release build (pull request)"),
+            "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'");
+        StringAssert.Contains(
+            GetNamedStepBlock(validate, "Verify release build (pull request)"),
+            "CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}");
+        var format = GetNamedStepBlock(validate, "Verify changed-file formatting");
+        StringAssert.Contains(format, "github.event.merge_group.base_sha");
+        StringAssert.Contains(
+            GetNamedStepBlock(validate, "Verify release build (dispatch / schedule)"),
+            "if: github.event_name != 'pull_request' && github.event_name != 'merge_group'");
+    }
+
+    [TestMethod]
     public void ReleasePolicy_StatesTheCanonicalCiTriggerContract()
     {
         var policy = LoadRepositoryFile("docs", "release-policy.md");
         var normalizedPolicy = policy.Replace('\n', ' ');
 
-        StringAssert.Contains(normalizedPolicy, "CI runs on pull requests, manual dispatch, and the weekly schedule.");
+        StringAssert.Contains(normalizedPolicy, "CI runs on pull requests, merge-queue groups, manual dispatch, and the weekly schedule.");
         StringAssert.Contains(
             normalizedPolicy,
             "Push-to-`main` is intentionally omitted because protected-branch changes arrive through a validated PR;");

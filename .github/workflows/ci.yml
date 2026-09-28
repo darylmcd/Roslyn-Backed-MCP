@@ -1,11 +1,12 @@
 name: ci
 
-# Trigger model (see CI_POLICY.md): pull requests are the merge gate; manual
-# dispatch and the weekly schedule retain coverage and live-network canaries.
-# Push-to-main is intentionally absent because protected changes arrive through
-# an already-validated pull request.
+# Trigger model (see CI_POLICY.md): pull requests and the merge queue are the
+# merge gate; manual dispatch and the weekly schedule retain coverage and
+# live-network canaries. Push-to-main is intentionally absent because protected
+# changes arrive through an already-validated pull request / merge-queue group.
 on:
   pull_request:
+  merge_group:
   workflow_dispatch:
   schedule:
     - cron: "45 5 * * 1"
@@ -150,8 +151,10 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Verify release build (pull request)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         shell: pwsh
+        env:
+          CHANGELOG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
           $parameters = @{
             Configuration = 'Release'
@@ -170,12 +173,12 @@ jobs:
           ./eng/verify-release.ps1 @parameters
 
       - name: Verify changed-file formatting
-        if: github.event_name == 'pull_request' && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'
+        if: (github.event_name == 'pull_request' || github.event_name == 'merge_group') && matrix.leg.artifact_owner == true && needs.route.outputs.docs_only != 'true'
         shell: pwsh
-        run: ./eng/verify-changed-format.ps1 -BaseRef origin/${{ github.base_ref }} -NoRestore
+        run: ./eng/verify-changed-format.ps1 -BaseRef ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }} -NoRestore
 
       - name: Verify release build (dispatch / schedule)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
@@ -201,7 +204,7 @@ jobs:
           retention-days: 14
 
       - name: Generate coverage HTML summary
-        if: github.event_name != 'pull_request' && matrix.leg.artifact_owner == true
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && matrix.leg.artifact_owner == true
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
@@ -230,7 +233,7 @@ jobs:
           retention-days: 14
 
       - name: Upload code coverage
-        if: github.event_name != 'pull_request' && matrix.leg.artifact_owner == true
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && matrix.leg.artifact_owner == true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: code-coverage
@@ -325,8 +328,9 @@ jobs:
   validate-gate:
     # A dispatch/schedule run may target a feature-branch SHA but validates only
     # one informational Linux leg. Give it a different check context so it can
-    # never satisfy the pull-request ruleset's required `validate` context.
-    name: ${{ github.event_name == 'pull_request' && 'validate' || 'validate-informational' }}
+    # never satisfy the ruleset's required `validate` context; pull requests and
+    # merge-queue groups (full code topology) report `validate`.
+    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'validate' || 'validate-informational' }}
     needs:
       - route
       - validate

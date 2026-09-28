@@ -129,7 +129,7 @@ Before declaring a session complete for release-impacting work:
 
 ## CI Gate
 
-CI runs on pull requests, manual dispatch, and the weekly schedule. Push-to-`main` is intentionally
+CI runs on pull requests, merge-queue groups, manual dispatch, and the weekly schedule. Push-to-`main` is intentionally
 omitted because protected-branch changes arrive through a validated PR; see `CI_POLICY.md` for the
 canonical trigger and runner contract.
 
