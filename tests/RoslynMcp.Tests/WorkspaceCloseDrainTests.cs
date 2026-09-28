@@ -1,12 +1,15 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -22,7 +25,9 @@ namespace RoslynMcp.Tests;
 // GUID directory, and the getProcessesByName seam hands the drain only those pids, so a drain
 // can never reach another class's process. The single seam-less test drains a fake workspace
 // rooted at %TEMP%\repo, whose kill filter only matches testhost/vstest.console executables under
-// that directory, which no test in this assembly launches. Validated by a bounded repeated (3x)
+// that directory, which no test in this assembly launches. The drive-alias tests map a random free
+// letter for the logon session, give it up if another run defined the same letter at the same
+// moment, and remove it in finally. Validated by a bounded repeated (3x)
 // concurrent run alongside its wave-36 siblings and parallel-enabled workspace-loading classes,
 // green every time.
 [TestClass]
@@ -80,7 +85,7 @@ public sealed class WorkspaceCloseDrainTests
     // executable lives under the working directory, and leaves out-of-dir ones alone.
     //
     // Uses real, long-lived child processes (the only way to exercise the
-    // Process.MainModule path-prefix filter + Kill end-to-end — Process has no
+    // executable-path prefix filter + Kill end-to-end — Process has no
     // mockable surface). The getProcessesByName seam injects them into the drain.
     // ---------------------------------------------------------------------------
 
@@ -90,7 +95,7 @@ public sealed class WorkspaceCloseDrainTests
         const string expectedWorkspaceId = "test-ws-testhost-drain";
 
         // workingDirectory = directory of the loaded path. Place the in-dir process's
-        // executable in a child folder so its MainModule.FileName prefix-matches.
+        // executable in a child folder so its executable path prefix-matches.
         var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-testhost-drain-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workingDirectory);
         var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
@@ -135,6 +140,9 @@ public sealed class WorkspaceCloseDrainTests
             Assert.IsFalse(
                 outOfDirProcess.HasExited,
                 "A testhost process whose executable lives outside the working directory must be left running.");
+
+            // Additive contract: a fully handled drain keeps the original { success, workspaceId } shape.
+            AssertNoUndrainedProcesses(doc);
         }
         finally
         {
@@ -210,6 +218,7 @@ public sealed class WorkspaceCloseDrainTests
                 siblingProcess.HasExited,
                 "A testhost in a SIBLING directory sharing the working-directory string prefix " +
                 "(workingDirectory + \"-sibling\") must be left running — it is not a true descendant.");
+            AssertNoUndrainedProcesses(doc);
         }
         finally
         {
@@ -217,6 +226,525 @@ public sealed class WorkspaceCloseDrainTests
             KillQuietly(siblingProcess);
             TryDeleteDirectory(workingDirectory);
             TryDeleteDirectory(siblingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Race: a testhost started moments before the drain has not run its loader yet.
+    //
+    // Process.MainModule reads the target's loader module list (EnumProcessModules over the
+    // PEB loader data), which a new process only builds once its primary thread has run the
+    // loader. Until then MainModule returns null or throws ERROR_PARTIAL_COPY, and the drain
+    // used to skip the candidate: a testhost spawned just before workspace_close survived and
+    // kept its bin/ locks. Under CI load this window reached the real-process tests above.
+    // CREATE_SUSPENDED holds a process in that pre-loader state, so this test reproduces the
+    // race deterministically. It fails on the MainModule-based drain and passes once the drain
+    // reads the image path the kernel recorded at process creation.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostWhoseLoaderHasNotRun()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The CREATE_SUSPENDED pre-loader fixture is Windows-only.");
+            return;
+        }
+
+        const string expectedWorkspaceId = "test-ws-pre-loader-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-preloader-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        try
+        {
+            var executablePath = CopyLauncherUnder(Path.Combine(workingDirectory, "host"));
+            using var suspended = WindowsSuspendedProcess.Start(executablePath, LauncherArguments);
+            var suspendedPid = suspended.Process.Id;
+
+            Func<string, Process[]> getProcessesByName = name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(suspendedPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                : [];
+
+            var json = await CloseWithProcessSeamAsync(
+                new PassthroughGate(),
+                new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                new RecordingDotnetCommandRunner(),
+                expectedWorkspaceId,
+                getProcessesByName);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "CloseWorkspace must still return success=true when the testhost drain runs.");
+            Assert.IsTrue(
+                suspended.Process.WaitForExit(10_000),
+                "A testhost under the working directory must be killed even when its loader has not run yet.");
+            AssertNoUndrainedProcesses(doc);
+        }
+        finally
+        {
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Paths compare in the physical namespace. workspace_load stores LoadedPath only after
+    // PhysicalPathResolver has resolved every symlink and junction, and the drain resolves each
+    // candidate to its post-reparse image path. A testhost launched through a junction into the
+    // workspace therefore still matches. Process.MainModule reported the as-launched link path,
+    // which missed it.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostLaunchedThroughAJunction()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("NTFS junctions are Windows-only.");
+            return;
+        }
+
+        const string expectedWorkspaceId = "test-ws-junction-drain";
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-junction-drain-" + Guid.NewGuid().ToString("N"));
+        var workingDirectory = Path.Combine(root, "physical");
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+        var link = Path.Combine(root, "link");
+
+        Process? launched = null;
+        try
+        {
+            WindowsDirectoryJunction.Create(link, workingDirectory);
+            launched = StartLongLived(CopyLauncherUnder(Path.Combine(link, "host")));
+            var launchedPid = launched.Id;
+
+            var json = await CloseWithProcessSeamAsync(
+                new PassthroughGate(),
+                new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                new RecordingDotnetCommandRunner(),
+                expectedWorkspaceId,
+                name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(launchedPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : []);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            Assert.IsTrue(
+                launched.WaitForExit(10_000),
+                "A testhost launched through a junction into the physical workspace must be killed.");
+            AssertNoUndrainedProcesses(doc);
+        }
+        finally
+        {
+            KillQuietly(launched);
+            TryDeleteDirectory(root);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // A drive-letter alias (subst, DefineDosDevice) is not a filesystem link, so workspace_load
+    // keeps it in LoadedPath. The kernel reports an image under the alias on the backing volume's
+    // own drive letter, so the two paths name the same directory in different forms. Unless the
+    // drain also compares the working directory's canonical path, an in-workspace testhost on an
+    // aliased workspace is neither killed nor reported.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostOnADriveLetterAlias()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are Windows-only.");
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-alias-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        WindowsDriveAlias? alias = null;
+        Process? launched = null;
+        try
+        {
+            alias = WindowsDriveAlias.Create(root);
+            var workingDirectory = Path.Combine(alias.RootPath, "ws");
+            var loadedPath = PhysicalPathResolver.Resolve(Path.Combine(workingDirectory, "Sample.slnx"));
+            Assert.IsTrue(
+                loadedPath.StartsWith(alias.RootPath, StringComparison.OrdinalIgnoreCase),
+                $"workspace_load path resolution is expected to keep the drive alias; got '{loadedPath}'.");
+
+            launched = StartLongLived(CopyLauncherUnder(Path.Combine(workingDirectory, "host")));
+
+            await AssertDrainKillsCandidateAsync(
+                "test-ws-alias-drain",
+                loadedPath,
+                launched,
+                "A testhost under a workspace loaded through a drive-letter alias must be killed.");
+        }
+        finally
+        {
+            KillQuietly(launched);
+            alias?.Dispose();
+            TryDeleteDirectory(root);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 8.3 short names: QueryFullProcessImageNameW reports a component in the form the process was
+    // launched with, and LoadedPath keeps the form the caller passed. Either side can use the short
+    // name while the other uses the long one (a TEMP of C:\Users\RUNNER~1\... on hosted runners is
+    // the common source). The drain passes both sides through Path.GetFullPath, which expands short
+    // names to long ones, and this pins that: the check must not drop the normalization.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow("launch")]
+    [DataRow("load")]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostWhenOneSideUsesAShortName(string shortSide)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("8.3 short names are Windows-only.");
+            return;
+        }
+
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-short-name-drain-" + Guid.NewGuid().ToString("N"));
+        Process? launched = null;
+        try
+        {
+            var executablePath = CopyLauncherUnder(Path.Combine(workingDirectory, "host"));
+            var shortWorkingDirectory = WindowsShortPathName.Get(workingDirectory);
+            if (string.Equals(shortWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Inconclusive("The temp volume does not generate 8.3 short names.");
+                return;
+            }
+
+            var loadedPath = Path.Combine(
+                shortSide == "load" ? shortWorkingDirectory : workingDirectory,
+                "Sample.slnx");
+            launched = StartLongLived(shortSide == "launch"
+                ? Path.Combine(shortWorkingDirectory, "host", Path.GetFileName(executablePath))
+                : executablePath);
+
+            await AssertDrainKillsCandidateAsync(
+                "test-ws-short-name-drain",
+                loadedPath,
+                launched,
+                $"A testhost under the workspace must be killed when only the {shortSide} path uses the 8.3 short name.");
+        }
+        finally
+        {
+            KillQuietly(launched);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // A candidate the drain cannot inspect is reported, never dropped and never killed.
+    // Its location is unknown, so killing it could hit an unrelated worktree's testhost, but
+    // it may hold locks under this workspace. The response and a Warning log name it.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow("access-denied", "access-denied", 0)]
+    [DataRow("throws", "path-query-failed", 1)]
+    public async Task CloseWorkspace_DrainProcessesTrue_ReportsCandidateWhosePathCannotBeRead(
+        string resolverOutcome,
+        string expectedReason,
+        int expectedUnexpectedReports)
+    {
+        const string expectedWorkspaceId = "test-ws-unreadable-path-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-unreadable-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        Process? inDirProcess = null;
+        try
+        {
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            var inDirPid = inDirProcess.Id;
+            var logger = new RecordingLogger();
+            var reporter = new RecordingUnexpectedExceptionReporter();
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner(),
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: new RecordingLoggerFactory(logger),
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(inDirPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : [],
+                processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+                ct: CancellationToken.None,
+                resolveExecutablePath: _ => resolverOutcome == "throws"
+                    ? throw new InvalidOperationException("simulated path query failure")
+                    : ProcessExecutablePathResolution.Unavailable(ProcessExecutablePathResolver.AccessDeniedReason));
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "An uninspectable candidate cannot roll back the committed close.");
+            AssertSingleUndrained(doc, "testhost", inDirPid, expectedReason);
+
+            Assert.IsFalse(inDirProcess.HasExited,
+                "A candidate whose executable path cannot be read must never be killed: its location is unknown.");
+
+            var warning = logger.Entries.Single(e => e.Level == LogLevel.Warning);
+            StringAssert.Contains(warning.Message, inDirPid.ToString(CultureInfo.InvariantCulture));
+            StringAssert.Contains(warning.Message, expectedReason);
+            Assert.AreEqual(expectedUnexpectedReports, reporter.Reports.Count,
+                "An access refusal is expected; only an exception from the path query is an unexpected failure.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // Production teardown timing: the drain enumerates a live testhost, which exits before the
+    // drain resolves its path. Its parent (vstest.console / dotnet test) still holds a handle, so
+    // the pid still names the exited process and opening it succeeds. On Windows the path query
+    // then fails, and that failure must not be mistaken for a live, uninspectable process. The
+    // real resolver runs here: a stub resolver returning Exited cannot catch that misclassification.
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_CandidateThatExitedAfterEnumeration_IsNotReported()
+    {
+        const string expectedWorkspaceId = "test-ws-exited-candidate-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-exited-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        // `parent` plays the testhost's parent: it stays undisposed, so it holds a process handle
+        // after the exit. `enumerated` is the drain's own Process for the same pid.
+        Process? parent = null;
+        Process? enumerated = null;
+        try
+        {
+            parent = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            enumerated = Process.GetProcessById(parent.Id);
+            parent.Kill();
+            Assert.IsTrue(parent.WaitForExit(10_000), "The candidate must exit before the drain resolves it.");
+
+            var logger = new RecordingLogger();
+            var reporter = new RecordingUnexpectedExceptionReporter();
+            var candidate = enumerated;
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner(),
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: new RecordingLoggerFactory(logger),
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost" ? [candidate] : [],
+                processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+                ct: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            AssertNoUndrainedProcesses(doc);
+            Assert.IsFalse(logger.Entries.Any(e => e.Level == LogLevel.Warning),
+                "A candidate that exited before inspection holds no locks and must not be reported.");
+            Assert.AreEqual(0, reporter.Reports.Count, "An exited candidate is not a failure.");
+        }
+        finally
+        {
+            enumerated?.Dispose();
+            KillQuietly(parent);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Cancellation: once the cleanup budget is spent the drain terminates nothing, but it
+    // still reports the in-workspace testhost it left running instead of skipping the step.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainBudgetExhausted_ReportsInDirTesthostItLeftRunning()
+    {
+        const string expectedWorkspaceId = "test-ws-cancelled-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-cancelled-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        Process? inDirProcess = null;
+        try
+        {
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            var inDirPid = inDirProcess.Id;
+            var reporter = new RecordingUnexpectedExceptionReporter();
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner { Outcome = "timeout" },
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: null,
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(inDirPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : [],
+                processDrainTimeout: TimeSpan.FromMilliseconds(25),
+                ct: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            AssertSingleUndrained(doc, "testhost", inDirPid, DetachedTestHostDrain.DrainCancelledReason);
+            Assert.IsFalse(inDirProcess.HasExited,
+                "A drain whose cleanup budget is spent must not terminate further processes.");
+            Assert.AreEqual(1, reporter.Reports.Count,
+                "The budget overrun is still reported exactly once.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessExecutablePathResolver: resolves a process the moment it exists.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_JustStartedProcess_ResolvesItsExecutable()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-" + Guid.NewGuid().ToString("N"));
+        Process? process = null;
+        try
+        {
+            var executablePath = CopyLauncherUnder(directory);
+            process = StartLongLived(executablePath);
+
+            // No readiness wait: resolve the same instant the drain would.
+            using var candidate = Process.GetProcessById(process.Id);
+            var resolution = ProcessExecutablePathResolver.Resolve(candidate);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Resolved, resolution.Status, resolution.Reason);
+            Assert.AreEqual(
+                Path.GetFullPath(executablePath),
+                Path.GetFullPath(resolution.Path!),
+                ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            KillQuietly(process);
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_ProcessThatExitedWhileAHandleIsHeld_IsExited()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-exited-" + Guid.NewGuid().ToString("N"));
+        Process? process = null;
+        try
+        {
+            process = StartLongLived(CopyLauncherUnder(directory));
+            process.Kill();
+            Assert.IsTrue(process.WaitForExit(10_000), "The helper must exit before it is resolved.");
+
+            // `process` still holds its handle, so the pid still names the exited process.
+            var resolution = ProcessExecutablePathResolver.Resolve(process);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Exited, resolution.Status, resolution.Reason);
+        }
+        finally
+        {
+            KillQuietly(process);
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_ProcessWhoseLoaderHasNotRun_ResolvesItsExecutable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The CREATE_SUSPENDED pre-loader fixture is Windows-only.");
+            return;
+        }
+
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-preloader-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var executablePath = CopyLauncherUnder(directory);
+            using var suspended = WindowsSuspendedProcess.Start(executablePath, LauncherArguments);
+
+            var resolution = ProcessExecutablePathResolver.Resolve(suspended.Process);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Resolved, resolution.Status, resolution.Reason);
+            Assert.AreEqual(executablePath, resolution.Path, ignoreCase: true);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // FinalPathResolver: maps a directory into the form the process-image query reports.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow(@"\\?\C:\repo\ws", @"C:\repo\ws")]
+    [DataRow(@"\\?\UNC\server\share\ws", @"\\server\share\ws")]
+    [DataRow(@"\\?\Volume{0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0}\ws", @"\\?\Volume{0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0}\ws")]
+    [DataRow(@"C:\repo\ws", @"C:\repo\ws")]
+    public void FinalPathResolver_ToWin32Path_StripsOnlyAPrefixThatLeavesAWin32Path(string finalPath, string expected)
+    {
+        Assert.AreEqual(expected, FinalPathResolver.ToWin32Path(finalPath));
+    }
+
+    [TestMethod]
+    public void FinalPathResolver_DirectoryOnADriveLetterAlias_ResolvesToTheBackingVolumePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are Windows-only.");
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-final-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "ws"));
+        WindowsDriveAlias? alias = null;
+        try
+        {
+            alias = WindowsDriveAlias.Create(root);
+
+            Assert.IsTrue(
+                FinalPathResolver.TryResolve(Path.Combine(alias.RootPath, "ws"), out var finalPath, out var error),
+                $"Win32 error {error}");
+
+            // Path.GetFullPath expands any 8.3 component of the temp root, as the final path does.
+            Assert.AreEqual(Path.GetFullPath(Path.Combine(root, "ws")), finalPath, ignoreCase: true);
+        }
+        finally
+        {
+            alias?.Dispose();
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [TestMethod]
+    public void FinalPathResolver_MissingPath_ReportsNoResult()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "rmcp-final-path-missing-" + Guid.NewGuid().ToString("N"));
+
+        Assert.IsFalse(FinalPathResolver.TryResolve(missing, out var finalPath, out var error));
+        Assert.IsNull(finalPath);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(2, error, "ERROR_FILE_NOT_FOUND names why the path could not be resolved.");
+        }
+        else
+        {
+            Assert.AreEqual(0, error, "Platforms without drive aliases have no query to fail.");
         }
     }
 
@@ -316,6 +844,7 @@ public sealed class WorkspaceCloseDrainTests
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
             "Workspace removal is the commit point; cleanup outcomes cannot roll it back.");
+        AssertNoUndrainedProcesses(doc);
         Assert.AreEqual(1, commandRunner.CallCount);
 
         var expectedReportCount = outcome == "success" ? 0 : 1;
@@ -353,6 +882,58 @@ public sealed class WorkspaceCloseDrainTests
             getProcessesByName,
             WorkspaceTools.DefaultProcessDrainTimeout,
             CancellationToken.None);
+
+    // Drains one real candidate and asserts the full success shape: the candidate was killed, the
+    // response keeps its original shape, and nothing was logged at Warning.
+    private static async Task AssertDrainKillsCandidateAsync(
+        string workspaceId,
+        string loadedPath,
+        Process candidate,
+        string killedMessage)
+    {
+        var candidateId = candidate.Id;
+        var logger = new RecordingLogger();
+        var json = await WorkspaceTools.CloseWorkspaceCore(
+            gate: new PassthroughGate(),
+            workspace: new FakeWorkspaceManagerForDrain(CreateStatus(workspaceId, loadedPath)),
+            commandRunner: new RecordingDotnetCommandRunner(),
+            workspaceId: workspaceId,
+            drainProcesses: true,
+            loggerFactory: new RecordingLoggerFactory(logger),
+            exceptionReporter: null,
+            getProcessesByName: name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(candidateId) }.Where(p => p is not null).Select(p => p!).ToArray()
+                : [],
+            processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.IsTrue(candidate.WaitForExit(10_000), killedMessage);
+        AssertNoUndrainedProcesses(doc);
+        Assert.IsFalse(logger.Entries.Any(e => e.Level == LogLevel.Warning),
+            "A candidate the drain killed must not be logged as left running.");
+    }
+
+    private static void AssertNoUndrainedProcesses(JsonDocument doc) =>
+        Assert.IsFalse(
+            doc.RootElement.TryGetProperty("undrainedProcesses", out _),
+            "undrainedProcesses is additive: it must be omitted when the drain handled every candidate.");
+
+    private static void AssertSingleUndrained(
+        JsonDocument doc,
+        string expectedProcessName,
+        int expectedProcessId,
+        string expectedReason)
+    {
+        Assert.IsTrue(doc.RootElement.TryGetProperty("undrainedProcesses", out var undrained),
+            "A candidate the drain left running must be listed in undrainedProcesses.");
+        Assert.AreEqual(1, undrained.GetArrayLength());
+        var entry = undrained[0];
+        Assert.AreEqual(expectedProcessName, entry.GetProperty("processName").GetString());
+        Assert.AreEqual(expectedProcessId, entry.GetProperty("processId").GetInt32());
+        Assert.AreEqual(expectedReason, entry.GetProperty("reason").GetString());
+    }
 
     private static WorkspaceStatusDto CreateStatus(string workspaceId, string loadedPath) =>
         new WorkspaceStatusDto(
@@ -396,9 +977,12 @@ public sealed class WorkspaceCloseDrainTests
 
     /// <summary>
     /// Copies the system launcher executable into <paramref name="targetDirectory"/> (so its
-    /// MainModule.FileName prefix-matches the working directory) and starts it long-lived.
+    /// executable path prefix-matches the working directory) and starts it long-lived.
     /// </summary>
-    private static Process StartLongLivedProcessUnder(string targetDirectory)
+    private static Process StartLongLivedProcessUnder(string targetDirectory) =>
+        StartLongLived(CopyLauncherUnder(targetDirectory));
+
+    private static string CopyLauncherUnder(string targetDirectory)
     {
         Directory.CreateDirectory(targetDirectory);
         var copyName = Path.GetFileName(SystemLauncherPath);
@@ -410,7 +994,7 @@ public sealed class WorkspaceCloseDrainTests
             File.SetUnixFileMode(copiedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        return StartLongLived(copiedPath);
+        return copiedPath;
     }
 
     private static Process StartLongLivedProcessFromSystemPath() => StartLongLived(SystemLauncherPath);
@@ -550,12 +1134,6 @@ public sealed class WorkspaceCloseDrainTests
             Reports.Add((exception, category));
             return PublicExceptionDetailPolicy.ProjectUnexpected(exception, correlationId: "test-correlation");
         }
-    }
-
-    private sealed class ThrowingWorkspaceWarmService : IWorkspaceWarmService
-    {
-        public Task<WorkspaceWarmResult> WarmAsync(string workspaceId, string[]? projects, CancellationToken ct) =>
-            throw new NotSupportedException("This test disables prewarm.");
     }
 
     private sealed class RecordingLoggerFactory(RecordingLogger logger) : ILoggerFactory

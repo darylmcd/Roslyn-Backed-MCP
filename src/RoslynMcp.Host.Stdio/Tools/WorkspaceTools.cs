@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -10,6 +11,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -125,6 +127,7 @@ public static class WorkspaceTools
 
     /// <remarks>
     /// <para>drainProcesses=true runs `dotnet build-server shutdown` AND terminates any detached test-runner processes (testhost / vstest.console) whose executable lives under the loaded path directory, after session removal. On Windows this is what releases the MSBuild build-server and test-host file-system locks.</para>
+    /// <para>When the drain leaves a candidate running, the response adds an `undrainedProcesses` array of { processName, processId, reason }. Reasons: `access-denied` or `path-query-failed` (the executable path could not be read, so the process was not killed), `terminate-failed`, or `drain-cancelled` (the cleanup budget or caller cancellation ended the drain first). The field is omitted when every candidate was handled.</para>
     /// </remarks>
     [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to also release MSBuild build-server and test-host file locks - required before `git worktree remove` in sweep teardown sequences.")]
     [McpToolMetadata("workspace", "stable", false, true,
@@ -158,6 +161,9 @@ public static class WorkspaceTools
     /// <param name="getProcessesByName">Process enumerator; tests inject a fake one.</param>
     /// <param name="processDrainTimeout">Bound on post-close cleanup, independent of the request
     /// lifetime; tests pass a short one to prove a stuck drain cannot retain the load gate.</param>
+    /// <param name="resolveExecutablePath">Executable-path resolver for drain candidates;
+    /// <see langword="null"/> selects <see cref="ProcessExecutablePathResolver.Resolve"/>. Tests
+    /// inject one to simulate a candidate whose path cannot be read.</param>
     internal static Task<string> CloseWorkspaceCore(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -168,9 +174,11 @@ public static class WorkspaceTools
         IUnexpectedExceptionReporter? exceptionReporter,
         Func<string, Process[]> getProcessesByName,
         TimeSpan processDrainTimeout,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<Process, ProcessExecutablePathResolution>? resolveExecutablePath = null)
     {
         ArgumentNullException.ThrowIfNull(getProcessesByName);
+        resolveExecutablePath ??= ProcessExecutablePathResolver.Resolve;
         if (processDrainTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
@@ -192,9 +200,9 @@ public static class WorkspaceTools
         return gate.RunLoadGateAsync(async outerCt =>
         {
             string? loadedPath = null;
-            var json = await gate.RunWriteAsync(
+            var closed = await gate.RunWriteAsync(
                 workspaceId,
-                async innerCt =>
+                innerCt =>
                 {
                     // Capture the loaded path before close removes the session from the registry.
                     if (drainProcesses)
@@ -207,13 +215,13 @@ public static class WorkspaceTools
                         }
                     }
 
-                    var closed = workspace.Close(workspaceId);
-                    return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
+                    return Task.FromResult(workspace.Close(workspaceId));
                 },
                 outerCt,
                 applyStalenessPolicy: false).ConfigureAwait(false);
             gate.RemoveGate(workspaceId);
 
+            IReadOnlyList<UndrainedProcess>? undrainedProcesses = null;
             if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))
             {
                 var workingDirectory = Path.GetDirectoryName(loadedPath);
@@ -246,14 +254,19 @@ public static class WorkspaceTools
                     // vstest.console.exe child processes that survive build-server shutdown and
                     // keep tests/.../bin file handles open, blocking `git worktree remove` on
                     // Windows. Terminate any whose executable lives under this working directory.
-                    if (!cleanupCts.IsCancellationRequested)
+                    // This step runs even after cancellation: it then terminates nothing, but it
+                    // still reports each in-workspace candidate it left running.
+                    var testHostDrain = DetachedTestHostDrain.Run(
+                        workingDirectory,
+                        getProcessesByName,
+                        resolveExecutablePath,
+                        logger,
+                        workspaceId,
+                        cleanupCts.Token);
+                    cleanupFailure ??= testHostDrain.FirstFailure;
+                    if (testHostDrain.Undrained.Count > 0)
                     {
-                        cleanupFailure ??= TryKillDetachedTestHosts(
-                            workingDirectory,
-                            getProcessesByName,
-                            logger,
-                            workspaceId,
-                            cleanupCts.Token);
+                        undrainedProcesses = testHostDrain.Undrained;
                     }
 
                     if (cleanupFailure is not null)
@@ -263,9 +276,21 @@ public static class WorkspaceTools
                 }
             }
 
-            return json;
+            return JsonSerializer.Serialize(
+                new WorkspaceCloseResult(closed, workspaceId, undrainedProcesses),
+                JsonDefaults.Indented);
         }, ct);
     }
+
+    /// <summary>
+    /// <c>workspace_close</c> response. <see cref="UndrainedProcesses"/> is additive and is
+    /// omitted unless the drain left a candidate running.
+    /// </summary>
+    private sealed record WorkspaceCloseResult(
+        bool Success,
+        string WorkspaceId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<UndrainedProcess>? UndrainedProcesses);
 
     private static void ReportProcessDrainFailure(
         IUnexpectedExceptionReporter? exceptionReporter,
@@ -274,113 +299,6 @@ public static class WorkspaceTools
             exceptionReporter,
             exception,
             UnexpectedExceptionCategory.WorkspaceCloseProcessDrain);
-
-    /// <summary>
-    /// Best-effort termination of detached <c>testhost</c> / <c>vstest.console</c> processes whose
-    /// executable resides under <paramref name="workingDirectory"/>. These are spawned by
-    /// <c>dotnet test</c> and survive <c>dotnet build-server shutdown</c>, holding
-    /// <c>tests/.../bin</c> file locks that block <c>git worktree remove</c> on Windows.
-    /// </summary>
-    /// <remarks>
-    /// Entirely non-fatal: the workspace close has already succeeded by the time this runs, so any
-    /// enumeration / inspection / kill failure is swallowed at Debug. <see cref="Process.MainModule"/>
-    /// throws <see cref="System.ComponentModel.Win32Exception"/> for protected or already-exited
-    /// processes — those are SKIPPED (never kill-all on an inaccessible path). The
-    /// <paramref name="getProcessesByName"/> seam lets tests inject a fake enumerator.
-    /// </remarks>
-    private static Exception? TryKillDetachedTestHosts(
-        string workingDirectory,
-        Func<string, Process[]> getProcessesByName,
-        ILogger? logger,
-        string workspaceId,
-        CancellationToken cancellationToken)
-    {
-        Exception? firstFailure = null;
-        // Boundary guard: only kill processes that are TRUE DESCENDANTS of workingDirectory.
-        // A bare StartsWith(workingDirectory) false-positives on a sibling worktree whose path
-        // is a string-prefix (e.g. workingDirectory ".../wt-foo" vs sibling ".../wt-foo-bar"),
-        // which would Kill an unrelated worktree's testhost tree mid-test-run. Normalize to a
-        // full path and append exactly one separator so the prefix can only match a child path.
-        // .worktrees/ holds multiple concurrent sibling worktrees during parallel sweeps.
-        string workingDirectoryPrefix;
-        try
-        {
-            workingDirectoryPrefix =
-                Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-        }
-        catch (Exception ex)
-        {
-            // A malformed working directory cannot be normalized — skip the drain entirely
-            // rather than fall back to an unguarded match.
-            return ex;
-        }
-
-        // Match both the .NET-Core test host ("testhost") and the legacy console runner
-        // ("vstest.console"). Names are extensionless on Process; .exe on Windows, bare on Unix.
-        foreach (var processName in new[] { "testhost", "vstest.console" })
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Process[] candidates;
-            try
-            {
-                candidates = getProcessesByName(processName);
-            }
-            catch (Exception ex)
-            {
-                firstFailure ??= ex;
-                continue;
-            }
-
-            foreach (var process in candidates)
-            {
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    // MainModule access throws Win32Exception for protected/exited processes —
-                    // skip those rather than risk terminating an unrelated process.
-                    var executablePath = process.MainModule?.FileName;
-                    if (string.IsNullOrEmpty(executablePath))
-                    {
-                        continue;
-                    }
-
-                    // Compare full paths against the separator-terminated working-directory
-                    // prefix so only true descendants match — never a bare string prefix that
-                    // would catch a sibling worktree (".../wt-foo" vs ".../wt-foo-bar").
-                    var fullExecutablePath = Path.GetFullPath(executablePath);
-                    if (!fullExecutablePath.StartsWith(workingDirectoryPrefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    process.Kill(entireProcessTree: true);
-                    logger?.LogDebug(
-                        "workspace_close terminated detached {ProcessName} (pid {ProcessId}) for workspace {WorkspaceId}.",
-                        processName,
-                        process.Id,
-                        workspaceId);
-                }
-                catch (Exception ex)
-                {
-                    firstFailure ??= ex;
-                }
-                finally
-                {
-                    try
-                    {
-                        process.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        firstFailure ??= ex;
-                    }
-                }
-            }
-        }
-
-        return firstFailure;
-    }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(WorkspaceListDto)), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]

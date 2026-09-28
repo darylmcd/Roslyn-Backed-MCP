@@ -1,0 +1,5 @@
+---
+category: Fixed
+---
+
+- **Fixed:** `workspace_close(drainProcesses: true)` now kills a `testhost` / `vstest.console` under the workspace even when it started just before the close. The drain previously read each candidate's path through `Process.MainModule`, which on Windows fails or returns null until the new process's loader has run, so such a candidate was skipped silently and kept its `bin/` file locks. The path now comes from the image name the OS recorded at process creation (`QueryFullProcessImageNameW` on Windows, `/proc/<pid>/exe` on Linux). On Windows the drain also compares against the workspace directory's canonical path, so a workspace loaded through a `subst` drive letter still matches its testhosts, which the OS reports on the backing volume's drive letter. A candidate the drain leaves running is logged at Warning and returned in a new optional `undrainedProcesses` array (`processName`, `processId`, `reason`). The field is omitted when every candidate was handled, so the existing response shape is unchanged.
