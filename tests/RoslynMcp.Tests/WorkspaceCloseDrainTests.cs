@@ -119,14 +119,8 @@ public sealed class WorkspaceCloseDrainTests
                     .Where(p => p is not null).Select(p => p!).ToArray()
                 : [];
 
-            var json = await WorkspaceTools.CloseWorkspace(
-                gate: gate,
-                workspace: fakeWorkspace,
-                commandRunner: commandRunner,
-                workspaceId: expectedWorkspaceId,
-                drainProcesses: true,
-                ct: CancellationToken.None,
-                getProcessesByName: getProcessesByName);
+            var json = await CloseWithProcessSeamAsync(
+                gate, fakeWorkspace, commandRunner, expectedWorkspaceId, getProcessesByName);
 
             using var doc = JsonDocument.Parse(json);
             Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
@@ -199,14 +193,8 @@ public sealed class WorkspaceCloseDrainTests
                     .Where(p => p is not null).Select(p => p!).ToArray()
                 : [];
 
-            var json = await WorkspaceTools.CloseWorkspace(
-                gate: gate,
-                workspace: fakeWorkspace,
-                commandRunner: commandRunner,
-                workspaceId: expectedWorkspaceId,
-                drainProcesses: true,
-                ct: CancellationToken.None,
-                getProcessesByName: getProcessesByName);
+            var json = await CloseWithProcessSeamAsync(
+                gate, fakeWorkspace, commandRunner, expectedWorkspaceId, getProcessesByName);
 
             using var doc = JsonDocument.Parse(json);
             Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
@@ -313,16 +301,17 @@ public sealed class WorkspaceCloseDrainTests
             CallerCancellation = callerCancellation
         };
 
-        var json = await WorkspaceTools.CloseWorkspace(
+        var json = await WorkspaceTools.CloseWorkspaceCore(
             gate: new PassthroughGate(),
             workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
             commandRunner: commandRunner,
             workspaceId: expectedWorkspaceId,
             drainProcesses: true,
-            ct: callerCancellation.Token,
+            loggerFactory: null,
             exceptionReporter: reporter,
             getProcessesByName: _ => [],
-            processDrainTimeout: TimeSpan.FromMilliseconds(25));
+            processDrainTimeout: TimeSpan.FromMilliseconds(25),
+            ct: callerCancellation.Token);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
@@ -344,6 +333,26 @@ public sealed class WorkspaceCloseDrainTests
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
+
+    // workspace-close-schema-leaks-test-seams: the process-enumerator seam lives on the internal
+    // CloseWorkspaceCore, not on the [McpServerTool] method, so it never reaches the MCP schema.
+    private static Task<string> CloseWithProcessSeamAsync(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
+        string workspaceId,
+        Func<string, Process[]> getProcessesByName) =>
+        WorkspaceTools.CloseWorkspaceCore(
+            gate,
+            workspace,
+            commandRunner,
+            workspaceId,
+            drainProcesses: true,
+            loggerFactory: null,
+            exceptionReporter: null,
+            getProcessesByName,
+            WorkspaceTools.DefaultProcessDrainTimeout,
+            CancellationToken.None);
 
     private static WorkspaceStatusDto CreateStatus(string workspaceId, string loadedPath) =>
         new WorkspaceStatusDto(

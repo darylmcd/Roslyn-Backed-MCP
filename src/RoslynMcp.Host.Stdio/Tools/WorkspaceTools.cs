@@ -23,7 +23,7 @@ public static class WorkspaceTools
     private const int _maxSupportBundleChangeCap = 50;
     private const int _defaultSupportBundleDriftCap = 25;
     private const int _maxSupportBundleDriftCap = 100;
-    private static readonly TimeSpan s_processDrainTimeout = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan DefaultProcessDrainTimeout = TimeSpan.FromSeconds(10);
 
     /// <remarks>
     /// <para>Set autoRestore=true to run dotnet restore plus one follow-up reload when the loaded status reports restoreRequired=true.</para>
@@ -137,24 +137,49 @@ public static class WorkspaceTools
         [Description("When true, run `dotnet build-server shutdown` AND kill detached testhost/vstest.console processes rooted under the loaded path's directory after session removal, to release MSBuild build-server and test-host out-of-process file locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
         ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default,
-        IUnexpectedExceptionReporter? exceptionReporter = null,
-        // Seam: lets tests inject a fake process enumerator. Production default enumerates live
-        // processes by name. Not surfaced to MCP callers — no [Description], so the schema omits it.
-        Func<string, Process[]>? getProcessesByName = null,
-        // Seam: production cleanup is bounded independently of the request lifetime. Tests use a
-        // short timeout to prove that a stuck drain cannot retain the load gate indefinitely.
-        TimeSpan? processDrainTimeout = null)
+        IUnexpectedExceptionReporter? exceptionReporter = null) =>
+        CloseWorkspaceCore(
+            gate,
+            workspace,
+            commandRunner,
+            workspaceId,
+            drainProcesses,
+            loggerFactory,
+            exceptionReporter,
+            Process.GetProcessesByName,
+            DefaultProcessDrainTimeout,
+            ct);
+
+    /// <summary>
+    /// Implementation of <c>workspace_close</c>. The MCP SDK advertises every non-DI parameter of an
+    /// <c>[McpServerTool]</c> method in the tool's input schema, so the test seams live here, on a
+    /// non-tool method, instead of on <see cref="CloseWorkspace"/>.
+    /// </summary>
+    /// <param name="getProcessesByName">Process enumerator; tests inject a fake one.</param>
+    /// <param name="processDrainTimeout">Bound on post-close cleanup, independent of the request
+    /// lifetime; tests pass a short one to prove a stuck drain cannot retain the load gate.</param>
+    internal static Task<string> CloseWorkspaceCore(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
+        string workspaceId,
+        bool drainProcesses,
+        ILoggerFactory? loggerFactory,
+        IUnexpectedExceptionReporter? exceptionReporter,
+        Func<string, Process[]> getProcessesByName,
+        TimeSpan processDrainTimeout,
+        CancellationToken ct)
     {
-        var logger = CreateLogger(loggerFactory);
-        getProcessesByName ??= Process.GetProcessesByName;
-        var cleanupTimeout = processDrainTimeout ?? s_processDrainTimeout;
-        if (cleanupTimeout <= TimeSpan.Zero)
+        ArgumentNullException.ThrowIfNull(getProcessesByName);
+        if (processDrainTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(processDrainTimeout),
                 processDrainTimeout,
                 "Process drain timeout must be positive.");
         }
+
+        var logger = CreateLogger(loggerFactory);
 
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
@@ -195,7 +220,7 @@ public static class WorkspaceTools
                 if (!string.IsNullOrWhiteSpace(workingDirectory))
                 {
                     using var cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
-                    cleanupCts.CancelAfter(cleanupTimeout);
+                    cleanupCts.CancelAfter(processDrainTimeout);
                     Exception? cleanupFailure = null;
                     try
                     {
