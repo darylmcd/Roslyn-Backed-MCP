@@ -485,7 +485,7 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1643",
       "mergedAt": "2026-09-27T06:10:32Z",
       "notes": null,
-      "fileSetHash": "155b07c7a7a86a600828206f65014034c06fece85a00e2fa1d38b86f275a7aa5",
+      "fileSetHash": "4e57deadfb788181bf581594085c91fd60e1c5ab99ef42ef85640db8447b2412",
       "stanzaHash": "71df02138adf1406e60113633ede21c6ee5d07c7dc85d854d6c8ccb94a12a12f",
       "reviewedStanzaHash": "71df02138adf1406e60113633ede21c6ee5d07c7dc85d854d6c8ccb94a12a12f",
       "amendments": [
@@ -1022,7 +1022,10 @@
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1653",
       "mergedAt": "2026-09-28T15:23:26Z",
       "rowsClosedCount": 1,
-      "notes": null
+      "notes": null,
+      "fileSetHash": "d0d6e0ae0a0d3f77e750a49abcaadd83289a5bfd8d908858daba6a22ffa31381",
+      "stanzaHash": "85c498a6af3ac4e37eb58b4a1ea64d07334195d375e487fbc0704e299591bc26",
+      "reviewedStanzaHash": "85c498a6af3ac4e37eb58b4a1ea64d07334195d375e487fbc0704e299591bc26"
     }
   ],
   "anchorVerification": "performed",
@@ -1443,10 +1446,10 @@
       "evidence": "#1-#3 anchors resolve"
     }
   ],
-  "conflictGraphInputHash": "005284e6fb010d8e9bbc14273c6933cdf56c3798d18eab9bdf85d41aa58aefce",
-  "planHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
-  "backlogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
-  "reviewedPlanHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
-  "reviewedBacklogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
+  "conflictGraphInputHash": "7bb11806b4f655ca0695bb8a869a1b66700e47176ad605b50ce4c8691eac6c43",
+  "planHash": "060b2b13ff53748128c01a0c3b17deb98ee0a07d255e9c2a592be2d6ad365648",
+  "backlogSnapshotHash": "bea23b22798bb058fc3c8f6ed0e7edafe41f979434afad1e7d408c798241360a",
+  "reviewedPlanHash": "060b2b13ff53748128c01a0c3b17deb98ee0a07d255e9c2a592be2d6ad365648",
+  "reviewedBacklogSnapshotHash": "bea23b22798bb058fc3c8f6ed0e7edafe41f979434afad1e7d408c798241360a",
   "completedAt": "2026-09-28T16:19:01.534Z"
 }
