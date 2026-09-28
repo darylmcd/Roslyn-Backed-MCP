@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
 
@@ -135,6 +137,9 @@ public sealed class WorkspaceCloseDrainTests
             Assert.IsFalse(
                 outOfDirProcess.HasExited,
                 "A testhost process whose executable lives outside the working directory must be left running.");
+
+            // Additive contract: a fully handled drain keeps the original { success, workspaceId } shape.
+            AssertNoUndrainedProcesses(doc);
         }
         finally
         {
@@ -210,6 +215,7 @@ public sealed class WorkspaceCloseDrainTests
                 siblingProcess.HasExited,
                 "A testhost in a SIBLING directory sharing the working-directory string prefix " +
                 "(workingDirectory + \"-sibling\") must be left running — it is not a true descendant.");
+            AssertNoUndrainedProcesses(doc);
         }
         finally
         {
@@ -217,6 +223,275 @@ public sealed class WorkspaceCloseDrainTests
             KillQuietly(siblingProcess);
             TryDeleteDirectory(workingDirectory);
             TryDeleteDirectory(siblingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Race: a testhost started moments before the drain has not run its loader yet.
+    //
+    // Process.MainModule reads the target's loader module list (EnumProcessModules over the
+    // PEB loader data), which a new process only builds once its primary thread has run the
+    // loader. Until then MainModule returns null or throws ERROR_PARTIAL_COPY, and the drain
+    // used to skip the candidate: a testhost spawned just before workspace_close survived and
+    // kept its bin/ locks. Under CI load this window reached the real-process tests above.
+    // CREATE_SUSPENDED holds a process in that pre-loader state, so this test reproduces the
+    // race deterministically. It fails on the MainModule-based drain and passes once the drain
+    // reads the image path the kernel recorded at process creation.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostWhoseLoaderHasNotRun()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The CREATE_SUSPENDED pre-loader fixture is Windows-only.");
+            return;
+        }
+
+        const string expectedWorkspaceId = "test-ws-pre-loader-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-preloader-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        try
+        {
+            var executablePath = CopyLauncherUnder(Path.Combine(workingDirectory, "host"));
+            using var suspended = WindowsSuspendedProcess.Start(executablePath, LauncherArguments);
+            var suspendedPid = suspended.Process.Id;
+
+            Func<string, Process[]> getProcessesByName = name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(suspendedPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                : [];
+
+            var json = await CloseWithProcessSeamAsync(
+                new PassthroughGate(),
+                new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                new RecordingDotnetCommandRunner(),
+                expectedWorkspaceId,
+                getProcessesByName);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "CloseWorkspace must still return success=true when the testhost drain runs.");
+            Assert.IsTrue(
+                suspended.Process.WaitForExit(10_000),
+                "A testhost under the working directory must be killed even when its loader has not run yet.");
+            AssertNoUndrainedProcesses(doc);
+        }
+        finally
+        {
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // A candidate the drain cannot inspect is reported, never dropped and never killed.
+    // Its location is unknown, so killing it could hit an unrelated worktree's testhost, but
+    // it may hold locks under this workspace. The response and a Warning log name it.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow("access-denied", "access-denied", 0)]
+    [DataRow("throws", "path-query-failed", 1)]
+    public async Task CloseWorkspace_DrainProcessesTrue_ReportsCandidateWhosePathCannotBeRead(
+        string resolverOutcome,
+        string expectedReason,
+        int expectedUnexpectedReports)
+    {
+        const string expectedWorkspaceId = "test-ws-unreadable-path-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-unreadable-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        Process? inDirProcess = null;
+        try
+        {
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            var inDirPid = inDirProcess.Id;
+            var logger = new RecordingLogger();
+            var reporter = new RecordingUnexpectedExceptionReporter();
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner(),
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: new RecordingLoggerFactory(logger),
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(inDirPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : [],
+                processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+                ct: CancellationToken.None,
+                resolveExecutablePath: _ => resolverOutcome == "throws"
+                    ? throw new InvalidOperationException("simulated path query failure")
+                    : ProcessExecutablePathResolution.Unavailable(ProcessExecutablePathResolver.AccessDeniedReason));
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "An uninspectable candidate cannot roll back the committed close.");
+            AssertSingleUndrained(doc, "testhost", inDirPid, expectedReason);
+
+            Assert.IsFalse(inDirProcess.HasExited,
+                "A candidate whose executable path cannot be read must never be killed: its location is unknown.");
+
+            var warning = logger.Entries.Single(e => e.Level == LogLevel.Warning);
+            StringAssert.Contains(warning.Message, inDirPid.ToString(CultureInfo.InvariantCulture));
+            StringAssert.Contains(warning.Message, expectedReason);
+            Assert.AreEqual(expectedUnexpectedReports, reporter.Reports.Count,
+                "An access refusal is expected; only an exception from the path query is an unexpected failure.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_CandidateThatAlreadyExited_IsNotReported()
+    {
+        const string expectedWorkspaceId = "test-ws-exited-candidate-drain";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "rmcp-exited-drain-" + Guid.NewGuid().ToString("N"), "Sample.slnx");
+
+        Process? candidate = null;
+        try
+        {
+            candidate = StartLongLivedProcessFromSystemPath();
+            var candidatePid = candidate.Id;
+            var logger = new RecordingLogger();
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner(),
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: new RecordingLoggerFactory(logger),
+                exceptionReporter: null,
+                getProcessesByName: name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(candidatePid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : [],
+                processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+                ct: CancellationToken.None,
+                resolveExecutablePath: _ => ProcessExecutablePathResolution.Exited);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            AssertNoUndrainedProcesses(doc);
+            Assert.IsFalse(logger.Entries.Any(e => e.Level == LogLevel.Warning),
+                "A candidate that exited before inspection holds no locks and must not be reported.");
+        }
+        finally
+        {
+            KillQuietly(candidate);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Cancellation: once the cleanup budget is spent the drain terminates nothing, but it
+    // still reports the in-workspace testhost it left running instead of skipping the step.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainBudgetExhausted_ReportsInDirTesthostItLeftRunning()
+    {
+        const string expectedWorkspaceId = "test-ws-cancelled-drain";
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-cancelled-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        Process? inDirProcess = null;
+        try
+        {
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            var inDirPid = inDirProcess.Id;
+            var reporter = new RecordingUnexpectedExceptionReporter();
+
+            var json = await WorkspaceTools.CloseWorkspaceCore(
+                gate: new PassthroughGate(),
+                workspace: new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                commandRunner: new RecordingDotnetCommandRunner { Outcome = "timeout" },
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                loggerFactory: null,
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(inDirPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : [],
+                processDrainTimeout: TimeSpan.FromMilliseconds(25),
+                ct: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            AssertSingleUndrained(doc, "testhost", inDirPid, DetachedTestHostDrain.DrainCancelledReason);
+            Assert.IsFalse(inDirProcess.HasExited,
+                "A drain whose cleanup budget is spent must not terminate further processes.");
+            Assert.AreEqual(1, reporter.Reports.Count,
+                "The budget overrun is still reported exactly once.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            TryDeleteDirectory(workingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessExecutablePathResolver: resolves a process the moment it exists.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_JustStartedProcess_ResolvesItsExecutable()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-" + Guid.NewGuid().ToString("N"));
+        Process? process = null;
+        try
+        {
+            var executablePath = CopyLauncherUnder(directory);
+            process = StartLongLived(executablePath);
+
+            // No readiness wait: resolve the same instant the drain would.
+            using var candidate = Process.GetProcessById(process.Id);
+            var resolution = ProcessExecutablePathResolver.Resolve(candidate);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Resolved, resolution.Status, resolution.Reason);
+            Assert.AreEqual(
+                Path.GetFullPath(executablePath),
+                Path.GetFullPath(resolution.Path!),
+                ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            KillQuietly(process);
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_ProcessWhoseLoaderHasNotRun_ResolvesItsExecutable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The CREATE_SUSPENDED pre-loader fixture is Windows-only.");
+            return;
+        }
+
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-preloader-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var executablePath = CopyLauncherUnder(directory);
+            using var suspended = WindowsSuspendedProcess.Start(executablePath, LauncherArguments);
+
+            var resolution = ProcessExecutablePathResolver.Resolve(suspended.Process);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Resolved, resolution.Status, resolution.Reason);
+            Assert.AreEqual(executablePath, resolution.Path, ignoreCase: true);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
         }
     }
 
@@ -316,6 +591,7 @@ public sealed class WorkspaceCloseDrainTests
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
             "Workspace removal is the commit point; cleanup outcomes cannot roll it back.");
+        AssertNoUndrainedProcesses(doc);
         Assert.AreEqual(1, commandRunner.CallCount);
 
         var expectedReportCount = outcome == "success" ? 0 : 1;
@@ -353,6 +629,26 @@ public sealed class WorkspaceCloseDrainTests
             getProcessesByName,
             WorkspaceTools.DefaultProcessDrainTimeout,
             CancellationToken.None);
+
+    private static void AssertNoUndrainedProcesses(JsonDocument doc) =>
+        Assert.IsFalse(
+            doc.RootElement.TryGetProperty("undrainedProcesses", out _),
+            "undrainedProcesses is additive: it must be omitted when the drain handled every candidate.");
+
+    private static void AssertSingleUndrained(
+        JsonDocument doc,
+        string expectedProcessName,
+        int expectedProcessId,
+        string expectedReason)
+    {
+        Assert.IsTrue(doc.RootElement.TryGetProperty("undrainedProcesses", out var undrained),
+            "A candidate the drain left running must be listed in undrainedProcesses.");
+        Assert.AreEqual(1, undrained.GetArrayLength());
+        var entry = undrained[0];
+        Assert.AreEqual(expectedProcessName, entry.GetProperty("processName").GetString());
+        Assert.AreEqual(expectedProcessId, entry.GetProperty("processId").GetInt32());
+        Assert.AreEqual(expectedReason, entry.GetProperty("reason").GetString());
+    }
 
     private static WorkspaceStatusDto CreateStatus(string workspaceId, string loadedPath) =>
         new WorkspaceStatusDto(
@@ -396,9 +692,12 @@ public sealed class WorkspaceCloseDrainTests
 
     /// <summary>
     /// Copies the system launcher executable into <paramref name="targetDirectory"/> (so its
-    /// MainModule.FileName prefix-matches the working directory) and starts it long-lived.
+    /// executable path prefix-matches the working directory) and starts it long-lived.
     /// </summary>
-    private static Process StartLongLivedProcessUnder(string targetDirectory)
+    private static Process StartLongLivedProcessUnder(string targetDirectory) =>
+        StartLongLived(CopyLauncherUnder(targetDirectory));
+
+    private static string CopyLauncherUnder(string targetDirectory)
     {
         Directory.CreateDirectory(targetDirectory);
         var copyName = Path.GetFileName(SystemLauncherPath);
@@ -410,7 +709,7 @@ public sealed class WorkspaceCloseDrainTests
             File.SetUnixFileMode(copiedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        return StartLongLived(copiedPath);
+        return copiedPath;
     }
 
     private static Process StartLongLivedProcessFromSystemPath() => StartLongLived(SystemLauncherPath);
@@ -550,12 +849,6 @@ public sealed class WorkspaceCloseDrainTests
             Reports.Add((exception, category));
             return PublicExceptionDetailPolicy.ProjectUnexpected(exception, correlationId: "test-correlation");
         }
-    }
-
-    private sealed class ThrowingWorkspaceWarmService : IWorkspaceWarmService
-    {
-        public Task<WorkspaceWarmResult> WarmAsync(string workspaceId, string[]? projects, CancellationToken ct) =>
-            throw new NotSupportedException("This test disables prewarm.");
     }
 
     private sealed class RecordingLoggerFactory(RecordingLogger logger) : ILoggerFactory

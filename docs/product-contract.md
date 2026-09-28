@@ -105,6 +105,23 @@ the same `reason`. Recover from a workspace miss by calling `workspace_list`, th
 their category prefix (`NotFound:` for a plain miss) and error code, and carry the same token as
 `reason: WorkspaceNotFound` inside the sanitized error message.
 
+### `workspace_close` process drain
+
+With `drainProcesses: true`, the response keeps `success` and `workspaceId`. It adds an optional
+`undrainedProcesses` array only when the drain left a `testhost` / `vstest.console` candidate
+running that may hold file locks under the workspace. Each entry has `processName`, `processId`,
+and `reason`:
+
+| `reason` | Meaning |
+|---|---|
+| `access-denied` | The OS refused the executable-path query. The drain never kills a process whose location it cannot confirm. |
+| `path-query-failed` | The executable-path query failed for another reason. The process was not killed. |
+| `terminate-failed` | The process is under the workspace, but terminating it failed. |
+| `drain-cancelled` | The cleanup budget or caller cancellation ended the drain before this in-workspace process was terminated. |
+
+The array is omitted when every candidate was terminated, lay outside the workspace, or had
+already exited. Clients must ignore unknown fields, per `docs/release-policy.md`.
+
 ### Deprecations scheduled for 5.0
 
 These 4.x behaviors are deprecated. The 5.0.0 release will change them under an ADR with
