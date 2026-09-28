@@ -342,12 +342,16 @@ public static class SymbolTools
             // (count 0) while a source-anchored query at a usage site returns the full set. Mirror
             // the find_overrides corlib-virtual hint (gh #754): when the resolved symbol is a corlib
             // implementation root, return an explanatory hint instead of a bare (possibly-empty) set.
+            // find-implementations-corlib-guard-blocks-source-anchor: the guard applies ONLY to
+            // non-source locators (metadataName / symbolHandle). A source-anchored locator binds the
+            // symbol through the document's own compilation — exactly the remedy the hint
+            // recommends — so it must enumerate normally instead of short-circuiting to count 0.
             // The normal (non-corlib) output shape is unchanged; when the concrete service
             // supports a pre-resolved symbol path, reuse this symbol instead of resolving the
             // same locator again inside ReferenceService.
             var solution = workspaceManager.GetCurrentSolution(workspaceId);
             var resolved = await SymbolResolver.ResolveAsync(solution, locator, c).ConfigureAwait(false);
-            if (resolved is not null && ReferenceService.IsCorlibImplementationRoot(resolved))
+            if (resolved is not null && !locator.HasSourceLocation && ReferenceService.IsCorlibImplementationRoot(resolved))
             {
                 var hint =
                     "Resolved to a corlib/BCL interface or abstract type root (e.g. System.IDisposable, " +
