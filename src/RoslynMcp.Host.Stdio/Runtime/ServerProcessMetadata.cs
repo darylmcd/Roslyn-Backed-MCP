@@ -53,8 +53,11 @@ public sealed class ServerProcessMetadata
     /// </summary>
     internal HostProcessMetadataSnapshotProvider PreviousProcessSnapshot { get; } = new();
 
-    private static DateTimeOffset ReadProcessStartUtc() =>
-        Process.GetCurrentProcess().StartTime.ToUniversalTime();
+    private static DateTimeOffset ReadProcessStartUtc()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.StartTime.ToUniversalTime();
+    }
 
     private static bool IsExpectedStartTimeFailure(Exception exception) =>
         exception is InvalidOperationException or NotSupportedException or Win32Exception;

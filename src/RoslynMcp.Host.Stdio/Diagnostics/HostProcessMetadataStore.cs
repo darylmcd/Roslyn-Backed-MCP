@@ -18,8 +18,9 @@ namespace RoslynMcp.Host.Stdio.Diagnostics;
 /// <list type="number">
 ///   <item><description><see cref="LoadPrevious"/> — called once at host startup. Reads
 ///     the on-disk record (if any), validates it is fresh enough (<see cref="StaleAfter"/>),
-///     and returns a snapshot. Subsequent calls return <see langword="null"/> — the snapshot
-///     is consume-once so a second probe never re-emits previous-* fields.</description></item>
+///     and returns a snapshot. It is idempotent: subsequent calls return the same cached
+///     value. Consume-once (a second probe never re-emits previous-* fields) lives in
+///     <see cref="Runtime.ServerProcessMetadata.PreviousProcessSnapshot"/>.</description></item>
 ///   <item><description><see cref="WriteCurrent"/> — called on graceful shutdown via the
 ///     <c>ApplicationStopping</c> hook. Persists the current PID, exit timestamp, and recycle
 ///     reason so the NEXT process can read them.</description></item>
