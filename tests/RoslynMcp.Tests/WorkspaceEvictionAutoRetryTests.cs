@@ -354,23 +354,21 @@ public sealed class WorkspaceEvictionAutoRetryTests
     /// An <c>IWorkspaceManager</c> <i>is</i> supplied, but the eviction carries no recorded
     /// <c>LoadedPath</c> (the cross-process host-recycle shape), so
     /// <c>TryReloadEvictedWorkspaceForRetryAsync</c> returns <see langword="null"/> without
-    /// attempting a load — leaving the orchestrator to reproduce the pre-existing inline
-    /// <c>ReportStage("done")</c> → <c>ClassifyAndFormat</c> → <c>InjectSchemaHintIfPossible</c>
-    /// envelope. That envelope is asserted byte-for-byte against the same three calls made
-    /// directly on the very exception instance the fake threw.
+    /// attempting a load. The orchestrator must then rethrow the very exception instance the fake
+    /// threw (validation-tools-error-envelope-not-iserror: no inline envelope, so the shared
+    /// filter reports it with <c>isError: true</c>), and the filter's envelope must keep the
+    /// <c>WorkspaceEvicted</c> category plus the <c>test_run</c> schemaHint.
     /// </para>
     ///
     /// <para>
     /// <b>Test double, not a real race:</b> the eviction is injected by an
     /// <see cref="ITestRunnerService"/> that throws on invocation. That exercises the code path
     /// the genuine "evicted strictly between the precheck and the deeper lookup" timing window
-    /// reaches; it does not reproduce the window itself. The result is deliberately compared
-    /// raw rather than through <c>ToolExecutionTestHarness</c>, whose <c>_meta</c> injection
-    /// carries a nondeterministic elapsed-ms field that byte-for-byte equality cannot tolerate.
+    /// reaches; it does not reproduce the window itself.
     /// </para>
     /// </summary>
     [TestMethod]
-    public async Task RunTests_MidCallEviction_UnrecoverableRetry_ReproducesInlineEnvelopeByteForByte()
+    public async Task RunTests_MidCallEviction_UnrecoverableRetry_RethrowsOriginalEvictionToSharedFilter()
     {
         using var manager = CreateManager(maxConcurrentWorkspaces: 1);
         var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
@@ -390,25 +388,23 @@ public sealed class WorkspaceEvictionAutoRetryTests
             // Live workspace — the gate precheck must PASS so the eviction is observed mid-call.
             var liveStatus = await manager.LoadAsync(path1, EvictPolicy.Strict, CancellationToken.None);
 
-            var json = await ValidationTools.RunTests(
-                gate,
-                runner,
-                workspaceId: liveStatus.WorkspaceId,
-                projectName: null,
-                filter: null,
-                progress: null,
-                workspaceManager: manager,
-                ct: CancellationToken.None);
+            var thrown = await Assert.ThrowsExactlyAsync<WorkspaceEvictedException>(
+                () => ValidationTools.RunTests(
+                    gate,
+                    runner,
+                    workspaceId: liveStatus.WorkspaceId,
+                    projectName: null,
+                    filter: null,
+                    progress: null,
+                    workspaceManager: manager,
+                    ct: CancellationToken.None));
 
+            Assert.AreSame(midCallEviction, thrown,
+                "The unrecoverable mid-call eviction must propagate unchanged to the shared error filter.");
             Assert.AreEqual(1, runner.InvocationCount,
                 "The suite must be attempted exactly once — an unrecoverable eviction must not re-run it.");
 
-            var expected = ToolErrorHandler.InjectSchemaHintIfPossible(
-                ToolErrorHandler.ClassifyAndFormat(midCallEviction, "test_run"),
-                "test_run");
-            Assert.AreEqual(expected, json,
-                "The unrecoverable mid-call eviction must reproduce the pre-existing inline envelope byte-for-byte.");
-
+            var json = await ToolExecutionTestHarness.RunAsync("test_run", () => Task.FromException<string>(thrown));
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
@@ -416,6 +412,9 @@ public sealed class WorkspaceEvictionAutoRetryTests
             Assert.AreEqual("WorkspaceEvicted", root.GetProperty("category").GetString(),
                 $"The eviction category must survive the retry wiring. Actual: {json}");
             Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
+            Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
+                $"The shared filter must keep test_run's any-category schemaHint. Actual: {json}");
+            StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "test_run(");
         }
         finally
         {

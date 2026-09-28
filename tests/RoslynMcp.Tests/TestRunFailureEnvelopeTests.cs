@@ -8,6 +8,7 @@ using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -739,15 +740,15 @@ public sealed class TestRunFailureEnvelopeTests
     public async Task RunTests_InvalidPagingArguments_ReturnInvalidArgumentEnvelope(
         int failuresOffset, int failuresLimit, string expectedParameter)
     {
-        // Mirrors DiscoverTests' guard, which also lives INSIDE the try — so the ArgumentException
-        // is classified into the tool's structured InvalidArgument envelope rather than escaping.
+        // The guard's ArgumentException propagates to the shared error filter (simulated by the
+        // harness), which classifies it into the structured InvalidArgument envelope.
         var runner = new LargeFailureSetTestRunnerService(
             total: 1, passed: 0, failed: 1, skipped: 0, failureCount: 1);
 
-        var json = await ValidationTools.RunTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_run", () => ValidationTools.RunTests(
             new PassthroughGate(), runner, workspaceId: "ws-bad-paging", projectName: null, filter: null,
             failuresOffset: failuresOffset, failuresLimit: failuresLimit,
-            progress: null, ct: CancellationToken.None);
+            progress: null, ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -1007,14 +1008,14 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task RunTests_ToolRunnerThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.RunTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_run", () => ValidationTools.RunTests(
             new PassthroughGate(),
             new ThrowingTestRunnerService(new InvalidOperationException("no test projects matched filter")),
             workspaceId: "ws-test-run-envelope",
             projectName: "Missing.Tests",
             filter: "FullyQualifiedName~Nothing",
             progress: null,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -1046,14 +1047,14 @@ public sealed class TestRunFailureEnvelopeTests
             "Project 'Sample.Tests' only supports Microsoft.Testing.Platform (MTP). " +
             "Add a global.json with {\"test\": {\"runner\": \"Microsoft.Testing.Platform\"}} and retry.";
 
-        var json = await ValidationTools.RunTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_run", () => ValidationTools.RunTests(
             new PassthroughGate(),
             new ThrowingTestRunnerService(new PublicInvalidOperationException(actionableMessage)),
             workspaceId: "ws-public-invalid-operation",
             projectName: "Sample.Tests",
             filter: null,
             progress: null,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -1091,22 +1092,23 @@ public sealed class TestRunFailureEnvelopeTests
             .Contains("some internal detail", StringComparison.Ordinal));
     }
 
-    // host-tools-layer-test-coverage-gap: build_workspace, build_project, test_discover,
-    // test_related, and test_related_files now attach the same schemaHint-on-failure recovery
-    // guidance as test_run on ANY error category (previously only ever hinting on
-    // InvalidArgument via the global filter default). Each test drives the shim with a service
-    // stub that throws InvalidOperationException — a non-InvalidArgument category — and asserts
-    // the returned envelope carries a catalog-backed schemaHint for the tool.
+    // host-tools-layer-test-coverage-gap / validation-tools-error-envelope-not-iserror:
+    // build_workspace, build_project, test_discover, test_related, and test_related_files attach
+    // the same schemaHint-on-failure recovery guidance as test_run on ANY non-InternalError
+    // category. The tools no longer format errors inline — the exception reaches the shared
+    // filter (simulated by ToolExecutionTestHarness), which keeps isError=true. Each test drives
+    // the shim with a service stub that throws InvalidOperationException — a non-InvalidArgument
+    // category — and asserts the envelope carries a catalog-backed schemaHint for the tool.
 
     [TestMethod]
     public async Task BuildWorkspace_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.BuildWorkspace(
+        var json = await ToolExecutionTestHarness.RunAsync("build_workspace", () => ValidationTools.BuildWorkspace(
             new PassthroughGate(),
             new ThrowingBuildService(new InvalidOperationException("workspace build blew up")),
             workspaceId: "ws-build-workspace-envelope",
             progress: null,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "build_workspace", "workspace build blew up");
     }
@@ -1114,12 +1116,12 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task BuildProject_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.BuildProject(
+        var json = await ToolExecutionTestHarness.RunAsync("build_project", () => ValidationTools.BuildProject(
             new PassthroughGate(),
             new ThrowingBuildService(new InvalidOperationException("project build blew up")),
             workspaceId: "ws-build-project-envelope",
             projectName: "Missing.Project",
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "build_project", "project build blew up");
     }
@@ -1127,7 +1129,7 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task DiscoverTests_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.DiscoverTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_discover", () => ValidationTools.DiscoverTests(
             new PassthroughGate(),
             new ThrowingTestDiscoveryService(new InvalidOperationException("discovery blew up")),
             workspaceId: "ws-test-discover-envelope",
@@ -1135,7 +1137,7 @@ public sealed class TestRunFailureEnvelopeTests
             nameFilter: null,
             offset: 0,
             limit: 50,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_discover", "discovery blew up");
     }
@@ -1143,7 +1145,7 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task FindRelatedTests_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.FindRelatedTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_related", () => ValidationTools.FindRelatedTests(
             new PassthroughGate(),
             new ThrowingTestDiscoveryService(new InvalidOperationException("related-symbol blew up")),
             workspaceId: "ws-test-related-envelope",
@@ -1153,7 +1155,7 @@ public sealed class TestRunFailureEnvelopeTests
             symbolHandle: null,
             metadataName: "Some.Namespace.SomeType",
             maxResults: 100,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_related", "related-symbol blew up");
     }
@@ -1161,13 +1163,13 @@ public sealed class TestRunFailureEnvelopeTests
     [TestMethod]
     public async Task FindRelatedTestsForFiles_ServiceThrows_ReturnsStructuredEnvelopeWithSchemaHint()
     {
-        var json = await ValidationTools.FindRelatedTestsForFiles(
+        var json = await ToolExecutionTestHarness.RunAsync("test_related_files", () => ValidationTools.FindRelatedTestsForFiles(
             gate: new PassthroughGate(),
             testDiscoveryService: new ThrowingTestDiscoveryService(new InvalidOperationException("related-files blew up")),
             workspaceId: "ws-test-related-files-envelope",
             filePaths: ["C:/fake/Changed.cs"],
             maxResults: 100,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         AssertNonInvalidArgumentEnvelopeHasSchemaHint(json, "test_related_files", "related-files blew up");
     }
