@@ -39,10 +39,14 @@ internal sealed record DetachedTestHostDrainResult(
 /// back in <see cref="DetachedTestHostDrainResult.Undrained"/> and is logged at Warning. A
 /// process whose executable path cannot be read is never terminated, because its location
 /// is unknown. Only a process that has already exited counts as benign.</para>
-/// <para>Both sides of the descendant check are physical paths. The working directory comes from
-/// the session's <c>LoadedPath</c>, which <c>workspace_load</c> stores only after resolving every
-/// symlink and junction. <see cref="ProcessExecutablePathResolver"/> reports the post-reparse
-/// image path, so a candidate launched through a link into the workspace still matches.</para>
+/// <para>The two sides of the descendant check can name one directory in different forms. The
+/// working directory comes from the session's <c>LoadedPath</c>. <c>workspace_load</c> resolves
+/// its symlinks and junctions but keeps a drive-letter alias (<c>subst</c>). The candidate's
+/// image path from <see cref="ProcessExecutablePathResolver"/> has its reparse points resolved and
+/// sits on the volume's own drive letter, never on an alias. So a candidate matches when it is
+/// under the working directory as loaded, or under its canonical form from
+/// <see cref="FinalPathResolver"/>. <see cref="Path.GetFullPath(string)"/> expands 8.3 short
+/// names on both sides.</para>
 /// <para>After the cancellation token fires (the cleanup budget ran out or the
 /// caller cancelled), the drain stops terminating processes. It still reports each in-workspace
 /// candidate it did not terminate.</para>
@@ -68,18 +72,10 @@ internal static class DetachedTestHostDrain
         string workspaceId,
         CancellationToken cancellationToken)
     {
-        // Boundary guard: only TRUE DESCENDANTS of workingDirectory match. A bare
-        // StartsWith(workingDirectory) false-positives on a sibling worktree whose path is a
-        // string prefix (".../wt-foo" vs ".../wt-foo-bar"). That would kill an unrelated
-        // worktree's testhost tree mid-run, and .worktrees/ holds concurrent siblings during
-        // parallel sweeps. Normalize to a full path and append exactly one separator so the
-        // prefix can only match a child path.
-        string workingDirectoryPrefix;
+        List<string> workingDirectoryPrefixes;
         try
         {
-            workingDirectoryPrefix =
-                Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
+            workingDirectoryPrefixes = GetWorkingDirectoryPrefixes(workingDirectory, logger, workspaceId);
         }
         catch (Exception ex)
         {
@@ -110,7 +106,7 @@ internal static class DetachedTestHostDrain
                     var reason = DrainCandidate(
                         process,
                         processName,
-                        workingDirectoryPrefix,
+                        workingDirectoryPrefixes,
                         resolveExecutablePath,
                         logger,
                         workspaceId,
@@ -152,12 +148,54 @@ internal static class DetachedTestHostDrain
         return new DetachedTestHostDrainResult(undrained, firstFailure);
     }
 
+    /// <summary>
+    /// The working directory as loaded, plus its canonical form when that differs. A candidate
+    /// is in the workspace when its image path starts with any returned prefix.
+    /// </summary>
+    /// <remarks>Boundary guard: only TRUE DESCENDANTS of the working directory match. A bare
+    /// <c>StartsWith(workingDirectory)</c> false-positives on a sibling worktree whose path is a
+    /// string prefix (<c>.../wt-foo</c> vs <c>.../wt-foo-bar</c>). That would kill an unrelated
+    /// worktree's testhost tree mid-run, and <c>.worktrees/</c> holds concurrent siblings during
+    /// parallel sweeps. Each prefix is a full path ending in exactly one separator, so it can only
+    /// match a child path.</remarks>
+    private static List<string> GetWorkingDirectoryPrefixes(
+        string workingDirectory,
+        ILogger? logger,
+        string workspaceId)
+    {
+        var prefixes = new List<string>(2) { ToDescendantPrefix(workingDirectory) };
+        if (FinalPathResolver.TryResolve(workingDirectory, out var finalPath, out var error))
+        {
+            var canonicalPrefix = ToDescendantPrefix(finalPath);
+            if (!string.Equals(canonicalPrefix, prefixes[0], StringComparison.OrdinalIgnoreCase))
+            {
+                prefixes.Add(canonicalPrefix);
+            }
+        }
+        else if (error != 0)
+        {
+            // Not a candidate failure: without the canonical form, the drain still matches the
+            // working directory as loaded, which covers every workspace not on a drive alias.
+            logger?.LogDebug(
+                "workspace_close drain could not resolve the canonical working directory of workspace " +
+                "{WorkspaceId} (Win32 error {Win32Error}); matching candidates against the loaded path only.",
+                workspaceId,
+                error);
+        }
+
+        return prefixes;
+    }
+
+    private static string ToDescendantPrefix(string directory) =>
+        Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+        + Path.DirectorySeparatorChar;
+
     /// <returns><see langword="null"/> when the candidate needs no report: it was terminated,
     /// lives outside the workspace, or had already exited. Otherwise the undrained reason.</returns>
     private static string? DrainCandidate(
         Process process,
         string processName,
-        string workingDirectoryPrefix,
+        IReadOnlyList<string> workingDirectoryPrefixes,
         Func<Process, ProcessExecutablePathResolution> resolveExecutablePath,
         ILogger? logger,
         string workspaceId,
@@ -187,7 +225,7 @@ internal static class DetachedTestHostDrain
             return ProcessExecutablePathResolver.PathQueryFailedReason;
         }
 
-        if (!executablePath.StartsWith(workingDirectoryPrefix, StringComparison.OrdinalIgnoreCase))
+        if (!workingDirectoryPrefixes.Any(prefix => executablePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
         {
             return null;
         }

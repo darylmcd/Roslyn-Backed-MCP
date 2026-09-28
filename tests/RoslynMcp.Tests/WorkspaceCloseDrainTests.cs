@@ -9,6 +9,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -24,7 +25,9 @@ namespace RoslynMcp.Tests;
 // GUID directory, and the getProcessesByName seam hands the drain only those pids, so a drain
 // can never reach another class's process. The single seam-less test drains a fake workspace
 // rooted at %TEMP%\repo, whose kill filter only matches testhost/vstest.console executables under
-// that directory, which no test in this assembly launches. Validated by a bounded repeated (3x)
+// that directory, which no test in this assembly launches. The drive-alias tests map a random free
+// letter for the logon session, give it up if another run defined the same letter at the same
+// moment, and remove it in finally. Validated by a bounded repeated (3x)
 // concurrent run alongside its wave-36 siblings and parallel-enabled workspace-loading classes,
 // green every time.
 [TestClass]
@@ -82,7 +85,7 @@ public sealed class WorkspaceCloseDrainTests
     // executable lives under the working directory, and leaves out-of-dir ones alone.
     //
     // Uses real, long-lived child processes (the only way to exercise the
-    // Process.MainModule path-prefix filter + Kill end-to-end — Process has no
+    // executable-path prefix filter + Kill end-to-end — Process has no
     // mockable surface). The getProcessesByName seam injects them into the drain.
     // ---------------------------------------------------------------------------
 
@@ -92,7 +95,7 @@ public sealed class WorkspaceCloseDrainTests
         const string expectedWorkspaceId = "test-ws-testhost-drain";
 
         // workingDirectory = directory of the loaded path. Place the in-dir process's
-        // executable in a child folder so its MainModule.FileName prefix-matches.
+        // executable in a child folder so its executable path prefix-matches.
         var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-testhost-drain-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workingDirectory);
         var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
@@ -335,6 +338,103 @@ public sealed class WorkspaceCloseDrainTests
         {
             KillQuietly(launched);
             TryDeleteDirectory(root);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // A drive-letter alias (subst, DefineDosDevice) is not a filesystem link, so workspace_load
+    // keeps it in LoadedPath. The kernel reports an image under the alias on the backing volume's
+    // own drive letter, so the two paths name the same directory in different forms. Unless the
+    // drain also compares the working directory's canonical path, an in-workspace testhost on an
+    // aliased workspace is neither killed nor reported.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostOnADriveLetterAlias()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are Windows-only.");
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-alias-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        WindowsDriveAlias? alias = null;
+        Process? launched = null;
+        try
+        {
+            alias = WindowsDriveAlias.Create(root);
+            var workingDirectory = Path.Combine(alias.RootPath, "ws");
+            var loadedPath = PhysicalPathResolver.Resolve(Path.Combine(workingDirectory, "Sample.slnx"));
+            Assert.IsTrue(
+                loadedPath.StartsWith(alias.RootPath, StringComparison.OrdinalIgnoreCase),
+                $"workspace_load path resolution is expected to keep the drive alias; got '{loadedPath}'.");
+
+            launched = StartLongLived(CopyLauncherUnder(Path.Combine(workingDirectory, "host")));
+
+            await AssertDrainKillsCandidateAsync(
+                "test-ws-alias-drain",
+                loadedPath,
+                launched,
+                "A testhost under a workspace loaded through a drive-letter alias must be killed.");
+        }
+        finally
+        {
+            KillQuietly(launched);
+            alias?.Dispose();
+            TryDeleteDirectory(root);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 8.3 short names: QueryFullProcessImageNameW reports a component in the form the process was
+    // launched with, and LoadedPath keeps the form the caller passed. Either side can use the short
+    // name while the other uses the long one (a TEMP of C:\Users\RUNNER~1\... on hosted runners is
+    // the common source). The drain passes both sides through Path.GetFullPath, which expands short
+    // names to long ones, and this pins that: the check must not drop the normalization.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow("launch")]
+    [DataRow("load")]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostWhenOneSideUsesAShortName(string shortSide)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("8.3 short names are Windows-only.");
+            return;
+        }
+
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-short-name-drain-" + Guid.NewGuid().ToString("N"));
+        Process? launched = null;
+        try
+        {
+            var executablePath = CopyLauncherUnder(Path.Combine(workingDirectory, "host"));
+            var shortWorkingDirectory = WindowsShortPathName.Get(workingDirectory);
+            if (string.Equals(shortWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Inconclusive("The temp volume does not generate 8.3 short names.");
+                return;
+            }
+
+            var loadedPath = Path.Combine(
+                shortSide == "load" ? shortWorkingDirectory : workingDirectory,
+                "Sample.slnx");
+            launched = StartLongLived(shortSide == "launch"
+                ? Path.Combine(shortWorkingDirectory, "host", Path.GetFileName(executablePath))
+                : executablePath);
+
+            await AssertDrainKillsCandidateAsync(
+                "test-ws-short-name-drain",
+                loadedPath,
+                launched,
+                $"A testhost under the workspace must be killed when only the {shortSide} path uses the 8.3 short name.");
+        }
+        finally
+        {
+            KillQuietly(launched);
+            TryDeleteDirectory(workingDirectory);
         }
     }
 
@@ -588,6 +688,67 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     // ---------------------------------------------------------------------------
+    // FinalPathResolver: maps a directory into the form the process-image query reports.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow(@"\\?\C:\repo\ws", @"C:\repo\ws")]
+    [DataRow(@"\\?\UNC\server\share\ws", @"\\server\share\ws")]
+    [DataRow(@"\\?\Volume{0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0}\ws", @"\\?\Volume{0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0}\ws")]
+    [DataRow(@"C:\repo\ws", @"C:\repo\ws")]
+    public void FinalPathResolver_ToWin32Path_StripsOnlyAPrefixThatLeavesAWin32Path(string finalPath, string expected)
+    {
+        Assert.AreEqual(expected, FinalPathResolver.ToWin32Path(finalPath));
+    }
+
+    [TestMethod]
+    public void FinalPathResolver_DirectoryOnADriveLetterAlias_ResolvesToTheBackingVolumePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are Windows-only.");
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-final-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "ws"));
+        WindowsDriveAlias? alias = null;
+        try
+        {
+            alias = WindowsDriveAlias.Create(root);
+
+            Assert.IsTrue(
+                FinalPathResolver.TryResolve(Path.Combine(alias.RootPath, "ws"), out var finalPath, out var error),
+                $"Win32 error {error}");
+
+            // Path.GetFullPath expands any 8.3 component of the temp root, as the final path does.
+            Assert.AreEqual(Path.GetFullPath(Path.Combine(root, "ws")), finalPath, ignoreCase: true);
+        }
+        finally
+        {
+            alias?.Dispose();
+            TryDeleteDirectory(root);
+        }
+    }
+
+    [TestMethod]
+    public void FinalPathResolver_MissingPath_ReportsNoResult()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "rmcp-final-path-missing-" + Guid.NewGuid().ToString("N"));
+
+        Assert.IsFalse(FinalPathResolver.TryResolve(missing, out var finalPath, out var error));
+        Assert.IsNull(finalPath);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(2, error, "ERROR_FILE_NOT_FOUND names why the path could not be resolved.");
+        }
+        else
+        {
+            Assert.AreEqual(0, error, "Platforms without drive aliases have no query to fail.");
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // Negative: drainProcesses=false (default) must NOT invoke commandRunner
     // ---------------------------------------------------------------------------
 
@@ -721,6 +882,38 @@ public sealed class WorkspaceCloseDrainTests
             getProcessesByName,
             WorkspaceTools.DefaultProcessDrainTimeout,
             CancellationToken.None);
+
+    // Drains one real candidate and asserts the full success shape: the candidate was killed, the
+    // response keeps its original shape, and nothing was logged at Warning.
+    private static async Task AssertDrainKillsCandidateAsync(
+        string workspaceId,
+        string loadedPath,
+        Process candidate,
+        string killedMessage)
+    {
+        var candidateId = candidate.Id;
+        var logger = new RecordingLogger();
+        var json = await WorkspaceTools.CloseWorkspaceCore(
+            gate: new PassthroughGate(),
+            workspace: new FakeWorkspaceManagerForDrain(CreateStatus(workspaceId, loadedPath)),
+            commandRunner: new RecordingDotnetCommandRunner(),
+            workspaceId: workspaceId,
+            drainProcesses: true,
+            loggerFactory: new RecordingLoggerFactory(logger),
+            exceptionReporter: null,
+            getProcessesByName: name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(candidateId) }.Where(p => p is not null).Select(p => p!).ToArray()
+                : [],
+            processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.IsTrue(candidate.WaitForExit(10_000), killedMessage);
+        AssertNoUndrainedProcesses(doc);
+        Assert.IsFalse(logger.Entries.Any(e => e.Level == LogLevel.Warning),
+            "A candidate the drain killed must not be logged as left running.");
+    }
 
     private static void AssertNoUndrainedProcesses(JsonDocument doc) =>
         Assert.IsFalse(

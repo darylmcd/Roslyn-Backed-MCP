@@ -1,6 +1,6 @@
 # workspace-close-drain-pid-reuse-between-resolve-and-kill — workspace_close drain can kill a recycled pid
 
-**row:** `workspace-close-drain-pid-reuse-between-resolve-and-kill` · **pri:** `Low` · **size:** `M` · **deps:** `—`
+**row:** `workspace-close-drain-pid-reuse-between-resolve-and-kill` · **pri:** `Low` · **size:** `M`
 
 ## Anchors
 
@@ -17,7 +17,7 @@
 
 ## Evidence
 
-- `DetachedTestHostDrain.cs:171` resolves through the seam, whose Windows path opens and closes its own handle (`ProcessExecutablePathResolver.cs:92`). `DetachedTestHostDrain.cs:203` then calls `process.Kill(entireProcessTree: true)`, which re-opens the process by pid. `Process` objects from `GetProcessesByName` hold no handle, so nothing pins the pid between the two opens. Pre-existing since #1013; listed as a follow-up in PR #1666.
+- `DetachedTestHostDrain.cs:209` resolves through the seam, whose Windows path opens and closes its own handle (`ProcessExecutablePathResolver.cs:92`). `DetachedTestHostDrain.cs:241` then calls `process.Kill(entireProcessTree: true)`, which re-opens the process by pid. `Process` objects from `GetProcessesByName` hold no handle, so nothing pins the pid between the two opens. Pre-existing since #1013; listed as a follow-up in PR #1666.
 
 ## Context
 
