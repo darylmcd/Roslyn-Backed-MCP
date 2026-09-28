@@ -26,7 +26,7 @@
 - Parent mechanism for the InvalidOperationException refusal rows, which stay as the burn-down: `project-mutation-refusals-public-message`, `cross-project-refactoring-refusals-public-message`, `project-name-not-found-misleading-reload-advice`, and the InvalidOperationException halves of `file-create-and-scaffold-refusals-public-message` and `change-signature-refusals-public-message`.
 - ArgumentException counterpart: `argument-exception-public-message-guard` and its family (on main since #1654) ban ArgumentException construction in `src/` through a src-scoped `src/BannedSymbols.txt`. The same ban cannot start with InvalidOperationException: RS0030 would fail the build on the 337 existing sites, and RS0030 is shared by every entry in that file, so downgrading it for a baseline would weaken the ArgumentException ban. The ratchet test is the guard; moving the rule into `src/BannedSymbols.txt` once the baseline is empty is optional.
 - The binding-failure half of the same retro issue is `tool-binding-missing-parameter-named`.
-- Auto-restore failures (`WorkspaceTools.cs:639`, `:651`) are sites of this mechanism; `compile-check-restore-required-handshake` fixes them directly.
+- Auto-restore failures (`WorkspaceTools.cs:664`, `:676` at `02db6c49`) are sites of this mechanism; `compile-check-restore-required-handshake` fixes them directly.
 - Already fixed: `0da6adab` (#1522), `44ed425f` (#1549), `99a95c6e` (#1612).
 
 ## Notes

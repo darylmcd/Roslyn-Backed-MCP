@@ -4,7 +4,7 @@
 
 ## Anchors
 
-- `src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:201-330`
+- `src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:170-373`
 - `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:331-393`
 - `src/RoslynMcp.Core/Services/ITestRunnerService.cs`
 - `src/RoslynMcp.Roslyn/Services/ValidationServiceOptions.cs`
@@ -17,7 +17,7 @@
 - [ ] `test_run` accepts `msbuildProperties` (a name/value map), passed as `-p:Name=Value` with each value a separate process argument, never through a shell string. Verify both argument shapes: native MTP mode forwards arguments it does not recognise to the test host (`TestRunnerService.cs:355-358`).
 - [ ] Property names outside an allowlist are refused with a coded, public error that names the allowlist. The allowlist is configuration (a `ValidationServiceOptions` entry with a documented default and an env override bound in `Program.cs`), not a literal in the service.
 - [ ] Tests assert the exact argument list for each combination and the refusal for a non-allowlisted property.
-- [ ] The new options reach `TestRunnerService` through a default-implemented `ITestRunnerService` overload, so the 9 test doubles (in 7 files) that implement the interface need no change.
+- [ ] The new options reach `TestRunnerService` through a default-implemented `ITestRunnerService` overload, so the 9 test doubles (in 6 test files, re-counted at `02db6c49`) that implement the interface need no change.
 
 ## Evidence
 
