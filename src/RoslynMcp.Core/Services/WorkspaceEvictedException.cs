@@ -121,12 +121,13 @@ public sealed class WorkspaceEvictedException : System.Collections.Generic.KeyNo
 }
 
 /// <summary>
-/// Process-wide publisher for the previous-host-process recycle context that
-/// <c>WorkspaceManager</c> consults when a workspace lookup misses. Mirrors the
-/// <c>HostProcessMetadataSnapshotProvider</c> pattern (in
-/// <c>RoslynMcp.Host.Stdio.Diagnostics</c>) so the manager — which lives in
-/// <c>RoslynMcp.Roslyn</c> — can read the signal without taking a layering-violating
-/// dependency on the host-stdio assembly.
+/// Process-wide static publisher for the previous-host-process recycle context that
+/// <c>WorkspaceManager</c> consults when a workspace lookup misses. It is static so the
+/// manager — which lives in <c>RoslynMcp.Roslyn</c> — can read the signal without taking a
+/// layering-violating dependency on the host-stdio assembly. Unlike this registry, the
+/// consume-once <c>server_info</c> snapshot is NOT static: it is per-instance state on the
+/// host's DI-injected <c>ServerProcessMetadata.PreviousProcessSnapshot</c> (in
+/// <c>RoslynMcp.Host.Stdio.Runtime</c>).
 /// </summary>
 /// <remarks>
 /// <para>

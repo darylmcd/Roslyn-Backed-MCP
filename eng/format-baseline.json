@@ -8,11 +8,11 @@
     "WHITESPACE"
   ],
   "totals": {
-    "findingCount": 121,
-    "fileCount": 114,
+    "findingCount": 119,
+    "fileCount": 113,
     "countsByDiagnosticId": {
       "FINALNEWLINE": 1,
-      "IDE1006": 12,
+      "IDE1006": 10,
       "IMPORTS": 105,
       "WHITESPACE": 3
     }
@@ -20,16 +20,6 @@
   "files": [
     {
       "path": "src/RoslynMcp.Core/Services/WorkspaceEvictedException.cs",
-      "findingCount": 2,
-      "diagnosticIds": [
-        "IDE1006"
-      ],
-      "countsByDiagnosticId": {
-        "IDE1006": 2
-      }
-    },
-    {
-      "path": "src/RoslynMcp.Host.Stdio/Diagnostics/HostProcessMetadataSnapshotProvider.cs",
       "findingCount": 2,
       "diagnosticIds": [
         "IDE1006"

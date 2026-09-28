@@ -100,9 +100,10 @@ public sealed class HostProcessMetadataStore
 
     /// <summary>
     /// Reads and CACHES the previous-process snapshot at first call. Subsequent calls return
-    /// the same cached value. Consume-once semantics live in
-    /// <see cref="HostProcessMetadataSnapshotProvider"/>; this method is idempotent so callers
-    /// can inspect or re-publish without burning the latch.
+    /// the same cached value. Consume-once semantics live in the per-host
+    /// <see cref="HostProcessMetadataSnapshotProvider"/> instance owned by
+    /// <see cref="Runtime.ServerProcessMetadata.PreviousProcessSnapshot"/>; this method is
+    /// idempotent so callers can inspect or re-publish without burning that latch.
     /// <para>
     /// Side-effect: deletes the on-disk record after a successful read so the same snapshot
     /// is not surfaced twice across separate process lifetimes (e.g. if the next host crashes
