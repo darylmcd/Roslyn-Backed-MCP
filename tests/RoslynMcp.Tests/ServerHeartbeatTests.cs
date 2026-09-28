@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -72,7 +73,7 @@ public sealed class ServerHeartbeatTests
         // terminal label, not the previous "initializing" which incorrectly implied a
         // transient step that would auto-advance. The server only transitions via an
         // explicit workspace_load call.
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
+        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -85,7 +86,7 @@ public sealed class ServerHeartbeatTests
     [TestMethod]
     public async Task Heartbeat_OneWorkspaceLoaded_ReturnsReadyWithCountOne()
     {
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
+        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -104,14 +105,15 @@ public sealed class ServerHeartbeatTests
         // no transient intermediate `initializing` step — the label `idle` is terminal
         // until workspace_load is called. A hard-gate prompt that polls through this
         // transition should observe exactly two distinct states in order: idle, ready.
-        var preLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
+        var processMetadata = new ServerProcessMetadata();
+        var preLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0), processMetadata);
         using var preLoadDoc = JsonDocument.Parse(preLoadJson.TextPayload());
         Assert.AreEqual(
             "idle",
             preLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
             "pre-load state must be 'idle' — reverts to the broken 'initializing' label if this fails.");
 
-        var postLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
+        var postLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), processMetadata);
         using var postLoadDoc = JsonDocument.Parse(postLoadJson.TextPayload());
         Assert.AreEqual(
             "ready",
@@ -127,7 +129,7 @@ public sealed class ServerHeartbeatTests
         // `deep-review-and-refactor.md`'s Phase -1 hard gate previously saw
         // `state=initializing` here and waited for it to flip without ever calling
         // workspace_load — that broken polling loop is what this fix closes.
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 0), new FakeVersionProvider(null));
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 0), new FakeVersionProvider(null), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var connection = doc.RootElement.GetProperty("connection");
@@ -143,7 +145,7 @@ public sealed class ServerHeartbeatTests
         // Positive shape check: heartbeat intentionally omits version / catalog / update.
         // If a future refactor accidentally copies the entire server_info payload into
         // the heartbeat, this test catches it.
-        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
+        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), new ServerProcessMetadata());
         using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
 
         var root = heartbeatDoc.RootElement;
@@ -159,7 +161,8 @@ public sealed class ServerHeartbeatTests
     {
         // The `connection` block on server_info must match the heartbeat's shape so
         // consumers can use whichever poll they prefer without shape surprises.
-        var infoJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 1), new FakeVersionProvider(null));
+        var processMetadata = new ServerProcessMetadata();
+        var infoJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 1), new FakeVersionProvider(null), processMetadata);
         using var infoDoc = JsonDocument.Parse(infoJson.TextPayload());
         var infoConn = infoDoc.RootElement.GetProperty("connection");
 
@@ -167,7 +170,7 @@ public sealed class ServerHeartbeatTests
         Assert.AreEqual(1, infoConn.GetProperty("loadedWorkspaceCount").GetInt32());
         AssertIdentityFieldsPresent(infoConn);
 
-        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
+        var heartbeatJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1), processMetadata);
         using var heartbeatDoc = JsonDocument.Parse(heartbeatJson.TextPayload());
         var heartbeatConn = heartbeatDoc.RootElement.GetProperty("connection");
 

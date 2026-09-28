@@ -18,8 +18,9 @@ namespace RoslynMcp.Host.Stdio.Diagnostics;
 /// <list type="number">
 ///   <item><description><see cref="LoadPrevious"/> — called once at host startup. Reads
 ///     the on-disk record (if any), validates it is fresh enough (<see cref="StaleAfter"/>),
-///     and returns a snapshot. Subsequent calls return <see langword="null"/> — the snapshot
-///     is consume-once so a second probe never re-emits previous-* fields.</description></item>
+///     and returns a snapshot. It is idempotent: subsequent calls return the same cached
+///     value. Consume-once (a second probe never re-emits previous-* fields) lives in
+///     <see cref="Runtime.ServerProcessMetadata.PreviousProcessSnapshot"/>.</description></item>
 ///   <item><description><see cref="WriteCurrent"/> — called on graceful shutdown via the
 ///     <c>ApplicationStopping</c> hook. Persists the current PID, exit timestamp, and recycle
 ///     reason so the NEXT process can read them.</description></item>
@@ -100,9 +101,10 @@ public sealed class HostProcessMetadataStore
 
     /// <summary>
     /// Reads and CACHES the previous-process snapshot at first call. Subsequent calls return
-    /// the same cached value. Consume-once semantics live in
-    /// <see cref="HostProcessMetadataSnapshotProvider"/>; this method is idempotent so callers
-    /// can inspect or re-publish without burning the latch.
+    /// the same cached value. Consume-once semantics live in the per-host
+    /// <see cref="HostProcessMetadataSnapshotProvider"/> instance owned by
+    /// <see cref="Runtime.ServerProcessMetadata.PreviousProcessSnapshot"/>; this method is
+    /// idempotent so callers can inspect or re-publish without burning that latch.
     /// <para>
     /// Side-effect: deletes the on-disk record after a successful read so the same snapshot
     /// is not surfaced twice across separate process lifetimes (e.g. if the next host crashes
@@ -174,7 +176,8 @@ public sealed class HostProcessMetadataStore
     {
         // Idempotent: only the first call hits the disk. We don't bother locking the load
         // path because only a single thread (the host startup path) has any legitimate
-        // reason to call EnsureLoaded before ConsumePrevious is reachable.
+        // reason to call EnsureLoaded before the first server_info / server_heartbeat probe
+        // calls ServerProcessMetadata.PreviousProcessSnapshot.Consume().
         if (_previousLoaded)
         {
             return;

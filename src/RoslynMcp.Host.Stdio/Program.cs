@@ -133,26 +133,28 @@ StartupDiagnostics.LogStartup(startupLogger, surfaceReport, assemblyVersion);
 SurfaceRegistrationSnapshot.Value = surfaceReport;
 
 // host-recycle-opacity: read the previous host process's exit metadata (if any) from disk
-// and publish it for the FIRST server_info / server_heartbeat probe to surface. The
-// provider's Consume() drains the snapshot exactly once — subsequent probes see clean state.
-// The on-disk record is deleted by LoadPrevious() so we never replay a stale snapshot across
-// multiple processes. Cold start with no prior record publishes null, which the provider
-// treats as "no previous-* fields ever". The store is also kept around so the
-// ApplicationStopping handler can write the current process's exit metadata on shutdown.
+// and publish it into the DI singleton ServerProcessMetadata for the FIRST server_info /
+// server_heartbeat probe to surface. Its PreviousProcessSnapshot.Consume() drains the
+// snapshot exactly once — subsequent probes see clean state. The on-disk record is deleted by
+// LoadPrevious() so we never replay a stale snapshot across multiple processes. Cold start
+// with no prior record publishes null, which the provider treats as "no previous-* fields
+// ever". The store is also kept around so the ApplicationStopping handler can write the
+// current process's exit metadata on shutdown. ServerProcessMetadata is the single process
+// authority shared with server_info and server_heartbeat: its start time and this snapshot
+// both reach the tools through the injected instance, never through static state.
 var hostProcessMetadataLogger = host.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("HostProcessMetadata");
 var hostProcessMetadataStore = new HostProcessMetadataStore(hostProcessMetadataLogger);
 var previousHostMetadata = hostProcessMetadataStore.LoadPrevious();
-HostProcessMetadataSnapshotProvider.Publish(previousHostMetadata);
+var serverProcessMetadata = host.Services.GetRequiredService<ServerProcessMetadata>();
+serverProcessMetadata.PreviousProcessSnapshot.Publish(previousHostMetadata);
 
 // mcp-error-category-workspace-evicted-on-host-recycle: also publish the recycle signal
 // to the WorkspaceEvictionRegistry so WorkspaceManager.GetRequiredSession can throw a
 // structured WorkspaceEvictedException on workspace lookups for ids owned by the prior
-// process. Unlike HostProcessMetadataSnapshotProvider (consume-once for server_info),
-// the registry signal must persist for the lifetime of the process — every workspace
-// lookup miss in a recycled host needs to consult it. ServerProcessMetadata is the single
-// process-start authority shared with server_info and server_heartbeat.
-var serverProcessMetadata = host.Services.GetRequiredService<ServerProcessMetadata>();
+// process. Unlike ServerProcessMetadata.PreviousProcessSnapshot (consume-once for
+// server_info), the registry signal must persist for the lifetime of the process — every
+// workspace lookup miss in a recycled host needs to consult it.
 RoslynMcp.Core.Services.WorkspaceEvictionRegistry.PublishRecycleContext(
     serverProcessMetadata.StartedAtUtc,
     previousHostMetadata?.RecycleReason);

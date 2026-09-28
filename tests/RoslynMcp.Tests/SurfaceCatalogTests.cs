@@ -8,6 +8,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Resources;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -503,7 +504,8 @@ public sealed class SurfaceCatalogTests
     {
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new NuGetVersionChecker(new TestHttpClientFactory()));
+            new NuGetVersionChecker(new TestHttpClientFactory()),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("surface", out var surface));
@@ -535,7 +537,8 @@ public sealed class SurfaceCatalogTests
     {
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new NuGetVersionChecker(new TestHttpClientFactory()));
+            new NuGetVersionChecker(new TestHttpClientFactory()),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("resourceServerNames", out var hints));

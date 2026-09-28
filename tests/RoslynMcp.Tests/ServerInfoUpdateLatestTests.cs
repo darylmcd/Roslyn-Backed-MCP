@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -102,7 +103,7 @@ public sealed class ServerInfoUpdateLatestTests
             olderParsed < runningParsed,
             $"test fixture broken: '{older}' must be < running '{runningVersion}'");
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(older));
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(older), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -124,7 +125,7 @@ public sealed class ServerInfoUpdateLatestTests
     {
         // 999.0.0 will always be > current.
         var newer = "999.0.0";
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(newer));
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(newer), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -141,7 +142,8 @@ public sealed class ServerInfoUpdateLatestTests
         // operator-visible status now explains that the check is still in flight.
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(null, VersionCheckStatus.Pending));
+            new FakeVersionProvider(null, VersionCheckStatus.Pending),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -158,7 +160,8 @@ public sealed class ServerInfoUpdateLatestTests
     {
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(null, VersionCheckStatus.NeverChecked));
+            new FakeVersionProvider(null, VersionCheckStatus.NeverChecked),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -174,7 +177,8 @@ public sealed class ServerInfoUpdateLatestTests
         var newer = "999.0.0";
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(newer, VersionCheckStatus.Pending));
+            new FakeVersionProvider(newer, VersionCheckStatus.Pending),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -190,7 +194,8 @@ public sealed class ServerInfoUpdateLatestTests
         var completedAt = new DateTime(2026, 6, 8, 14, 0, 0, DateTimeKind.Utc);
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(null, VersionCheckStatus.Failed, completedAt));
+            new FakeVersionProvider(null, VersionCheckStatus.Failed, completedAt),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -211,7 +216,7 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.AreEqual(VersionCheckStatus.Failed, checker.LastCheckStatus);
         Assert.IsNotNull(checker.LastCheckedAt);
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker);
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker, new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -239,7 +244,7 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.AreEqual(VersionCheckStatus.Failed, checker.LastCheckStatus);
         Assert.IsNotNull(checker.LastCheckedAt);
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker);
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker, new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
@@ -255,7 +260,8 @@ public sealed class ServerInfoUpdateLatestTests
         var completedAt = new DateTime(2026, 6, 8, 14, 5, 0, DateTimeKind.Utc);
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(null, VersionCheckStatus.TimedOut, completedAt));
+            new FakeVersionProvider(null, VersionCheckStatus.TimedOut, completedAt),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");

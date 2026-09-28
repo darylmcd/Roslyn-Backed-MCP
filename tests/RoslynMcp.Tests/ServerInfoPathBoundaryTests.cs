@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
@@ -158,7 +159,8 @@ public sealed class ServerInfoPathBoundaryTests
 
             var json = await ServerTools.GetServerInfo(
                 new FakeWorkspaceManager(),
-                new FakeVersionProvider(null));
+                new FakeVersionProvider(null),
+                new ServerProcessMetadata());
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(
@@ -190,7 +192,8 @@ public sealed class ServerInfoPathBoundaryTests
 
             var json = await ServerTools.GetServerInfo(
                 new FakeWorkspaceManager(),
-                new FakeVersionProvider(null));
+                new FakeVersionProvider(null),
+                new ServerProcessMetadata());
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             Assert.IsTrue(doc.RootElement.TryGetProperty("pathBoundary", out var boundary));

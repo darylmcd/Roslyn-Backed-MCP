@@ -77,9 +77,9 @@ public sealed class WorkspaceManagerEvictionTests
     /// <summary>
     /// Tests that exercise <see cref="WorkspaceEvictionRegistry"/> directly — a
     /// process-wide static — must reset the registry on cleanup so no other test class
-    /// observes a stale recycle signal. The same isolation discipline applies to
-    /// <see cref="HostProcessMetadataSnapshotProvider.Reset"/>; our tests do not touch
-    /// that provider.
+    /// observes a stale recycle signal. The host's consume-once previous-process snapshot
+    /// needs no such discipline: it is per-instance state on <c>ServerProcessMetadata</c>,
+    /// not a static, and these tests do not touch it.
     /// <para>
     /// This class is also marked <see cref="DoNotParallelizeAttribute"/> at the class
     /// level, so MSTest runs it in the serial phase after every parallel class and no

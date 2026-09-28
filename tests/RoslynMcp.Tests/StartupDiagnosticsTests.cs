@@ -11,6 +11,7 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
@@ -455,7 +456,8 @@ public sealed class StartupDiagnosticsTests
 
             var json = ServerTools.GetServerInfo(
                 new StubWorkspaceManager(),
-                new StubVersionProvider()).GetAwaiter().GetResult();
+                new StubVersionProvider(),
+                new ServerProcessMetadata()).GetAwaiter().GetResult();
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             var surface = doc.RootElement.GetProperty("surface");
@@ -487,7 +489,8 @@ public sealed class StartupDiagnosticsTests
 
             var json = ServerTools.GetServerInfo(
                 new StubWorkspaceManager(),
-                new StubVersionProvider()).GetAwaiter().GetResult();
+                new StubVersionProvider(),
+                new ServerProcessMetadata()).GetAwaiter().GetResult();
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             var registered = doc.RootElement.GetProperty("surface").GetProperty("registered");
@@ -516,7 +519,8 @@ public sealed class StartupDiagnosticsTests
 
             var json = ServerTools.GetServerInfo(
                 new StubWorkspaceManager(),
-                new StubVersionProvider()).GetAwaiter().GetResult();
+                new StubVersionProvider(),
+                new ServerProcessMetadata()).GetAwaiter().GetResult();
 
             using var doc = JsonDocument.Parse(json.TextPayload());
             var surface = doc.RootElement.GetProperty("surface");

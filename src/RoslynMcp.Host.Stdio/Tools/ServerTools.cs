@@ -17,8 +17,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ServerTools
 {
-    private static readonly ServerProcessMetadata s_directCallProcessMetadata = new();
-
     /// <summary>
     /// mcp-connection-session-resilience + connection-state-ready-unsatisfiable-preload
     /// + host-recycle-opacity: builds the <see cref="ConnectionStateDto"/> emitted by
@@ -44,10 +42,13 @@ public static class ServerTools
     /// <strong>host-recycle-opacity:</strong> the FIRST probe of a freshly-started host
     /// process surfaces <c>previousStdioPid</c> / <c>previousExitedAt</c> /
     /// <c>previousRecycleReason</c> drawn from the <see cref="HostProcessMetadataStore"/>
-    /// snapshot published via <see cref="HostProcessMetadataSnapshotProvider"/>. Subsequent
-    /// probes omit those fields (consume-once semantics) so callers always know "this is the
-    /// first probe after the recycle". Unit-test paths that construct ServerTools without
-    /// publishing a snapshot get clean cold-start behavior — the optional fields are absent.
+    /// snapshot published into <paramref name="processMetadata"/>'s
+    /// <see cref="ServerProcessMetadata.PreviousProcessSnapshot"/>. Subsequent probes omit those
+    /// fields (consume-once semantics) so callers always know "this is the first probe after the
+    /// recycle". The snapshot is per-instance state on the injected metadata, never a
+    /// process-wide static: a <see cref="ServerProcessMetadata"/> nothing published into (every
+    /// unit-test instance that does not stage one) gets clean cold-start behavior — the optional
+    /// fields are absent.
     /// </para>
     /// </summary>
     internal static ConnectionStateDto BuildConnection(
@@ -60,11 +61,11 @@ public static class ServerTools
         // call is the only transition, so the label must be terminal, not transient.
         var state = loadedWorkspaceCount >= 1 ? "ready" : "idle";
 
-        // host-recycle-opacity: drain the previous-process snapshot exactly once. The provider
-        // returns null after the first call, so subsequent probes see clean state. Tests that
-        // construct ServerTools without wiring the snapshot (provider unset) get null here
-        // and the optional fields are omitted from the JSON.
-        var previous = HostProcessMetadataSnapshotProvider.Consume();
+        // host-recycle-opacity: drain this host's previous-process snapshot exactly once. The
+        // provider returns null after the first call, so subsequent probes see clean state. A
+        // metadata instance nothing was published into returns null here and the optional
+        // fields are omitted from the JSON.
+        var previous = processMetadata.PreviousProcessSnapshot.Consume();
 
         return new ConnectionStateDto(
             State: state,
@@ -153,11 +154,6 @@ public static class ServerTools
 
         return Task.FromResult(StructuredToolResult.Create(info));
     }
-
-    internal static Task<CallToolResult> GetServerInfo(
-        IWorkspaceManager workspace,
-        ILatestVersionProvider versionChecker) =>
-        GetServerInfo(workspace, versionChecker, s_directCallProcessMetadata);
 
     /// <summary>
     /// sanctioned-roots-empty-boundary-fails-silently-until-first-call: projects the filesystem
@@ -337,7 +333,4 @@ public static class ServerTools
         var payload = new ServerHeartbeatDto(BuildConnection(workspace, processMetadata));
         return Task.FromResult(StructuredToolResult.Create(payload));
     }
-
-    internal static Task<CallToolResult> GetServerHeartbeat(IWorkspaceManager workspace) =>
-        GetServerHeartbeat(workspace, s_directCallProcessMetadata);
 }

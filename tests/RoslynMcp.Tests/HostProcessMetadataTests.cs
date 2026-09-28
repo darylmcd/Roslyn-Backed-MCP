@@ -26,7 +26,10 @@ namespace RoslynMcp.Tests;
 /// <list type="number">
 ///   <item><description>Disk store — round-trip, atomic write, TTL guard, missing/corrupt files
 ///     all behave correctly.</description></item>
-///   <item><description>Snapshot provider — consume-once semantics under concurrent access.</description></item>
+///   <item><description>Snapshot provider — consume-once semantics under concurrent access, and
+///     per-instance isolation (two providers / two <see cref="ServerProcessMetadata"/> instances
+///     never share a snapshot or latch). Every test owns its instances, so this parallel class
+///     shares no mutable state with other classes that probe <c>server_info</c>.</description></item>
 ///   <item><description>End-to-end — restart sequence (process A writes, process B reads + surfaces)
 ///     produces the expected wire shape on both <c>server_info</c> and <c>server_heartbeat</c>;
 ///     SECOND probe of process B drops the previous-* fields.</description></item>
@@ -117,10 +120,6 @@ public sealed class HostProcessMetadataTests
         // metadata is per-user, so without isolation a parallel test runner would race.
         _tempDir = Path.Combine(TestTempRoot.Current, "host-process-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
-
-        // Provider is a process-wide singleton; reset between tests so a leaked snapshot
-        // from a prior test cannot bleed forward.
-        HostProcessMetadataSnapshotProvider.Reset();
     }
 
     [TestCleanup]
@@ -134,8 +133,7 @@ public sealed class HostProcessMetadataTests
                 {
                     Directory.Delete(_tempDir, recursive: true);
                 }
-            }),
-            CleanupFailureCollector.FromAction(HostProcessMetadataSnapshotProvider.Reset));
+            }));
     }
 
     private string PathInTemp() => Path.Combine(_tempDir, "host-process.json");
@@ -296,12 +294,13 @@ public sealed class HostProcessMetadataTests
             StdioPid: 12345,
             ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
             RecycleReason: "graceful");
+        var provider = new HostProcessMetadataSnapshotProvider();
 
-        HostProcessMetadataSnapshotProvider.Publish(snapshot);
+        provider.Publish(snapshot);
 
-        var first = HostProcessMetadataSnapshotProvider.Consume();
-        var second = HostProcessMetadataSnapshotProvider.Consume();
-        var third = HostProcessMetadataSnapshotProvider.Consume();
+        var first = provider.Consume();
+        var second = provider.Consume();
+        var third = provider.Consume();
 
         Assert.AreSame(snapshot, first, "First Consume() after Publish() must return the published snapshot.");
         Assert.IsNull(second, "Second Consume() must return null — consume-once semantics are the wire contract.");
@@ -309,12 +308,101 @@ public sealed class HostProcessMetadataTests
     }
 
     [TestMethod]
+    public async Task Provider_ConcurrentFirstConsumers_ExactlyOneObservesSnapshot()
+    {
+        // Two server_info probes racing during startup must not both see the previous-* fields.
+        const int consumerCount = 32;
+        var snapshot = new HostProcessMetadataSnapshot(
+            StdioPid: 11111,
+            ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
+            RecycleReason: "graceful");
+        var provider = new HostProcessMetadataSnapshotProvider();
+        provider.Publish(snapshot);
+
+        using var start = new ManualResetEventSlim(initialState: false);
+        var consumers = Enumerable.Range(0, consumerCount)
+            .Select(_ => Task.Run(() =>
+            {
+                start.Wait();
+                return provider.Consume();
+            }))
+            .ToArray();
+        start.Set();
+        var results = await Task.WhenAll(consumers);
+
+        Assert.AreEqual(1, results.Count(result => result is not null),
+            "Exactly one concurrent first consumer may observe the published snapshot.");
+        Assert.AreSame(snapshot, results.Single(result => result is not null));
+    }
+
+    [TestMethod]
+    public void Provider_IndependentInstances_DoNotShareConsumeOnceState()
+    {
+        // Cross-class race regression: the snapshot used to live in a process-wide static, so a
+        // concurrently running test class probing server_info could drain a snapshot another
+        // class had just published. Each provider instance must own its own consume-once state.
+        var snapshot = new HostProcessMetadataSnapshot(
+            StdioPid: 24680,
+            ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
+            RecycleReason: "graceful");
+        var providerA = new HostProcessMetadataSnapshotProvider();
+        var providerB = new HostProcessMetadataSnapshotProvider();
+
+        providerA.Publish(snapshot);
+
+        Assert.IsNull(providerB.Consume(),
+            "Consuming an instance that was never published must return null, even while another instance holds a snapshot.");
+        Assert.AreSame(snapshot, providerA.Consume(),
+            "A consume on an unrelated instance must not drain the published instance's snapshot.");
+        Assert.IsNull(providerA.Consume(), "The published instance still enforces consume-once.");
+    }
+
+    [TestMethod]
+    public async Task ServerProbes_SnapshotPublishedOnOneProcessMetadata_AreInvisibleToAnother()
+    {
+        // The probe path must reach the snapshot through the injected ServerProcessMetadata, so a
+        // snapshot published for one host instance can never surface on (or be drained by) another.
+        var snapshot = new HostProcessMetadataSnapshot(
+            StdioPid: 13579,
+            ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
+            RecycleReason: "watchdog");
+        var publishedMetadata = new ServerProcessMetadata();
+        var unrelatedMetadata = new ServerProcessMetadata();
+        publishedMetadata.PreviousProcessSnapshot.Publish(snapshot);
+
+        var unrelatedInfo = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(), new FakeVersionProvider(), unrelatedMetadata);
+        var unrelatedHeartbeat = await ServerTools.GetServerHeartbeat(
+            new FakeWorkspaceManager(), unrelatedMetadata);
+
+        using (var unrelatedInfoDoc = JsonDocument.Parse(unrelatedInfo.TextPayload()))
+        using (var unrelatedHeartbeatDoc = JsonDocument.Parse(unrelatedHeartbeat.TextPayload()))
+        {
+            Assert.IsFalse(
+                unrelatedInfoDoc.RootElement.GetProperty("connection").TryGetProperty("previousStdioPid", out _),
+                "server_info on an unrelated ServerProcessMetadata must not surface another instance's snapshot.");
+            Assert.IsFalse(
+                unrelatedHeartbeatDoc.RootElement.GetProperty("connection").TryGetProperty("previousStdioPid", out _),
+                "server_heartbeat on an unrelated ServerProcessMetadata must not surface another instance's snapshot.");
+        }
+
+        var publishedInfo = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(), new FakeVersionProvider(), publishedMetadata);
+        using var publishedInfoDoc = JsonDocument.Parse(publishedInfo.TextPayload());
+        var connection = publishedInfoDoc.RootElement.GetProperty("connection");
+        Assert.AreEqual(13579, connection.GetProperty("previousStdioPid").GetInt32(),
+            "Probes on unrelated instances must not have drained the published instance's snapshot.");
+        Assert.AreEqual("watchdog", connection.GetProperty("previousRecycleReason").GetString());
+    }
+
+    [TestMethod]
     public void Provider_PublishNull_ConsumeReturnsNull()
     {
         // Cold start: no prior record. Publishing null is the canonical "no metadata" signal.
-        HostProcessMetadataSnapshotProvider.Publish(snapshot: null);
+        var provider = new HostProcessMetadataSnapshotProvider();
+        provider.Publish(snapshot: null);
 
-        Assert.IsNull(HostProcessMetadataSnapshotProvider.Consume(),
+        Assert.IsNull(provider.Consume(),
             "Publishing null must short-circuit Consume() to null — no previous-* fields ever surface.");
     }
 
@@ -322,14 +410,16 @@ public sealed class HostProcessMetadataTests
     public async Task ServerInfo_FirstProbeAfterRestart_CarriesPreviousMetadata()
     {
         // End-to-end: simulate the restart sequence by publishing a snapshot directly to
-        // the provider, then call ServerTools.GetServerInfo and verify the wire shape.
+        // this test's own process metadata, then call ServerTools.GetServerInfo with it and
+        // verify the wire shape.
         var snapshot = new HostProcessMetadataSnapshot(
             StdioPid: 99999,
             ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
             RecycleReason: "graceful");
-        HostProcessMetadataSnapshotProvider.Publish(snapshot);
+        var processMetadata = new ServerProcessMetadata();
+        processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -352,13 +442,14 @@ public sealed class HostProcessMetadataTests
             StdioPid: 99999,
             ExitedAtUtc: "2026-04-25T11:59:59.0000000Z",
             RecycleReason: "graceful");
-        HostProcessMetadataSnapshotProvider.Publish(snapshot);
+        var processMetadata = new ServerProcessMetadata();
+        processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
         // First probe drains the provider.
-        _ = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        _ = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
 
         // Second probe must NOT carry previous-* fields.
-        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processMetadata);
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConnection = secondDoc.RootElement.GetProperty("connection");
 
@@ -380,9 +471,10 @@ public sealed class HostProcessMetadataTests
             StdioPid: 88888,
             ExitedAtUtc: "2026-04-25T10:30:00.0000000Z",
             RecycleReason: "watchdog");
-        HostProcessMetadataSnapshotProvider.Publish(snapshot);
+        var processMetadata = new ServerProcessMetadata();
+        processMetadata.PreviousProcessSnapshot.Publish(snapshot);
 
-        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager());
+        var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(), processMetadata);
 
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
@@ -397,10 +489,10 @@ public sealed class HostProcessMetadataTests
     {
         // No Publish() call: the provider has nothing to consume. The previous-* fields must
         // be ABSENT from the wire (not present-with-null) so consumers can use TryGetProperty
-        // as a presence check.
-        // (Cleanup() called Reset() before this test, so the provider is clean.)
+        // as a presence check. A freshly constructed ServerProcessMetadata owns an unpublished
+        // snapshot slot, so no other test's publish can reach this probe.
 
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
         var connection = doc.RootElement.GetProperty("connection");
 
@@ -436,10 +528,11 @@ public sealed class HostProcessMetadataTests
         var processB = new HostProcessMetadataStore(path, HostProcessMetadataStore.StaleAfter, () => writeTime.AddSeconds(2));
         var loaded = processB.LoadPrevious();
         Assert.IsNotNull(loaded, "LoadPrevious must return a snapshot from the on-disk record.");
-        HostProcessMetadataSnapshotProvider.Publish(loaded);
+        var processBMetadata = new ServerProcessMetadata();
+        processBMetadata.PreviousProcessSnapshot.Publish(loaded);
 
         // First probe.
-        var firstJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        var firstJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processBMetadata);
         using var firstDoc = JsonDocument.Parse(firstJson.TextPayload());
         var firstConn = firstDoc.RootElement.GetProperty("connection");
         Assert.AreEqual(Environment.ProcessId, firstConn.GetProperty("previousStdioPid").GetInt32(),
@@ -447,7 +540,7 @@ public sealed class HostProcessMetadataTests
         Assert.AreEqual("graceful", firstConn.GetProperty("previousRecycleReason").GetString());
 
         // Second probe — fields must drop.
-        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider());
+        var secondJson = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(), processBMetadata);
         using var secondDoc = JsonDocument.Parse(secondJson.TextPayload());
         var secondConn = secondDoc.RootElement.GetProperty("connection");
         Assert.IsFalse(secondConn.TryGetProperty("previousStdioPid", out _),
