@@ -5,8 +5,8 @@
 ## Anchors
 
 - (new) `tests/RoslynMcp.Tests/Helpers/FixedLatestVersionProvider.cs`
-- `tests/RoslynMcp.Tests/StartupDiagnosticsTests.cs:586-614`
-- `tests/RoslynMcp.Tests/ServerInfoPathBoundaryTests.cs:210-241`
+- `tests/RoslynMcp.Tests/StartupDiagnosticsTests.cs:457-614`
+- `tests/RoslynMcp.Tests/ServerInfoPathBoundaryTests.cs:160-241`
 
 ## Acceptance
 
@@ -20,7 +20,13 @@
 - Six test files declare a private list-only `IWorkspaceManager` fake (20-40 lines each; every other member throws or returns `false`/`null`): `HostProcessMetadataTests.cs:462`, `ServerHeartbeatTests.cs:27`, `ServerInfoPathBoundaryTests.cs:210`, `ServerInfoUpdateLatestTests.cs:65`, `StartupDiagnosticsTests.cs:586`, `SurfaceCatalogTests.cs:787`.
 - Six test files declare a private `ILatestVersionProvider` fake: `HostProcessMetadataTests.cs:485`, `ServerHeartbeatTests.cs:202`, `ServerInfoPathBoundaryTests.cs:234`, `ServerInfoUpdateLatestTests.cs:22`, `StartupDiagnosticsTests.cs:609`, `ServerInfoUpdateWireContractTests.cs:188`.
 - The shared fail-closed double `tests/RoslynMcp.Tests/Helpers/FailClosedWorkspaceManagerStub.cs` already exists (5 test classes use it), and its `params WorkspaceStatusDto[]` list covers every list-only fake. No shared version-provider double exists.
-- Found by the cold review of PR #1664 (2026-09-28), which had to touch these private fakes' call sites. The review counted 15 workspace-manager fakes and 5 version-provider fakes. The recount above covers only the server-probe cluster those examples came from.
+- Found by the cold review of PR #1664 (2026-09-28), which had to touch these private fakes' call sites. That review counted 15 workspace-manager fakes and 5 version-provider fakes. The PR #1665 recount at `716b5e20` replaces those numbers. `tests/` holds 36 `IWorkspaceManager` implementations, and 14 of them are private copies of a shape a shared double covers. Each copy has a row:
+  - 6 server-probe list-only fakes: this row and `server-probe-test-doubles-batch-2` / `-batch-3`.
+  - 1 list-only copy of `FailClosedWorkspaceManagerStub` (`SamplingMrtrWireTests.cs:1142`): `sampling-mrtr-workspace-fake-retire`.
+  - 7 analyzer-family `TestWorkspaceManager` copies: 1 in `unused-code-analyzer-test-harness-wave-1`, 3 in `-wave-2`, 3 in `-wave-3`.
+  - The other 22 are the stub itself and 21 doubles that each script scenario-specific members (status, source text, events, versions or gate state). The recount does not count them as copies.
+  - All 6 `ILatestVersionProvider` fakes in `tests/` are covered by batches 1-3.
+- One shared-double folder: `tests/RoslynMcp.Tests/Helpers/` holds the stub, this row's version provider and the wave-1 analyzer harness. `unused-code-analyzer-test-harness-wave-1` extends the stub rather than adding a second fail-loud double.
 
 ## Context
 

@@ -4,8 +4,8 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/ServerInfoUpdateLatestTests.cs:22-86`
-- `tests/RoslynMcp.Tests/ServerInfoUpdateWireContractTests.cs:188-197`
+- `tests/RoslynMcp.Tests/ServerInfoUpdateLatestTests.cs:22-258`
+- `tests/RoslynMcp.Tests/ServerInfoUpdateWireContractTests.cs:73-197`
 
 ## Acceptance
 

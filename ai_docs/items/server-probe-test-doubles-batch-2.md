@@ -4,9 +4,9 @@
 
 ## Anchors
 
-- `tests/RoslynMcp.Tests/HostProcessMetadataTests.cs:462-490`
-- `tests/RoslynMcp.Tests/ServerHeartbeatTests.cs:27-66`
-- `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs:787-809`
+- `tests/RoslynMcp.Tests/HostProcessMetadataTests.cs:90-490`
+- `tests/RoslynMcp.Tests/ServerHeartbeatTests.cs:27-209`
+- `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs:505-809`
 
 ## Acceptance
 
