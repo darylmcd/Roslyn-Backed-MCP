@@ -70,7 +70,8 @@ public sealed class HookConfigurationTests
         // succeeded reports false), so the hook must treat false as "no newer release" only
         // when update.checkStatus is 'succeeded'. #1553's prompt keyed "unknown" on a null
         // updateAvailable that a 4.x server never emits, silently reading pending/failed
-        // checks as "no update".
+        // checks as "no update". A null-as-unknown clause is not forbidden here: the 5.0 row
+        // server-info-update-available-next-major-nullable adds one alongside checkStatus.
         using var document = LoadShippedHooks();
         var prompt = GetHookEntries(document, "PostToolUse")
             .SelectMany(GetPromptTexts)
@@ -80,9 +81,6 @@ public sealed class HookConfigurationTests
         {
             StringAssert.Contains(prompt, required, $"server_info prompt must name '{required}'");
         }
-
-        Assert.IsFalse(prompt.Contains("is null", StringComparison.Ordinal),
-            "server_info prompt must not key unknown availability on a null updateAvailable; 4.x never emits null");
     }
 
     [TestMethod]

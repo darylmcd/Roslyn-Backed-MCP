@@ -6,6 +6,7 @@
 
 - `src/RoslynMcp.Host.Stdio/README.md:70`
 - `docs/reinstall.md:185`
+- `ai_docs/architecture.md:105`
 - `hooks/hooks.json`
 
 ## Acceptance

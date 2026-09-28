@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T18:29:46Z
+**updated_at:** 2026-09-28T18:35:34Z
 
 ## Agent contract
 
@@ -373,6 +373,7 @@
 | `serialize-full-ci-premise-recheck` | Low | — | **Re-decide addenda serializeFullCi** — it forces serial executor dispatch, but full CI now runs only on GitHub; confirm whether any local full gate still needs the lock. [type: chore] [source: backlog-remediate 20260926T234932Z] | S | items/serialize-full-ci-premise-recheck.md |
 | `validation-phase-timeout-knob` | Low | — | **Make the 25 s validate_* phase cap configurable** — move DefaultValidationPhaseTimeout onto ValidationServiceOptions with a documented env override, and name the knob in the phase-timeout warning. [type: chore] [source: PR #1655 review] | M | items/validation-phase-timeout-knob.md |
 | `mcp-filter-composition-test-drift` | Low | — | **Share Program.cs's MCP filter composition with the wire-test harnesses** — extract one host extension that Program.cs and ProductionParityMcpHarness both call, and route the parity-claiming harnesses through it. [type: refactor] [source: PR #1663 review] | M | items/mcp-filter-composition-test-drift.md |
+| `server-info-hook-user-intent-unobservable` | Low | — | **server_info hook prompt branches on "if the user asked", which a prompt-hook evaluator cannot see** — verify the premise, then state status for unknown/true and answer ok only for false+succeeded. [type: bug] [source: pr-1663-cold-review] | S | items/server-info-hook-user-intent-unobservable.md |
 
 ## Defer
 
