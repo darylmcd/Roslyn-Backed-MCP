@@ -26,7 +26,7 @@
   - 7 analyzer-family `TestWorkspaceManager` copies: 1 in `unused-code-analyzer-test-harness-wave-1`, 3 in `-wave-2`, 3 in `-wave-3`.
   - The other 22 are the stub itself and 21 doubles that each script scenario-specific members (status, source text, events, versions or gate state). The recount does not count them as copies.
   - All 6 `ILatestVersionProvider` fakes in `tests/` are covered by batches 1-3.
-- One shared-double folder: `tests/RoslynMcp.Tests/Helpers/` holds the stub, this row's version provider and the wave-1 analyzer harness. `unused-code-analyzer-test-harness-wave-1` extends the stub rather than adding a second fail-loud double.
+- Placement, corrected by the second PR #1665 review: shared test doubles live in two folders at `716b5e20`. `tests/RoslynMcp.Tests/Helpers/` holds `FailClosedWorkspaceManagerStub` and `PassThroughWorkspaceExecutionGate`. `tests/RoslynMcp.Tests/TestInfrastructure/` holds `ListLogger<T>`, `TestHttpClientFactory` and `CapturingServerObservabilitySink`. This row's version provider and the wave-1 analyzer harness go in `Helpers/` beside the stub, and neither row moves the `TestInfrastructure/` doubles. `unused-code-analyzer-test-harness-wave-1` extends the stub rather than adding a second fail-loud double.
 
 ## Context
 

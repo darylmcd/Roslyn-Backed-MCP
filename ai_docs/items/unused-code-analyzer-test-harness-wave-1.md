@@ -13,7 +13,8 @@
 - [ ] `FailClosedWorkspaceManagerStub` gains init-only `GetCurrentVersionHandler`, `ContainsWorkspaceHandler` and `IsStaleHandler`, and each member still throws while its handler is unset. These are the members the seven analyzer-family suites of waves 1-3 call beyond `GetCurrentSolution` (Evidence), so waves 2 and 3 need no further stub edits.
 - [ ] A new `tests/RoslynMcp.Tests/Helpers/UnusedCodeAnalyzerTestHarness.cs` builds the single-document `AdhocWorkspace`, the `CompilationCache` and the `UnusedCodeAnalyzer` over that stub. Each caller passes its own metadata references.
 - [ ] `DeadFieldDetectorTests` deletes its private `BuildAnalyzerWithSource` body and `TestWorkspaceManager` and uses the harness. Its assertions are unchanged, and it keeps its test count and passes.
-- [ ] The repo keeps one fail-loud `IWorkspaceManager` double and one shared-double folder, `tests/RoslynMcp.Tests/Helpers/`, which `server-probe-test-doubles-batch-1` also uses. No `TestDoubles/` folder is created, and the uncalled `RaiseWorkspaceClosed` / `RaiseWorkspaceReloaded` helpers are not carried over.
+- [ ] Placement: the harness goes in `tests/RoslynMcp.Tests/Helpers/` beside `FailClosedWorkspaceManagerStub`, where `server-probe-test-doubles-batch-1` also puts its shared version provider. No `TestDoubles/` folder is created, and no existing shared double is moved (`TestInfrastructure/` keeps its own).
+- [ ] This row adds no new fail-loud `IWorkspaceManager` double: the harness uses `FailClosedWorkspaceManagerStub`, and the retired `DeadFieldDetectorTests.TestWorkspaceManager` is not replaced by another copy. The uncalled `RaiseWorkspaceClosed` / `RaiseWorkspaceReloaded` helpers are not carried over.
 
 ## Evidence
 
