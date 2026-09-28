@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T17:48:02Z
+**updated_at:** 2026-09-28T18:29:46Z
 
 ## Agent contract
 
@@ -117,7 +117,6 @@
 | `cross-project-refactoring-refusals-public-message` | Medium | — | **Return cross-project refactoring refusals verbatim** — move_type_to_project_preview cycle/same-project/file-exists refusals state their reason. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | S | items/cross-project-refactoring-refusals-public-message.md |
 | `file-create-and-scaffold-refusals-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **EXTENDED existing row: also convert FileOperationService** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/file-create-and-scaffold-refusals-public-message.md |
 | `change-signature-refusals-public-message` | Medium | format-range-refuses-on-unrelated-line-count-change, public-argument-exception-core-move, argument-errors-redacted-factory | **EXTENDED existing row: besides its InvalidOperation refusals, convert the ChangeSignatureService (17) and R…** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/change-signature-refusals-public-message.md |
-| `project-name-not-found-misleading-reload-advice` | Medium | — | **Stop advising workspace_reload for unknown project names and symbol handles** — build_project/test_run/rename_preview say not found and list loaded projects; the category stays InvalidOperation on 4.x. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
 | `get-prompt-text-unknown-prompt-public-message` | Medium | public-argument-exception-core-move, argument-errors-redacted-factory | **EXTENDED existing row: all PromptShimTools argument refusals are Public** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | M | items/get-prompt-text-unknown-prompt-public-message.md |
 | `public-argument-exception-core-move` | Medium | — | **Core IPublicMessageException + public PublicArgumentException** — part of the src-wide argument-error contract (public / redacted / internal). [type: bug] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | L | items/public-argument-exception-core-move.md |
 | `argument-errors-redacted-factory` | Medium | — | **Core ArgumentErrors** — part of the src-wide argument-error contract (public / redacted / internal). [type: refactor] [source: argument-exception-throw-sites-lack-public-message redesign 20260926] | S | items/argument-errors-redacted-factory.md |
@@ -154,6 +153,7 @@
 | `test-run-nobuild-msbuild-properties` | Medium | — | **test_run always rebuilds and takes no MSBuild properties** — add noBuild and allowlisted msbuildProperties so a scoped run can match dotnet test --no-build -p:SkipFrontendBuild=true. [type: feature] [source: retro-20260927] | L | items/test-run-nobuild-msbuild-properties.md |
 | `release-lag-guard` | Medium | — | **No signal when Fixed fragments sit unreleased** — warn in CI and the release verifier when a Fixed changelog.d fragment has been unreleased for more than a configurable number of days (default 7). [type: chore] [source: retro-20260927] | S | items/release-lag-guard.md |
 | `tool-refusal-public-message-guard` | Medium | public-argument-exception-core-move | **Nothing stops new refusals being thrown as plain InvalidOperationException** — add a ratchet that fails any new plain InvalidOperationException in src, with explicit public and internal paths, so refusals stop collapsing to generic text. [type: bug] [source: retro-20260927] | M | items/tool-refusal-public-message-guard.md |
+| `project-name-not-found-misleading-reload-advice` | Medium | public-argument-exception-core-move | **Stop advising workspace_reload for unknown project names and symbol handles** — build_project/test_run/rename_preview say not found and list loaded projects; category and exceptionType stay unchanged on 4.x. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
 
 ## Low
 

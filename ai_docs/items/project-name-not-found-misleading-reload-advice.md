@@ -1,6 +1,6 @@
-# project-name-not-found-misleading-reload-advice — Report unknown project names and symbol handles as NotFound
+# project-name-not-found-misleading-reload-advice — Stop advising workspace_reload for unknown project names and symbol handles
 
-**row:** `project-name-not-found-misleading-reload-advice` · **pri:** `Medium` · **size:** `M`
+**row:** `project-name-not-found-misleading-reload-advice` · **pri:** `Medium` · **size:** `M` · **deps:** `public-argument-exception-core-move`
 
 ## Anchors
 
@@ -12,8 +12,9 @@
 
 - [ ] build_project / test_run with projectName=NoSuchProject return an error whose message says the project was not found, names the loaded projects and never advises workspace_reload.
 - [ ] rename_preview with a fabricated symbolHandle returns an error whose message says the handle did not resolve to a symbol, instead of "Call workspace_reload if the state is stale".
-- [ ] Compatibility class: minor-compatible, so the row ships on the 4.x line. Both refusals keep category `InvalidOperation` and `isError`; only the message changes, through `PublicInvalidOperationException` (`ToolErrorHandler.cs:152-157`). Moving them to a not-found category changes a stable category value, which is a major-version change (`docs/release-policy.md:24-26`, `:36`; precedent `changelog.d/workspace-id-unknown-error-category.md`). That half is the Defer row `project-name-not-found-category-next-major`.
-- [ ] Regression test covers the projectName path through the tool error envelope and asserts both the category and the message.
+- [ ] Compatibility class: minor-compatible, so the row ships on the 4.x line. Both refusals keep category `InvalidOperation`, `isError` and `exceptionType` `InvalidOperationException`; only the message changes, through `PublicInvalidOperationException` (`ToolErrorHandler.cs:152-157`). Moving them to a not-found category changes a stable category value, which is a major-version change (`docs/release-policy.md:24-26`, `:36`; precedent `changelog.d/workspace-id-unknown-error-category.md`). That half is the Defer row `project-name-not-found-category-next-major`.
+- [ ] `exceptionType` holds because this row depends on `public-argument-exception-core-move`. The envelope writes `ex.GetType().Name` (`ToolErrorHandler.cs:670`), so without that row's marker normalization (its Acceptance bullet 3) the conversion would report `PublicInvalidOperationException` and flip back when core-move lands.
+- [ ] Regression test covers the projectName path through the tool error envelope and asserts the category, the message and `exceptionType == "InvalidOperationException"`.
 
 ## Evidence
 
@@ -26,4 +27,5 @@
 ## Notes
 
 - 2026-09-28: mechanism parent `tool-refusal-public-message-guard` adds a ratchet that fails any new plain `InvalidOperationException` under `src/`; this row is part of its burn-down. Convert this row's sites to `PublicInvalidOperationException` (or the Core internal factory for true invariants) and lower the committed baseline count in the same PR.
-2026-09-28 (PR #1655 review round 4): the operator chose an additive 4.x release, so this row keeps category `InvalidOperation` and fixes only the message. The `NotFound` category in the original title is a breaking change and moved to the Defer row `project-name-not-found-category-next-major`.
+- 2026-09-28 (PR #1655 review round 4): the operator chose an additive 4.x release, so this row keeps category `InvalidOperation` and fixes only the message. The `NotFound` category in the original title is a breaking change and moved to the Defer row `project-name-not-found-category-next-major`.
+- 2026-09-28 (PR #1655 review round 5): retitled to the 4.x scope, and now depends on `public-argument-exception-core-move` so `exceptionType` does not change.
