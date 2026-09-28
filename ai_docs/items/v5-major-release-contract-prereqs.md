@@ -4,8 +4,6 @@
 
 ## Anchors
 
-- `changelog.d/server-info-update-unknown-not-false.md`
-- `changelog.d/workspace-id-unknown-error-category.md`
 - `docs/decisions/README.md`
 - `docs/product-contract.md`
 - `docs/release-policy.md`
@@ -21,10 +19,10 @@
 
 ## Acceptance
 
-- [ ] ADR `docs/decisions/0011-*.md` records both changes, old→new wire behavior, and consumer migration.
-- [ ] `docs/product-contract.md` documents tri-state `updateAvailable` and the `WorkspaceNotFound` category.
-- [ ] Operator decision recorded: fold `locationdto-next-major-flat-field-removal` into 5.0.0 or leave it deferred.
-- [ ] Alternative considered and decided: rework either change to additive (e.g. `NotFound` + discriminator field) to stay on 4.x.
+- [x] Operator decision recorded 2026-09-28: fold `locationdto-next-major-flat-field-removal` into the 5.0.0 breaking set; ADR 0011 covers all three changes.
+- [x] Alternative decided 2026-09-28: #1553/#1571 were reworked to additive 4.x changes (`checkStatus` is the "unknown" authority; unknown `workspaceId` keeps `NotFound` and adds `reason: "WorkspaceNotFound"`) so main ships 4.3.0. The contract changes wait for 5.0 as `server-info-update-available-next-major-nullable` and `workspace-not-found-next-major-category-promotion`. The Problem table describes the pre-rework state.
+- [ ] At the 5.0.0 cut, ADR `docs/decisions/0011-*.md` records all three changes (old→new wire behavior and consumer migration for each) and `docs/decisions/README.md` indexes it.
+- [ ] In the same release, `docs/product-contract.md` § Deprecations scheduled for 5.0 is replaced by the 5.0 contract.
 
 ## Regression shape
 

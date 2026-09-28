@@ -45,7 +45,7 @@ public sealed class ToolErrorHandlerSpecificityTests
         [
             (new PreviewTokenStaleException("opaque", "private detail"), "PreviewTokenStale"),
             (new WorkspaceEvictedException("opaque", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "private-path", "private detail"), "WorkspaceEvicted"),
-            (new WorkspaceNotFoundException("opaque", "private detail"), "WorkspaceNotFound"),
+            (new WorkspaceNotFoundException("opaque", "private detail"), "NotFound"),
             (new KeyNotFoundException("Metadata name not found: private detail"), "NotFound"),
             (new KeyNotFoundException("Symbol handle is stale: private detail"), "NotFound"),
             (new KeyNotFoundException("private detail"), "NotFound"),
@@ -60,7 +60,40 @@ public sealed class ToolErrorHandlerSpecificityTests
     }
 
     [TestMethod]
-    public async Task UnknownWorkspaceId_AfterAutoReload_StaysWorkspaceNotFound()
+    public void WorkspaceMiss_KeepsV4NotFoundWireValues_AndAddsWorkspaceReason()
+    {
+        using var json = JsonDocument.Parse(
+            ToolErrorHandler.ClassifyAndFormat(new WorkspaceNotFoundException("opaque", "private detail"), "compile_check"));
+        var envelope = json.RootElement;
+
+        Assert.AreEqual("NotFound", envelope.GetProperty("category").GetString());
+        Assert.AreEqual("WorkspaceNotFound", envelope.GetProperty("reason").GetString());
+        Assert.AreEqual("KeyNotFoundException", envelope.GetProperty("exceptionType").GetString(),
+            "exceptionType keeps its 4.x wire value for a workspace miss.");
+        StringAssert.Contains(envelope.GetProperty("message").GetString(), "workspace_load");
+        Assert.IsFalse(envelope.GetRawText().Contains("private", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void NonWorkspaceMisses_CarryNoReason()
+    {
+        Exception[] misses =
+        [
+            new KeyNotFoundException("Metadata name not found: private detail"),
+            new KeyNotFoundException("Document not found: private detail"),
+            new SymbolNotFoundException("private detail", []),
+            new WorkspaceEvictedException("opaque", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "private-path", "private detail"),
+        ];
+        foreach (var miss in misses)
+        {
+            using var json = JsonDocument.Parse(ToolErrorHandler.ClassifyAndFormat(miss, "test_run"));
+            Assert.IsFalse(json.RootElement.TryGetProperty("reason", out _),
+                $"{miss.GetType().Name} must not carry the workspace reason: {json.RootElement.GetRawText()}");
+        }
+    }
+
+    [TestMethod]
+    public async Task UnknownWorkspaceId_AfterAutoReload_StaysNotFoundWithWorkspaceReason()
     {
         var result = await ToolExecutionTestHarness.RunAsync(
             "get_source_text",
@@ -75,8 +108,10 @@ public sealed class ToolErrorHandlerSpecificityTests
             });
 
         using var doc = JsonDocument.Parse(result);
-        Assert.AreEqual("WorkspaceNotFound", doc.RootElement.GetProperty("category").GetString(),
+        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString(),
             $"An unknown workspaceId must not be relabeled WorkspaceReloadedDuringCall. Payload: {result}");
+        Assert.AreEqual("WorkspaceNotFound", doc.RootElement.GetProperty("reason").GetString(),
+            $"The workspace reason must survive an in-call auto-reload. Payload: {result}");
     }
 
     private sealed class DerivedNullException : ArgumentNullException;

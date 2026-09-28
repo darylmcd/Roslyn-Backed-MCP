@@ -46,7 +46,6 @@ internal static class ToolErrorHandler
         DirectoryNotFound,
         PermissionDenied,
         WorkspaceEvicted,
-        WorkspaceNotFound,
         InvalidArgument,
         InternalError,
         StaleWorkspaceTransition,
@@ -79,7 +78,6 @@ internal static class ToolErrorHandler
         public const ToolErrorCategory DirectoryNotFound = ToolErrorCategory.DirectoryNotFound;
         public const ToolErrorCategory PermissionDenied = ToolErrorCategory.PermissionDenied;
         public const ToolErrorCategory WorkspaceEvicted = ToolErrorCategory.WorkspaceEvicted;
-        public const ToolErrorCategory WorkspaceNotFound = ToolErrorCategory.WorkspaceNotFound;
         public const ToolErrorCategory InvalidArgument = ToolErrorCategory.InvalidArgument;
         public const ToolErrorCategory InternalError = ToolErrorCategory.InternalError;
         public const ToolErrorCategory StaleWorkspaceTransition = ToolErrorCategory.StaleWorkspaceTransition;
@@ -89,6 +87,22 @@ internal static class ToolErrorHandler
         public const ToolErrorCategory RateLimited = ToolErrorCategory.RateLimited;
         public const ToolErrorCategory InvalidOperation = ToolErrorCategory.InvalidOperation;
         public const ToolErrorCategory WorkspaceReloadedDuringCall = ToolErrorCategory.WorkspaceReloadedDuringCall;
+    }
+
+    /// <summary>
+    /// Values of the optional <c>reason</c> envelope field. A reason refines a category without
+    /// changing it, so consumers that branch only on <c>category</c> keep working; consumers must
+    /// ignore reason values they do not recognize.
+    /// </summary>
+    internal static class ErrorReasons
+    {
+        /// <summary>
+        /// workspace-id-unknown-error-category: the supplied <c>workspaceId</c> is unknown to this
+        /// server (never loaded, or lost with a prior process). Emitted with
+        /// <see cref="ErrorCategories.NotFound"/> in the 4.x line; the next major release promotes
+        /// it to its own category.
+        /// </summary>
+        public const string WorkspaceNotFound = "WorkspaceNotFound";
     }
 
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
@@ -109,12 +123,17 @@ internal static class ToolErrorHandler
                 "The workspace session is no longer available because it was closed, evicted, or owned by a prior host process. " +
                 "Call workspace_load with the original solution or project path, then retry with the new workspaceId.");
         },
-        // workspace-id-unknown-error-category: an unknown or never-loaded workspaceId, distinct
-        // from NotFound (symbol/file/metadata misses). Derives from KeyNotFoundException; the
-        // nearest-base lookup selects this handler before the generic KeyNotFoundException one.
-        [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.WorkspaceNotFound,
+        // workspace-id-unknown-error-category: an unknown or never-loaded workspaceId. The 4.x wire
+        // contract keeps the values every 4.x release emitted for this miss — category NotFound
+        // and exceptionType KeyNotFoundException — and adds the optional reason discriminator so
+        // callers can tell it from a symbol/file/metadata miss (NotFound without a reason).
+        // Derives from KeyNotFoundException; the nearest-base lookup selects this handler before
+        // the generic KeyNotFoundException one.
+        [typeof(WorkspaceNotFoundException)] = (_, _) => new(ErrorCategories.NotFound,
             "The workspaceId is unknown to this server (never loaded, or lost after a restart). " +
-            "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId."),
+            "Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId.",
+            Reason: ErrorReasons.WorkspaceNotFound,
+            WireExceptionType: nameof(KeyNotFoundException)),
         [typeof(FileNotFoundException)] = (_, _) => new(ErrorCategories.FileNotFound,
             "The requested file was not found. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
@@ -388,6 +407,11 @@ internal static class ToolErrorHandler
         // reload. Exclude the more-specific eviction type here so the dictionary handler
         // (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
         //
+        // workspace-id-unknown-error-category: the same holds for an unknown workspaceId (e.g.
+        // closed by another session between the auto-reload and the lock re-check). The
+        // symbol re-resolve remediation cannot recover it, so it keeps the workspace-miss
+        // envelope (NotFound + reason WorkspaceNotFound) from its dictionary handler.
+        //
         // workspace-reloaded-during-call-conflates-notfound: when the gate retried after
         // the auto-reload and the second attempt also failed with "Document not found", the
         // gate stamps ReloadConfirmedNotFound=true. That confirms the file path is genuinely
@@ -640,9 +664,11 @@ internal static class ToolErrorHandler
     /// <summary>
     /// tool-error-handler-envelope-duplication: single constructor for the JSON error envelope.
     /// Emits the five base properties (<c>error</c>, <c>category</c>, <c>tool</c>, <c>message</c>,
-    /// <c>exceptionType</c>) in a fixed order, then optionally one structured extra field appended
-    /// last — the same shape the per-branch anonymous-object literals used to produce. Adding a new
-    /// structured error field is a call-site argument, not a sixth copy of the envelope.
+    /// <c>exceptionType</c>) in a fixed order, then the optional <c>reason</c> refinement when the
+    /// classifier supplied one, then optionally one structured extra field appended last — the same
+    /// shape the per-branch anonymous-object literals used to produce. Adding a new structured error
+    /// field is a call-site argument, not a sixth copy of the envelope. <c>exceptionType</c> is the
+    /// thrown type's name unless the classifier pinned a wire name to keep a released value stable.
     /// </summary>
     /// <param name="extraFieldName">
     /// camelCase key for the extra field, or <see langword="null"/> to emit the bare envelope. The
@@ -667,8 +693,13 @@ internal static class ToolErrorHandler
             ["category"] = info.Category.ToString(),
             ["tool"] = toolName,
             ["message"] = info.Message,
-            ["exceptionType"] = ex.GetType().Name,
+            ["exceptionType"] = info.WireExceptionType ?? ex.GetType().Name,
         };
+
+        if (info.Reason is not null)
+        {
+            envelope["reason"] = info.Reason;
+        }
 
         if (extraFieldName is not null)
         {
@@ -784,11 +815,22 @@ internal static class ToolErrorHandler
         return firstSentence.Length > 160 ? firstSentence[..160] + "…" : firstSentence;
     }
 
+    /// <param name="Category">Stable public category.</param>
+    /// <param name="Message">Sanitized remediation text.</param>
+    /// <param name="ParamName">Offending parameter, when known.</param>
+    /// <param name="CorrelationId">Correlation id for unexpected failures.</param>
+    /// <param name="Reason">Optional <see cref="ErrorReasons"/> refinement of <paramref name="Category"/>.</param>
+    /// <param name="WireExceptionType">
+    /// Optional <c>exceptionType</c> override that keeps a released wire value stable when the
+    /// server throws a more specific internal type; <see langword="null"/> emits the thrown type.
+    /// </param>
     internal readonly record struct ErrorInfo(
         ToolErrorCategory Category,
         string Message,
         string? ParamName = null,
-        string? CorrelationId = null);
+        string? CorrelationId = null,
+        string? Reason = null,
+        string? WireExceptionType = null);
 }
 
 /// <summary>

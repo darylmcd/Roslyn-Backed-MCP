@@ -68,6 +68,50 @@ preserved; URI and ratio-like text is not treated as a filesystem path.
 This policy applies to command stdout, stderr, early-kill reasons, test failure messages and stack
 traces, and failure-envelope summaries and tails. Internal execution records remain full fidelity.
 
+### Update availability (`server_info.update`)
+
+`server_info` always returns an `update` block. In the 4.x line, `updateAvailable` is a boolean. It
+is `true` only when a known registry version is strictly newer than the running build; `latest`
+and `command` are populated in that case and `null` otherwise. A `false` value does not by itself
+mean the build is current. `checkStatus` is the authority for that, and `lastCheckedAt` records
+when the most recent check finished:
+
+| `checkStatus` | What `updateAvailable: false` means |
+|---|---|
+| `succeeded` | The registry check completed and found no newer stable release. |
+| `neverChecked`, `pending` | Unknown: no check has completed yet. |
+| `failed`, `timedOut` | Unknown: the most recent check did not complete. |
+
+A background refresh can report `pending` while a newer version found by an earlier check keeps
+`updateAvailable: true`.
+
+### Tool error envelope
+
+A failed tool call returns `isError: true` and a JSON envelope with `error`, `category`, `tool`, and
+`message`. Classified failures also carry `exceptionType`; unexpected failures carry
+`category: "InternalError"` and a `correlationId` instead. Optional fields appear only when they
+apply: `reason`, `schemaHint`, `closestMatches`, `blockingDependencies`, and `_meta`. Consumers
+must ignore fields they do not recognize.
+
+`reason` refines a category without changing it, so code that branches only on `category` keeps
+working. The current value is `WorkspaceNotFound`. It accompanies `category: "NotFound"` (and
+`exceptionType: "KeyNotFoundException"`) when the `workspaceId` is unknown to this server, because
+it was never loaded or was lost with a prior process. Symbol, file, and metadata-name misses also
+use `NotFound`, but never carry a `reason`. Recover from a workspace miss by calling
+`workspace_list`, then `workspace_load`. Workspace-scoped `resources/read` failures keep the
+`NotFound:` message prefix and not-found error code, and carry the same token as
+`reason: WorkspaceNotFound` inside the sanitized error message.
+
+### Deprecations scheduled for 5.0
+
+These 4.x behaviors are deprecated. The 5.0.0 release will change them under an ADR with
+migration notes, as `docs/release-policy.md` requires.
+
+| Surface | 4.x behavior | 5.0 behavior | Prepare now |
+|---|---|---|---|
+| `server_info.update.updateAvailable` | `boolean`; `checkStatus` carries "unknown" | Nullable: `null` until a check succeeds | Read `checkStatus` before trusting `false`, and accept `null` |
+| Unknown `workspaceId` error | `category: "NotFound"`, `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` | Branch on `reason`, and accept the `WorkspaceNotFound` category |
+
 ## Experimental Surface
 
 Experimental entries are intentionally discoverable but may evolve faster before a second transport or editor-backed host exists.

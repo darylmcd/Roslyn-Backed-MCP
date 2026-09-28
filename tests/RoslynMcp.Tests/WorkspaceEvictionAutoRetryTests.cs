@@ -163,8 +163,10 @@ public sealed class WorkspaceEvictionAutoRetryTests
             var root = doc.RootElement;
             Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
                 $"Without an IWorkspaceManager the pre-fix error envelope must survive unchanged. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
-                $"The gate's ContainsWorkspace precheck classifies as WorkspaceNotFound; the retry wiring must not change that when unwired. Actual: {json}");
+            Assert.AreEqual("NotFound", root.GetProperty("category").GetString(),
+                $"The gate's ContainsWorkspace precheck classifies as NotFound; the retry wiring must not change that when unwired. Actual: {json}");
+            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("reason").GetString(),
+                $"The gate's ContainsWorkspace precheck carries the workspace reason. Actual: {json}");
             Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
         }
         finally
@@ -461,8 +463,10 @@ public sealed class WorkspaceEvictionAutoRetryTests
             var root = doc.RootElement;
             Assert.IsTrue(root.TryGetProperty("error", out var errorProp) && errorProp.GetBoolean(),
                 $"A failed reload must still surface the original NotFound envelope unchanged. Actual: {json}");
-            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("category").GetString(),
+            Assert.AreEqual("NotFound", root.GetProperty("category").GetString(),
                 $"Fallback behaviour must be byte-for-byte preserved — only a log emission is added. Actual: {json}");
+            Assert.AreEqual("WorkspaceNotFound", root.GetProperty("reason").GetString(),
+                $"The original workspace-miss reason must survive the failed rehydration. Actual: {json}");
 
             Assert.AreEqual(1,
                 logger.Entries.Count(e =>

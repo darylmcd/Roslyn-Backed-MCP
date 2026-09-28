@@ -278,12 +278,10 @@ public static class ServerTools
         var latestVersion = versionChecker.GetLatestVersion();
         var checkStatus = versionChecker.LastCheckStatus;
         var lastCheckedAt = versionChecker.LastCheckedAt;
-        bool? updateAvailable = checkStatus == VersionCheckStatus.Succeeded
-            ? latestVersion is not null
-              && Version.TryParse(currentSemver, out var currentParsed)
-              && Version.TryParse(latestVersion, out var latestParsed)
-              && latestParsed > currentParsed
-            : null;
+        var updateAvailable = latestVersion is not null
+                              && Version.TryParse(currentSemver, out var currentParsed)
+                              && Version.TryParse(latestVersion, out var latestParsed)
+                              && latestParsed > currentParsed;
 
         // latest-version-status-surface: always emit the update block so operators can
         // distinguish "still checking" from "check failed/timed out" and "succeeded,
@@ -293,14 +291,17 @@ public static class ServerTools
         // reports a STRICTLY GREATER version than the running build. Pre-fix the
         // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
         // while current=1.18.2 — the cached value was older). The new contract: if
-        // `latest` is present, it is genuinely newer than `current`. updateAvailable
-        // remains for callers that prefer the tri-state result: null until the check
-        // succeeds, then false/true according to the version comparison.
+        // `latest` is present, it is genuinely newer than `current`.
+        //
+        // server-info-update-unknown-not-false: updateAvailable keeps its 4.x boolean shape
+        // and meaning (false whenever no strictly newer version is known, including while
+        // the check is unfinished); checkStatus is the authority for "unknown". Widening it
+        // to bool? (null = unknown) is the next-major contract change.
         return new ServerUpdateInfoDto(
             Current: currentSemver,
-            Latest: updateAvailable is true ? latestVersion : null,
+            Latest: updateAvailable ? latestVersion : null,
             UpdateAvailable: updateAvailable,
-            Command: updateAvailable is true ? "dotnet tool update -g Darylmcd.RoslynMcp" : null,
+            Command: updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : null,
             CheckStatus: FormatVersionCheckStatus(checkStatus),
             LastCheckedAt: lastCheckedAt?.ToString("O"));
     }
