@@ -21,3 +21,7 @@
 ## Context
 
 - Split child of `invalid-operation-throw-sites-lack-public-message` (split 2026-09-26). Sibling `unknown-projectname-silently-empty` covers the ProjectFilterHelper path (project_diagnostics/list_analyzers); reuse one message shape if both land.
+
+## Notes
+
+- 2026-09-28: mechanism parent `tool-refusal-public-message-guard` adds a ratchet that fails any new plain `InvalidOperationException` under `src/`; this row is part of its burn-down. Convert this row's sites to `PublicInvalidOperationException` (or the Core internal factory for true invariants) and lower the committed baseline count in the same PR.

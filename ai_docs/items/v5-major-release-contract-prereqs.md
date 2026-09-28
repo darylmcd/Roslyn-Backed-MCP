@@ -1,6 +1,6 @@
 # v5-major-release-contract-prereqs — ADR + product-contract coverage for pending BREAKING fragments before the 5.0.0 cut
 
-**row:** `v5-major-release-contract-prereqs` · **pri:** `Medium` · **size:** `S` · **deps:** `—`
+**row:** `v5-major-release-contract-prereqs` · **pri:** `High` · **size:** `S`
 
 ## Anchors
 
@@ -29,3 +29,7 @@
 ## Regression shape
 
 Docs-only; `verify-ai-docs` / link gates pass. No production code change.
+
+## Notes
+
+- 2026-09-28: raised to High (retro 2026-09-27 `fixes-stranded-unreleased-4-2-1-pin`). 26 Fixed fragments are unreleased (oldest added 2026-09-19) while `.claude-plugin/mcp.json` pins 4.2.1, so every consumer runs without them. The two BREAKING changes are already merged (#1553 `77c1055d`, #1571 `09728c88`), so a 4.x cut from HEAD needs Acceptance bullet 4 (additive rework) first; otherwise finish the ADRs and cut 5.0.0. Which route to take is an operator decision. Companion: `release-lag-guard`.
