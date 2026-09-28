@@ -97,9 +97,12 @@ must ignore fields they do not recognize.
 working. The current value is `WorkspaceNotFound`. It accompanies `category: "NotFound"` (and
 `exceptionType: "KeyNotFoundException"`) when the `workspaceId` is unknown to this server, because
 it was never loaded or was lost with a prior process. Symbol, file, and metadata-name misses also
-use `NotFound`, but never carry a `reason`. Recover from a workspace miss by calling
-`workspace_list`, then `workspace_load`. Workspace-scoped `resources/read` failures keep the
-`NotFound:` message prefix and not-found error code, and carry the same token as
+use `NotFound`, but never carry a `reason`. If the workspace miss races an in-call auto-reload
+(for example, another session closed the workspace), the envelope keeps the 4.x
+`category: "WorkspaceReloadedDuringCall"` and `exceptionType: "KeyNotFoundException"` and carries
+the same `reason`. Recover from a workspace miss by calling `workspace_list`, then
+`workspace_load`; do not re-resolve the symbol. Workspace-scoped `resources/read` failures keep
+their category prefix (`NotFound:` for a plain miss) and error code, and carry the same token as
 `reason: WorkspaceNotFound` inside the sanitized error message.
 
 ### Deprecations scheduled for 5.0
@@ -110,7 +113,7 @@ migration notes, as `docs/release-policy.md` requires.
 | Surface | 4.x behavior | 5.0 behavior | Prepare now |
 |---|---|---|---|
 | `server_info.update.updateAvailable` | `boolean`; `checkStatus` carries "unknown" | Nullable: `null` until a check succeeds | Read `checkStatus` before trusting `false`, and accept `null` |
-| Unknown `workspaceId` error | `category: "NotFound"`, `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` | Branch on `reason`, and accept the `WorkspaceNotFound` category |
+| Unknown `workspaceId` error | `category: "NotFound"` (`"WorkspaceReloadedDuringCall"` when the miss races an in-call auto-reload), `exceptionType: "KeyNotFoundException"`, `reason: "WorkspaceNotFound"` | `category: "WorkspaceNotFound"` and `exceptionType: "WorkspaceNotFoundException"` on both paths | Branch on `reason`, and accept the `WorkspaceNotFound` category |
 
 ## Experimental Surface
 

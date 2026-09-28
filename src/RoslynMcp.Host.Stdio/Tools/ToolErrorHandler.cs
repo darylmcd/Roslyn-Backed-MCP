@@ -99,8 +99,9 @@ internal static class ToolErrorHandler
         /// <summary>
         /// workspace-id-unknown-error-category: the supplied <c>workspaceId</c> is unknown to this
         /// server (never loaded, or lost with a prior process). Emitted with
-        /// <see cref="ErrorCategories.NotFound"/> in the 4.x line; the next major release promotes
-        /// it to its own category.
+        /// <see cref="ErrorCategories.NotFound"/> in the 4.x line, or with
+        /// <see cref="ErrorCategories.WorkspaceReloadedDuringCall"/> when the miss races an in-call
+        /// auto-reload; the next major release promotes it to its own category.
         /// </summary>
         public const string WorkspaceNotFound = "WorkspaceNotFound";
     }
@@ -407,21 +408,33 @@ internal static class ToolErrorHandler
         // reload. Exclude the more-specific eviction type here so the dictionary handler
         // (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
         //
-        // workspace-id-unknown-error-category: the same holds for an unknown workspaceId (e.g.
-        // closed by another session between the auto-reload and the lock re-check). The
-        // symbol re-resolve remediation cannot recover it, so it keeps the workspace-miss
-        // envelope (NotFound + reason WorkspaceNotFound) from its dictionary handler.
-        //
         // workspace-reloaded-during-call-conflates-notfound: when the gate retried after
         // the auto-reload and the second attempt also failed with "Document not found", the
         // gate stamps ReloadConfirmedNotFound=true. That confirms the file path is genuinely
         // absent — not a stale-snapshot race — so fall through to the generic NotFound handler
         // rather than emitting the misleading WorkspaceReloadedDuringCall category.
         if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException &&
-            ex is not WorkspaceNotFoundException &&
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
             AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
+            // workspace-id-unknown-error-category: an unknown workspaceId that races an in-call
+            // auto-reload (e.g. closed by another session before the lock re-check) keeps the
+            // category and exceptionType every 4.x release emitted on this path. The additive
+            // reason and the workspace remediation text tell the caller that re-resolving the
+            // symbol cannot recover it. workspace-not-found-next-major-category-promotion moves
+            // this path to the WorkspaceNotFound category at 5.0.
+            if (ex is WorkspaceNotFoundException)
+            {
+                info = new(ErrorCategories.WorkspaceReloadedDuringCall,
+                    "The workspace was auto-reloaded during this call, and the workspaceId is no longer known " +
+                    "to this server (closed by another session, or lost after a restart). Re-resolving the symbol " +
+                    "cannot recover it. Call workspace_list to see active sessions, then workspace_load to create " +
+                    "one and retry with its workspaceId.",
+                    Reason: ErrorReasons.WorkspaceNotFound,
+                    WireExceptionType: nameof(KeyNotFoundException));
+                return true;
+            }
+
             info = new(ErrorCategories.WorkspaceReloadedDuringCall,
                 "The workspace was auto-reloaded during this call. The symbol handle " +
                 "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +

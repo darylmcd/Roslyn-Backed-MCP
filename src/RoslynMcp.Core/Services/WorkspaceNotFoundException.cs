@@ -6,7 +6,9 @@ namespace RoslynMcp.Core.Services;
 /// <see cref="WorkspaceEvictedException"/>). Surfaced by <c>ToolErrorHandler</c> with the 4.x
 /// wire values <c>category=NotFound</c> and <c>exceptionType=KeyNotFoundException</c> plus the
 /// additive <c>reason=WorkspaceNotFound</c>, so callers can tell a bad workspace id apart from a
-/// missing symbol, file, or metadata name (<c>NotFound</c> without a reason).
+/// missing symbol, file, or metadata name (<c>NotFound</c> without a reason). A miss that races an
+/// in-call auto-reload keeps the 4.x <c>category=WorkspaceReloadedDuringCall</c> with the same
+/// reason and <c>exceptionType</c>.
 /// </summary>
 /// <remarks>
 /// Derives from <see cref="System.Collections.Generic.KeyNotFoundException"/> so existing
