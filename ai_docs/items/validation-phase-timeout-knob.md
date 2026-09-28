@@ -14,8 +14,9 @@
 
 - [ ] The per-phase cap moves from `DefaultValidationPhaseTimeout` (`WorkspaceValidationService.cs:25`) to a `ValidationServiceOptions` property with the same 25 s default, beside `GitStatusTimeout`. The public constructor passes it through (`:63` passes the literal today). The internal test constructor keeps its explicit `validationPhaseTimeout` parameter.
 - [ ] `Program.cs` `BindValidationServiceOptions` binds an env override (for example `ROSLYNMCP_VALIDATION_PHASE_TIMEOUT_SECONDS`, positive integers only, like the other knobs there). `ai_docs/references/environment-variables.md` documents it with its default and names the phases it bounds.
-- [ ] The timeout warning text (`CreateTimeoutResult`, `:752-808`) names the knob, so a caller who hits the cap knows what to raise.
+- [ ] The timeout warning text (`CreateTimeoutResult`, `:752-808`) names the knob, so a caller who hits the cap knows what to raise. It keeps the phase name and the `retryable=true` token that ADR 0010 and the existing tests pin (`WorkspaceValidationTimeoutTests.cs:76-78`, `ValidateRecentGitChangesTests.cs:369-371`).
 - [ ] Tests: the options default is 25 s; a service built from options with a short override times out the compile phase with `overallStatus: timeout` (extend `WorkspaceValidationTimeoutTests`, which pins the phase cap through the internal constructor today).
+- [ ] Compatibility class: minor-compatible, so the row ships on the 4.x line. The knob is additive configuration, its default keeps today's 25 s, and the `validate_*` tools it bounds are experimental (`ServerSurfaceCatalog.Analysis.cs:34-35`).
 
 ## Evidence
 

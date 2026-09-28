@@ -19,6 +19,7 @@
 - [ ] Red-first wire test through the real SDK binding path, not a hand-built exception: a tool call that omits one required parameter names it in the envelope.
 - [ ] Regression test in the same wire file. With two workspaces loaded, `validate_workspace` (schema-required `workspaceId`, auto-resolve eligible under `ElicitationAllowlistPolicy.IsWorkspaceIdAutoResolveAllowedFor`) called without `workspaceId` returns the resolver's fast-fail envelope unchanged: category `InvalidArgument`, parameter `workspaceId`, and a message that lists the candidates (`StructuredWorkspaceResolver.cs:129-139`, `:217-220`). `ToolCallErrorWireContractTests.WorkspaceFastFails_UseEraSpecificWireShape` (`:176`) stays green unchanged.
 - [ ] Keep the unit tests that hand-build the binder exception with `paramName: "path"` (`StructuredCallToolFilterTests.cs:49-51`, `StructuredCallToolFilterElicitationTests.cs:21-23`) only if they still describe what the SDK actually throws; otherwise rewrite them to the real shape.
+- [ ] Compatibility class: minor-compatible under `docs/release-policy.md:19`, so the row ships on the 4.x line. The category stays the one the exception maps to today, and every binding-like handler returns `InvalidArgument` (`ToolErrorHandler.cs:176-206`). The envelope gains no field. Only the message and the parameter name behind `schemaHint` change, from the binder's `arguments` or `<unknown>` to the real name.
 
 ## Evidence
 

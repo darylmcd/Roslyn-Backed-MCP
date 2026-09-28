@@ -18,6 +18,7 @@
 - [ ] Property names outside an allowlist are refused with a coded, public error that names the allowlist. The allowlist is configuration (a `ValidationServiceOptions` entry with a documented default and an env override bound in `Program.cs`), not a literal in the service.
 - [ ] Tests assert the exact argument list for each combination and the refusal for a non-allowlisted property.
 - [ ] The new options reach `TestRunnerService` through a default-implemented `ITestRunnerService` overload, so the 9 test doubles (in 6 test files, re-counted at `02db6c49`) that implement the interface need no change.
+- [ ] Compatibility class: minor-compatible under `docs/release-policy.md:19`, so the row ships on the 4.x line. Both parameters are optional, and omitting them keeps today's behavior: `dotnet test` builds and gets no extra properties. The allowlist refusal is reachable only through the new parameter and uses category `InvalidArgument` (`PublicArgumentException`).
 
 ## Evidence
 

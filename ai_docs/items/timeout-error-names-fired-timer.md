@@ -29,6 +29,7 @@
 - [ ] `test_run`'s own timeout envelope (`TestRunnerService.cs:175-177`, "raise the configured test timeout") names `ROSLYNMCP_TEST_TIMEOUT_SECONDS`.
 - [ ] Rendered messages stay path-free and never echo caller text. The command-budget message at `GatedCommandExecutor.cs:99-100` embeds the full dotnet argument list, including a caller's test filter, so it is never rendered verbatim.
 - [ ] Red-first wire tests. A gate request timeout during `test_run` names `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS`; today the envelope leads with the build/test knobs. A `nuget_vulnerability_scan` command timeout names `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS`; today it gets the same build/test/request text, which never mentions that knob.
+- [ ] Compatibility class: minor-compatible under `docs/release-policy.md:19`, so the row ships on the 4.x line. Every timeout keeps category `Timeout` and today's `isError` value; only the message text changes. The typed exception derives from `TimeoutException`, so the existing `catch (TimeoutException)` sites (`TestRunnerService.cs:156`, `ScriptWorkerProcess.cs:57`) and the handler's nearest-base lookup (`ToolErrorHandler.cs:134-136`) keep working. The envelope's `exceptionType` stays `TimeoutException`, the BCL base name, which is the rule `public-argument-exception-core-move` sets for its marker exceptions. Any structured timer or knob field is additive.
 
 ## Evidence
 
