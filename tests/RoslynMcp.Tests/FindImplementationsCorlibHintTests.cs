@@ -196,6 +196,45 @@ public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
+    /// find-implementations-corlib-guard-blocks-source-anchor: a SOURCE-anchored locator on a
+    /// corlib interface token (the <c>IDisposable</c> in <c>BacklogDisposableSample : IDisposable</c>)
+    /// is the exact remedy the corlib hint recommends, so the guard must NOT short-circuit it —
+    /// the wrapper must enumerate the workspace implementers and emit no hint. Paired with
+    /// <see cref="FindImplementations_Wrapper_CorlibMetadataName_EmitsHint"/>, which pins that the
+    /// metadataName locator for the same symbol still receives the hint.
+    /// </summary>
+    [TestMethod]
+    public async Task FindImplementations_Wrapper_CorlibSourceAnchor_ReturnsImplementers()
+    {
+        var filePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "BacklogSamples.cs");
+        var lines = await File.ReadAllLinesAsync(filePath);
+        var lineIndex = Array.FindIndex(lines, static l => l.Contains("class BacklogDisposableSample : IDisposable", StringComparison.Ordinal));
+        Assert.IsTrue(lineIndex >= 0, "Fixture must declare BacklogDisposableSample : IDisposable.");
+        var column = lines[lineIndex].IndexOf("IDisposable", StringComparison.Ordinal) + 1;
+
+        var json = await SymbolTools.FindImplementations(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            ReferenceService,
+            WorkspaceId,
+            filePath: filePath,
+            line: lineIndex + 1,
+            column: column,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsFalse(root.TryGetProperty("hint", out _),
+            $"A source-anchored corlib query MUST NOT receive the corlib hint — the hint's own remedy would otherwise short-circuit. Got: {json}");
+        Assert.IsTrue(root.TryGetProperty("count", out var count), $"Envelope must include count. Got: {json}");
+        Assert.IsTrue(count.GetInt32() > 0,
+            $"Source-anchored find_implementations on IDisposable must enumerate workspace implementers. Got: {json}");
+        Assert.IsTrue(json.Contains("BacklogDisposableSample", StringComparison.Ordinal),
+            $"Implementers must include the sample's BacklogDisposableSample. Got: {json}");
+    }
+
+    /// <summary>
     /// Regression guard: when the locator resolves to a user-declared interface root (source,
     /// not corlib), the wrapper must call the service normally and emit the legacy
     /// <c>{ count, items, includeGeneratedPartials }</c> envelope WITHOUT a <c>hint</c> field.
