@@ -176,7 +176,8 @@ public sealed class HostProcessMetadataStore
     {
         // Idempotent: only the first call hits the disk. We don't bother locking the load
         // path because only a single thread (the host startup path) has any legitimate
-        // reason to call EnsureLoaded before ConsumePrevious is reachable.
+        // reason to call EnsureLoaded before the first server_info / server_heartbeat probe
+        // calls ServerProcessMetadata.PreviousProcessSnapshot.Consume().
         if (_previousLoaded)
         {
             return;
