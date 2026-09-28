@@ -468,6 +468,118 @@ public sealed class DeadLocalDetectorTests
             "An outer local read by a nested local function must remain live.");
     }
 
+    // Witness: WorkspaceReloadedEventTests `observed` — a local function assigns a
+    // captured outer local that only the enclosing method reads. The local
+    // function's data flow sees the write but not the read.
+    [TestMethod]
+    public async Task FindDeadLocals_OuterLocalWrittenByLocalFunctionThenReadByOuter_IsNotFlagged()
+    {
+        const string source = """
+            namespace Sample;
+            internal static class Service
+            {
+                public static bool Entry(string expected)
+                {
+                    var observed = false;
+                    void Observe(string id) => observed = id == expected;
+                    void ObserveBlock(string id)
+                    {
+                        observed = id == expected;
+                    }
+
+                    Observe("a");
+                    ObserveBlock("b");
+                    return observed;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadLocalsAsync(
+            WorkspaceId,
+            new DeadLocalsAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(0, hits.Count,
+            "An outer local assigned by a local function and read by the enclosing method must remain live. Got: "
+            + string.Join(", ", hits.Select(h => h.SymbolName + " in " + h.ContainingMethod)));
+    }
+
+    // The enclosing method's own pass still judges a captured outer local: when
+    // nobody reads it, it is reported once, attributed to the declaring method.
+    [TestMethod]
+    public async Task FindDeadLocals_OuterLocalWrittenByLocalFunctionNeverRead_IsFlaggedOnceInOwner()
+    {
+        const string source = """
+            namespace Sample;
+            internal static class Service
+            {
+                public static void Entry()
+                {
+                    var observed = false;
+                    void Observe() => observed = true;
+                    Observe();
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadLocalsAsync(
+            WorkspaceId,
+            new DeadLocalsAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(1, hits.Count,
+            "Expected exactly one hit for the never-read captured local. Got: "
+            + string.Join(", ", hits.Select(h => h.SymbolName + " in " + h.ContainingMethod)));
+        Assert.AreEqual("observed", hits[0].SymbolName);
+        Assert.AreEqual("Entry", hits[0].ContainingMethod);
+    }
+
+    // A local declared inside a local function is judged by that local function's
+    // pass only, and a local declared inside a lambda (no pass of its own) is still
+    // judged by the enclosing method.
+    [TestMethod]
+    public async Task FindDeadLocals_NestedDeclarations_ReportedOnceByDeclaringOwner()
+    {
+        const string source = """
+            namespace Sample;
+            internal static class Service
+            {
+                public static int Entry()
+                {
+                    System.Action act = () =>
+                    {
+                        var inLambda = 1;
+                    };
+                    act();
+                    return Inner();
+
+                    int Inner()
+                    {
+                        var temp = 42;
+                        return 0;
+                    }
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadLocalsAsync(
+            WorkspaceId,
+            new DeadLocalsAnalysisOptions(),
+            default);
+
+        var described = hits.Select(h => h.SymbolName + " in " + h.ContainingMethod).OrderBy(s => s).ToArray();
+        CollectionAssert.AreEqual(
+            new[] { "inLambda in Entry", "temp in Inner" },
+            described,
+            "Got: " + string.Join(", ", described));
+    }
+
     [TestMethod]
     public async Task FindDeadLocals_LimitCapsResults()
     {

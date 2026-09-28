@@ -1292,7 +1292,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         {
             if (ct.IsCancellationRequested || results.Count >= limit) break;
 
-            var (body, methodName, containingTypeName) = ResolveBodyAndOwnerNames(bodyOwner, semanticModel, ct);
+            var (body, ownerSymbol, methodName, containingTypeName) = ResolveBodyAndOwnerNames(bodyOwner, semanticModel, ct);
             if (body is null) continue;
 
             DataFlowAnalysis? flow;
@@ -1320,6 +1320,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
                 if (symbol is not ILocalSymbol local) continue;
                 if (readInside.Contains(symbol)) continue;
+                if (!IsLocalOwnedByBody(local, ownerSymbol)) continue;
                 if (ShouldSkipLocalForDeadLocalAnalysis(local)) continue;
 
                 var dto = BuildDeadLocalDto(local, methodName, containingTypeName, projectName);
@@ -1355,12 +1356,36 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     }
 
     /// <summary>
-    /// Returns the analyzable body (block or expression body), plus a friendly method
-    /// name and containing type name for the DTO. Returns <c>(null, ...)</c> when the
-    /// node has no body to analyze (abstract methods, partial declarations without
-    /// implementation, expression-bodied member accessors with null bodies).
+    /// True when <paramref name="local"/> is declared by the body being analyzed, so
+    /// this pass is the one that sees every read of it. A body's data flow also
+    /// reports writes to locals it does not own: a local function assigning a
+    /// captured outer local (read later by the enclosing method), or a method whose
+    /// region spans a nested local function's own locals. Those are judged by their
+    /// declaring body's pass instead. Lambdas have no pass of their own, so a local
+    /// declared inside a lambda belongs to the nearest enclosing non-lambda owner.
+    /// An unresolved owner symbol keeps the local (no owner to compare against).
     /// </summary>
-    private static (SyntaxNode? Body, string MethodName, string? ContainingTypeName) ResolveBodyAndOwnerNames(
+    private static bool IsLocalOwnedByBody(ILocalSymbol local, ISymbol? ownerSymbol)
+    {
+        if (ownerSymbol is null) return true;
+
+        var container = local.ContainingSymbol;
+        while (container is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction } lambda)
+        {
+            container = lambda.ContainingSymbol;
+        }
+
+        return SymbolEqualityComparer.Default.Equals(container, ownerSymbol);
+    }
+
+    /// <summary>
+    /// Returns the analyzable body (block or expression body), the owner's declared
+    /// symbol, plus a friendly method name and containing type name for the DTO.
+    /// Returns <c>(null, ...)</c> when the node has no body to analyze (abstract
+    /// methods, partial declarations without implementation, expression-bodied member
+    /// accessors with null bodies).
+    /// </summary>
+    private static (SyntaxNode? Body, ISymbol? OwnerSymbol, string MethodName, string? ContainingTypeName) ResolveBodyAndOwnerNames(
         SyntaxNode bodyOwner,
         SemanticModel semanticModel,
         CancellationToken ct)
@@ -1372,7 +1397,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             LocalFunctionStatementSyntax lf => (SyntaxNode?)lf.Body ?? lf.ExpressionBody?.Expression,
             _ => null
         };
-        if (body is null) return (null, string.Empty, null);
+        if (body is null) return (null, null, string.Empty, null);
 
         var declaredSymbol = semanticModel.GetDeclaredSymbol(bodyOwner, ct);
         var methodName = declaredSymbol?.Name ?? bodyOwner switch
@@ -1386,7 +1411,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         };
 
         var containingTypeName = declaredSymbol?.ContainingType?.Name;
-        return (body, methodName, containingTypeName);
+        return (body, declaredSymbol, methodName, containingTypeName);
     }
 
     /// <summary>
