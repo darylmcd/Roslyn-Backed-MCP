@@ -21,4 +21,4 @@
 
 ## Context
 
-- Companion to `v5-major-release-contract-prereqs`, which carries the release decision itself. This row only makes the lag visible; it never blocks a merge.
+- Companion to `v5-major-release-contract-prereqs`. PR #1663 made the 4.3.0-vs-5.0 release decision: ship the 4.x line additively. That row is now the ADR row for the 5.0.0 cut. This row only makes the lag visible; it never blocks a merge.
