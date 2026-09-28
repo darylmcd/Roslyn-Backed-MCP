@@ -177,7 +177,8 @@ public sealed class ServerInfoUpdateLatestTests
         var newer = "999.0.0";
         var json = await ServerTools.GetServerInfo(
             new FakeWorkspaceManager(),
-            new FakeVersionProvider(newer, VersionCheckStatus.Pending));
+            new FakeVersionProvider(newer, VersionCheckStatus.Pending),
+            new ServerProcessMetadata());
         using var doc = JsonDocument.Parse(json.TextPayload());
 
         var update = doc.RootElement.GetProperty("update");
