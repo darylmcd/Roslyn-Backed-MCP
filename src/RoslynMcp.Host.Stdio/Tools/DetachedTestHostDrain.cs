@@ -39,6 +39,10 @@ internal sealed record DetachedTestHostDrainResult(
 /// back in <see cref="DetachedTestHostDrainResult.Undrained"/> and is logged at Warning. A
 /// process whose executable path cannot be read is never terminated, because its location
 /// is unknown. Only a process that has already exited counts as benign.</para>
+/// <para>Both sides of the descendant check are physical paths. The working directory comes from
+/// the session's <c>LoadedPath</c>, which <c>workspace_load</c> stores only after resolving every
+/// symlink and junction. <see cref="ProcessExecutablePathResolver"/> reports the post-reparse
+/// image path, so a candidate launched through a link into the workspace still matches.</para>
 /// <para>After the cancellation token fires (the cleanup budget ran out or the
 /// caller cancelled), the drain stops terminating processes. It still reports each in-workspace
 /// candidate it did not terminate.</para>

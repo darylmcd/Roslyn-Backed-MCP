@@ -285,6 +285,60 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     // ---------------------------------------------------------------------------
+    // Paths compare in the physical namespace. workspace_load stores LoadedPath only after
+    // PhysicalPathResolver has resolved every symlink and junction, and the drain resolves each
+    // candidate to its post-reparse image path. A testhost launched through a junction into the
+    // workspace therefore still matches. Process.MainModule reported the as-launched link path,
+    // which missed it.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_KillsInDirTesthostLaunchedThroughAJunction()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("NTFS junctions are Windows-only.");
+            return;
+        }
+
+        const string expectedWorkspaceId = "test-ws-junction-drain";
+        var root = Path.Combine(Path.GetTempPath(), "rmcp-junction-drain-" + Guid.NewGuid().ToString("N"));
+        var workingDirectory = Path.Combine(root, "physical");
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+        var link = Path.Combine(root, "link");
+
+        Process? launched = null;
+        try
+        {
+            WindowsDirectoryJunction.Create(link, workingDirectory);
+            launched = StartLongLived(CopyLauncherUnder(Path.Combine(link, "host")));
+            var launchedPid = launched.Id;
+
+            var json = await CloseWithProcessSeamAsync(
+                new PassthroughGate(),
+                new FakeWorkspaceManagerForDrain(CreateStatus(expectedWorkspaceId, loadedPath)),
+                new RecordingDotnetCommandRunner(),
+                expectedWorkspaceId,
+                name => name == "testhost"
+                    ? new[] { GetByIdOrEmpty(launchedPid) }.Where(p => p is not null).Select(p => p!).ToArray()
+                    : []);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
+            Assert.IsTrue(
+                launched.WaitForExit(10_000),
+                "A testhost launched through a junction into the physical workspace must be killed.");
+            AssertNoUndrainedProcesses(doc);
+        }
+        finally
+        {
+            KillQuietly(launched);
+            TryDeleteDirectory(root);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // A candidate the drain cannot inspect is reported, never dropped and never killed.
     // Its location is unknown, so killing it could hit an unrelated worktree's testhost, but
     // it may hold locks under this workspace. The response and a Warning log name it.
@@ -349,18 +403,33 @@ public sealed class WorkspaceCloseDrainTests
         }
     }
 
+    // Production teardown timing: the drain enumerates a live testhost, which exits before the
+    // drain resolves its path. Its parent (vstest.console / dotnet test) still holds a handle, so
+    // the pid still names the exited process and opening it succeeds. On Windows the path query
+    // then fails, and that failure must not be mistaken for a live, uninspectable process. The
+    // real resolver runs here: a stub resolver returning Exited cannot catch that misclassification.
     [TestMethod]
-    public async Task CloseWorkspace_DrainProcessesTrue_CandidateThatAlreadyExited_IsNotReported()
+    public async Task CloseWorkspace_DrainProcessesTrue_CandidateThatExitedAfterEnumeration_IsNotReported()
     {
         const string expectedWorkspaceId = "test-ws-exited-candidate-drain";
-        var loadedPath = Path.Combine(Path.GetTempPath(), "rmcp-exited-drain-" + Guid.NewGuid().ToString("N"), "Sample.slnx");
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-exited-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
 
-        Process? candidate = null;
+        // `parent` plays the testhost's parent: it stays undisposed, so it holds a process handle
+        // after the exit. `enumerated` is the drain's own Process for the same pid.
+        Process? parent = null;
+        Process? enumerated = null;
         try
         {
-            candidate = StartLongLivedProcessFromSystemPath();
-            var candidatePid = candidate.Id;
+            parent = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            enumerated = Process.GetProcessById(parent.Id);
+            parent.Kill();
+            Assert.IsTrue(parent.WaitForExit(10_000), "The candidate must exit before the drain resolves it.");
+
             var logger = new RecordingLogger();
+            var reporter = new RecordingUnexpectedExceptionReporter();
+            var candidate = enumerated;
 
             var json = await WorkspaceTools.CloseWorkspaceCore(
                 gate: new PassthroughGate(),
@@ -369,23 +438,23 @@ public sealed class WorkspaceCloseDrainTests
                 workspaceId: expectedWorkspaceId,
                 drainProcesses: true,
                 loggerFactory: new RecordingLoggerFactory(logger),
-                exceptionReporter: null,
-                getProcessesByName: name => name == "testhost"
-                    ? new[] { GetByIdOrEmpty(candidatePid) }.Where(p => p is not null).Select(p => p!).ToArray()
-                    : [],
+                exceptionReporter: reporter,
+                getProcessesByName: name => name == "testhost" ? [candidate] : [],
                 processDrainTimeout: WorkspaceTools.DefaultProcessDrainTimeout,
-                ct: CancellationToken.None,
-                resolveExecutablePath: _ => ProcessExecutablePathResolution.Exited);
+                ct: CancellationToken.None);
 
             using var doc = JsonDocument.Parse(json);
             Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean());
             AssertNoUndrainedProcesses(doc);
             Assert.IsFalse(logger.Entries.Any(e => e.Level == LogLevel.Warning),
                 "A candidate that exited before inspection holds no locks and must not be reported.");
+            Assert.AreEqual(0, reporter.Reports.Count, "An exited candidate is not a failure.");
         }
         finally
         {
-            KillQuietly(candidate);
+            enumerated?.Dispose();
+            KillQuietly(parent);
+            TryDeleteDirectory(workingDirectory);
         }
     }
 
@@ -461,6 +530,29 @@ public sealed class WorkspaceCloseDrainTests
                 Path.GetFullPath(executablePath),
                 Path.GetFullPath(resolution.Path!),
                 ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            KillQuietly(process);
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [TestMethod]
+    public void ProcessExecutablePathResolver_ProcessThatExitedWhileAHandleIsHeld_IsExited()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "rmcp-resolver-exited-" + Guid.NewGuid().ToString("N"));
+        Process? process = null;
+        try
+        {
+            process = StartLongLived(CopyLauncherUnder(directory));
+            process.Kill();
+            Assert.IsTrue(process.WaitForExit(10_000), "The helper must exit before it is resolved.");
+
+            // `process` still holds its handle, so the pid still names the exited process.
+            var resolution = ProcessExecutablePathResolver.Resolve(process);
+
+            Assert.AreEqual(ProcessExecutablePathStatus.Exited, resolution.Status, resolution.Reason);
         }
         finally
         {

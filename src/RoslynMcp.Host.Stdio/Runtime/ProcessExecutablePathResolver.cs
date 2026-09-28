@@ -12,10 +12,12 @@ internal enum ProcessExecutablePathStatus
     /// <summary><see cref="ProcessExecutablePathResolution.Path"/> holds the executable image path.</summary>
     Resolved,
 
-    /// <summary>The process no longer exists, so there is nothing left to inspect or terminate.</summary>
+    /// <summary>The process has exited, so there is nothing left to inspect or terminate. Its pid
+    /// may still be open while another handle keeps the exited process object alive.</summary>
     Exited,
 
-    /// <summary>The process exists but its executable path could not be read.</summary>
+    /// <summary>The process is running, or its exit state is unknown, and its executable path
+    /// could not be read.</summary>
     Unavailable,
 }
 
@@ -53,8 +55,9 @@ internal readonly record struct ProcessExecutablePathResolution(
 /// <c>workspace_close</c> drain. <c>QueryFullProcessImageNameW</c> reads the image name the
 /// kernel stored at creation and needs only <c>PROCESS_QUERY_LIMITED_INFORMATION</c>.</para>
 /// <para>On Linux, <c>/proc/&lt;pid&gt;/exe</c> is the kernel's link to the executed image,
-/// which does not depend on the target's dynamic loader. Other platforms have no dedicated
-/// query here and fall back to <see cref="Process.MainModule"/>.</para>
+/// which does not depend on the target's dynamic loader. Other platforms fall back to
+/// <see cref="Process.MainModule"/>. On macOS and FreeBSD the runtime implements it with
+/// <c>proc_pidpath</c>, the kernel's recorded image path, so it has no loader race there.</para>
 /// </remarks>
 internal static class ProcessExecutablePathResolver
 {
@@ -99,6 +102,7 @@ internal static class ProcessExecutablePathResolver
                 : ProcessExecutablePathResolution.Unavailable(ReasonForWindowsError(openError));
         }
 
+        var queryError = NativeMethods.ErrorInsufficientBuffer;
         foreach (var capacity in s_windowsPathCapacities)
         {
             var buffer = new char[capacity];
@@ -108,15 +112,27 @@ internal static class ProcessExecutablePathResolver
                 return ProcessExecutablePathResolution.Resolved(new string(buffer, 0, checked((int)length)));
             }
 
-            var queryError = Marshal.GetLastPInvokeError();
+            queryError = Marshal.GetLastPInvokeError();
             if (queryError != NativeMethods.ErrorInsufficientBuffer)
             {
-                return ProcessExecutablePathResolution.Unavailable(ReasonForWindowsError(queryError));
+                break;
             }
         }
 
-        return ProcessExecutablePathResolution.Unavailable(PathQueryFailedReason);
+        // A process that exited while another handle keeps its kernel object alive (a testhost
+        // whose vstest.console / dotnet test parent has not closed it yet) still opens by pid, but
+        // the image query then fails with ERROR_GEN_FAILURE. It holds no file locks, so classify
+        // it as exited rather than as a live process whose path is unreadable.
+        return HasExitedWindows(handle)
+            ? ProcessExecutablePathResolution.Exited
+            : ProcessExecutablePathResolution.Unavailable(ReasonForWindowsError(queryError));
     }
+
+    /// <remarks>An exit code equal to <c>STILL_ACTIVE</c> is indistinguishable from a running
+    /// process, so such a process counts as running and is reported, never silently dropped.</remarks>
+    [SupportedOSPlatform("windows")]
+    private static bool HasExitedWindows(SafeProcessHandle handle) =>
+        NativeMethods.GetExitCodeProcess(handle, out var exitCode) && exitCode != NativeMethods.StillActive;
 
     private static string ReasonForWindowsError(int error) =>
         error == NativeMethods.ErrorAccessDenied ? AccessDeniedReason : PathQueryFailedReason;
@@ -185,6 +201,7 @@ internal static class ProcessExecutablePathResolver
         public const int ErrorAccessDenied = 5;
         public const int ErrorInvalidParameter = 87;
         public const int ErrorInsufficientBuffer = 122;
+        public const uint StillActive = 259;
 
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -201,5 +218,11 @@ internal static class ProcessExecutablePathResolver
             uint flags,
             [Out] char[] executableName,
             ref uint size);
+
+        // PROCESS_QUERY_LIMITED_INFORMATION is enough access for GetExitCodeProcess.
+        [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetExitCodeProcess(SafeProcessHandle process, out uint exitCode);
     }
 }

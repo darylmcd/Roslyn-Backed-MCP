@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T21:44:59Z
+**updated_at:** 2026-09-28T22:19:18Z
 
 ## Agent contract
 
@@ -381,6 +381,8 @@
 | `unused-code-analyzer-test-harness-wave-2` | Low | unused-code-analyzer-test-harness-wave-1 | **Share the analyzer test harness (wave 2 of 3)** — move DeadLocalDetectorTests, DuplicateHelperDetectionTests and UnusedSymbolScanFailSafeTests off their private TestWorkspaceManager copies onto the wave-1 harness. [type: test-refactor] [source: PR #1665 review] | S | items/unused-code-analyzer-test-harness-wave-2.md |
 | `root-expansion-grant-registry-host-ownership` | Low | static-singleton-di-bypass-core-services | Inject root-expansion grant ownership — move the process-static grant state onto the host-singleton boundary service that static-singleton-di-bypass-core-services child 1 adds, and own the WorkspaceClosed subscription with the host. [type: refactor] [source: 2026-08-21 lifecycle remediation adjacent review, PR #1665 review] | L | items/root-expansion-grant-registry-host-ownership.md |
 | `static-singleton-di-bypass-core-services` | Low | — | **Replace static singleton DI-bypass state with scoped services** — move WorkspaceEvictionRegistry, SurfaceRegistrationSnapshot and SecurityOptionsSnapshot onto DI-owned instances; keep AmbientGateMetrics static only with a recorded rationale. [type: refactor] [source: refactor-matrix-pass1, PR #1664 review, PR #1665 review] | L | items/static-singleton-di-bypass-core-services.md |
+| `workspace-close-drain-descendant-check-ignores-case-on-linux` | Low | — | **workspace_close drain descendant check ignores case on Linux** — compare with the repo's `FileSystemPath.Comparison` so a case-variant sibling worktree's testhost is never killed. [type: bug] [source: PR #1666 review 2026-09-28] | S | items/workspace-close-drain-descendant-check-ignores-case-on-linux.md |
+| `workspace-close-drain-pid-reuse-between-resolve-and-kill` | Low | — | **workspace_close drain can kill a recycled pid** — hold one process handle per candidate from the path query through termination so the pid cannot be reissued in between. [type: bug] [source: PR #1666 review 2026-09-28] | M | items/workspace-close-drain-pid-reuse-between-resolve-and-kill.md |
 
 ## Defer
 
