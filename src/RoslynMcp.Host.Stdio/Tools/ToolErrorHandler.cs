@@ -493,31 +493,22 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
-    /// Adds a catalog-backed <c>schemaHint</c> field to an existing JSON error envelope when
-    /// a tool-specific catch path wants retry-shape guidance without changing the global
-    /// classifier contract. Unknown tools and non-object payloads are returned unchanged.
+    /// validation-tools-error-envelope-not-iserror: tools whose error envelopes carry a
+    /// <c>schemaHint</c> on every non-<c>InternalError</c> category, not only
+    /// <c>InvalidArgument</c>. Their failures (a missing project, a build or test-host refusal,
+    /// an evicted workspace) are usually fixed by re-calling with different arguments, so the
+    /// retry shape is useful whatever the category. Errors still flow through the shared
+    /// filter, so the envelope keeps <c>isError: true</c> and <c>_meta</c>.
     /// </summary>
-    internal static string InjectSchemaHintIfPossible(string json, string toolName, string? paramName = null)
+    private static readonly HashSet<string> AnyCategorySchemaHintTools = new(StringComparer.Ordinal)
     {
-        var schemaHint = BuildSchemaHint(toolName, paramName);
-        if (schemaHint is null) return json;
-
-        try
-        {
-            var node = JsonNode.Parse(json);
-            if (node is not JsonObject obj)
-            {
-                return json;
-            }
-
-            obj["schemaHint"] = schemaHint;
-            return obj.ToJsonString(JsonDefaults.Indented);
-        }
-        catch
-        {
-            return json;
-        }
-    }
+        "build_workspace",
+        "build_project",
+        "test_discover",
+        "test_run",
+        "test_related",
+        "test_related_files",
+    };
 
     /// <summary>
     /// Returns true when the exception type indicates a generic SDK/reflection invocation
@@ -720,7 +711,10 @@ internal static class ToolErrorHandler
         // server_info. Hint is omitted (rather than emitted as null) when the failing
         // parameter cannot be resolved against the tool catalog — keeps the envelope
         // shape stable for downstream parsers that do not expect the field.
-        var schemaHint = info.Category == ErrorCategories.InvalidArgument &&
+        // validation-tools-error-envelope-not-iserror: the validation tools additionally hint
+        // on every non-InternalError category (InternalError returned its minimal envelope above).
+        var schemaHint = (info.Category == ErrorCategories.InvalidArgument ||
+                AnyCategorySchemaHintTools.Contains(toolName)) &&
             !ContainsSanctionedRootBoundaryRefusal(ex)
             ? BuildSchemaHint(toolName, info.ParamName)
             : null;

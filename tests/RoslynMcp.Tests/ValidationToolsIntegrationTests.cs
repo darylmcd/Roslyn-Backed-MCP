@@ -194,16 +194,15 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
 
     // test-related-column-required-schema-mismatch: a caller who supplies filePath+line but
     // omits column is using a partial source-location (mode-3 incomplete). The runtime raises
-    // an ArgumentException naming the missing field, but as of host-tools-layer-test-coverage-gap
-    // (ValidationTools error-handling alignment) the tool body catches it and returns a
-    // structured InvalidArgument error envelope instead of letting it propagate — matching the
-    // ClassifyAndFormat convention used elsewhere (e.g. ValidationBundleTools.ValidateRecentGitChanges).
-    // This regression test pins the diagnostic content inside that envelope.
+    // an ArgumentException naming the missing field; it propagates to the shared error filter
+    // (simulated by ToolExecutionTestHarness), which returns a structured InvalidArgument
+    // envelope with isError=true (validation-tools-error-envelope-not-iserror). This regression
+    // test pins the diagnostic content inside that envelope.
     [TestMethod]
     public async Task TestRelated_PartialSourceLocation_MissingColumn_ReturnsInvalidArgumentEnvelopeWithDiagnostic()
     {
         var programPath = FindDocumentPath("Program.cs");
-        var json = await ValidationTools.FindRelatedTests(
+        var json = await ToolExecutionTestHarness.RunAsync("test_related", () => ValidationTools.FindRelatedTests(
             WorkspaceExecutionGate,
             TestDiscoveryService,
             WorkspaceId,
@@ -213,7 +212,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             symbolHandle: null,
             metadataName: null,
             maxResults: 100,
-            ct: CancellationToken.None);
+            ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
