@@ -21,3 +21,7 @@
 ## Context
 
 - Split child of `invalid-operation-throw-sites-lack-public-message` (split 2026-09-26). `PublicInvalidOperationException` already exists in `src/RoslynMcp.Core/Services/PublicInvalidOperationException.cs`; this row only converts throw sites.
+
+## Notes
+
+- 2026-09-28: mechanism parent `tool-refusal-public-message-guard` adds a ratchet that fails any new plain `InvalidOperationException` under `src/`; this row is part of its burn-down. Convert this row's sites to `PublicInvalidOperationException` (or the Core internal factory for true invariants) and lower the committed baseline count in the same PR.

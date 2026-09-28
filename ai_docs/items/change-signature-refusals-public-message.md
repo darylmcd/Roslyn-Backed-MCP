@@ -25,3 +25,7 @@
 2026-09-26: re-scoped as a child of the argument-error contract redesign.
 
 Family design (invariant, P/R/I classification, ban scope, exceptionType normalization): see `items/public-argument-exception-core-move.md` § Family design.
+
+## Notes
+
+- 2026-09-28: mechanism parent `tool-refusal-public-message-guard` adds a ratchet that fails any new plain `InvalidOperationException` under `src/`; this row's InvalidOperationException half is part of its burn-down. Convert those sites to `PublicInvalidOperationException` (or the Core internal factory for true invariants) and lower the committed baseline count in the same PR when the ratchet has landed first.
