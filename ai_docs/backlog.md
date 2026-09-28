@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T18:29:46Z
+**updated_at:** 2026-09-28T18:35:34Z
 
 ## Agent contract
 
@@ -49,7 +49,6 @@
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `analyzer-shadow-isolation-misses-loaded-generators` | High | — | **Release analyzer/generator DLL locks on workspace_close** — source-generator assemblies still load from their original package path, so closing the workspace leaves them locked [type: bug] [source: TradeWise plan 20260927T021440Z] | M | items/analyzer-shadow-isolation-misses-loaded-generators.md |
-| `v5-major-release-contract-prereqs` | High | — | **Write ADR + product-contract entries for the 2 pending BREAKING fragments before the 5.0.0 cut** — server_info updateAvailable bool→bool? and WorkspaceNotFound category lack the ADR/migration docs release-policy requires. [type: docs] | S | items/v5-major-release-contract-prereqs.md |
 | `release-managed-guard-worktree-scope` | High | — | **Release guard resolves root and sentinel from CLAUDE_PROJECT_DIR** — worktree edits skip exact-path matches and need the primary's sentinel; resolve root, relative path and sentinel per checkout of this repo, and stop guarding other repos. [type: bug] [source: backlog-remediate 20260926T234932Z; retro-20260927] | S | items/release-managed-guard-worktree-scope.md |
 | `tool-binding-missing-parameter-named` | High | — | **Missing required tool arguments are reported as 'arguments' or '<unknown>'** — in the result projector, name the missing parameter from the tool's input-schema required list and the supplied arguments. [type: bug] [source: retro-20260927] | M | items/tool-binding-missing-parameter-named.md |
 | `compile-check-restore-required-handshake` | High | — | **compile_check returns success:false with zero diagnostics on unrestored workspaces** — add a structured nextCall to that result, and restore missing assets on load when autoRestore is omitted (false opts out); additive, 4.x-safe. [type: bug] [source: retro-20260927] | L | items/compile-check-restore-required-handshake.md |
@@ -305,7 +304,6 @@
 | `server-discovery-cache-hint-wire-failure-diagnostics` | Low | resource-cache-hint-wire-failure-diagnostics | **Give server-discovery cache-hint wire failures bounded frame diagnostics** — replace raw `GetProperty` assertions with era, ordinal, and captured-frame evidence while preserving the modern-value and legacy-omission contract. [type: test] [source: resource-cache-hint-wire-failure-diagnostics deepening] | S | items/server-discovery-cache-hint-wire-failure-diagnostics.md |
 | `markdown-link-destination-parser-detail-duplicate-heading` | Low | — | **Normalize duplicate Markdown link detail headings.** Remove duplicate H1s without changing acceptance evidence. [type: docs] [source: 20260920T035145Z closeout cold review] | S | items/markdown-link-destination-parser-detail-duplicate-heading.md |
 | `readme-callable-gate-boilerplate-sweep` | Low | readme-stable-callable-count-ungated | **Correct the false README.md:186 gate boilerplate in item files** — one scripted pattern edit across the ai_docs/items files that cite it. [type: chore] [source: readme-stable-callable-count-ungated] | S | items/readme-callable-gate-boilerplate-sweep.md |
-| `tool-error-handler-dispatch-order-unenforced` | Low | — | **Enforce ToolErrorHandler handler ordering with a test** — pin derived-before-base registration so reordering cannot silently regress error categories. [type: test] [source: workspace-id-unknown-error-category] | S | items/tool-error-handler-dispatch-order-unenforced.md |
 | `dangling-plan-path-comments-tools-a` | Low | — | **Drop dangling plan-path comments (Tools A)** — remove or replace citations of deleted ai_docs/plans/20260421T123658Z_post-audit-followups.md and GC'd sweep plans in 4 Host.Stdio tool files. [type: chore] [source: doc-audit 2026-09-23] | M | items/dangling-plan-path-comments-tools-a.md |
 | `dangling-plan-path-comments-tools-b` | Low | — | **Drop dangling plan-path comments (Tools B)** — same sweep for the next 4 Host.Stdio tool files. [type: chore] [source: doc-audit 2026-09-23] | M | items/dangling-plan-path-comments-tools-b.md |
 | `dangling-plan-path-comments-tools-c` | Low | — | **Drop dangling plan-path comments (Tools C)** — same sweep for the last 4 Host.Stdio tool files. [type: chore] [source: doc-audit 2026-09-23] | M | items/dangling-plan-path-comments-tools-c.md |
@@ -374,6 +372,8 @@
 | `test-host-service-provider-composition-dedupe` | Low | — | **Share one host service-provider builder across tests** — the AddRoslynMcpHostServices + AddMcpServer().WithToolsFromAssembly composition is copy-pasted in 6 test files. [type: refactor] [source: backlog-remediate 20260926T234932Z] | L | items/test-host-service-provider-composition-dedupe.md |
 | `serialize-full-ci-premise-recheck` | Low | — | **Re-decide addenda serializeFullCi** — it forces serial executor dispatch, but full CI now runs only on GitHub; confirm whether any local full gate still needs the lock. [type: chore] [source: backlog-remediate 20260926T234932Z] | S | items/serialize-full-ci-premise-recheck.md |
 | `validation-phase-timeout-knob` | Low | — | **Make the 25 s validate_* phase cap configurable** — move DefaultValidationPhaseTimeout onto ValidationServiceOptions with a documented env override, and name the knob in the phase-timeout warning. [type: chore] [source: PR #1655 review] | M | items/validation-phase-timeout-knob.md |
+| `mcp-filter-composition-test-drift` | Low | — | **Share Program.cs's MCP filter composition with the wire-test harnesses** — extract one host extension that Program.cs and ProductionParityMcpHarness both call, and route the parity-claiming harnesses through it. [type: refactor] [source: PR #1663 review] | M | items/mcp-filter-composition-test-drift.md |
+| `server-info-hook-user-intent-unobservable` | Low | — | **server_info hook prompt branches on "if the user asked", which a prompt-hook evaluator cannot see** — verify the premise, then state status for unknown/true and answer ok only for false+succeeded. [type: bug] [source: pr-1663-cold-review] | S | items/server-info-hook-user-intent-unobservable.md |
 
 ## Defer
 
@@ -387,6 +387,9 @@
 | `locationdto-stage3-flat-field-deprecation` | Defer | locationdto-stage1-symbol-type-producers, locationdto-stage1-diagnostic-producers-a, locationdto-stage1-diagnostic-producers-b | **Flat location-field deprecation** — parked until one minor release containing nested location fields has shipped; then obsolete the flat fields and publish migration guidance. [type: refactor] [source: ADR 0001] | M | items/locationdto-stage3-flat-field-deprecation.md |
 | `audit-21-analyzer-plan-defer-or-retire` | Defer | — | **Decide the parked AUDIT-21 analyzer plan** — its tracker row was closed 2026-08-18, leaving a 57 KB plan with 17 unchecked boxes and no backlog anchor; file a real Defer with unpark trigger or retire the plan. [type: docs] [source: doc-audit 2026-09-23] | — | items/audit-21-analyzer-plan-defer-or-retire.md |
 | `project-name-not-found-category-next-major` | Defer | project-name-not-found-misleading-reload-advice | At the next major, move unknown projectName and symbolHandle refusals off InvalidOperation to a not-found category under ADR and migration-note controls. [type: bug] [source: PR #1655 review] | M | items/project-name-not-found-category-next-major.md |
+| `server-info-update-available-next-major-nullable` | Defer | — | **At the next major, make server_info updateAvailable nullable** — bool to bool? (null until a check succeeds); parked until the 5.0.0 cut, ships under ADR 0011 with a migration note. [type: bug] [source: operator decision 2026-09-28] | M | items/server-info-update-available-next-major-nullable.md |
+| `workspace-not-found-next-major-category-promotion` | Defer | — | **At the next major, promote the WorkspaceNotFound reason to the error category** — unknown workspaceId becomes category WorkspaceNotFound; parked until the 5.0.0 cut, ships under ADR 0011 with a migration note. [type: bug] [source: operator decision 2026-09-28] | M | items/workspace-not-found-next-major-category-promotion.md |
+| `v5-major-release-contract-prereqs` | Defer | — | **At the 5.0.0 cut, write ADR 0011 for the breaking set** — cover updateAvailable nullability, WorkspaceNotFound category promotion, and locationdto flat-field removal; 4.x ships these additively, so nothing blocks 4.3.0. [type: docs] [source: operator decision 2026-09-28] | S | items/v5-major-release-contract-prereqs.md |
 
 ## Refs
 

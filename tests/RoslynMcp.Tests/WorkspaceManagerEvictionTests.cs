@@ -37,7 +37,7 @@ namespace RoslynMcp.Tests;
 ///     prior process's timestamp was lost with the process).</description></item>
 ///   <item><description><b>Genuine miss</b> — never-loaded id, no recycle context.
 ///     Throws <see cref="WorkspaceNotFoundException"/>
-///     surfacing as <c>category="WorkspaceNotFound"</c>.</description></item>
+///     surfacing as <c>category="NotFound"</c> with <c>reason="WorkspaceNotFound"</c>.</description></item>
 /// </list>
 ///
 /// <para>
@@ -253,7 +253,8 @@ public sealed class WorkspaceManagerEvictionTests
     /// Path 3: legitimate miss. No prior recycle, no in-process eviction record. The
     /// manager throws <see cref="WorkspaceNotFoundException"/>
     /// — NOT <see cref="WorkspaceEvictedException"/> — preserving the existing
-    /// <c>category="WorkspaceNotFound"</c> envelope for callers that genuinely typo'd the id.
+    /// <c>category="NotFound"</c> + <c>reason="WorkspaceNotFound"</c> envelope for callers that
+    /// genuinely typo'd the id.
     /// </summary>
     [TestMethod]
     public void NeverLoaded_AndNoRecycle_Throws_WorkspaceNotFoundException()

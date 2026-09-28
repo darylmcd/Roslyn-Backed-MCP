@@ -64,6 +64,26 @@ public sealed class HookConfigurationTests
     }
 
     [TestMethod]
+    public void Shipped_ServerInfoPrompt_ReadsCheckStatusForUnknownAvailability()
+    {
+        // 4.x keeps server_info.update.updateAvailable a strict bool (a check that has not
+        // succeeded reports false), so the hook must treat false as "no newer release" only
+        // when update.checkStatus is 'succeeded'. #1553's prompt keyed "unknown" on a null
+        // updateAvailable that a 4.x server never emits, silently reading pending/failed
+        // checks as "no update". A null-as-unknown clause is not forbidden here: the 5.0 row
+        // server-info-update-available-next-major-nullable adds one alongside checkStatus.
+        using var document = LoadShippedHooks();
+        var prompt = GetHookEntries(document, "PostToolUse")
+            .SelectMany(GetPromptTexts)
+            .Single(text => text.Contains("update.updateAvailable", StringComparison.Ordinal));
+
+        foreach (var required in new[] { "update.checkStatus", "'succeeded'", "pending", "neverChecked", "failed", "timedOut" })
+        {
+            StringAssert.Contains(prompt, required, $"server_info prompt must name '{required}'");
+        }
+    }
+
+    [TestMethod]
     public void Shipped_HooksJson_HasNoCommandBasedHooks()
     {
         // Regression guard for `roslyn-mcp-edit-hooks-mis-scoped-cross-repo` (2026-05-21).

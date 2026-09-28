@@ -27,3 +27,7 @@
 - The originally cited `ToolInputSchemaHygieneTests.BuildHostServiceProviderWithTools` does not exist at HEAD; the evidence above replaces it. Type: refactor (copy-paste duplication in test infrastructure).
 
 Source: backlog-remediate 20260926T234932Z follow-up.
+
+## Notes
+
+- 2026-09-28 (PR #1663): `tests/RoslynMcp.Tests/Helpers/ProductionParityMcpHarness.cs` is a seventh copy of the six-option `AddRoslynMcpHostServices` composition, and it also registers the full `Program.cs` filter set. Consider growing it into the shared helper instead of adding a new `HostServiceProviderBuilder`. Sibling row `mcp-filter-composition-test-drift` owns the production-to-test filter drift.
