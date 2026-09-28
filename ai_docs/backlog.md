@@ -53,7 +53,6 @@
 | `tool-binding-missing-parameter-named` | High | — | **Missing required tool arguments are reported as 'arguments' or '<unknown>'** — in the result projector, name the missing parameter from the tool's input-schema required list and the supplied arguments. [type: bug] [source: retro-20260927] | M | items/tool-binding-missing-parameter-named.md |
 | `compile-check-restore-required-handshake` | High | — | **compile_check returns success:false with zero diagnostics on unrestored workspaces** — add a structured nextCall to that result, and restore missing assets on load when autoRestore is omitted (false opts out); additive, 4.x-safe. [type: bug] [source: retro-20260927] | L | items/compile-check-restore-required-handshake.md |
 | `gated-build-test-operation-deadline` | High | — | **Build, test, coverage and vuln-scan tools die at the 2-minute gate request timeout** — run the dotnet command outside the workspace lock and throttle, bounded by its own build/test/scan timeout. [type: bug] [source: retro-20260927] | L | items/gated-build-test-operation-deadline.md |
-| `server-info-hook-checkstatus-unknown` | High | — | **Key the server_info hook's unknown-update branch on checkStatus before the 4.3.0 cut** — the release-managed hooks/hooks.json prompt still branches on a null updateAvailable that 4.x never emits; the edit needs the operator's sentinel. [type: bug] [source: PR #1663 review] | S | items/server-info-hook-checkstatus-unknown.md |
 
 ## Medium
 
