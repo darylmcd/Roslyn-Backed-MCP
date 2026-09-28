@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-27T06:12:26Z
+**updated_at:** 2026-09-28T15:23:35Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `ci-merge-group-validate-support` | High | — | **Report the required validate check on merge_group events** — add the merge_group trigger, route it to the full code topology, and emit the validate context so the approved merge queue can be enabled. [type: ci] [source: operator decision 2026-09-27] | M | items/ci-merge-group-validate-support.md |
 
 ## Medium
 

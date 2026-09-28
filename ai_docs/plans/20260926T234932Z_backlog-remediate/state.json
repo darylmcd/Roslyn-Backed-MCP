@@ -55,7 +55,7 @@
         "gatedTree": "b75cc43bff5844c8d2b6a0d6fdb9b4f23fbaf1ea",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/ccde29a2-8b9a-4a9c-84f0-b81f7b0c7914/scratchpad/20260926T234932Z_backlog-remediate/gate-logs/chain-find-type-consumers-mutations-generator-blind-20260927T044822926Z-26816-a1.log",
+        "log": "~/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/ccde29a2-8b9a-4a9c-84f0-b81f7b0c7914/scratchpad/20260926T234932Z_backlog-remediate/gate-logs/chain-find-type-consumers-mutations-generator-blind-20260927T044822926Z-26816-a1.log",
         "gatedAt": "2026-09-27T05:01:06.808Z"
       }
     },
@@ -104,7 +104,7 @@
         "gatedTree": "24ef24e4f625d200bd6d273043b47ce861a04529",
         "exit": 0,
         "attempts": 1,
-        "log": "C:/Users/daryl/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/ccde29a2-8b9a-4a9c-84f0-b81f7b0c7914/scratchpad/20260926T234932Z_backlog-remediate/gate-logs/chain-donotparallelize-audit-wave-30-20260927T050106845Z-26816-a1.log",
+        "log": "~/AppData/Local/Temp/claude/C--Code-Repo-Roslyn-Backed-MCP/ccde29a2-8b9a-4a9c-84f0-b81f7b0c7914/scratchpad/20260926T234932Z_backlog-remediate/gate-logs/chain-donotparallelize-audit-wave-30-20260927T050106845Z-26816-a1.log",
         "gatedAt": "2026-09-27T05:15:52.380Z"
       }
     },
@@ -990,7 +990,7 @@
     {
       "id": "ci-merge-group-validate-support",
       "order": 26,
-      "status": "in-review",
+      "status": "merged",
       "productionFiles": [
         ".github/workflows/ci.yml",
         "eng/resolve-ci-topology.ps1",
@@ -1019,7 +1019,10 @@
       "deepenerStatus": "ok",
       "branch": "remediation/ci-merge-group-validate-support",
       "worktreePath": ".worktrees/ci-merge-group-validate-support",
-      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1653"
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1653",
+      "mergedAt": "2026-09-28T15:23:26Z",
+      "rowsClosedCount": 1,
+      "notes": null
     }
   ],
   "anchorVerification": "performed",
