@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-26T23:49:33.876Z",
-  "backlogSnapshot": "2026-09-25T13:53:53Z",
+  "backlogSnapshot": "2026-09-28T16:12:53Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
   "initiatives": [
@@ -559,7 +559,7 @@
     {
       "id": "workspace-close-schema-leaks-test-seams",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-close-schema-leaks-test-seams"
       ],
@@ -586,10 +586,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-close-schema-leaks-test-seams",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1656",
+      "mergedAt": "2026-09-28T16:09:20Z",
       "notes": null,
       "fileSetHash": "12acff143f33c0d650bf57ab0348fdb231e45c41d37890bceb24bdc1ea4c71d7",
       "stanzaHash": "e3f2053a493832783a5c44b61b2f475e9c0463b12398f1d5b2bc4b80dd0d9cd7",
@@ -639,7 +639,7 @@
     {
       "id": "find-implementations-corlib-guard-blocks-source-anchor",
       "order": 17,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "find-implementations-corlib-guard-blocks-source-anchor"
       ],
@@ -665,10 +665,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/find-implementations-corlib-guard-blocks-source-anchor",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1657",
+      "mergedAt": "2026-09-28T16:09:35Z",
       "notes": null,
       "fileSetHash": "fe0f8897d24d74d50fbf7fbb0a701875b3ccf029145f52d6523371b36b0fcc6d",
       "stanzaHash": "2760688c91ecb1a127657d3eac89cd12460d09503fa81a5acef468e45fbeee69",
@@ -832,7 +832,7 @@
     {
       "id": "find-dead-locals-captured-by-local-function",
       "order": 22,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "find-dead-locals-captured-by-local-function"
       ],
@@ -858,10 +858,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/find-dead-locals-captured-by-local-function",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1658",
+      "mergedAt": "2026-09-28T16:09:45Z",
       "notes": null,
       "fileSetHash": "58158fa546b94937b524fe676a710ecd2f565a6e766563bd390d3a303cee3eb2",
       "stanzaHash": "63587e5871f4fba6715f52e9621a85cdc51a091f7a6c9e6c3ad7da8513a891ca",
@@ -948,7 +948,7 @@
     {
       "id": "validation-tools-error-envelope-not-iserror",
       "order": 25,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "validation-tools-error-envelope-not-iserror"
       ],
@@ -978,10 +978,10 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/validation-tools-error-envelope-not-iserror",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1659",
+      "mergedAt": "2026-09-28T16:09:56Z",
       "notes": null,
       "fileSetHash": "e52c74e66ea1c81dd38e55212fcb8bae45e2adc3ffa57f83a712e115d6e183a3",
       "stanzaHash": "82c1b93e41aba90ba52638f286054296bddf2c16de59a8af5face3a32020e598",
@@ -1447,5 +1447,6 @@
   "planHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
   "backlogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
   "reviewedPlanHash": "af42a6986ac6861373013306127e8f456a3d565b4f8b8903d8c2b183620ac214",
-  "reviewedBacklogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080"
+  "reviewedBacklogSnapshotHash": "099d946bd77fbc602e7d1ab88657fc48fe70e5eb2405d25f2df5a32324320080",
+  "completedAt": "2026-09-28T16:19:01.534Z"
 }
