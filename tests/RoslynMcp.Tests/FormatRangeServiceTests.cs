@@ -265,7 +265,11 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             Assert.IsTrue(apply.Success);
 
             var actual = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(actual, "namespace SampleLib;\r\n\r\npublic class");
+            var lines = Microsoft.CodeAnalysis.Text.SourceText.From(actual).Lines;
+            Assert.AreEqual("namespace SampleLib;", lines[0].ToString());
+            Assert.AreEqual(string.Empty, lines[1].ToString(),
+                "whole-document formatting must insert a blank line after the namespace");
+            Assert.AreEqual("public class FormatRangeInRangeInsertionFixture", lines[2].ToString());
             StringAssert.Contains(actual, "return input + 1;");
             Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n\r\n\r\npublic class OutsideFixture { }\r\n", StringComparison.Ordinal),
                 "the suffix and outside blank-line run must stay byte-for-byte unchanged after the in-range insertion");
