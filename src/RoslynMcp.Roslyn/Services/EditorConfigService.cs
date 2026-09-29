@@ -376,7 +376,9 @@ public sealed class EditorConfigService : IEditorConfigService
         {
             var created = !File.Exists(editorconfigPath);
             var existingBytes = created ? null : File.ReadAllBytes(editorconfigPath);
-            var lines = created ? new List<string>() : File.ReadAllLines(editorconfigPath).ToList();
+            // Parse the same byte snapshot captured for undo. A second disk read could see
+            // an external edit between reads, then attribute a mixed operation to Apply.
+            var lines = existingBytes is null ? new List<string>() : ReadConfigLines(existingBytes);
 
             // set-editorconfig-option-not-undoable: capture the pre-apply content so
             // revert_last_apply can restore the .editorconfig file (or delete it if we created it).
@@ -435,6 +437,18 @@ public sealed class EditorConfigService : IEditorConfigService
         return !Path.IsPathRooted(relative)
             && relative != ".."
             && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    }
+
+    private static List<string> ReadConfigLines(byte[] bytes)
+    {
+        using var reader = new StreamReader(
+            new MemoryStream(bytes), System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+        return lines;
     }
 
     /// <summary>
