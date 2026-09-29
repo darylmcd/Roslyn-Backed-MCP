@@ -10,12 +10,11 @@ namespace RoslynMcp.Host.Stdio.Runtime;
 /// form <see cref="ProcessExecutablePathResolver"/> gets back for a process image.
 /// </summary>
 /// <remarks>
-/// <para>A drive-letter alias (<c>subst</c>, <c>DefineDosDevice</c>) is not a filesystem link, so
-/// resolving symlinks and junctions keeps it. The kernel records a process image by volume, and
-/// <c>QueryFullProcessImageNameW</c> reports it on the volume's own drive letter. So a workspace
-/// loaded as <c>X:\ws</c> and a testhost image reported as <c>C:\real\ws\...</c> name the same
-/// directory. <c>GetFinalPathNameByHandleW</c> with <c>FILE_NAME_NORMALIZED | VOLUME_NAME_DOS</c>
-/// maps the directory into that volume-letter form.</para>
+/// <para>A drive-letter alias (<c>subst</c>, <c>DefineDosDevice</c>) is not a filesystem link.
+/// The physical path resolver follows its DOS-device target for workspace paths; process image
+/// paths may still arrive in a different spelling. <c>GetFinalPathNameByHandleW</c> with
+/// <c>FILE_NAME_NORMALIZED | VOLUME_NAME_DOS</c> maps an existing directory into the volume's
+/// drive-letter form for comparison with <c>QueryFullProcessImageNameW</c> output.</para>
 /// <para>Drive-letter aliases are Windows-only, so off Windows <see cref="TryResolve"/> reports no
 /// result and callers compare the path as given.</para>
 /// </remarks>

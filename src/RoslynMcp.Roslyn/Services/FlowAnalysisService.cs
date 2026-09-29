@@ -1,7 +1,8 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -197,12 +198,12 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
                 $"startLine ({startLine}) must be <= endLine ({endLine}).", nameof(startLine));
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var normalizedPath = Path.GetFullPath(filePath);
+        var normalizedPath = PhysicalPathResolver.Resolve(filePath);
 
         var document = solution.Projects
             .SelectMany(p => p.Documents)
             .FirstOrDefault(d => d.FilePath is not null &&
-                Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase))
+                PhysicalPathResolver.Resolve(d.FilePath).Equals(normalizedPath, FileSystemPath.Comparison))
             ?? throw new FileNotFoundException($"Document not found in workspace: {filePath}");
 
         var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)

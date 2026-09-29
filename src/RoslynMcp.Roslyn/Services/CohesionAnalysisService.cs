@@ -63,11 +63,11 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         IEnumerable<Document> documents;
         if (!string.IsNullOrWhiteSpace(filePath))
         {
-            var normalizedPath = Path.GetFullPath(filePath);
+            var normalizedPath = PhysicalPathResolver.Resolve(filePath);
             documents = solution.Projects
                 .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p))
                 .SelectMany(p => p.Documents)
-                .Where(d => d.FilePath is not null && Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+                .Where(d => d.FilePath is not null && PhysicalPathResolver.Resolve(d.FilePath).Equals(normalizedPath, FileSystemPath.Comparison));
         }
         else
         {

@@ -342,11 +342,9 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     // ---------------------------------------------------------------------------
-    // A drive-letter alias (subst, DefineDosDevice) is not a filesystem link, so workspace_load
-    // keeps it in LoadedPath. The kernel reports an image under the alias on the backing volume's
-    // own drive letter, so the two paths name the same directory in different forms. Unless the
-    // drain also compares the working directory's canonical path, an in-workspace testhost on an
-    // aliased workspace is neither killed nor reported.
+    // A drive-letter alias (subst, DefineDosDevice) is not a filesystem link. The physical path
+    // resolver follows its DOS-device target, so the workspace and process image are compared
+    // using the backing path even when the process was launched through the alias.
     // ---------------------------------------------------------------------------
 
     [TestMethod]
@@ -367,9 +365,10 @@ public sealed class WorkspaceCloseDrainTests
             alias = WindowsDriveAlias.Create(root);
             var workingDirectory = Path.Combine(alias.RootPath, "ws");
             var loadedPath = PhysicalPathResolver.Resolve(Path.Combine(workingDirectory, "Sample.slnx"));
-            Assert.IsTrue(
-                loadedPath.StartsWith(alias.RootPath, StringComparison.OrdinalIgnoreCase),
-                $"workspace_load path resolution is expected to keep the drive alias; got '{loadedPath}'.");
+            Assert.AreEqual(
+                PhysicalPathResolver.Resolve(Path.Combine(root, "ws", "Sample.slnx")),
+                loadedPath,
+                ignoreCase: true);
 
             launched = StartLongLived(CopyLauncherUnder(Path.Combine(workingDirectory, "host")));
 

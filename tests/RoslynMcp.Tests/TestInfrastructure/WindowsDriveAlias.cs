@@ -6,9 +6,9 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Maps a free drive letter to a directory for the calling logon session, as <c>subst</c> does,
-/// with <c>DefineDosDeviceW</c>. A drive-letter alias is not a filesystem link, so path resolution
-/// that follows symlinks and junctions keeps it. The kernel still reports a file under the alias
-/// on the backing volume's own drive letter. Dispose removes the mapping.
+/// with <c>DefineDosDeviceW</c>. The physical path resolver follows the DOS-device target,
+/// while the kernel also reports files under the backing volume's drive letter.
+/// Dispose removes the mapping.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsDriveAlias : IDisposable
@@ -50,7 +50,10 @@ internal sealed class WindowsDriveAlias : IDisposable
     /// </summary>
     public static WindowsDriveAlias Create(string targetDirectory)
     {
-        var targetPath = Path.GetFullPath(targetDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        var fullTargetPath = Path.GetFullPath(targetDirectory);
+        var targetPath = string.Equals(Path.GetPathRoot(fullTargetPath), fullTargetPath, StringComparison.OrdinalIgnoreCase)
+            ? fullTargetPath
+            : fullTargetPath.TrimEnd(Path.DirectorySeparatorChar);
 
         // The lock serializes tests in this process. A random letter order keeps other test
         // processes in the same logon session off the same letter.

@@ -56,6 +56,7 @@ internal sealed class DiagnosticSeverityPolicy(IUnexpectedExceptionReporter? exc
         string? diagnosticIdFilter,
         DiagnosticSeverity? minSeverity)
     {
+        var canonicalFileFilter = fileFilter is null ? null : PhysicalPathResolver.Resolve(fileFilter);
         var raw = new List<Diagnostic>();
         var all = new List<DiagnosticDto>();
         var filtered = new List<DiagnosticDto>();
@@ -63,7 +64,7 @@ internal sealed class DiagnosticSeverityPolicy(IUnexpectedExceptionReporter? exc
         foreach (var diagnostic in diagnostics)
         {
             raw.Add(diagnostic);
-            if (!MatchesFileFilter(diagnostic, fileFilter)
+            if (!MatchesFileFilter(diagnostic, canonicalFileFilter)
                 || diagnostic.Severity == DiagnosticSeverity.Hidden
                 || (diagnosticIdFilter is not null
                     && !string.Equals(
@@ -193,9 +194,9 @@ internal sealed class DiagnosticSeverityPolicy(IUnexpectedExceptionReporter? exc
 
         var diagnosticPath = diagnostic.Location.GetLineSpan().Path;
         return string.Equals(
-            Path.GetFullPath(diagnosticPath),
-            Path.GetFullPath(fileFilter),
-            StringComparison.OrdinalIgnoreCase);
+            PhysicalPathResolver.Resolve(diagnosticPath),
+            fileFilter,
+            FileSystemPath.Comparison);
     }
 }
 

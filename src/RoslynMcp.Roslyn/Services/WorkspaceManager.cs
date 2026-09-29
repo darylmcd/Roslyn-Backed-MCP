@@ -754,9 +754,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         string fullPath;
         try
         {
-            fullPath = Path.GetFullPath(filePath);
+            fullPath = PhysicalPathResolver.Resolve(filePath);
         }
-        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException)
         {
             return [];
         }
@@ -880,6 +880,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public async Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct)
     {
         var solution = GetCurrentSolution(workspaceId);
+        var canonicalFilePath = PhysicalPathResolver.Resolve(filePath);
         var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
 
         // Also search source-generated documents if not found in regular documents
@@ -892,7 +893,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
                     document = sourceGenDocs.FirstOrDefault(d =>
                         d.FilePath is not null &&
-                        FileSystemPath.Comparer.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath)));
+                        FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(d.FilePath), canonicalFilePath));
                     if (document is not null) break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1550,7 +1551,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             .SelectMany(project => project.Documents)
             .Select(document => document.FilePath)
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(path => Path.GetFullPath(path!))
+            .Select(path => PhysicalPathResolver.Resolve(path!))
             .ToImmutableHashSet(FileSystemPath.Comparer);
 
     private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)

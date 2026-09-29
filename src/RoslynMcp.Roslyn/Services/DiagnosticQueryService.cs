@@ -166,14 +166,15 @@ internal sealed class DiagnosticQueryService
         // severity filters independently so aggregate totals remain severity-invariant.
         var rawWorkspace = (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false))
             .WorkspaceDiagnostics;
-        var matchingFile = fileFilter is null
+        var canonicalFilter = fileFilter is null ? null : PhysicalPathResolver.Resolve(fileFilter);
+        var matchingFile = canonicalFilter is null
             ? rawWorkspace
             : rawWorkspace.Where(diagnostic =>
                     diagnostic.FilePath is not null
                     && string.Equals(
-                        Path.GetFullPath(diagnostic.FilePath),
-                        Path.GetFullPath(fileFilter),
-                        StringComparison.OrdinalIgnoreCase))
+                        PhysicalPathResolver.Resolve(diagnostic.FilePath),
+                        canonicalFilter,
+                        FileSystemPath.Comparison))
                 .ToList();
         return new WorkspaceDiagnosticScope(
             matchingFile,

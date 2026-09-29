@@ -1,3 +1,6 @@
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -152,6 +155,7 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var aliasRoot = Path.Combine(TestTempRoot.Current, "workspace-owner-alias-" + Guid.NewGuid().ToString("N"));
         try
         {
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
@@ -163,10 +167,61 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
                 new[] { status.WorkspaceId },
                 owners.ToArray(),
                 $"Expected exactly the loaded workspace to own '{documentPath}'.");
+            if (OperatingSystem.IsWindows())
+            {
+                WindowsDirectoryJunction.Create(aliasRoot, copiedRoot);
+                var aliasedDocumentPath = Path.Combine(aliasRoot, Path.GetRelativePath(copiedRoot, documentPath));
+                CollectionAssert.AreEqual(
+                    new[] { status.WorkspaceId },
+                    WorkspaceManager.FindWorkspaceIdsContainingFile(aliasedDocumentPath).ToArray());
+            }
             WorkspaceManager.Close(status.WorkspaceId);
         }
         finally
         {
+            if (Directory.Exists(aliasRoot))
+                Directory.Delete(aliasRoot);
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task DirectoryJunction_FileFiltersSelectPhysicalWorkspaceDocuments()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Directory junctions are a Windows filesystem concept.");
+            return;
+        }
+
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var aliasRoot = Path.Combine(TestTempRoot.Current, "workspace-filter-alias-" + Guid.NewGuid().ToString("N"));
+        string? workspaceId = null;
+        try
+        {
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+            WindowsDirectoryJunction.Create(aliasRoot, copiedRoot);
+            var aliasedFile = Path.Combine(aliasRoot, "SampleLib", "RefactoringProbe.cs");
+
+            var metrics = await new CodeMetricsService(WorkspaceManager).GetComplexityMetricsAsync(
+                workspaceId, aliasedFile, null, null, null, 100, CancellationToken.None);
+            Assert.IsNotEmpty(metrics, "Code metrics must select a document through its junction alias.");
+
+            var preview = await new RestructureService(WorkspaceManager, PreviewStore)
+                .PreviewRestructureAsync(workspaceId,
+                    "__name__ = __name__ * 2;", "__name__ *= 2;",
+                    new RestructureScope(aliasedFile, null), CancellationToken.None);
+            Assert.AreEqual(1, preview.Changes.Count,
+                "Restructure scope must select the same loaded document through its alias.");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+                WorkspaceManager.Close(workspaceId);
+            if (Directory.Exists(aliasRoot))
+                Directory.Delete(aliasRoot);
             DeleteDirectoryIfExists(copiedRoot);
         }
     }

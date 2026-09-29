@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -33,7 +34,7 @@ public class IntegrationTests_WorkspaceCore : SharedWorkspaceTestBase
         Assert.IsTrue(status.IsLoaded);
         Assert.IsFalse(string.IsNullOrWhiteSpace(status.WorkspaceId));
         Assert.IsFalse(string.IsNullOrWhiteSpace(status.SnapshotToken));
-        Assert.AreEqual(SampleSolutionPath, status.LoadedPath);
+        Assert.AreEqual(PhysicalPathResolver.Resolve(SampleSolutionPath), status.LoadedPath);
         Assert.IsTrue(status.ProjectCount >= 2);
         Assert.IsTrue(status.DocumentCount >= 1);
         Assert.IsTrue(status.Projects.Count >= 2, $"Expected at least 2 projects, got {status.Projects.Count}");
