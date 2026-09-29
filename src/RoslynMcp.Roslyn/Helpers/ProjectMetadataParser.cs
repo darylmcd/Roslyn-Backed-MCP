@@ -316,7 +316,7 @@ internal static class ProjectMetadataParser
 
         try
         {
-            return XDocument.Load(projectFilePath);
+            return XmlFileLoader.Load(projectFilePath);
         }
         catch (Exception ex)
         {

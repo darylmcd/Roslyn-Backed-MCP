@@ -29,7 +29,7 @@ internal static class MsBuildMetadataHelper
             return false;
         }
 
-        var document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        var document = XmlFileLoader.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
         return string.Equals(
             document.Descendants("ManagePackageVersionsCentrally").FirstOrDefault()?.Value,
             "true",
@@ -47,7 +47,7 @@ internal static class MsBuildMetadataHelper
             return false;
         }
 
-        var document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        var document = XmlFileLoader.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
         return document.Descendants("PackageVersion").Any(element =>
             string.Equals((string?)element.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
     }
@@ -62,7 +62,7 @@ internal static class MsBuildMetadataHelper
             return null;
         }
 
-        var document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        var document = XmlFileLoader.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
         var element = document.Descendants("PackageVersion").FirstOrDefault(e =>
             string.Equals((string?)e.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
         return element?.Attribute("Version")?.Value;

@@ -29,6 +29,24 @@ public static class PhysicalPathResolver
 
     internal static string GetLinkTargetPath(string linkPath, string rawLinkTarget)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows mount-point junctions may expose a volume GUID without a path prefix.
+            // The NT object-manager spelling is also returned by some filesystem APIs.
+            var volumeTarget = rawLinkTarget.StartsWith(@"\??\", StringComparison.Ordinal)
+                || rawLinkTarget.StartsWith(@"\\?\", StringComparison.Ordinal)
+                ? rawLinkTarget[4..]
+                : rawLinkTarget;
+            if (volumeTarget.Length >= 45
+                && volumeTarget.StartsWith("Volume{", StringComparison.OrdinalIgnoreCase)
+                && Guid.TryParseExact(volumeTarget.AsSpan(7, 36), "D", out _)
+                && volumeTarget[43] == '}'
+                && volumeTarget[44] == '\\')
+            {
+                return @"\\?\" + volumeTarget;
+            }
+        }
+
         if (Path.IsPathFullyQualified(rawLinkTarget))
         {
             return rawLinkTarget;
