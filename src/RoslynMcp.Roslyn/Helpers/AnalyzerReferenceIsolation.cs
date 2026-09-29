@@ -114,7 +114,8 @@ internal static class AnalyzerReferenceIsolation
 
                 if (!loaders.TryGetValue(analyzerPath, out var loader))
                 {
-                    loader = ShadowCopyAnalyzerAssemblyLoader.Create(analyzerPath, shadowRoot, logger);
+                    loader = ShadowCopyAnalyzerAssemblyLoader.Create(
+                        analyzerPath, shadowRoot, logger, isCollectible: true);
                     loaders[analyzerPath] = loader;
                 }
 
@@ -488,7 +489,7 @@ internal static class AnalyzerReferenceIsolation
         }
 
         public static ShadowCopyAnalyzerAssemblyLoader Create(
-            string analyzerPath, string shadowRoot, ILogger logger, bool isCollectible = true)
+            string analyzerPath, string shadowRoot, ILogger logger, bool isCollectible)
         {
             var loader = new ShadowCopyAnalyzerAssemblyLoader(shadowRoot, logger, isCollectible);
             loader.RegisterAnalyzerDirectory(analyzerPath);
