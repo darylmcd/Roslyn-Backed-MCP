@@ -139,7 +139,7 @@
       "worktreePath": ".worktrees/tool-binding-missing-parameter-named",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1674 head 9b8dffc cold review cycle 0 held two untested-critical-path findings; executor fix leg active.",
       "fileSetHash": "3521cfc976ca938a2e5f66428e15154d7cebab02e3e2b1dc151fd3f095690d40",
       "stanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c",
       "reviewedStanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c"
@@ -175,7 +175,7 @@
       "worktreePath": ".worktrees/coverlet-net10-session-end-crash-upgrade",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Immutable generation base predates merged PR #1672; full and coverage gates red only at base WorkspaceManager path guard. Four-file change preserved staged for fresh-base validation after generation boundary.",
       "fileSetHash": "5baf5f9e448ad54ab25a091adee0da05d4d228481c9200518fcb1b53a65d4156",
       "stanzaHash": "bf77414f0989b9a41ebba70b26d1451c02563f94cdf681c5dc9eced7e9d040e6",
       "reviewedStanzaHash": "bf77414f0989b9a41ebba70b26d1451c02563f94cdf681c5dc9eced7e9d040e6"
