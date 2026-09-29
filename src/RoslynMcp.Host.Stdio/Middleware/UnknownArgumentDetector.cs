@@ -26,6 +26,8 @@ internal static class UnknownArgumentDetector
 
     private static readonly ConditionalWeakTable<McpServerTool, FrozenSet<string>> _declaredNamesCache = new();
 
+    private static readonly ConditionalWeakTable<McpServerTool, string[]> _requiredNamesCache = new();
+
     /// <summary>
     /// Returns one entry per argument name the matched tool does not declare, or
     /// <see langword="null"/> when every name is declared, the tool cannot be resolved, or its
@@ -91,6 +93,44 @@ internal static class UnknownArgumentDetector
         return properties.EnumerateObject()
             .Select(static property => property.Name)
             .ToFrozenSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Finds required schema properties absent from the arguments that will reach the SDK binder.
+    /// Schema order is retained so the first omitted property can drive a specific schema hint.
+    /// </summary>
+    internal static IReadOnlyList<string>? DetectMissingRequiredNames(
+        RequestContext<CallToolRequestParams> context,
+        string toolName)
+    {
+        var tool = ResolveTool(context, toolName);
+        if (tool is null)
+        {
+            return null;
+        }
+
+        var required = _requiredNamesCache.GetValue(tool, static t => ReadRequiredNames(t.ProtocolTool.InputSchema));
+        var argumentNames = context.Params?.Arguments?.Keys;
+        var missing = required
+            .Where(name => argumentNames is null || !argumentNames.Contains(name, StringComparer.Ordinal))
+            .ToArray();
+        return missing.Length == 0 ? null : missing;
+    }
+
+    private static string[] ReadRequiredNames(JsonElement inputSchema)
+    {
+        if (inputSchema.ValueKind != JsonValueKind.Object ||
+            !inputSchema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return required.EnumerateArray()
+            .Where(static name => name.ValueKind == JsonValueKind.String)
+            .Select(static name => name.GetString()!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static McpServerTool? ResolveTool(

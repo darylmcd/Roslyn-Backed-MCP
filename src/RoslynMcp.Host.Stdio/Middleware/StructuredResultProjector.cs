@@ -77,6 +77,18 @@ internal static class StructuredResultProjector
             // Classify once. The resulting ErrorInfo determines both log/report severity and the
             // public formatter, eliminating the prior divergent second classification path.
             var errorInfo = ToolErrorHandler.ClassifyError(exception, toolName);
+            if (exception is not PublicArgumentException and not PublicInvalidOperationException &&
+                UnknownArgumentDetector.DetectMissingRequiredNames(context, toolName) is { Count: > 0 } missing)
+            {
+                var message = missing.Count == 1
+                    ? $"Required parameter '{missing[0]}' is missing. Provide a value and retry."
+                    : $"Required parameters {string.Join(", ", missing.Select(static name => $"'{name}'"))} " +
+                      "are missing. Provide values and retry.";
+                errorInfo = new ToolErrorHandler.ErrorInfo(
+                    ToolErrorHandler.ErrorCategories.InvalidArgument,
+                    message,
+                    ParamName: missing[0]);
+            }
             var isInternalError = errorInfo.Category == ToolErrorHandler.ErrorCategories.InternalError;
             if (isInternalError && exceptionReporter is not null)
             {

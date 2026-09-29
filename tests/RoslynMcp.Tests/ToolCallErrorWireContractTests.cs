@@ -193,6 +193,13 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
                     await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
                     var frame = await CallAndCaptureAsync(harness, "compile_check", arguments: null);
                     AssertFastFailFrame(frame, "loaded workspace", protocol.Modern);
+
+                    var validateFrame = await CallAndCaptureAsync(harness, "validate_workspace", arguments: null);
+                    AssertFastFailFrame(validateFrame, "Candidates:", protocol.Modern);
+                    var payload = ErrorPayload(validateFrame);
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), firstWorkspace.WorkspaceId);
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), secondWorkspace.WorkspaceId);
+                    StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "workspaceId");
                 }
             }
             finally
@@ -226,6 +233,26 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             TestFixtureFileSystem.DeleteDirectoryIfExists(firstRoot);
             TestFixtureFileSystem.DeleteDirectoryIfExists(secondRoot);
             TestFixtureFileSystem.DeleteDirectoryIfExists(ambiguousRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task MissingRequiredArguments_NameEveryOmittedFieldOnTheWire()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var frame = await CallAndCaptureAsync(harness, "workspace_load", arguments: null);
+            AssertFastFailFrame(frame, "path", protocol.Modern);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("ArgumentException", payload["exceptionType"]?.GetValue<string>());
+            StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "path");
+
+            var multipleFrame = await CallAndCaptureAsync(harness, "synthetic_required_arguments", arguments: null);
+            var multiplePayload = ErrorPayload(multipleFrame);
+            Assert.AreEqual("InvalidArgument", multiplePayload["category"]?.GetValue<string>());
+            StringAssert.Contains(multiplePayload["message"]!.GetValue<string>(), "first");
+            StringAssert.Contains(multiplePayload["message"]!.GetValue<string>(), "second");
         }
     }
 
@@ -310,11 +337,17 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             Assert.IsNull(result["resultType"], rawFrame);
         }
 
-        var content = Assert.IsInstanceOfType<JsonArray>(result["content"]);
-        var block = Assert.IsInstanceOfType<JsonObject>(content.Single());
-        var payload = Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(block["text"]!.GetValue<string>()));
+        var payload = ErrorPayload(frame);
         Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>(), rawFrame);
         StringAssert.Contains(payload["message"]?.GetValue<string>(), expectedMessage);
+    }
+
+    private static JsonObject ErrorPayload(JsonObject frame)
+    {
+        var result = Assert.IsInstanceOfType<JsonObject>(frame["result"]);
+        var content = Assert.IsInstanceOfType<JsonArray>(result["content"]);
+        var block = Assert.IsInstanceOfType<JsonObject>(content.Single());
+        return Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(block["text"]!.GetValue<string>()));
     }
 
     private static IEnumerable<(string? Requested, bool Modern)> Protocols()
@@ -369,5 +402,14 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             int line,
             int column,
             string? workspaceId = null) => workspaceId ?? $"missing:{filePath}:{line}:{column}";
+
+        [McpServerTool(Name = "workspace_load")]
+        public static string WorkspaceLoad(string path) => path;
+
+        [McpServerTool(Name = "validate_workspace")]
+        public static string ValidateWorkspace(string workspaceId) => workspaceId;
+
+        [McpServerTool(Name = "synthetic_required_arguments")]
+        public static string RequireTwo(string first, string second) => first + second;
     }
 }
