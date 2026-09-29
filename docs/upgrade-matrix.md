@@ -49,7 +49,7 @@ The previous `10.0.100` minimum was not executable: its compiler loads Roslyn 5.
 | `Microsoft.NET.Test.Sdk` | `18.10.1` | `Directory.Packages.props` | Test infrastructure; routine servicing group |
 | `MSTest.TestAdapter` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with framework including majors |
 | `MSTest.TestFramework` | `4.4.1` | `Directory.Packages.props` | MSTest family; move with adapter including majors |
-| `coverlet.collector` | `10.0.1` | `Directory.Packages.props` | Coverage-only |
+| `coverlet.collector` | `10.1.0` | `Directory.Packages.props` | Coverage-only |
 | `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest` | `1.1.2` | `Directory.Packages.props` | Analyzer test harness; review Roslyn ABI |
 | `NuGet.Frameworks` | `6.3.4` | `Directory.Packages.props` | Direct test pin required by MSBuildLocator asset policy |
 | `Microsoft.CodeAnalysis.NetAnalyzers` | `10.0.401` | `Directory.Packages.props` | Align with the declared SDK feature band when available |

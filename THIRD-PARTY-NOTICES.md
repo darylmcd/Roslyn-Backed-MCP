@@ -39,7 +39,7 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 
 | Package | Version | License | Project |
 |---|---:|---|---|
-| coverlet.collector | 10.0.1 | MIT | https://github.com/coverlet-coverage/coverlet |
+| coverlet.collector | 10.1.0 | MIT | https://github.com/coverlet-coverage/coverlet |
 | Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest | 1.1.2 | MIT | https://github.com/dotnet/roslyn-sdk |
 | Microsoft.Extensions.TimeProvider.Testing | 10.10.0 | MIT | https://github.com/dotnet/extensions |
 | Microsoft.NET.Test.Sdk | 18.10.1 | MIT | https://github.com/microsoft/vstest |

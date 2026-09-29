@@ -447,7 +447,10 @@ public sealed class FormatterBaselineContractTests
                     executionSeam: new GeneratorExecutionSeam(
                         outerProcess,
                         TimeSpan.FromSeconds(2),
-                        () => [competingProcess])));
+                        () => [competingProcess],
+                        // Force the race observed on hosted Windows: the marker is
+                        // written, but the first async stderr snapshot has not seen it.
+                        static _ => string.Empty)));
 
             var childProcessId = int.Parse(
                 await File.ReadAllTextAsync(childPidPath),
@@ -603,7 +606,8 @@ public sealed class FormatterBaselineContractTests
                     executionSeam: new GeneratorExecutionSeam(
                         outerProcess,
                         TimeSpan.FromMinutes(5),
-                        () => [])));
+                        () => [],
+                        static snapshot => snapshot)));
             stopwatch.Stop();
 
             StringAssert.Contains(
@@ -947,17 +951,28 @@ public sealed class FormatterBaselineContractTests
         }
 
         var outerExited = await WaitForProcessExitAsync(process, RemainingCleanupBudget(elapsed));
-        var ownedChildrenExited = await WaitForOwnedChildrenExitAsync(
+        _ = await WaitForOwnedChildrenExitAsync(
             ownedChildProcessIds,
             RemainingCleanupBudget(elapsed));
         var remaining = RemainingCleanupBudget(elapsed);
         var drains = await Task.WhenAll(
             DrainAsync(stdoutCapture, "stdout", remaining),
             DrainAsync(stderrCapture, "stderr", remaining));
+        // The async stderr reader can observe a flushed phase marker only after
+        // the first timeout snapshot. Use the drained evidence for both the PID
+        // diagnostic and the final owned-child exit check.
+        var finalOwnedChildProcessIds = ownedChildProcessIds
+            .Concat(ExtractOwnedChildProcessIds(ExtractPhaseMarkers(drains[1].Text)))
+            .Distinct()
+            .ToArray();
+        var ownedChildrenExited = await WaitForOwnedChildrenExitAsync(
+            finalOwnedChildProcessIds,
+            RemainingCleanupBudget(elapsed));
         elapsed.Stop();
         return new ProcessTeardownResult(
             outerExited,
             ownedChildrenExited,
+            finalOwnedChildProcessIds,
             drains[0],
             drains[1],
             elapsed.ElapsedMilliseconds);
@@ -1096,14 +1111,17 @@ public sealed class FormatterBaselineContractTests
                 var stillCompeting = snapshotCompetingProcesses()
                     .Where(entry => entry.Id != process.Id && startingIds.Contains(entry.Id))
                     .ToArray();
-                var phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+                var initialStderr = stderrCapture.Snapshot;
+                if (executionSeam is not null)
+                    initialStderr = executionSeam.InitialPhaseSnapshot(initialStderr);
+                var phaseMarkers = ExtractPhaseMarkers(initialStderr);
                 var timeoutOwnedChildProcessIds = ExtractOwnedChildProcessIds(phaseMarkers);
                 var teardown = await TerminateAndDrainOwnedTreeAsync(
                     process,
                     timeoutOwnedChildProcessIds,
                     stdoutCapture,
                     stderrCapture);
-                phaseMarkers = ExtractPhaseMarkers(stderrCapture.Snapshot);
+                phaseMarkers = ExtractPhaseMarkers(teardown.StdErr.Text);
                 var classification = ClassifyGeneratorTimeout(
                     phaseMarkers,
                     competingAtStart.Count,
@@ -1122,7 +1140,7 @@ public sealed class FormatterBaselineContractTests
                     + "phaseSnapshot=refreshed-after-teardown; "
                     + $"outerExited={teardown.OuterExited}; "
                     + $"ownedChildrenExited={teardown.OwnedChildrenExited}; "
-                    + $"ownedChildPids=[{string.Join(",", timeoutOwnedChildProcessIds)}]; "
+                    + $"ownedChildPids=[{string.Join(",", teardown.OwnedChildProcessIds)}]; "
                     + $"cleanupMs={teardown.ElapsedMilliseconds}; "
                     + $"stdoutDrained={teardown.StdOut.Drained}; "
                     + $"stderrDrained={teardown.StdErr.Drained}; "
@@ -1130,7 +1148,7 @@ public sealed class FormatterBaselineContractTests
                     + $"competingAtStart={DescribeCompetingProcesses(competingAtStart)}; "
                     + $"stillCompetingAtTimeout={DescribeCompetingProcesses(stillCompeting)}; "
                     + $"partialStdOut={DescribeDrainedLength(teardown.StdOut)}; "
-                    + $"partialStdErr={stderrCapture.Snapshot}");
+                    + $"partialStdErr={teardown.StdErr.Text}");
             }
 
             elapsed.Stop();
@@ -1327,13 +1345,15 @@ public sealed class FormatterBaselineContractTests
     private sealed record GeneratorExecutionSeam(
         Process Process,
         TimeSpan Timeout,
-        Func<IReadOnlyList<CompetingProcess>> SnapshotCompetingProcesses);
+        Func<IReadOnlyList<CompetingProcess>> SnapshotCompetingProcesses,
+        Func<string, string> InitialPhaseSnapshot);
 
     private sealed record DrainResult(bool Drained, string Text);
 
     private sealed record ProcessTeardownResult(
         bool OuterExited,
         bool OwnedChildrenExited,
+        IReadOnlyList<int> OwnedChildProcessIds,
         DrainResult StdOut,
         DrainResult StdErr,
         long ElapsedMilliseconds);
