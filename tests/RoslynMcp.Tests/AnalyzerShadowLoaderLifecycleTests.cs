@@ -1,11 +1,15 @@
+using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -102,7 +106,7 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
     }
 
     [TestMethod]
-    public void Retarget_ExternalAnalyzer_PreservesRoslynDefaultLoader()
+    public void Retarget_ExternalAnalyzer_UsesSharedProcessShadowLoader()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -130,17 +134,157 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
 
             using var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
                 solution, "external-unit-probe", NullLogger.Instance);
+            var processLoader = GetAnalyzerAssemblyLoader(reference);
+            using var secondLease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                solution, "external-unit-probe-2", NullLogger.Instance);
 
             Assert.AreEqual(0, lease.RetargetedReferenceCount,
-                "SDK/NuGet analyzers outside the workspace must not enter collectible shadow contexts.");
+                "External references are owned by the process, not the collectible lease.");
             Assert.IsNull(lease.ShadowRoot,
-                "A workspace with only external analyzers must not allocate a shadow lease root.");
-            Assert.AreSame(originalLoader, GetAnalyzerAssemblyLoader(reference),
-                "External analyzer references must retain Roslyn's existing loader.");
+                "A workspace with only external analyzers must not allocate a collectible lease root.");
+            Assert.AreNotSame(originalLoader, GetAnalyzerAssemblyLoader(reference),
+                "External analyzer references must be retargeted away from the original package path.");
+            Assert.AreSame(processLoader, GetAnalyzerAssemblyLoader(reference),
+                "Repeated retargets must share the process loader.");
         }
         finally
         {
             TestFixtureFileSystem.DeleteDirectoryIfExists(projectRoot);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task WorkspaceClose_ExternalGenerator_ReleasesPackagePathAndReusesProcessCopy(bool drainProcesses)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Mapped assembly deletion is a Windows-only contract.");
+            return;
+        }
+
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
+            repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
+        var copiedRoot = Path.GetDirectoryName(solutionPath)!;
+        var packageRoot = Path.Combine(TestTempRoot.Current, "external-generator-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(packageRoot);
+
+        try
+        {
+            var generatorPath = InjectExternalGenerator(copiedRoot, packageRoot);
+            MsBuildInitializer.EnsureInitialized();
+            using var manager = new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 4 },
+                cacheStore: null,
+                sessionLoader: new WorkspaceSessionLoader());
+            using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+            var runner = new SuccessfulDrainRunner();
+
+            string? firstShadowPath = null;
+            for (var load = 0; load < 2; load++)
+            {
+                var status = await manager.LoadAsync(solutionPath, CancellationToken.None);
+                Assert.IsTrue(status.IsLoaded);
+                var project = manager.GetCurrentSolution(status.WorkspaceId).Projects
+                    .Single(candidate => candidate.Name == "SampleLib");
+                var snapshot = await SourceGeneratorCompilation.CreateAsync(project, CancellationToken.None);
+                Assert.IsNotNull(snapshot);
+                Assert.IsTrue(snapshot.Compilation.SyntaxTrees.Any(tree =>
+                    tree.ToString().Contains("ExternalGeneratorMarker", StringComparison.Ordinal)),
+                    "The external generator must run through SourceGeneratorCompilation.");
+
+                var reference = project.AnalyzerReferences.OfType<AnalyzerFileReference>()
+                    .Single(candidate => string.Equals(candidate.FullPath, generatorPath, StringComparison.OrdinalIgnoreCase));
+                var generator = reference.GetGenerators(LanguageNames.CSharp).Single();
+                var loadedAssembly = generator.GetType().Assembly;
+                Assert.IsFalse(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(loadedAssembly)!.IsCollectible,
+                    "Roslyn may retain external generator types in process-wide caches.");
+                Assert.IsFalse(loadedAssembly.Location.StartsWith(packageRoot, StringComparison.OrdinalIgnoreCase),
+                    "The generator must be mapped from a shadow copy.");
+                firstShadowPath ??= loadedAssembly.Location;
+                Assert.AreEqual(firstShadowPath, loadedAssembly.Location,
+                    "Repeated workspace loads must reuse the same process copy.");
+                var processRoot = Path.GetDirectoryName(Path.GetDirectoryName(loadedAssembly.Location))!;
+                Assert.IsTrue(AnalyzerReferenceIsolation.AnalyzerShadowLoaderLease.IsLiveRoot(processRoot),
+                    "The abandoned-root sweep must exclude the live process copy root.");
+
+                var response = await WorkspaceTools.CloseWorkspaceCore(
+                    gate, manager, runner, status.WorkspaceId, drainProcesses,
+                    loggerFactory: null, exceptionReporter: null, getProcessesByName: _ => [],
+                    processDrainTimeout: TimeSpan.FromSeconds(5), ct: CancellationToken.None);
+                using var result = JsonDocument.Parse(response);
+                Assert.IsTrue(result.RootElement.GetProperty("success").GetBoolean());
+            }
+
+            Assert.AreEqual(drainProcesses ? 2 : 0, runner.CallCount);
+            using var current = Process.GetCurrentProcess();
+            Assert.IsFalse(current.Modules.Cast<ProcessModule>().Any(module =>
+                module.FileName.StartsWith(packageRoot, StringComparison.OrdinalIgnoreCase)),
+                "No module may remain mapped from the package directory after workspace close.");
+            Directory.Delete(packageRoot, recursive: true);
+            Assert.IsFalse(Directory.Exists(packageRoot), "The original package folder must be deletable.");
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    private static string InjectExternalGenerator(string copiedRoot, string packageRoot)
+    {
+        const string source = """
+            using Microsoft.CodeAnalysis;
+
+            [Generator]
+            public sealed class ExternalPackageGenerator : ISourceGenerator
+            {
+                public void Initialize(GeneratorInitializationContext context) { }
+                public void Execute(GeneratorExecutionContext context) =>
+                    context.AddSource("ExternalGeneratorMarker.g.cs", "public class ExternalGeneratorMarker { }");
+            }
+            """;
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var compilation = CSharpCompilation.Create(
+            "ExternalPackageGenerator",
+            [CSharpSyntaxTree.ParseText(source)],
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(Path.Combine(runtimeDirectory, "System.Runtime.dll")),
+                MetadataReference.CreateFromFile(typeof(ISourceGenerator).Assembly.Location),
+            ],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var path = Path.Combine(packageRoot, "ExternalPackageGenerator.dll");
+        using (var stream = File.Create(path))
+        {
+            var emit = compilation.Emit(stream);
+            Assert.IsTrue(emit.Success, string.Join("; ", emit.Diagnostics));
+        }
+
+        var projectPath = Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj");
+        var project = XDocument.Load(projectPath);
+        project.Root!.Add(new XElement("ItemGroup",
+            new XElement("Analyzer", new XAttribute("Include", path))));
+        project.Save(projectPath);
+        return path;
+    }
+
+    private sealed class SuccessfulDrainRunner : IDotnetCommandRunner
+    {
+        public int CallCount { get; private set; }
+
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory, string targetPath, IReadOnlyList<string> arguments, CancellationToken ct)
+        {
+            CallCount++;
+            return Task.FromResult(new CommandExecutionDto(
+                "dotnet", arguments, workingDirectory, targetPath,
+                ExitCode: 0, Succeeded: true, DurationMs: 0, StdOut: string.Empty, StdErr: string.Empty));
         }
     }
 
@@ -200,6 +344,31 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         finally
         {
             lockedFile?.Dispose();
+            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+        }
+    }
+
+    [TestMethod]
+    public void SweepAbandonedRoots_StaleProcessCopyRoot_IsReclaimed()
+    {
+        var sharedParent = Path.Combine(
+            TestTempRoot.Current, "analyzer-process-sweep-" + Guid.NewGuid().ToString("N"));
+        var processCopyRoot = Path.Combine(sharedParent, "process-exited", "copies");
+        Directory.CreateDirectory(processCopyRoot);
+        File.WriteAllText(Path.Combine(processCopyRoot, "unused.dll"), "stale copy");
+        try
+        {
+            var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
+            Directory.SetCreationTimeUtc(processCopyRoot, staleTimestamp);
+            Directory.SetLastWriteTimeUtc(processCopyRoot, staleTimestamp);
+
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
+
+            Assert.IsFalse(Directory.Exists(processCopyRoot),
+                "A process copy root from an exited host must be reclaimed by the two-level sweep.");
+        }
+        finally
+        {
             TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
         }
     }

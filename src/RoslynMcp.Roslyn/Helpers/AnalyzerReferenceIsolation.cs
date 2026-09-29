@@ -15,7 +15,7 @@ internal static class AnalyzerReferenceIsolation
     internal const string ShadowRootDirectoryName = "RoslynMcpAnalyzerShadow";
 
     /// <summary>
-    /// A lease root older than this is assumed abandoned (a crashed or killed host) and is
+    /// A shadow root older than this is assumed abandoned (a crashed or killed host) and is
     /// eligible for sweeping. Deliberately long: a live lease in ANOTHER process may be older,
     /// but its loaded shadow assemblies keep the files locked so deletion fails harmlessly.
     /// Mirrors the abandoned-run reaper discipline in <c>TestTempRoot</c>.
@@ -31,12 +31,21 @@ internal static class AnalyzerReferenceIsolation
     /// <summary>Once-per-process gate for the background abandoned-root sweep.</summary>
     private static int s_sweepStarted;
 
+    // External analyzers may be retained by Roslyn's process-wide caches. Keep their loader
+    // non-collectible, but map its assemblies from one process-owned shadow root instead of
+    // locking the package directory for the lifetime of the host.
+    private static readonly string s_processShadowRoot = Path.Combine(
+        Path.GetTempPath(), ShadowRootDirectoryName,
+        "process-" + Environment.ProcessId + "-" + Guid.NewGuid().ToString("N"), "copies");
+    private static readonly ConcurrentDictionary<string, Lazy<ShadowCopyAnalyzerAssemblyLoader>> s_externalLoaders =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Retargets every file-based analyzer reference in <paramref name="solution"/> onto a
-    /// shadow-copy loader whose <see cref="AssemblyLoadContext"/>s and on-disk shadow root are
-    /// owned by the returned lease. Disposing the lease unloads the (collectible) load contexts
+    /// shadow-copy loader. Workspace-owned references use a loader owned by the returned lease;
+    /// external references use a process-owned non-collectible loader. Disposing the lease unloads its collectible load contexts
     /// and best-effort deletes the lease's shadow directory, so workspace close / reload / host
-    /// shutdown reclaim both the memory and the disk space (analyzer-shadow-loader-lifecycle;
+    /// shutdown reclaim the workspace-owned memory and disk space (analyzer-shadow-loader-lifecycle;
     /// previously the loaders and their non-collectible contexts were dropped on the floor and
     /// hundreds of orphaned shadow trees accumulated until process exit).
     /// The shadow root is keyed per-LEASE (<c>%TEMP%/RoslynMcpAnalyzerShadow/&lt;workspaceId&gt;/&lt;leaseId&gt;</c>),
@@ -63,14 +72,6 @@ internal static class AnalyzerReferenceIsolation
         StartAbandonedRootSweepOnce(logger);
 
         var workspaceRoots = GetWorkspaceRoots(solution, workspaceId, logger);
-        if (workspaceRoots.Count == 0)
-        {
-            logger.LogDebug(
-                "Workspace {WorkspaceId}: analyzer shadow isolation skipped because no workspace-owned path boundary was available.",
-                workspaceId);
-            return AnalyzerShadowLoaderLease.CreateEmpty();
-        }
-
         var leaseId = Guid.NewGuid().ToString("N");
         var shadowRoot = Path.Combine(Path.GetTempPath(), ShadowRootDirectoryName, workspaceId, leaseId);
         var loaders = new Dictionary<string, ShadowCopyAnalyzerAssemblyLoader>(StringComparer.OrdinalIgnoreCase);
@@ -86,23 +87,28 @@ internal static class AnalyzerReferenceIsolation
                     continue;
                 }
 
-                // Shadow copying exists to keep workspace-owned analyzer outputs unlocked for
-                // child builds. SDK/NuGet analyzers are immutable external dependencies and must
-                // stay on Roslyn's default loader. Moving every external analyzer into a
-                // collectible ALC lets Roslyn's process-wide completion-provider caches retain
-                // reflection state after a workspace lease unloads; later provider discovery can
-                // then terminate CoreCLR in RuntimeType.IsAssignableFrom with an access violation.
-                if (!IsUnderAnyRoot(analyzerPath, workspaceRoots))
-                {
-                    externalReferences++;
-                    continue;
-                }
-
                 if (LazyAssemblyField?.GetValue(reference) is not null)
                 {
                     logger.LogWarning(
                         "Workspace {WorkspaceId}: an analyzer reference was already loaded before shadow-loader isolation could run.",
                         workspaceId);
+                    continue;
+                }
+
+                // Process-wide Roslyn caches can retain external analyzer types across workspace
+                // closes. Their ALC must remain non-collectible, while its file mapping must be
+                // moved away from the package source path.
+                if (!IsUnderAnyRoot(analyzerPath, workspaceRoots))
+                {
+                    var directory = Path.GetDirectoryName(analyzerPath)!;
+                    var processLoader = s_externalLoaders.GetOrAdd(directory, path =>
+                        new Lazy<ShadowCopyAnalyzerAssemblyLoader>(() =>
+                            ShadowCopyAnalyzerAssemblyLoader.Create(
+                                analyzerPath, s_processShadowRoot, logger, isCollectible: false),
+                            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+                    processLoader.AddDependencyLocation(analyzerPath);
+                    AssemblyLoaderField.SetValue(reference, processLoader);
+                    externalReferences++;
                     continue;
                 }
 
@@ -120,7 +126,7 @@ internal static class AnalyzerReferenceIsolation
         if (externalReferences > 0)
         {
             logger.LogDebug(
-                "Workspace {WorkspaceId}: left {Count} external analyzer reference(s) on Roslyn's default loader.",
+                "Workspace {WorkspaceId}: retargeted {Count} external analyzer reference(s) to the process shadow loader.",
                 workspaceId,
                 externalReferences);
         }
@@ -392,7 +398,9 @@ internal static class AnalyzerReferenceIsolation
         /// <summary>No-op lease for the platforms/configurations where isolation cannot run.</summary>
         public static AnalyzerShadowLoaderLease CreateEmpty() => new(null, [], 0, null);
 
-        internal static bool IsLiveRoot(string directory) => s_liveRoots.ContainsKey(directory);
+        internal static bool IsLiveRoot(string directory) =>
+            s_liveRoots.ContainsKey(directory) ||
+            string.Equals(directory, s_processShadowRoot, StringComparison.OrdinalIgnoreCase);
 
         public void Dispose()
         {
@@ -461,6 +469,8 @@ internal static class AnalyzerReferenceIsolation
     {
         private readonly string _shadowRoot;
         private readonly ILogger _logger;
+        private readonly bool _isCollectible;
+        private readonly object _loadGate = new();
         private readonly ConcurrentDictionary<string, string> _dependenciesByName = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, Assembly> _assembliesByIdentity = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _shadowCopiesByIdentity = new(StringComparer.OrdinalIgnoreCase);
@@ -470,15 +480,17 @@ internal static class AnalyzerReferenceIsolation
         // costs nothing beyond what the race already leaked pre-fix.
         private readonly ConcurrentBag<ShadowAnalyzerLoadContext> _contexts = [];
 
-        private ShadowCopyAnalyzerAssemblyLoader(string shadowRoot, ILogger logger)
+        private ShadowCopyAnalyzerAssemblyLoader(string shadowRoot, ILogger logger, bool isCollectible)
         {
             _shadowRoot = shadowRoot;
             _logger = logger;
+            _isCollectible = isCollectible;
         }
 
-        public static ShadowCopyAnalyzerAssemblyLoader Create(string analyzerPath, string shadowRoot, ILogger logger)
+        public static ShadowCopyAnalyzerAssemblyLoader Create(
+            string analyzerPath, string shadowRoot, ILogger logger, bool isCollectible = true)
         {
-            var loader = new ShadowCopyAnalyzerAssemblyLoader(shadowRoot, logger);
+            var loader = new ShadowCopyAnalyzerAssemblyLoader(shadowRoot, logger, isCollectible);
             loader.RegisterAnalyzerDirectory(analyzerPath);
             return loader;
         }
@@ -537,12 +549,19 @@ internal static class AnalyzerReferenceIsolation
 
             AddDependencyLocation(normalized);
             var identity = BuildFileIdentity(normalized);
-            return _assembliesByIdentity.GetOrAdd(identity, _ =>
+            lock (_loadGate)
             {
+                if (_assembliesByIdentity.TryGetValue(identity, out var loaded))
+                {
+                    return loaded;
+                }
+
                 var context = new ShadowAnalyzerLoadContext(this);
                 _contexts.Add(context);
-                return context.LoadFromAssemblyPath(ShadowCopy(normalized));
-            });
+                loaded = context.LoadFromAssemblyPath(ShadowCopy(normalized));
+                _assembliesByIdentity[identity] = loaded;
+                return loaded;
+            }
         }
 
         private void RegisterAnalyzerDirectory(string analyzerPath)
@@ -581,24 +600,24 @@ internal static class AnalyzerReferenceIsolation
         private string ShadowCopy(string fullPath)
         {
             var identity = BuildFileIdentity(fullPath);
-            return _shadowCopiesByIdentity.GetOrAdd(identity, _ =>
+            lock (_loadGate)
             {
+                if (_shadowCopiesByIdentity.TryGetValue(identity, out var existing))
+                {
+                    return existing;
+                }
+
                 var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16];
                 var targetDirectory = Path.Combine(_shadowRoot, hash);
                 Directory.CreateDirectory(targetDirectory);
 
                 var targetPath = Path.Combine(targetDirectory, Path.GetFileName(fullPath));
-                try
-                {
-                    File.Copy(fullPath, targetPath, overwrite: true);
-                }
-                catch (IOException) when (File.Exists(targetPath))
-                {
-                    // Another concurrent request populated the same shadow path.
-                }
-
+                // The gate serializes writers within this process. Overwrite also repairs a
+                // partial copy left by an interrupted prior attempt for this identity.
+                File.Copy(fullPath, targetPath, overwrite: true);
+                _shadowCopiesByIdentity[identity] = targetPath;
                 return targetPath;
-            });
+            }
         }
 
         private static string BuildFileIdentity(string fullPath)
@@ -651,13 +670,14 @@ internal static class AnalyzerReferenceIsolation
         {
             private readonly ShadowCopyAnalyzerAssemblyLoader _loader;
 
-            // Collectible so the owning lease's Dispose can actually unload analyzer assemblies
-            // on workspace close/reload. Collectibility does NOT change Assembly.Location:
+            // Workspace loaders are collectible so the owning lease can unload them; external
+            // loaders are process-owned because Roslyn may retain their reflection state.
+            // Collectibility does NOT change Assembly.Location:
             // loading stays LoadFromAssemblyPath over an on-disk shadow copy, preserving
             // adjacent-resource and native-dependency probing (the LoadFromStream shortcut is
             // deliberately not taken — see ValidationIntegrationTests' Location assertion).
             public ShadowAnalyzerLoadContext(ShadowCopyAnalyzerAssemblyLoader loader)
-                : base(isCollectible: true)
+                : base(isCollectible: loader._isCollectible)
             {
                 _loader = loader;
             }
