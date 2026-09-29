@@ -289,6 +289,42 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public void OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-rename-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        var replacementPath = Path.Combine(root, "replacement.editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        File.WriteAllText(replacementPath, "[*.cs]\nindent_size = 8\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+                {
+                    // POSIX rename can replace the pathname while the transaction still
+                    // owns its old inode. A subsequent write updates only that unlinked inode.
+                    File.Move(replacementPath, configPath, overwrite: true);
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
+                    return true;
+                }));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Core validation scenario from the plan: load workspace → write to a tracked
     /// <c>.cs</c> via <see cref="System.IO.File"/> (simulating Claude Code's <c>Edit</c> tool

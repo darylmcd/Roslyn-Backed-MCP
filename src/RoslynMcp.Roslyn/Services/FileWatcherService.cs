@@ -429,6 +429,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     if (!readable || !BytesEqual(writtenBytes, current))
                     {
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        throw new EditorConfigConcurrentEditException();
                     }
                     else if (_staleReason != StaleReasons.ExternalEdit)
                     {

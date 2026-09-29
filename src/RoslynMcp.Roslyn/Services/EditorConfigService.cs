@@ -372,7 +372,7 @@ public sealed class EditorConfigService : IEditorConfigService
             throw new UnauthorizedAccessException("The applicable .editorconfig is outside the loaded workspace.");
         }
 
-        EditorConfigWriteResultDto Write(EditorConfigFileTransaction transaction)
+        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) Write(EditorConfigFileTransaction transaction)
         {
             var created = transaction.CreatedNewFile;
             var existingBytes = transaction.OriginalBytes;
@@ -380,21 +380,8 @@ public sealed class EditorConfigService : IEditorConfigService
             // an external edit between reads, then attribute a mixed operation to Apply.
             var lines = existingBytes is null ? new List<string>() : ReadConfigLines(existingBytes);
 
-            // set-editorconfig-option-not-undoable: capture the pre-apply content so
-            // revert_last_apply can restore the .editorconfig file (or delete it if we created it).
-            // Uses the authoritative FileSnapshotDto path in UndoService (FLAG-9A).
-            if (_undoService is not null)
-            {
-                var snapshot = new[]
-                {
-                    FileSnapshotCapture.FromBytesOrFallback(editorconfigPath, existingBytes, fallbackText: null),
-                };
-                _undoService.CaptureBeforeApply(
-                    workspaceId,
-                    $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
-                    preApplySolution: null,
-                    fileSnapshots: snapshot);
-            }
+            var snapshot = FileSnapshotCapture.FromBytesOrFallback(
+                editorconfigPath, existingBytes, fallbackText: null);
 
             const string csharpSection = "[*.{cs,csx,cake}]";
             UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
@@ -413,16 +400,23 @@ public sealed class EditorConfigService : IEditorConfigService
             }
             var writtenBytes = buffer.ToArray();
             transaction.WriteBytes(writtenBytes);
-            return new EditorConfigWriteResultDto(editorconfigPath, key, value, created);
+            return (new EditorConfigWriteResultDto(editorconfigPath, key, value, created), snapshot);
         }
 
-        var result = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
+        var applied = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
+        // Keep the previous undo target until the coordinator has verified that the
+        // bytes it wrote are still at the path. A failed write must not replace it.
+        _undoService?.CaptureBeforeApply(
+            workspaceId,
+            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
+            preApplySolution: null,
+            fileSnapshots: [applied.Snapshot]);
         _changeTracker?.RecordChange(
             workspaceId,
             $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
             [editorconfigPath],
             toolName);
-        return Task.FromResult(result);
+        return Task.FromResult(applied.Result);
     }
 
     private static bool IsWithinWorkspace(string root, string path)

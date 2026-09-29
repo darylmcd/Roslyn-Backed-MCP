@@ -173,6 +173,49 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SetOptionAsync_FailedPostWriteCheck_PreservesPriorUndoAndChangeHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var configPath = workspace.GetPath("SampleLib", ".editorconfig");
+        var original = "[*.cs]\nindent_size = 4\n";
+        await File.WriteAllTextAsync(configPath, original);
+
+        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "indent_size", "8", "set_editorconfig_option", CancellationToken.None);
+        var firstUndo = UndoService.GetLastOperation(workspace.WorkspaceId);
+        Assert.IsNotNull(firstUndo);
+        var firstBytes = await File.ReadAllBytesAsync(configPath);
+        var firstChanges = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+
+        var failingService = new EditorConfigService(WorkspaceManager, UndoService, ChangeTracker,
+            logger: null, new RejectAfterWriteCoordinator());
+        await Assert.ThrowsExactlyAsync<EditorConfigConcurrentEditException>(() =>
+            failingService.SetOptionAsync(workspace.WorkspaceId, source, "indent_size", "2",
+                "set_editorconfig_option", CancellationToken.None));
+
+        CollectionAssert.AreEqual(firstBytes, await File.ReadAllBytesAsync(configPath));
+        Assert.AreEqual(firstUndo, UndoService.GetLastOperation(workspace.WorkspaceId));
+        Assert.AreEqual(firstChanges, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId));
+        Assert.AreEqual(original, await File.ReadAllTextAsync(configPath));
+    }
+
+    private sealed class RejectAfterWriteCoordinator : IEditorConfigWriteCoordinator
+    {
+        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        {
+            var originalBytes = File.ReadAllBytes(path);
+            using (var transaction = new EditorConfigFileTransaction(path, originalBytes))
+            {
+                _ = write(transaction);
+            }
+            File.WriteAllBytes(path, originalBytes);
+            throw new EditorConfigConcurrentEditException();
+        }
+    }
+
+    [TestMethod]
     public async Task SetDiagnosticSeverity_RefreshesGatedDiagnosticsWithoutManualReload()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

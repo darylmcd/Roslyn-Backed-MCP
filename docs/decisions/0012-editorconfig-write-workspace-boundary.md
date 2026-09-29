@@ -20,6 +20,10 @@ Successful in-workspace writes use the workspace's coordinated write path to
 invalidate relevant snapshots and distinguish the server's own write from an
 external edit. No compatibility switch permits an outside write.
 
+Direct `EditorConfigService` construction with an alternate `IWorkspaceManager`
+cannot provide that coordination through the existing public constructor.
+`SetOptionAsync` refuses such a call rather than writing without invalidation.
+
 ## Compatibility and migration
 
 This changes the behavior of a stable tool for clients that previously edited
@@ -30,9 +34,18 @@ workspace, create or select an applicable `.editorconfig` under its physical
 root and call `set_editorconfig_option` again. Keep any intended ancestor
 inheritance in mind when placing the in-workspace file.
 
+Consumers that construct `EditorConfigService` directly with a custom
+`IWorkspaceManager` must use the repository's registered `WorkspaceManager` and
+`FileWatcherService` composition for writes. The existing public constructor
+remains callable for reads, but `SetOptionAsync` requires that coordinated
+workspace implementation. Custom workspace managers have no public write
+coordination contract in this release.
+
 ## Consequences
 
 - A workspace-scoped request cannot mutate configuration shared by sibling
   projects outside that workspace.
 - Consumers relying on ancestor writes need an explicit migration path.
 - Reads and file watching continue to include applicable ancestor settings.
+- Direct service integrations using another workspace-manager implementation
+  must migrate their write path to the registered coordinated composition.
