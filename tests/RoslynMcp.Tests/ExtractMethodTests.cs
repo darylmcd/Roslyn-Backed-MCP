@@ -101,6 +101,77 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             "Diff should contain a return statement for the outflowing variable.");
     }
 
+    [TestMethod]
+    [DataRow(false, true, false, false, "string BuildExtracted")]
+    [DataRow(true, true, false, false, "string? BuildExtracted")]
+    [DataRow(true, false, false, false, "string BuildExtracted")]
+    [DataRow(false, true, true, false, "string BuildExtracted")]
+    [DataRow(false, true, false, true, "string BuildExtracted")]
+    public async Task ExtractMethod_ReturnType_FollowsReturnedLocalFlowState(
+        bool mayRemainNull, bool nullableEnabled, bool declaredOutsideSelection,
+        bool assignNullAfterSelection, string expectedSignature)
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        var fixturePath = Path.Combine(Path.GetDirectoryName(solutionPath)!, "SampleLib", "NullableExtractProbe.cs");
+        var secondStatement = mayRemainNull
+            ? "        if (flag) result = \"ready\";"
+            : "        result = \"ready\";";
+        var returnType = (mayRemainNull || assignNullAfterSelection) && nullableEnabled ? "string?" : "string";
+        var localType = nullableEnabled ? "string?" : "string";
+        var source = string.Join('\n',
+            nullableEnabled ? "#nullable enable" : "#nullable disable",
+            "namespace SampleLib;",
+            "",
+            "public class NullableExtractProbe",
+            "{",
+            $"    public {returnType} Build(bool flag)",
+            "    {",
+            declaredOutsideSelection
+                ? $"        {localType} result;"
+                : $"        {localType} result = null;",
+            secondStatement,
+            assignNullAfterSelection ? "        System.Console.WriteLine(result);" : null,
+            assignNullAfterSelection ? "        result = null;" : null,
+            "        return result;",
+            "    }",
+            "}",
+            "");
+        await File.WriteAllTextAsync(fixturePath, source);
+
+        var loadResult = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
+        try
+        {
+            var preview = await ExtractMethodService.PreviewExtractMethodAsync(
+                loadResult.WorkspaceId, fixturePath,
+                startLine: declaredOutsideSelection ? 9 : 8, startColumn: 9,
+                endLine: 9, endColumn: secondStatement.Length + 1,
+                "BuildExtracted", CancellationToken.None);
+            StringAssert.Contains(preview.Changes.Single().UnifiedDiff, expectedSignature);
+            if (assignNullAfterSelection)
+            {
+                StringAssert.Contains(preview.Changes.Single().UnifiedDiff,
+                    "string? result = BuildExtracted");
+            }
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(
+                preview.PreviewToken, "test_apply", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success);
+
+            var compileResult = await CompileCheckService.CheckAsync(
+                loadResult.WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
+            Assert.IsFalse(compileResult.Diagnostics?.Any(d => d.Id == "CS8603") ?? false,
+                $"Extracted return introduced CS8603: {string.Join("; ", compileResult.Diagnostics?.Select(d => d.Message) ?? [])}");
+            Assert.IsFalse(compileResult.Diagnostics?.Any(d => d.Id == "CS8625") ?? false,
+                $"Extracted call site narrowed the local: {string.Join("; ", compileResult.Diagnostics?.Select(d => d.Message) ?? [])}");
+            Assert.IsTrue(compileResult.Success,
+                $"Compilation failed: {string.Join("; ", compileResult.Diagnostics?.Select(d => $"{d.Id}: {d.Message}") ?? [])}\n{preview.Changes.Single().UnifiedDiff}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(loadResult.WorkspaceId);
+        }
+    }
+
     /// <summary>
     /// Reject extraction when selection contains return statements.
     /// </summary>
