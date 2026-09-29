@@ -365,6 +365,13 @@ public class ClientRootPathValidatorTests
             Assert.AreEqual(expected, PhysicalPathResolver.GetLinkTargetPath(linkPath, rawTarget));
         }
 
+        var nestedTarget = volume + @"nested\";
+        foreach (var rawTarget in new[] { nestedTarget, @"\??\" + nestedTarget, @"\\?\" + nestedTarget })
+        {
+            Assert.AreEqual(@"\\?\" + nestedTarget,
+                PhysicalPathResolver.GetLinkTargetPath(linkPath, rawTarget));
+        }
+
         Assert.IsTrue(Path.IsPathFullyQualified(expected));
         Assert.IsFalse(expected.StartsWith(Path.GetDirectoryName(linkPath)!, StringComparison.OrdinalIgnoreCase));
     }

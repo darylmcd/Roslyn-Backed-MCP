@@ -37,7 +37,7 @@ public static class PhysicalPathResolver
                 || rawLinkTarget.StartsWith(@"\\?\", StringComparison.Ordinal)
                 ? rawLinkTarget[4..]
                 : rawLinkTarget;
-            if (volumeTarget.Length == 45
+            if (volumeTarget.Length >= 45
                 && volumeTarget.StartsWith("Volume{", StringComparison.OrdinalIgnoreCase)
                 && Guid.TryParseExact(volumeTarget.AsSpan(7, 36), "D", out _)
                 && volumeTarget[43] == '}'
