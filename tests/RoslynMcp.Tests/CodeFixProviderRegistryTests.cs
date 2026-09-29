@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -58,6 +60,159 @@ public sealed class CodeFixProviderRegistryTests
         Assert.AreEqual(0, first.FailedProviderCount);
         Assert.IsEmpty(second.Providers);
         Assert.AreSequenceEqual(new[] { assemblyPath }, loader.LoadedPaths);
+    }
+
+    [TestMethod]
+    public void Registry_SamePathReplacementReference_UsesNewLoaderAndReusesEachReference()
+    {
+        var path = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var firstReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+        var replacementReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+        var firstProvider = new TestCodeFixProvider();
+        var replacementProvider = new TestCodeFixProvider();
+        var loads = new List<AnalyzerFileReference>();
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
+            reference =>
+            {
+                loads.Add(reference);
+                return new FeatureProviderLoadResult<CodeFixProvider>(
+                    [ReferenceEquals(reference, firstReference) ? firstProvider : replacementProvider], []);
+            });
+
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var firstSolution = workspace.CurrentSolution
+            .AddProject(projectId, "Fixture", "Fixture", LanguageNames.CSharp)
+            .AddAnalyzerReference(projectId, firstReference);
+        var replacementSolution = firstSolution
+            .RemoveAnalyzerReference(projectId, firstReference)
+            .AddAnalyzerReference(projectId, replacementReference);
+
+        Assert.AreSame(firstProvider, registry.GetProvidersForDetailed("TEST0001", firstSolution).Providers.Single());
+        Assert.AreSame(firstProvider, registry.GetProvidersForDetailed("TEST0001", firstSolution).Providers.Single());
+        Assert.AreSame(replacementProvider, registry.GetProvidersForDetailed("TEST0001", replacementSolution).Providers.Single());
+        Assert.AreSame(replacementProvider, registry.GetProvidersForDetailed("TEST0001", replacementSolution).Providers.Single());
+        Assert.AreSequenceEqual(new[] { firstReference, replacementReference }, loads);
+    }
+
+    [TestMethod]
+    public void Registry_SamePathReferences_ContinuesAfterFailedLoaderAndDeduplicatesRepeatedIdentity()
+    {
+        var path = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var failedReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+        var healthyReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+        var healthyProvider = new TestCodeFixProvider();
+        var loads = new List<AnalyzerFileReference>();
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
+            reference =>
+            {
+                loads.Add(reference);
+                return ReferenceEquals(reference, failedReference)
+                    ? new FeatureProviderLoadResult<CodeFixProvider>([],
+                        [new FeatureProviderLoadFailure(FeatureProviderLoadFailureKind.AssemblyLoad, null)])
+                    : new FeatureProviderLoadResult<CodeFixProvider>([healthyProvider], []);
+            });
+        using var workspace = new AdhocWorkspace();
+        var firstProjectId = ProjectId.CreateNewId();
+        var secondProjectId = ProjectId.CreateNewId();
+        var thirdProjectId = ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(firstProjectId, "First", "First", LanguageNames.CSharp)
+            .AddAnalyzerReference(firstProjectId, failedReference)
+            .AddProject(secondProjectId, "Second", "Second", LanguageNames.CSharp)
+            .AddAnalyzerReference(secondProjectId, failedReference)
+            .AddProject(thirdProjectId, "Third", "Third", LanguageNames.CSharp)
+            .AddAnalyzerReference(thirdProjectId, healthyReference);
+
+        var result = registry.GetProvidersForDetailed("TEST0001", solution);
+
+        Assert.AreSame(healthyProvider, result.Providers.Single());
+        Assert.IsFalse(result.IsComplete);
+        Assert.AreEqual(1, result.FailedProviderCount);
+        Assert.AreSequenceEqual(new[] { failedReference, healthyReference }, loads);
+    }
+
+    [TestMethod]
+    public void Registry_RetiredAnalyzerReferenceAndCachedProvider_AreCollectible()
+    {
+        var contextReference = new WeakReference[1];
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
+            _ =>
+            {
+                var context = new AssemblyLoadContext("retired-analyzer", isCollectible: true);
+                context.LoadFromAssemblyPath(typeof(CodeFixProviderRegistryTests).Assembly.Location);
+                contextReference[0] = new WeakReference(context);
+                var provider = new ContextHoldingCodeFixProvider(context);
+                context.Unload();
+                return new FeatureProviderLoadResult<CodeFixProvider>([provider], []);
+            });
+        var references = QueryAndRetireReference(registry);
+
+        for (var attempt = 0; attempt < 10 &&
+             (references.Reference.IsAlive || references.Provider.IsAlive || contextReference[0].IsAlive); attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        Assert.IsFalse(references.Reference.IsAlive, "The registry must not retain a retired analyzer reference.");
+        Assert.IsFalse(references.Provider.IsAlive, "The registry must not retain providers from a retired reference.");
+        Assert.IsFalse(contextReference[0].IsAlive, "A retired provider must not pin its load context.");
+        GC.KeepAlive(registry);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Reference, WeakReference Provider) QueryAndRetireReference(
+        CodeFixProviderRegistry registry)
+    {
+        var reference = new AnalyzerFileReference(
+            typeof(CodeFixProviderRegistryTests).Assembly.Location, new TestAnalyzerAssemblyLoader());
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(projectId, "Fixture", "Fixture", LanguageNames.CSharp)
+            .AddAnalyzerReference(projectId, reference);
+        var provider = registry.GetProvidersForDetailed("TEST0001", solution).Providers.Single();
+        return (new WeakReference(reference), new WeakReference(provider));
+    }
+
+    [TestMethod]
+    public void Registry_DistinctReferencesWithCaseVariantPathsEachUseOwnLoader()
+    {
+        var path = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var caseVariant = Path.Combine(
+            Path.GetDirectoryName(path)!,
+            Path.GetFileName(path).ToUpperInvariant());
+        Assert.AreNotEqual(path, caseVariant, "The fixture needs a path with different casing.");
+        var firstReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+        var secondReference = new AnalyzerFileReference(caseVariant, new TestAnalyzerAssemblyLoader());
+        var loadCount = 0;
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
+            _ =>
+            {
+                loadCount++;
+                return new FeatureProviderLoadResult<CodeFixProvider>([], []);
+            });
+        using var workspace = new AdhocWorkspace();
+        var firstProjectId = ProjectId.CreateNewId();
+        var secondProjectId = ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(firstProjectId, "First", "First", LanguageNames.CSharp)
+            .AddAnalyzerReference(firstProjectId, firstReference)
+            .AddProject(secondProjectId, "Second", "Second", LanguageNames.CSharp)
+            .AddAnalyzerReference(secondProjectId, secondReference);
+
+        _ = registry.GetProvidersForDetailed("TEST0001", solution);
+
+        Assert.AreEqual(2, loadCount);
     }
 
     [TestMethod]
@@ -139,6 +294,21 @@ public sealed class CodeFixProviderRegistryTests
         public override FixAllProvider? GetFixAllProvider() => null;
 
         public override Task RegisterCodeFixesAsync(CodeFixContext context) => Task.CompletedTask;
+    }
+
+    private sealed class ContextHoldingCodeFixProvider(AssemblyLoadContext context) : CodeFixProvider
+    {
+        private readonly AssemblyLoadContext _context = context;
+
+        public override ImmutableArray<string> FixableDiagnosticIds => ["TEST0001"];
+
+        public override FixAllProvider? GetFixAllProvider() => null;
+
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
+        {
+            GC.KeepAlive(_context);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestAnalyzerAssemblyLoader : IAnalyzerAssemblyLoader

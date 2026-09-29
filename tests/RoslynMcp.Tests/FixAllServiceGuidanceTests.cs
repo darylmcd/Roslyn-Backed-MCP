@@ -114,11 +114,9 @@ public sealed class FixAllServiceGuidanceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task PreviewFixAll_NoOccurrences_ReturnsGuidance()
     {
-        // CA1822 (MakeStaticAnalyzer) is provided by NetAnalyzers which is not in the static
-        // Features set, and the sample projects do not include a NetAnalyzers package
-        // reference, so CA1822 in practice lands in the "no provider registered" branch
-        // (covered by PreviewFixAll_NoProviderRegistered_ReturnsGuidance). For this test we
-        // need an id with a loaded provider AND zero occurrences.
+        // CA1822 has analyzer-package providers and occurrences in the sample (covered by
+        // FixAllServiceIntegrationTests), so it cannot exercise this empty-result branch.
+        // We need an id with a loaded provider AND zero occurrences.
         //
         // IDE0004 (RemoveUnnecessaryCastCodeFixProvider) loads from Features and has no
         // matches in the sample workspace — both conditions we need. If a future sample
