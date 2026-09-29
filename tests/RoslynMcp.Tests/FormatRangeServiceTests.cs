@@ -190,6 +190,144 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task FormatRangePreview_OutsideLineInsertion_PreservesOutsideAndAppliesPreview()
+    {
+        var content =
+            "namespace SampleLib;\r\n" + // Full-document formatting inserts a blank line here.
+            "public class FormatRangeLineShiftFixture\r\n" +
+            "{\r\n" +
+            "    public int Compute(int input)\r\n" +
+            "    {\r\n" +
+            "        var result = input  + 1 ;\r\n" +
+            "        return result;\r\n" +
+            "    }\r\n" +
+            "}\r\n";
+        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+            "FormatRangeLineShiftFixture.cs", content);
+        try
+        {
+            var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+                .SelectMany(project => project.Documents)
+                .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
+            var original = await document.GetTextAsync();
+            var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
+            var formatted = await formattedDocument.GetTextAsync();
+            Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count,
+                "the regression fixture must independently produce an outside-range line-count delta");
+
+            var preview = await RefactoringService.PreviewFormatRangeAsync(
+                workspaceId, fixturePath, 6, 1, 7, 30, CancellationToken.None);
+            Assert.AreEqual(1, preview.Changes.Count);
+            StringAssert.Contains(preview.Changes[0].UnifiedDiff, "@@");
+
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+            Assert.IsTrue(apply.Success);
+            var actual = await File.ReadAllTextAsync(fixturePath);
+            Assert.AreEqual(
+                RoslynMcp.Roslyn.Helpers.DiffGenerator.GenerateUnifiedDiff(content, actual, fixturePath),
+                preview.Changes[0].UnifiedDiff,
+                "the applied text must produce exactly the diff shown in the preview");
+            Assert.IsTrue(actual.StartsWith(content[..content.IndexOf("        var result", StringComparison.Ordinal)], StringComparison.Ordinal),
+                "the prefix, including the missing blank line after the namespace, must be byte-for-byte unchanged");
+            Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n", StringComparison.Ordinal),
+                "the suffix outside the selected lines must be byte-for-byte unchanged");
+            StringAssert.Contains(actual, "var result = input + 1;");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task FormatRangePreview_InRangeLineInsertion_KeepsCollapseInsideMovedSelection()
+    {
+        var content =
+            "namespace SampleLib;\r\n" +
+            "public class FormatRangeInRangeInsertionFixture\r\n" +
+            "{\r\n" +
+            "    public int Compute(int input)\r\n" +
+            "    {\r\n" +
+            "        return input  + 1 ;\r\n" +
+            "    }\r\n" +
+            "}\r\n" +
+            "\r\n\r\n" +
+            "public class OutsideFixture { }\r\n";
+        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+            "FormatRangeInRangeInsertionFixture.cs", content);
+        try
+        {
+            var preview = await RefactoringService.PreviewFormatRangeAsync(
+                workspaceId, fixturePath, 1, 1, 6, 35, CancellationToken.None);
+            Assert.AreEqual(1, preview.Changes.Count);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+            Assert.IsTrue(apply.Success);
+
+            var actual = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(actual, "namespace SampleLib;\r\n\r\npublic class");
+            StringAssert.Contains(actual, "return input + 1;");
+            Assert.IsTrue(actual.EndsWith("    }\r\n}\r\n\r\n\r\npublic class OutsideFixture { }\r\n", StringComparison.Ordinal),
+                "the suffix and outside blank-line run must stay byte-for-byte unchanged after the in-range insertion");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task FormatRangePreview_RealFormatterGroupedRepeatedLines_ProjectsSecondLineOnly()
+    {
+        var content =
+            "namespace SampleLib;\r\n" +
+            "public class FormatRangeRepeatedFixture\r\n" +
+            "{\r\n" +
+            "    public int Compute(int input)\r\n" +
+            "    {\r\n" +
+            "        input = input  + 1 ;\r\n" +
+            "        input = input  + 1 ;\r\n" +
+            "        return input;\r\n" +
+            "    }\r\n" +
+            "}\r\n";
+        var (workspaceId, fixturePath) = await CreateFormatRangeFixtureAsync(
+            "FormatRangeRepeatedFixture.cs", content);
+        try
+        {
+            var document = WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+                .SelectMany(project => project.Documents)
+                .Single(doc => string.Equals(doc.FilePath, fixturePath, StringComparison.OrdinalIgnoreCase));
+            var original = await document.GetTextAsync();
+            var formattedDocument = await Microsoft.CodeAnalysis.Formatting.Formatter.FormatAsync(document);
+            var formatted = await formattedDocument.GetTextAsync();
+            Assert.AreNotEqual(original.Lines.Count, formatted.Lines.Count);
+
+            // Roslyn normally returns fine text changes. Exercise the same real formatter
+            // result as one grouped change to prove projection does not rely on granularity.
+            var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+                original,
+                [new Microsoft.CodeAnalysis.Text.TextChange(
+                    new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length), formatted.ToString())],
+                startLine: 7, endLine: 7);
+            var expected = content.Replace(
+                "        input = input  + 1 ;\r\n        return input;",
+                "        input = input + 1;\r\n        return input;",
+                StringComparison.Ordinal);
+            Assert.AreEqual(expected, projected.ToString());
+
+            var preview = await RefactoringService.PreviewFormatRangeAsync(
+                workspaceId, fixturePath, 7, 1, 7, 35, CancellationToken.None);
+            Assert.AreEqual(1, preview.Changes.Count);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+            Assert.IsTrue(apply.Success);
+            Assert.AreEqual(expected, await File.ReadAllTextAsync(fixturePath));
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     /// <summary>
     /// Companion to <see cref="FormatRangePreview_DirtyRange_EmitsNonEmptyDiff_ApplyMatches"/>:
     /// when the dirty section sits entirely outside the requested range, the preview
@@ -402,19 +540,216 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void SpliceFormattedRange_LineCountMismatch_RefusesUnboundedResult()
+    public void ProjectFormattedRange_OutsideLineInsertion_DoesNotShiftSelection()
     {
         var original = Microsoft.CodeAnalysis.Text.SourceText.From(
             "outside-before\ninside\noutside-after\n");
-        var formatted = Microsoft.CodeAnalysis.Text.SourceText.From(
-            "changed-before\ninside\nextra\nchanged-after\n");
-
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(() =>
-            RoslynMcp.Roslyn.Services.RefactoringService.SpliceFormattedRange(
-                original, formatted, startLine: 2, endLine: 2));
-
-        StringAssert.Contains(exception.Message, "changed the line count");
+        var changes = new[]
+        {
+            new Microsoft.CodeAnalysis.Text.TextChange(new Microsoft.CodeAnalysis.Text.TextSpan(0, 14), "changed-before"),
+            new Microsoft.CodeAnalysis.Text.TextChange(new Microsoft.CodeAnalysis.Text.TextSpan(original.Length, 0), "extra\n"),
+        };
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, changes, startLine: 2, endLine: 2);
+        Assert.AreEqual(original.ToString(), projected.ToString());
         Assert.AreEqual("outside-before\ninside\noutside-after\n", original.ToString(),
-            "refusing an unsafe formatter result must not mutate the original text.");
+            "projecting formatter changes must not mutate the original text.");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_InRangeLineInsertion_TracksSelectedEnd()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\ninside\nafter\n");
+        var insertionPoint = original.Lines[1].Start;
+        var (projected, selectedEnd) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original,
+            [new Microsoft.CodeAnalysis.Text.TextChange(new Microsoft.CodeAnalysis.Text.TextSpan(insertionPoint, 0), "added\n")],
+            startLine: 2, endLine: 2);
+
+        Assert.AreEqual("before\nadded\ninside\nafter\n", projected.ToString());
+        Assert.AreEqual(projected.Lines[3].Start, selectedEnd,
+            "the selected end must move with an in-range line insertion");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_GroupedBoundaryChanges_PreservesOutsideText()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before \n  dirty\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n    dirty\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 2, endLine: 2);
+
+        Assert.AreEqual("before \n    dirty\nafter\n", projected.ToString(),
+            "a grouped formatter change must apply its selected edit without changing either outside line");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_GroupedOutsideLineDeletion_DoesNotDeleteSelectedLine()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n\n  dirty\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n    dirty\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 3, endLine: 3);
+
+        Assert.AreEqual("before\n\n    dirty\nafter\n", projected.ToString(),
+            "a removed outside blank line must not shift or erase the selected dirty line");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_GroupedOutsideLineInsertion_DoesNotInsertOutsideBlank()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n  dirty\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n\n    dirty\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 2, endLine: 2);
+
+        Assert.AreEqual("before\n    dirty\nafter\n", projected.ToString(),
+            "a new outside blank line must not be projected into the selected span");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_GroupedOutsideBlankDeletion_PreservesSelectedWhitespaceLine()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n\n \nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n \nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 3, endLine: 3);
+
+        Assert.AreEqual(original.ToString(), projected.ToString(),
+            "deleting the outside empty line must not delete the selected whitespace-only line");
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_RepeatedSelectedLine_RefusesAmbiguousGroupedDeletion()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\nsame\nsame\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\nsame\nafter\n");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+                original, [grouped], startLine: 3, endLine: 3));
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_OneBoundaryLineInsertion_RefusesAmbiguousProjection()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n  dirty\nafter\n");
+        var crossingStart = original.Lines[0].End;
+        var crossingEnd = original.Lines[1].End;
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(crossingStart, crossingEnd),
+            "\n\n    dirty");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+                original, [grouped], startLine: 2, endLine: 2));
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_GroupedSelectedWhitespaceNormalization_IsApplied()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n \nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 2, endLine: 2);
+
+        Assert.AreEqual("before\n\nafter\n", projected.ToString());
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_RepeatedNonblankLines_MapByTokenOrder()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n  same\n  same\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n    same\n    same\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 3, endLine: 3);
+
+        Assert.AreEqual("before\n  same\n    same\nafter\n", projected.ToString());
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_MixedCodeAndTrailingBlank_FormatsBothSelectedLines()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n  dirty\n \nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n    dirty\n\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 2, endLine: 3);
+
+        Assert.AreEqual("before\n    dirty\n\nafter\n", projected.ToString());
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_MixedLeadingBlankAndCode_FormatsBothSelectedLines()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n \n  dirty\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n\n    dirty\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 2, endLine: 3);
+
+        Assert.AreEqual("before\n\n    dirty\nafter\n", projected.ToString());
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_MixedTrailingBlank_MapsAcrossOutsideBlankDeletion()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n\n  dirty\n \nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n    dirty\n\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 3, endLine: 4);
+
+        Assert.AreEqual("before\n\n    dirty\n\nafter\n", projected.ToString());
+    }
+
+    [TestMethod]
+    public void ProjectFormattedRange_MixedLeadingBlank_MapsAcrossOutsideBlankDeletion()
+    {
+        var original = Microsoft.CodeAnalysis.Text.SourceText.From("before\n\n \n  dirty\nafter\n");
+        var grouped = new Microsoft.CodeAnalysis.Text.TextChange(
+            new Microsoft.CodeAnalysis.Text.TextSpan(0, original.Length),
+            "before\n \n    dirty\nafter\n");
+
+        var (projected, _) = RoslynMcp.Roslyn.Services.RefactoringService.ProjectFormattedRange(
+            original, [grouped], startLine: 3, endLine: 4);
+
+        Assert.AreEqual("before\n\n \n    dirty\nafter\n", projected.ToString());
+    }
+
+    private static async Task<(string WorkspaceId, string FixturePath)> CreateFormatRangeFixtureAsync(
+        string fileName, string content)
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var fixturePath = Path.Combine(Path.GetDirectoryName(copiedSolutionPath)!, "SampleLib", fileName);
+        await File.WriteAllTextAsync(fixturePath, content);
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        return (loadResult.WorkspaceId, fixturePath);
     }
 }
