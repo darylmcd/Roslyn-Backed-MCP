@@ -165,7 +165,9 @@ internal static class StructuredDispatchPipeline
             }
         }
 
+        StructuredResultProjector.RecordDispatchAttempt(context.Params?.Arguments);
         var result = await next(context, cancellationToken).ConfigureAwait(false);
+        StructuredResultProjector.CompleteDispatchAttempt();
         cancellationToken.ThrowIfCancellationRequested();
         return new DispatchOutcome(result, IsEarlyTerminal: false);
     }

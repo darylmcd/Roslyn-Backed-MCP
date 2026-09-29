@@ -17,6 +17,13 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class StructuredResultProjector
 {
+    private sealed class DispatchAttempt
+    {
+        internal IReadOnlyList<string>? ArgumentNames { get; set; }
+    }
+
+    private static readonly AsyncLocal<DispatchAttempt?> CurrentDispatchAttempt = new();
+
     private static readonly EventId ToolCompletedEvent = new(2101, "ToolCompleted");
     private static readonly EventId ToolCancelledEvent = new(2102, "ToolCancelled");
     private static readonly EventId ToolInputRequiredEvent = new(2103, "ToolInputRequired");
@@ -30,6 +37,9 @@ internal static class StructuredResultProjector
         Stopwatch stopwatch,
         Func<ValueTask<StructuredDispatchPipeline.DispatchOutcome>> dispatchAsync)
     {
+        var previousAttempt = CurrentDispatchAttempt.Value;
+        var attempt = new DispatchAttempt();
+        CurrentDispatchAttempt.Value = attempt;
         try
         {
             var outcome = await dispatchAsync().ConfigureAwait(false);
@@ -77,11 +87,13 @@ internal static class StructuredResultProjector
             // Classify once. The resulting ErrorInfo determines both log/report severity and the
             // public formatter, eliminating the prior divergent second classification path.
             var errorInfo = ToolErrorHandler.ClassifyError(exception, toolName);
-            // Only the SDK binder's generic "arguments" failure can be refined from the
-            // schema. A tool may fail after workspace recovery while the original request
-            // still lacks workspaceId; that execution failure must keep its own category.
-            if (exception is ArgumentException { ParamName: "arguments" } &&
-                UnknownArgumentDetector.DetectMissingRequiredNames(context, toolName) is { Count: > 0 } missing)
+            // A required field absent at the actual target dispatch proves the tool body could
+            // not run. The request's arguments may already have been restored after an MRTR retry.
+            // Restrict refinement to binding-like errors and preserve server-authored refusals.
+            if (attempt.ArgumentNames is { } argumentNames &&
+                errorInfo.Category == ToolErrorHandler.ErrorCategories.InvalidArgument &&
+                exception is not PublicArgumentException and not PublicInvalidOperationException &&
+                UnknownArgumentDetector.DetectMissingRequiredNames(context, toolName, argumentNames) is { Count: > 0 } missing)
             {
                 var message = missing.Count == 1
                     ? $"Required parameter '{missing[0]}' is missing. Provide a value and retry."
@@ -108,6 +120,26 @@ internal static class StructuredResultProjector
             return ApplyProtocolResultShape(
                 context,
                 BuildErrorResult(toolName, exception, exceptionReporter, errorInfo));
+        }
+        finally
+        {
+            CurrentDispatchAttempt.Value = previousAttempt;
+        }
+    }
+
+    internal static void RecordDispatchAttempt(IDictionary<string, JsonElement>? arguments)
+    {
+        if (CurrentDispatchAttempt.Value is { } attempt)
+        {
+            attempt.ArgumentNames = arguments?.Keys.ToArray() ?? [];
+        }
+    }
+
+    internal static void CompleteDispatchAttempt()
+    {
+        if (CurrentDispatchAttempt.Value is { } attempt)
+        {
+            attempt.ArgumentNames = null;
         }
     }
 

@@ -101,7 +101,8 @@ internal static class UnknownArgumentDetector
     /// </summary>
     internal static IReadOnlyList<string>? DetectMissingRequiredNames(
         RequestContext<CallToolRequestParams> context,
-        string toolName)
+        string toolName,
+        IReadOnlyList<string> argumentNames)
     {
         var tool = ResolveTool(context, toolName);
         if (tool is null)
@@ -110,9 +111,8 @@ internal static class UnknownArgumentDetector
         }
 
         var required = _requiredNamesCache.GetValue(tool, static t => ReadRequiredNames(t.ProtocolTool.InputSchema));
-        var argumentNames = context.Params?.Arguments?.Keys;
         var missing = required
-            .Where(name => argumentNames is null || !argumentNames.Contains(name, StringComparer.Ordinal))
+            .Where(name => !argumentNames.Contains(name, StringComparer.Ordinal))
             .ToArray();
         return missing.Length == 0 ? null : missing;
     }
