@@ -11,59 +11,33 @@
   "readyForExecute": false,
   "initiatives": [
     {
-      "id": "compile-check-restore-required-handshake",
-      "order": 1,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "compile-check-restore-required-handshake"
-      ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "deepenerFlags": {
-        "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
-      },
-      "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
       "id": "analyzer-shadow-isolation-misses-loaded-generators",
       "order": 2,
       "status": "pending",
       "backlogRowsClosed": [
         "analyzer-shadow-isolation-misses-loaded-generators"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Helpers/AnalyzerReferenceIsolation.cs"
+      ],
+      "testFilesAdded": 2,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/AnalyzerShadowLoaderLifecycleTests.cs",
+        "tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -79,22 +53,30 @@
       "backlogRowsClosed": [
         "release-managed-guard-worktree-scope"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "eng/guard-release-managed-files.ps1"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/HookConfigurationTests.cs"
+      ],
+      "docFiles": [
+        "ai_docs/workflow.md",
+        "ai_docs/prompts/backlog-sweep-addenda.md",
+        "AGENTS.md"
+      ],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -110,22 +92,29 @@
       "backlogRowsClosed": [
         "tool-binding-missing-parameter-named"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 2,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredResultProjector.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/UnknownArgumentDetector.cs"
+      ],
+      "testFilesAdded": 3,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/ToolCallErrorWireContractTests.cs",
+        "tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs",
+        "tests/RoslynMcp.Tests/StructuredCallToolFilterElicitationTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
       "branch": null,
@@ -203,18 +192,22 @@
       "backlogRowsClosed": [
         "fix-all-analyzer-assembly-provider-not-found"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/FixAllServiceIntegrationTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
@@ -358,18 +351,22 @@
       "backlogRowsClosed": [
         "replace-string-literals-const-self-reference"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
-      "testFiles": null,
-      "docFiles": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs"
+      ],
+      "testFilesAdded": 1,
+      "testFiles": [
+        "tests/RoslynMcp.Tests/StringLiteralReplaceServiceTests.cs"
+      ],
+      "docFiles": [],
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
@@ -798,6 +795,20 @@
       {
         "id": "gated-build-test-operation-deadline",
         "reason": "split-budget-exhausted"
+      }
+    ],
+    "splits": [
+      {
+        "parent": "compile-check-restore-required-handshake",
+        "children": [
+          "compile-check-restore-next-call",
+          "workspace-load-restore-next-call",
+          "workspace-restore-safe-execution",
+          "workspace-restore-budget",
+          "workspace-restore-packages-path",
+          "workspace-restore-public-failure",
+          "workspace-load-missing-assets-auto-restore"
+        ]
       }
     ]
   }

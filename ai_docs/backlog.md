@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-29T15:01:14Z
+**updated_at:** 2026-09-29T15:21:03Z
 
 ## Agent contract
 
@@ -51,9 +51,15 @@
 | `analyzer-shadow-isolation-misses-loaded-generators` | High | — | **Release analyzer/generator DLL locks on workspace_close** — source-generator assemblies still load from their original package path, so closing the workspace leaves them locked [type: bug] [source: TradeWise plan 20260927T021440Z] | M | items/analyzer-shadow-isolation-misses-loaded-generators.md |
 | `release-managed-guard-worktree-scope` | High | — | **Release guard resolves root and sentinel from CLAUDE_PROJECT_DIR** — worktree edits skip exact-path matches and need the primary's sentinel; resolve root, relative path and sentinel per checkout of this repo, and stop guarding other repos. [type: bug] [source: backlog-remediate 20260926T234932Z; retro-20260927] | S | items/release-managed-guard-worktree-scope.md |
 | `tool-binding-missing-parameter-named` | High | — | **Missing required tool arguments are reported as 'arguments' or '<unknown>'** — in the result projector, name the missing parameter from the tool's input-schema required list and the supplied arguments. [type: bug] [source: retro-20260927] | M | items/tool-binding-missing-parameter-named.md |
-| `compile-check-restore-required-handshake` | High | — | **compile_check returns success:false with zero diagnostics on unrestored workspaces** — add a structured nextCall to that result, and restore missing assets on load when autoRestore is omitted (false opts out); additive, 4.x-safe. [type: bug] [source: retro-20260927] | L | items/compile-check-restore-required-handshake.md |
 | `gated-build-test-operation-deadline` | High | — | **Build, test, coverage and vuln-scan tools die at the 2-minute gate request timeout** — run the dotnet command outside the workspace lock and throttle, bounded by its own build/test/scan timeout. [type: bug] [source: retro-20260927] | L | items/gated-build-test-operation-deadline.md |
 | `physical-path-resolver-volume-mount-junction` | High | — | **`workspace_load` reports FileNotFound for every solution under a volume-mount junction.** Resolve `Volume{guid}\` link targets as absolute in `PhysicalPathResolver.GetLinkTargetPath` instead of joining them to the link parent. [type: bug] [source: PriceIndex backlog-remediate 20260929T145557Z] | S | items/physical-path-resolver-volume-mount-junction.md |
+| `compile-check-restore-next-call` | High | — | **compile_check names its restore action** — add top-level nextCall for restore-required results and wire coverage. [type: bug] [source: compile-check-restore-required-handshake] | M | items/compile-check-restore-next-call.md |
+| `workspace-load-restore-next-call` | High | compile-check-restore-next-call | **Load results name their restore action** — add top-level nextCall to lean and verbose load/reload results. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-load-restore-next-call.md |
+| `workspace-restore-safe-execution` | High | — | **Serialize workspace restore with build/test** — run existing explicit restore through the per-workspace command gate. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-restore-safe-execution.md |
+| `workspace-load-missing-assets-auto-restore` | High | workspace-restore-safe-execution,workspace-restore-budget,workspace-restore-packages-path,workspace-restore-public-failure | **Restore missing assets on omitted autoRestore** — distinguish omission from false and keep default failure nonfatal. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-load-missing-assets-auto-restore.md |
+| `workspace-restore-budget` | High | workspace-restore-safe-execution | **Bound workspace restore within load deadlines** — configure a restore budget with reload reserve and fake-clock coverage. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-restore-budget.md |
+| `workspace-restore-packages-path` | High | — | **Preserve assets package path on restore** — pass the recorded packagesPath to server-side restore. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-restore-packages-path.md |
+| `workspace-restore-public-failure` | High | — | **Explain explicit restore failure safely** — return a path-free public reason with the existing error category. [type: bug] [source: compile-check-restore-required-handshake] | S | items/workspace-restore-public-failure.md |
 
 ## Medium
 
