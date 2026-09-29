@@ -192,11 +192,21 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                     transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
                     throw new IOException("after write");
                 }));
-            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
-                "A failed owned write that changed bytes remains a server apply.");
+            Assert.AreEqual("[*.cs]\nindent_size = 4\n", await File.ReadAllTextAsync(configPath));
+            Assert.IsFalse(watcher.IsStale(workspaceId), "A restored failed write has no lasting mutation.");
             await Task.Delay(300);
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+
+            Assert.ThrowsExactly<EditorConfigUnrecoveredWriteException>(() =>
+                coordinator.RunOwnedWrite<object>(workspaceId, configPath, transaction =>
+                {
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                    transaction.Dispose(); // Deterministically prevent compensation after a partial write.
+                    throw new IOException("after write with failed restoration");
+                }));
             Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
-                "Delayed events for the bytes written before failure must remain Apply.");
+                "An unrecovered owned write must remain attributable to Apply.");
+            Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
         }
         finally
         {
@@ -251,8 +261,12 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task OwnedEditorConfigWrite_ConcurrentReplacementCannotOverwriteLockedFile()
+    public async Task OwnedEditorConfigWrite_WindowsConcurrentReplacementCannotOverwriteLockedFile()
     {
+        // POSIX permits another writer to open the held inode. The Linux pathname
+        // replacement invariant is covered by OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess.
+        if (!OperatingSystem.IsWindows()) return;
+
         var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var solutionPath = Path.Combine(root, "Sample.slnx");
@@ -281,6 +295,44 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
             Assert.IsTrue(SpinWait.SpinUntil(
                 () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
                 TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void OwnedEditorConfigWrite_PosixSameInodeEditBeforeWriteIsExternalEdit()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-inode-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+                {
+                    // Linux permits a noncooperating writer on the held inode.
+                    using (var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        competing.SetLength(0);
+                        competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                    }
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
+                    return true;
+                }));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
         }
         finally
         {

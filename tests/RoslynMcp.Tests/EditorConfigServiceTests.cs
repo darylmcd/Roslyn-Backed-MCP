@@ -216,6 +216,41 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SetOptionAsync_UnrecoveredFailedWrite_CapturesUndoAndChange()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var configPath = workspace.GetPath("SampleLib", ".editorconfig");
+        var original = "[*.cs]\nindent_size = 4\n";
+        await File.WriteAllTextAsync(configPath, original);
+        var priorChanges = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+
+        var failingService = new EditorConfigService(WorkspaceManager, UndoService, ChangeTracker,
+            logger: null, new UnrecoveredAfterWriteCoordinator());
+        await Assert.ThrowsExactlyAsync<EditorConfigUnrecoveredWriteException>(() =>
+            failingService.SetOptionAsync(workspace.WorkspaceId, source, "indent_size", "8",
+                "set_editorconfig_option", CancellationToken.None));
+
+        Assert.AreNotEqual(original, await File.ReadAllTextAsync(configPath));
+        StringAssert.Contains(UndoService.GetLastOperation(workspace.WorkspaceId)?.Description,
+            "Failed .editorconfig write");
+        Assert.AreEqual(priorChanges + 1, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId));
+        Assert.AreEqual(original, await File.ReadAllTextAsync(configPath));
+    }
+
+    private sealed class UnrecoveredAfterWriteCoordinator : IEditorConfigWriteCoordinator
+    {
+        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        {
+            var originalBytes = File.ReadAllBytes(path);
+            using var transaction = new EditorConfigFileTransaction(path, originalBytes);
+            _ = write(transaction);
+            throw new EditorConfigUnrecoveredWriteException(new IOException("simulated failed restoration"));
+        }
+    }
+
+    [TestMethod]
     public async Task SetDiagnosticSeverity_RefreshesGatedDiagnosticsWithoutManualReload()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

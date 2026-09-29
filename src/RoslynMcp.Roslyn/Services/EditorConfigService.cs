@@ -372,6 +372,7 @@ public sealed class EditorConfigService : IEditorConfigService
             throw new UnauthorizedAccessException("The applicable .editorconfig is outside the loaded workspace.");
         }
 
+        FileSnapshotDto? preApplySnapshot = null;
         (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) Write(EditorConfigFileTransaction transaction)
         {
             var created = transaction.CreatedNewFile;
@@ -382,6 +383,7 @@ public sealed class EditorConfigService : IEditorConfigService
 
             var snapshot = FileSnapshotCapture.FromBytesOrFallback(
                 editorconfigPath, existingBytes, fallbackText: null);
+            preApplySnapshot = snapshot;
 
             const string csharpSection = "[*.{cs,csx,cake}]";
             UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
@@ -403,7 +405,23 @@ public sealed class EditorConfigService : IEditorConfigService
             return (new EditorConfigWriteResultDto(editorconfigPath, key, value, created), snapshot);
         }
 
-        var applied = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
+        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) applied;
+        try
+        {
+            applied = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
+        }
+        catch (EditorConfigUnrecoveredWriteException)
+        {
+            // The write failed, but its bytes remain at the path. Retain an undo target
+            // for that mutation instead of leaving the previous success as the target.
+            var failedSnapshot = preApplySnapshot
+                ?? throw new InvalidOperationException("An unrecovered .editorconfig write has no prewrite snapshot.");
+            var description = $"Failed .editorconfig write of '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}";
+            _undoService?.CaptureBeforeApply(workspaceId, description, preApplySolution: null,
+                fileSnapshots: [failedSnapshot]);
+            _changeTracker?.RecordChange(workspaceId, description, [editorconfigPath], toolName);
+            throw;
+        }
         // Keep the previous undo target until the coordinator has verified that the
         // bytes it wrote are still at the path. A failed write must not replace it.
         _undoService?.CaptureBeforeApply(

@@ -50,6 +50,12 @@ internal sealed class EditorConfigFileTransaction : IDisposable
             FileAccess.ReadWrite, FileShare.Read);
         try
         {
+            if (OperatingSystem.IsLinux())
+            {
+                // POSIX sharing flags do not exclude another process. Cooperating
+                // writers can honor this advisory range lock for the transaction.
+                _stream.Lock(0, long.MaxValue);
+            }
             OriginalBytes = CreatedNewFile ? null : ReadCurrentBytes();
             if (!BytesEqual(expectedBytes, OriginalBytes))
             {
@@ -70,6 +76,13 @@ internal sealed class EditorConfigFileTransaction : IDisposable
 
     internal void WriteBytes(byte[] bytes)
     {
+        // On POSIX an uncooperative writer can ignore the advisory lock. Check the
+        // held inode again immediately before changing it, and refuse known drift.
+        var expectedBytes = WriteStarted ? OwnedBytes : CreatedNewFile ? [] : OriginalBytes;
+        if (!BytesEqual(expectedBytes, ReadCurrentBytes()))
+        {
+            throw new EditorConfigConcurrentEditException();
+        }
         WriteStarted = true;
         try
         {
@@ -82,6 +95,25 @@ internal sealed class EditorConfigFileTransaction : IDisposable
         {
             // A failed write may leave a partial file. Capture those exact server-owned
             // bytes before releasing the handle so a later external replacement is distinct.
+            OwnedBytes = ReadCurrentBytes();
+        }
+    }
+
+    internal void RestoreOriginalBytes()
+    {
+        try
+        {
+            _stream.Position = 0;
+            _stream.SetLength(0);
+            if (OriginalBytes is not null)
+            {
+                _stream.Write(OriginalBytes);
+            }
+            _stream.Flush(flushToDisk: true);
+        }
+        finally
+        {
+            // Keep the last bytes actually written even when restoration itself fails.
             OwnedBytes = ReadCurrentBytes();
         }
     }
@@ -107,6 +139,12 @@ internal sealed class EditorConfigConcurrentEditException : IOException
 
     internal EditorConfigConcurrentEditException(Exception inner)
         : base("The .editorconfig could not be exclusively opened for the coordinated write.", inner) { }
+}
+
+internal sealed class EditorConfigUnrecoveredWriteException : IOException
+{
+    internal EditorConfigUnrecoveredWriteException(Exception inner)
+        : base("The .editorconfig write failed and its changed bytes could not be restored.", inner) { }
 }
 
 public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService, IEditorConfigWriteCoordinator
@@ -439,9 +477,28 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                 }
                 catch (Exception ex)
                 {
-                    var ownedBytes = transaction?.OwnedBytes;
                     var writeStarted = transaction?.WriteStarted == true;
                     var createdWithoutWrite = transaction is { CreatedNewFile: true, WriteStarted: false };
+                    var pathMatchedOwnedBytes = false;
+                    Exception? restorationFailure = null;
+                    if (writeStarted && transaction?.OwnedBytes is { } writtenBytes)
+                    {
+                        try
+                        {
+                            // Check the pathname before restoring the held handle: on POSIX
+                            // a rename can replace the pathname while the old inode is locked.
+                            pathMatchedOwnedBytes = BytesEqual(writtenBytes, ReadBytesOrNull(physicalPath));
+                            if (pathMatchedOwnedBytes)
+                            {
+                                transaction.RestoreOriginalBytes();
+                            }
+                        }
+                        catch (Exception restoreEx) when (restoreEx is IOException or UnauthorizedAccessException or ObjectDisposedException)
+                        {
+                            restorationFailure = restoreEx;
+                        }
+                    }
+                    var ownedBytes = transaction?.OwnedBytes;
                     transaction?.Dispose();
                     byte[]? after = null;
                     var readable = true;
@@ -458,7 +515,8 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                         readable = false;
                     }
                     Exception? cleanupFailure = null;
-                    if (createdWithoutWrite && after is { Length: 0 })
+                    if ((createdWithoutWrite || (pathMatchedOwnedBytes && transaction?.CreatedNewFile == true)) &&
+                        after is { Length: 0 })
                     {
                         // Opening a new file is itself a mutation. If the callback failed
                         // before writing, remove that empty file instead of stranding it.
@@ -472,10 +530,11 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                             cleanupFailure = cleanupEx;
                         }
                     }
-                    if ((ex is EditorConfigConcurrentEditException &&
-                         (!readable || !BytesEqual(before, after))) ||
-                        (writeStarted && (!readable || !BytesEqual(ownedBytes, after))) ||
-                        (!writeStarted && !createdWithoutWrite && (!readable || !BytesEqual(before, after))))
+                    if (!readable ||
+                        (writeStarted && !pathMatchedOwnedBytes && !BytesEqual(before, after)) ||
+                        (writeStarted && !BytesEqual(ownedBytes, after) && !BytesEqual(before, after)) ||
+                        (!writeStarted && !createdWithoutWrite && !BytesEqual(before, after)) ||
+                        (!writeStarted && createdWithoutWrite && after is { Length: > 0 }))
                     {
                         _ownedConfigBytes.Remove(physicalPath);
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
@@ -488,11 +547,22 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     }
                     else
                     {
-                        _ownedConfigBytes[physicalPath] = writeStarted ? ownedBytes : after;
+                        _ownedConfigBytes[physicalPath] = after;
                         if (_staleReason != StaleReasons.ExternalEdit)
                         {
                             MarkStaleWithReason(StaleReasons.Apply);
                         }
+                        var failures = new List<Exception> { ex };
+                        if (restorationFailure is not null)
+                        {
+                            failures.Add(restorationFailure);
+                        }
+                        if (cleanupFailure is not null)
+                        {
+                            failures.Add(cleanupFailure);
+                        }
+                        throw new EditorConfigUnrecoveredWriteException(
+                            failures.Count == 1 ? ex : new AggregateException(failures));
                     }
                     if (cleanupFailure is not null)
                     {

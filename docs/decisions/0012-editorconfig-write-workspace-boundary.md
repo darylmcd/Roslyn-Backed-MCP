@@ -19,6 +19,11 @@ diagnostics still reflect settings supplied from outside the workspace.
 Successful in-workspace writes use the workspace's coordinated write path to
 invalidate relevant snapshots and distinguish the server's own write from an
 external edit. No compatibility switch permits an outside write.
+On POSIX, that path holds an advisory file lock for cooperating writers,
+rechecks bytes immediately before writing, and rejects a pathname replacement
+detected after writing. An uncooperative writer can still change the same inode
+between the last byte check and the write; see the tracked
+`editorconfig-posix-uncooperative-write-race` limitation.
 
 Direct `EditorConfigService` construction with an alternate `IWorkspaceManager`
 cannot provide that coordination through the existing public constructor.
