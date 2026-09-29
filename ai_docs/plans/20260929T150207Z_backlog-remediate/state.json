@@ -106,7 +106,7 @@
     {
       "id": "tool-binding-missing-parameter-named",
       "order": 4,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "tool-binding-missing-parameter-named"
       ],
@@ -139,7 +139,7 @@
       "worktreePath": ".worktrees/tool-binding-missing-parameter-named",
       "prUrl": null,
       "mergedAt": null,
-      "notes": "PR #1674 head 9b8dffc cold review cycle 0 held two untested-critical-path findings; executor fix leg active.",
+      "notes": "PR #1674 head 433c0e7f cold review cycle 1 passed; waiting for current-main integration gate and generation landing.",
       "fileSetHash": "3521cfc976ca938a2e5f66428e15154d7cebab02e3e2b1dc151fd3f095690d40",
       "stanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c",
       "reviewedStanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c"
