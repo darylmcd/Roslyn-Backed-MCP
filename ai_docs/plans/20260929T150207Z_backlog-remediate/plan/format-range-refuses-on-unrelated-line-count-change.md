@@ -1,0 +1,14 @@
+| Field | Content |
+|---|---|
+| Route | deepen |
+| Diagnosis | `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:632-635` formats the entire document, then `:1185-1205` rejects any total line-count mismatch before splicing by equal line index. Thus an unrelated formatter edit above the requested range aborts a safe range edit. The row's proposed plain span formatter is incomplete: `:612-624` records a prior span-only empty-preview defect, covered by `tests/RoslynMcp.Tests/FormatRangeServiceTests.cs:120`. |
+| Approach | In `RefactoringService.FormatRangeTextAsync`, retain full-context formatting, derive formatter text changes against the original document, and apply only changes contained in the original full-line requested span. Handle changes that touch a selection boundary without modifying outside text; track the resulting selected span when applying `CollapseBlankLineRunsInRange`. Remove the equal-line-count splice and its obsolete refusal test. Preserve `PreviewFormatRangeAsync`'s stored-solution/diff path at `:515-550`. Add an integration regression in `FormatRangeServiceTests` with an unrelated removable blank line before the selected range and dirty content inside it; assert preview succeeds, reports only in-range changes, and apply matches the preview. |
+| Scope | Production 1: `src/RoslynMcp.Roslyn/Services/RefactoringService.cs`. Test 1: `tests/RoslynMcp.Tests/FormatRangeServiceTests.cs`. No deletions. Fragment: `changelog.d/format-range-refuses-on-unrelated-line-count-change.md`. |
+| Tool policy | edit-only |
+| Estimated context cost | 35000 |
+| Risks | Formatter text changes may cross a boundary or change line count within the selection; preserve original text outside selected lines and keep the post-format blank-line collapse aligned. Retain existing dirty-range, clean-outside-range, and boundary-blank-line regressions. The row's span-only suggestion risks restoring the earlier empty-preview bug. |
+| Validation | Demonstrate the new regression fails on the old guard, then passes; run `FormatRangeServiceTests` (including preview/apply identity and boundary cases), `dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true`, and the required `just ci` aggregate. |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Format-range previews now ignore unrelated line-count changes outside the requested range. |
+| Backlog sync | Close rows: [format-range-refuses-on-unrelated-line-count-change]. |
