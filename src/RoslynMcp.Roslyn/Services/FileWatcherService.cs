@@ -39,6 +39,11 @@ internal interface IEditorConfigWriteCoordinator
 
 public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService, IEditorConfigWriteCoordinator
 {
+    // A watcher comparison can overlap an undo that deletes a newly created config.
+    // File.ReadAllBytes uses FileShare.Read, which makes that delete fail on Windows.
+    internal static FileStream OpenConfigReadStream(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
     private readonly ConcurrentDictionary<string, WatcherEntry> _watchers = new(StringComparer.Ordinal);
 
     public event Action<string>? WorkspaceRootMissing;
@@ -435,8 +440,15 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             }
         }
 
-        private static byte[]? ReadBytesOrNull(string path) =>
-            File.Exists(path) ? File.ReadAllBytes(path) : null;
+        private static byte[]? ReadBytesOrNull(string path)
+        {
+            if (!File.Exists(path)) return null;
+
+            using var stream = OpenConfigReadStream(path);
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return buffer.ToArray();
+        }
 
         private static bool BytesEqual(byte[]? left, byte[]? right) =>
             left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);

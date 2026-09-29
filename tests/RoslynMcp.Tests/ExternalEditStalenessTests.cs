@@ -49,6 +49,27 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    public void ConfigComparisonRead_DoesNotBlockUndoDeletion()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        try
+        {
+            // Undo deletes a newly created config while the filesystem watcher can be
+            // comparing its bytes. The comparison handle must permit that delete on Windows.
+            using var comparison = FileWatcherService.OpenConfigReadStream(configPath);
+            File.Delete(configPath);
+            Assert.IsFalse(File.Exists(configPath));
+        }
+        finally
+        {
+            if (File.Exists(configPath)) File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
     [DataRow(false, "create")]
     [DataRow(false, "change")]
     [DataRow(false, "delete")]
