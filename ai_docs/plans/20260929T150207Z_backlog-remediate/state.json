@@ -106,7 +106,7 @@
     {
       "id": "tool-binding-missing-parameter-named",
       "order": 4,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "tool-binding-missing-parameter-named"
       ],
@@ -135,8 +135,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/tool-binding-missing-parameter-named",
+      "worktreePath": ".worktrees/tool-binding-missing-parameter-named",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
