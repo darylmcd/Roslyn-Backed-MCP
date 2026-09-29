@@ -135,8 +135,9 @@ if ($env:RELEASE_SENTINEL_TTL_SECONDS) {
 }
 
 $staleMessage = ''
-if (Test-Path $sentinel) {
-    $age = (Get-Date) - (Get-Item $sentinel).LastWriteTime
+$sentinelItem = Get-Item -LiteralPath $sentinel -Force -ErrorAction SilentlyContinue
+if ($null -ne $sentinelItem) {
+    $age = (Get-Date) - $sentinelItem.LastWriteTime
     if ($age.TotalSeconds -le $ttlSeconds) { exit 0 }
     $staleMessage = " (sentinel exists but is stale: $([int]$age.TotalSeconds)s > ${ttlSeconds}s TTL -- re-touch it or re-run the skill)"
 }
