@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
@@ -478,6 +479,30 @@ public class ClientRootPathValidatorTests
             Assert.IsFalse(persisted.Success, "Document-set persistence must reject the alias before writing.");
             Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath),
                 "An aliased external document must never be written through MSBuildWorkspace.");
+
+            var programPath = Path.Combine(sanctionedRoot, "Program.cs");
+            var previewStore = new CompositePreviewStore();
+            var token = previewStore.Store(workspaceId, manager.GetCurrentVersion(workspaceId), "alias rejection",
+            [
+                new CompositeFileMutation(programPath, "public class ChangedProgram { }"),
+                new CompositeFileMutation(linkedExternalSource, "public class ChangedExternal { }")
+            ]);
+            var composite = new CompositeApplyOrchestrator(manager, previewStore);
+            var compositeResult = await composite.ApplyCompositeAsync(token, CancellationToken.None);
+            Assert.IsFalse(compositeResult.Success, "Composite apply must reject every aliased target before its first write.");
+            Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
+            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath));
+
+            using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
+            undo.CaptureBeforeApply(workspaceId, "alias rejection", preApplySolution: null,
+            [
+                new FileSnapshotDto(programPath, "public class RestoredProgram { }"),
+                new FileSnapshotDto(linkedExternalSource, "public class RestoredExternal { }")
+            ]);
+            Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None),
+                "Snapshot undo must reject every aliased target before its first restore.");
+            Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
+            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath));
         }
         finally
         {

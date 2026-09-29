@@ -42,7 +42,8 @@ public sealed class ThirdPartyNoticeDriftTests
             File.Copy(Path.Combine(repositoryRoot, "Directory.Packages.props"), packagesPath);
             File.Copy(Path.Combine(repositoryRoot, "THIRD-PARTY-NOTICES.md"), Path.Combine(fixtureRoot, "THIRD-PARTY-NOTICES.md"));
 
-            var current = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken);
+            var current = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken,
+                solutionPath: null, activePackageRoot: null);
             Assert.AreEqual(0, current.ExitCode, current.AllOutput);
 
             var packagesText = await File.ReadAllTextAsync(packagesPath, cancellationToken);
@@ -52,7 +53,8 @@ public sealed class ThirdPartyNoticeDriftTests
                 StringComparison.Ordinal);
             await File.WriteAllTextAsync(packagesPath, packagesText, cancellationToken);
 
-            var pinDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken);
+            var pinDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, restoredPackagesRoot, cancellationToken,
+                solutionPath: null, activePackageRoot: null);
             Assert.AreNotEqual(0, pinDrift.ExitCode, "Intentional central-pin drift must fail verification.");
             StringAssert.Contains(pinDrift.AllOutput, "Unable to read authoritative restored package metadata");
 
@@ -74,7 +76,8 @@ public sealed class ThirdPartyNoticeDriftTests
             license.Value = "MIT";
             nuspec.Save(mutatedNuspec);
 
-            var licenseDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, fixturePackagesRoot, cancellationToken);
+            var licenseDrift = await RunVerifierAsync(repositoryRoot, fixtureRoot, fixturePackagesRoot, cancellationToken,
+                solutionPath: null, activePackageRoot: null);
             Assert.AreNotEqual(0, licenseDrift.ExitCode, "Authoritative license drift must fail verification.");
             StringAssert.Contains(licenseDrift.AllOutput, "declares license 'MIT'");
             StringAssert.Contains(licenseDrift.AllOutput, "reviewed attribution");
@@ -125,12 +128,14 @@ public sealed class ThirdPartyNoticeDriftTests
                 "<Solution><Project Path=\"Current/Current.csproj\" /></Solution>",
                 cancellationToken);
 
-            var ambiguous = await RunVerifierAsync(repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken);
+            var ambiguous = await RunVerifierAsync(repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken,
+                solutionPath: null, activePackageRoot: null);
             Assert.AreNotEqual(0, ambiguous.ExitCode, "Without -SolutionPath the stale graph must still be ambiguous.");
             StringAssert.Contains(ambiguous.AllOutput, "Ambiguous restored package metadata");
 
             var scoped = await RunVerifierAsync(
-                repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken, solutionPath);
+                repositoryRoot, fixtureRoot, packageMetadataRoot: null, cancellationToken, solutionPath,
+                activePackageRoot: currentRoot);
             Assert.AreEqual(0, scoped.ExitCode, scoped.AllOutput);
         }
         finally
@@ -201,7 +206,8 @@ public sealed class ThirdPartyNoticeDriftTests
         string fixtureRoot,
         string? packageMetadataRoot,
         CancellationToken cancellationToken,
-        string? solutionPath = null)
+        string? solutionPath,
+        string? activePackageRoot)
     {
         var arguments = new List<string>
         {
@@ -228,6 +234,7 @@ public sealed class ThirdPartyNoticeDriftTests
         arguments.Add("-VerifyRestoredLicenses");
         return PwshScriptRunner.RunAsync(
             arguments,
+            environment: new Dictionary<string, string?> { ["NUGET_PACKAGES"] = activePackageRoot },
             timeout: TimeSpan.FromSeconds(30),
             cancellationToken: cancellationToken,
             description: "third-party notice verifier");

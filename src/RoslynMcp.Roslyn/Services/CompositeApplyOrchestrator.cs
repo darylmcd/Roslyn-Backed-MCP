@@ -52,6 +52,13 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         var appliedFiles = new List<string>();
         try
         {
+            // Validate the complete set before capturing undo or writing any file. Imported
+            // documents may be readable through an alias but must not become write targets.
+            foreach (var mutation in mutations)
+            {
+                WorkspaceManager.EnsurePhysicalPath(mutation.FilePath);
+            }
+
             await CaptureUndoSnapshotAsync(workspaceId, mutations, ct).ConfigureAwait(false);
             await ApplyMutationsAsync(mutations, appliedFiles, ct).ConfigureAwait(false);
             return await CompleteApplyAsync(
