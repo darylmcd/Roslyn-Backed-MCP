@@ -356,7 +356,7 @@ public class ClientRootPathValidatorTests
         var linkPath = Path.Combine(TestTempRoot.Current, "mount-link");
         var volume = $@"Volume{{{Guid.NewGuid():D}}}\";
         var extendedTarget = @"\\?\" + volume;
-        var expected = PhysicalPathResolver.GetLinkTargetPath(linkPath, extendedTarget);
+        var expected = extendedTarget;
 
         foreach (var rawTarget in new[] { volume, @"\??\" + volume, extendedTarget })
         {
@@ -384,6 +384,10 @@ public class ClientRootPathValidatorTests
         Directory.CreateDirectory(siblingRoot);
         var projectPath = Path.Combine(sanctionedRoot, "VolumeProbe.csproj");
         File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        File.WriteAllText(Path.Combine(sanctionedRoot, "Directory.Packages.props"),
+            "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>" +
+            "</PropertyGroup><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.0.0\" />" +
+            "</ItemGroup></Project>");
         var siblingPath = Path.Combine(siblingRoot, "Outside.csproj");
         File.WriteAllText(siblingPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
 
@@ -402,7 +406,16 @@ public class ClientRootPathValidatorTests
             Assert.IsTrue(File.Exists(linkedProject), "The junction must address the fixture project.");
 
             var physicalProject = PhysicalPathResolver.Resolve(linkedProject);
+            Assert.IsTrue(physicalProject.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase),
+                "Exercise the volume-only path even when this test drive also has a drive letter.");
             Assert.IsTrue(File.Exists(physicalProject), "Canonicalization must preserve file identity.");
+            Assert.IsNotNull(ProjectMetadataParser.LoadProjectDocument(physicalProject));
+            var packagesProps = MsBuildMetadataHelper.FindDirectoryPackagesProps(physicalProject);
+            Assert.IsNotNull(packagesProps);
+            Assert.IsTrue(MsBuildMetadataHelper.IsCentralPackageManagementEnabled(packagesProps));
+            Assert.IsTrue(MsBuildMetadataHelper.ContainsCentralPackageVersion(packagesProps, "Example.Package"));
+            Assert.AreEqual("1.0.0", MsBuildMetadataHelper.TryGetCentralPackageVersion(
+                packagesProps, "Example.Package"));
             var options = new SecurityOptions { SanctionedRoots = [linkedRoot] };
             Assert.AreEqual(physicalProject, await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                 server: null, linkedProject, CancellationToken.None, securityOptions: options));

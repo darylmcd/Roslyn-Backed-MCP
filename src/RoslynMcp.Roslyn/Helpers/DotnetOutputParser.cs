@@ -255,7 +255,7 @@ internal static partial class DotnetOutputParser
         if (!File.Exists(trxPath))
             return (0, 0, 0, 0, []);
 
-        var document = XDocument.Load(trxPath);
+        var document = XmlFileLoader.Load(trxPath);
 
         // TeamTest TRX uses the 2010 namespace, but some hosts emit the same local names under
         // a different default namespace. Match by local element name so failed tests are not

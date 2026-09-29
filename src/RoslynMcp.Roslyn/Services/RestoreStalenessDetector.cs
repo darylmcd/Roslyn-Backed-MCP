@@ -278,7 +278,7 @@ internal class RestoreStalenessDetector
             XDocument document;
             try
             {
-                document = XDocument.Load(documentPath, LoadOptions.PreserveWhitespace);
+                document = XmlFileLoader.Load(documentPath, LoadOptions.PreserveWhitespace);
             }
             catch (System.Xml.XmlException)
             {
@@ -362,7 +362,7 @@ internal class RestoreStalenessDetector
         XDocument document;
         try
         {
-            document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+            document = XmlFileLoader.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
         }
         catch (System.Xml.XmlException)
         {
