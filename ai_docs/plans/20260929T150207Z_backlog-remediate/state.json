@@ -63,7 +63,7 @@
     {
       "id": "release-managed-guard-worktree-scope",
       "order": 3,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "release-managed-guard-worktree-scope"
       ],
@@ -98,7 +98,7 @@
       "worktreePath": ".worktrees/release-managed-guard-worktree-scope",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1673 head e95978b5 cold review passed; waiting for current-main integration gate and generation landing.",
       "fileSetHash": "997882f98c465bec2aa97bdcb6b953b20ecce31940e87dee443b6cafe743e346",
       "stanzaHash": "d269054ddda7986fff807730a7a594b7f998549f4d518978c79e0fa694ce4ac5",
       "reviewedStanzaHash": "d269054ddda7986fff807730a7a594b7f998549f4d518978c79e0fa694ce4ac5"
