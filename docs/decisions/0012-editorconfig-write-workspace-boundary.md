@@ -22,8 +22,9 @@ external edit. No compatibility switch permits an outside write.
 On POSIX, that path holds an advisory file lock for cooperating writers,
 rechecks bytes immediately before writing, and rejects a pathname replacement
 detected after writing. An uncooperative writer can still change the same inode
-between the last byte check and the write; see the tracked
-`editorconfig-posix-uncooperative-write-race` limitation.
+between the last byte check and the write. A follow-up row,
+`editorconfig-posix-uncooperative-write-race`, is staged for final backlog
+reconciliation.
 
 Direct `EditorConfigService` construction with an alternate `IWorkspaceManager`
 cannot provide that coordination through the existing public constructor.
