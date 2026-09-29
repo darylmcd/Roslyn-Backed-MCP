@@ -236,6 +236,56 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         }
     }
 
+    [TestMethod]
+    public async Task Retarget_ConcurrentExternalFirstLoads_ShareLoaderAndCopy()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("External shadow isolation is Windows-specific.");
+            return;
+        }
+
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var solutionPath = TestFixtureFileSystem.CreateSampleSolutionCopy(
+            repoRoot, Path.Combine(repoRoot, "samples", "SampleSolution", "SampleSolution.slnx"));
+        var copiedRoot = Path.GetDirectoryName(solutionPath)!;
+        var packageRoot = Path.Combine(TestTempRoot.Current, "concurrent-generator-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(packageRoot);
+        try
+        {
+            var generatorPath = InjectExternalGenerator(copiedRoot, packageRoot);
+            using var adhoc = new AdhocWorkspace();
+            var project = adhoc.AddProject(ProjectInfo.Create(
+                ProjectId.CreateNewId(), VersionStamp.Create(), "ConcurrentProbe", "ConcurrentProbe",
+                LanguageNames.CSharp, filePath: Path.Combine(copiedRoot, "ConcurrentProbe.csproj")));
+
+            var firstLoads = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+            {
+                var reference = new AnalyzerFileReference(generatorPath, StubAnalyzerAssemblyLoader.Instance);
+                var solution = project.Solution.AddAnalyzerReference(project.Id, reference);
+                using var lease = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                    solution, "concurrent-external-probe", NullLogger.Instance);
+                var generator = reference.GetGenerators(LanguageNames.CSharp).Single();
+                return (Loader: GetAnalyzerAssemblyLoader(reference), Location: generator.GetType().Assembly.Location);
+            })));
+
+            Assert.IsTrue(firstLoads.All(result => ReferenceEquals(result.Loader, firstLoads[0].Loader)),
+                "Concurrent first loads of one package directory must use one process loader.");
+            Assert.IsTrue(firstLoads.All(result =>
+                string.Equals(result.Location, firstLoads[0].Location, StringComparison.OrdinalIgnoreCase)),
+                "One source identity must map to one shadow copy across concurrent first loads.");
+            Assert.AreEqual(1, Directory.EnumerateFiles(Path.GetDirectoryName(firstLoads[0].Location)!, "*.dll").Count(),
+                "The source identity's shadow directory must contain only one assembly copy.");
+            Assert.IsFalse(firstLoads[0].Location.StartsWith(packageRoot, StringComparison.OrdinalIgnoreCase));
+            Directory.Delete(packageRoot, recursive: true);
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(packageRoot);
+            TestFixtureFileSystem.DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
     private static string InjectExternalGenerator(string copiedRoot, string packageRoot)
     {
         const string source = """
@@ -369,6 +419,88 @@ public sealed class AnalyzerShadowLoaderLifecycleTests
         }
         finally
         {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
+        }
+    }
+
+    [TestMethod]
+    public async Task SweepAbandonedRoots_LiveOtherProcess_PreservesStaleProcessCopies()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The cross-process ownership probe uses Windows PowerShell.");
+            return;
+        }
+
+        var sharedParent = Path.Combine(
+            TestTempRoot.Current, "analyzer-live-process-sweep-" + Guid.NewGuid().ToString("N"));
+        var processDirectory = Path.Combine(sharedParent, "process-other-host");
+        var copyRoot = Path.Combine(processDirectory, "copies");
+        Directory.CreateDirectory(copyRoot);
+        File.WriteAllText(Path.Combine(copyRoot, "unloaded.dll"), "unmapped copy");
+        var readyPath = Path.Combine(TestTempRoot.Current, "process-owner-ready-" + Guid.NewGuid().ToString("N"));
+        const string ownerCommand = """
+            $stream = [System.IO.File]::Open((Join-Path $env:RMCP_OWNER_ROOT '.owner.lock'), [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            try {
+                [System.IO.File]::WriteAllText($env:RMCP_OWNER_READY, 'ready')
+                Start-Sleep -Seconds 120
+            } finally {
+                $stream.Dispose()
+            }
+            """;
+
+        using var owner = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+            }
+        };
+        owner.StartInfo.ArgumentList.Add("-NoProfile");
+        owner.StartInfo.ArgumentList.Add("-NonInteractive");
+        owner.StartInfo.ArgumentList.Add("-Command");
+        owner.StartInfo.ArgumentList.Add(ownerCommand);
+        owner.StartInfo.Environment["RMCP_OWNER_ROOT"] = processDirectory;
+        owner.StartInfo.Environment["RMCP_OWNER_READY"] = readyPath;
+
+        try
+        {
+            Assert.IsTrue(owner.Start(), "The second host must start.");
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+            while (!File.Exists(readyPath) && !owner.HasExited && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.IsTrue(File.Exists(readyPath),
+                owner.HasExited ? await owner.StandardError.ReadToEndAsync() : "The second host did not acquire its ownership marker.");
+            var staleTimestamp = DateTime.UtcNow - TimeSpan.FromDays(2);
+            Directory.SetCreationTimeUtc(copyRoot, staleTimestamp);
+            Directory.SetLastWriteTimeUtc(copyRoot, staleTimestamp);
+
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
+            Assert.IsTrue(Directory.Exists(copyRoot),
+                "A live second host owns this process root even when its copies are old and no assembly file is mapped.");
+
+            owner.Kill(entireProcessTree: true);
+            Assert.IsTrue(owner.WaitForExit(10_000));
+            AnalyzerReferenceIsolation.SweepAbandonedRoots(sharedParent, NullLogger.Instance);
+            Assert.IsFalse(Directory.Exists(copyRoot), "The exited host's stale copies must be reclaimed.");
+            Assert.IsFalse(Directory.Exists(processDirectory),
+                "The exited host's ownership marker and empty process parent must be reclaimed.");
+        }
+        finally
+        {
+            if (!owner.HasExited)
+            {
+                owner.Kill(entireProcessTree: true);
+                owner.WaitForExit(10_000);
+            }
+
+            File.Delete(readyPath);
             TestFixtureFileSystem.DeleteDirectoryIfExists(sharedParent);
         }
     }

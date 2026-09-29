@@ -13,11 +13,12 @@ internal static class AnalyzerReferenceIsolation
 {
     /// <summary>Directory name under the OS temp path shared by all workspaces (each lease gets its own subtree).</summary>
     internal const string ShadowRootDirectoryName = "RoslynMcpAnalyzerShadow";
+    private const string ProcessOwnerFileName = ".owner.lock";
 
     /// <summary>
-    /// A shadow root older than this is assumed abandoned (a crashed or killed host) and is
-    /// eligible for sweeping. Deliberately long: a live lease in ANOTHER process may be older,
-    /// but its loaded shadow assemblies keep the files locked so deletion fails harmlessly.
+    /// A shadow root older than this is eligible for sweeping. A live process-owned root is
+    /// excluded by its held ownership marker even if no assembly is currently mapped from it.
+    /// Other processes' live lease roots remain protected by their loaded shadow assemblies.
     /// Mirrors the abandoned-run reaper discipline in <c>TestTempRoot</c>.
     /// </summary>
     private static readonly TimeSpan StaleLeaseAge = TimeSpan.FromDays(1);
@@ -37,6 +38,14 @@ internal static class AnalyzerReferenceIsolation
     private static readonly string s_processShadowRoot = Path.Combine(
         Path.GetTempPath(), ShadowRootDirectoryName,
         "process-" + Environment.ProcessId + "-" + Guid.NewGuid().ToString("N"), "copies");
+    private static readonly Lazy<FileStream> s_processOwner = new(() =>
+    {
+        var processDirectory = Path.GetDirectoryName(s_processShadowRoot)!;
+        Directory.CreateDirectory(processDirectory);
+        return new FileStream(
+            Path.Combine(processDirectory, ProcessOwnerFileName),
+            FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+    }, LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly ConcurrentDictionary<string, Lazy<ShadowCopyAnalyzerAssemblyLoader>> s_externalLoaders =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -103,8 +112,13 @@ internal static class AnalyzerReferenceIsolation
                     var directory = Path.GetDirectoryName(analyzerPath)!;
                     var processLoader = s_externalLoaders.GetOrAdd(directory, path =>
                         new Lazy<ShadowCopyAnalyzerAssemblyLoader>(() =>
-                            ShadowCopyAnalyzerAssemblyLoader.Create(
-                                analyzerPath, s_processShadowRoot, logger, isCollectible: false),
+                        {
+                            // Hold the marker before creating any copy. The stale-root sweeper in
+                            // another host can then distinguish this live process from an exit.
+                            _ = s_processOwner.Value;
+                            return ShadowCopyAnalyzerAssemblyLoader.Create(
+                                analyzerPath, s_processShadowRoot, logger, isCollectible: false);
+                        },
                             LazyThreadSafetyMode.ExecutionAndPublication)).Value;
                     processLoader.AddDependencyLocation(analyzerPath);
                     AssemblyLoaderField.SetValue(reference, processLoader);
@@ -165,36 +179,65 @@ internal static class AnalyzerReferenceIsolation
         var utcNow = DateTime.UtcNow;
         foreach (var workspaceDirectory in EnumerateDirectoriesSafe(sharedParent, logger))
         {
-            foreach (var leaseDirectory in EnumerateDirectoriesSafe(workspaceDirectory, logger))
+            var ownerPath = Path.Combine(workspaceDirectory, ProcessOwnerFileName);
+            FileStream? ownerProbe = null;
+            if (Path.GetFileName(workspaceDirectory).StartsWith("process-", StringComparison.OrdinalIgnoreCase))
             {
-                if (AnalyzerShadowLoaderLease.IsLiveRoot(leaseDirectory))
-                {
-                    continue;
-                }
-
-                if (!IsStale(leaseDirectory, utcNow, logger))
-                {
-                    continue;
-                }
-
-                // A live lease in another process holds file locks on its loaded shadow copies;
-                // losing to that lock (or to a concurrent sweeper) is harmless — the next sweep retries.
                 try
                 {
-                    Directory.Delete(leaseDirectory, recursive: true);
-                    logger.LogDebug("Swept one abandoned analyzer shadow lease.");
+                    // A live host holds this file with FileShare.None. Keep our probe open
+                    // throughout deletion so another sweeper cannot claim the same root.
+                    ownerProbe = new FileStream(ownerPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (FileNotFoundException)
+                {
+                    // A crash before marker creation cannot have produced a mapped copy.
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    logger.LogDebug(
-                        "Could not sweep an abandoned analyzer shadow lease; failure type {FailureType}.",
-                        ex.GetType().Name);
+                    logger.LogDebug("An analyzer shadow process root is owned or unavailable; failure type {FailureType}.", ex.GetType().Name);
+                    continue;
                 }
+            }
+
+            try
+            {
+                foreach (var leaseDirectory in EnumerateDirectoriesSafe(workspaceDirectory, logger))
+                {
+                    if (AnalyzerShadowLoaderLease.IsLiveRoot(leaseDirectory) ||
+                        !IsStale(leaseDirectory, utcNow, logger))
+                    {
+                        continue;
+                    }
+
+                    // A live lease in another process holds its loaded files; a failed delete
+                    // leaves the root for the next sweep.
+                    try
+                    {
+                        Directory.Delete(leaseDirectory, recursive: true);
+                        logger.LogDebug("Swept one abandoned analyzer shadow lease.");
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        logger.LogDebug(
+                            "Could not sweep an abandoned analyzer shadow lease; failure type {FailureType}.",
+                            ex.GetType().Name);
+                    }
+                }
+            }
+            finally
+            {
+                ownerProbe?.Dispose();
             }
 
             // Best-effort removal of a now-empty per-workspace parent. Never the shared parent.
             try
             {
+                if (ownerProbe is not null && !Directory.EnumerateDirectories(workspaceDirectory).Any())
+                {
+                    File.Delete(ownerPath);
+                }
+
                 if (!Directory.EnumerateFileSystemEntries(workspaceDirectory).Any())
                 {
                     Directory.Delete(workspaceDirectory);
@@ -476,9 +519,8 @@ internal static class AnalyzerReferenceIsolation
         private readonly ConcurrentDictionary<string, Assembly> _assembliesByIdentity = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _shadowCopiesByIdentity = new(StringComparer.OrdinalIgnoreCase);
 
-        // Every context ever constructed, including GetOrAdd race losers, so the owning lease
-        // can unload them all. ALC unload only ever completes via GC, so tracking a loser here
-        // costs nothing beyond what the race already leaked pre-fix.
+        // Tracks every context this loader constructed. Collectible lease contexts are unloaded
+        // at disposal; process-owned external contexts remain alive with their shared loader.
         private readonly ConcurrentBag<ShadowAnalyzerLoadContext> _contexts = [];
 
         private ShadowCopyAnalyzerAssemblyLoader(string shadowRoot, ILogger logger, bool isCollectible)
