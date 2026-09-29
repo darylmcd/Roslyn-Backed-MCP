@@ -13,7 +13,7 @@
     {
       "id": "analyzer-shadow-isolation-misses-loaded-generators",
       "order": 2,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "analyzer-shadow-isolation-misses-loaded-generators"
       ],
@@ -40,8 +40,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/analyzer-shadow-isolation-misses-loaded-generators",
+      "worktreePath": ".worktrees/analyzer-shadow-isolation-misses-loaded-generators",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
