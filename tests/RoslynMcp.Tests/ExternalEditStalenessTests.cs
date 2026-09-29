@@ -70,6 +70,51 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void ConfigWriteTransaction_RejectsDriftBeforeAcquiringWriteHandle()
+    {
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-drift-{Guid.NewGuid():N}.editorconfig");
+        var original = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+        File.WriteAllBytes(configPath, original);
+        try
+        {
+            // The coordinator may observe original bytes before another writer changes
+            // the file. The exclusive handle must verify that pre-image before writing.
+            File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                new EditorConfigFileTransaction(configPath, original));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
+    public void FailedNewConfigWriteBeforeBytes_RemovesEmptyFileWithoutStaleness()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-empty-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(
+                workspaceId, configPath, _ => throw new IOException("before write")));
+            Assert.IsFalse(File.Exists(configPath));
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     [DataRow(false, "create")]
     [DataRow(false, "change")]
     [DataRow(false, "delete")]
@@ -132,9 +177,9 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         {
             watcher.Watch(workspaceId, solutionPath);
             Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
-                () =>
+                transaction =>
                 {
-                    File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n"));
                     throw new IOException("after identical bytes");
                 }));
             Assert.IsFalse(watcher.IsStale(workspaceId));
@@ -142,9 +187,9 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
             Assert.IsFalse(watcher.IsStale(workspaceId), "A delayed event for unchanged bytes must also be ignored.");
 
             Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
-                () =>
+                transaction =>
                 {
-                    File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
                     throw new IOException("after write");
                 }));
             Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
@@ -174,11 +219,11 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         try
         {
             watcher.Watch(workspaceId, solutionPath);
-            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
             {
                 var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
-                File.WriteAllBytes(configPath, bytes);
-                return (true, bytes);
+                transaction.WriteBytes(bytes);
+                return true;
             });
             Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
 
@@ -189,11 +234,11 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                 () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
                 TimeSpan.FromSeconds(5)));
 
-            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
             {
                 var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n");
-                File.WriteAllBytes(configPath, bytes);
-                return (true, bytes);
+                transaction.WriteBytes(bytes);
+                return true;
             });
             Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
                 "An owned write must not erase a prior external-edit finding.");
@@ -206,7 +251,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task OwnedEditorConfigWrite_ConcurrentReplacementKeepsExternalAttribution()
+    public async Task OwnedEditorConfigWrite_ConcurrentReplacementCannotOverwriteLockedFile()
     {
         var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -219,15 +264,23 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
         try
         {
             watcher.Watch(workspaceId, solutionPath);
-            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
             {
                 var intended = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
-                File.WriteAllBytes(configPath, intended);
-                File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
-                return (true, intended);
+                Assert.ThrowsExactly<IOException>(() =>
+                {
+                    using var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                });
+                transaction.WriteBytes(intended);
+                return true;
             });
-            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
-                "Disk bytes that differ from the server-written bytes must remain external-edit.");
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.IsTrue(SpinWait.SpinUntil(
+                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
+                TimeSpan.FromSeconds(5)));
         }
         finally
         {

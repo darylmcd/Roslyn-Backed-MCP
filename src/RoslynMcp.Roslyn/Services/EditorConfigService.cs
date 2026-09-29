@@ -372,10 +372,10 @@ public sealed class EditorConfigService : IEditorConfigService
             throw new UnauthorizedAccessException("The applicable .editorconfig is outside the loaded workspace.");
         }
 
-        (EditorConfigWriteResultDto Result, byte[] WrittenBytes) Write()
+        EditorConfigWriteResultDto Write(EditorConfigFileTransaction transaction)
         {
-            var created = !File.Exists(editorconfigPath);
-            var existingBytes = created ? null : File.ReadAllBytes(editorconfigPath);
+            var created = transaction.CreatedNewFile;
+            var existingBytes = transaction.OriginalBytes;
             // Parse the same byte snapshot captured for undo. A second disk read could see
             // an external edit between reads, then attribute a mixed operation to Apply.
             var lines = existingBytes is null ? new List<string>() : ReadConfigLines(existingBytes);
@@ -399,12 +399,6 @@ public sealed class EditorConfigService : IEditorConfigService
             const string csharpSection = "[*.{cs,csx,cake}]";
             UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
 
-            var directory = Path.GetDirectoryName(editorconfigPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
             // Render with the original encoding before writing so the watcher can compare
             // its events with the exact bytes this operation committed. A new config uses
             // the UTF-8-no-BOM default; existing BOMs remain intact.
@@ -418,8 +412,8 @@ public sealed class EditorConfigService : IEditorConfigService
                 }
             }
             var writtenBytes = buffer.ToArray();
-            File.WriteAllBytes(editorconfigPath, writtenBytes);
-            return (new EditorConfigWriteResultDto(editorconfigPath, key, value, created), writtenBytes);
+            transaction.WriteBytes(writtenBytes);
+            return new EditorConfigWriteResultDto(editorconfigPath, key, value, created);
         }
 
         var result = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);

@@ -34,7 +34,79 @@ namespace RoslynMcp.Roslyn.Services;
 /// </remarks>
 internal interface IEditorConfigWriteCoordinator
 {
-    T RunOwnedWrite<T>(string workspaceId, string path, Func<(T Result, byte[] WrittenBytes)> write);
+    T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write);
+}
+
+/// <summary>Holds the config file against competing writes while its snapshot is parsed and changed.</summary>
+internal sealed class EditorConfigFileTransaction : IDisposable
+{
+    private readonly FileStream _stream;
+
+    internal EditorConfigFileTransaction(string path, byte[]? expectedBytes)
+    {
+        CreatedNewFile = expectedBytes is null;
+        _stream = new FileStream(path,
+            CreatedNewFile ? FileMode.CreateNew : FileMode.Open,
+            FileAccess.ReadWrite, FileShare.Read);
+        try
+        {
+            OriginalBytes = CreatedNewFile ? null : ReadCurrentBytes();
+            if (!BytesEqual(expectedBytes, OriginalBytes))
+            {
+                throw new EditorConfigConcurrentEditException();
+            }
+        }
+        catch
+        {
+            _stream.Dispose();
+            throw;
+        }
+    }
+
+    internal bool CreatedNewFile { get; }
+    internal byte[]? OriginalBytes { get; }
+    internal bool WriteStarted { get; private set; }
+    internal byte[]? OwnedBytes { get; private set; }
+
+    internal void WriteBytes(byte[] bytes)
+    {
+        WriteStarted = true;
+        try
+        {
+            _stream.Position = 0;
+            _stream.SetLength(0);
+            _stream.Write(bytes);
+            _stream.Flush(flushToDisk: true);
+        }
+        finally
+        {
+            // A failed write may leave a partial file. Capture those exact server-owned
+            // bytes before releasing the handle so a later external replacement is distinct.
+            OwnedBytes = ReadCurrentBytes();
+        }
+    }
+
+    private byte[] ReadCurrentBytes()
+    {
+        _stream.Position = 0;
+        using var buffer = new MemoryStream();
+        _stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    private static bool BytesEqual(byte[]? left, byte[]? right) =>
+        left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
+
+    public void Dispose() => _stream.Dispose();
+}
+
+internal sealed class EditorConfigConcurrentEditException : IOException
+{
+    internal EditorConfigConcurrentEditException()
+        : base("The .editorconfig changed during the coordinated write.") { }
+
+    internal EditorConfigConcurrentEditException(Exception inner)
+        : base("The .editorconfig could not be exclusively opened for the coordinated write.", inner) { }
 }
 
 public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService, IEditorConfigWriteCoordinator
@@ -166,7 +238,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
     }
 
     T IEditorConfigWriteCoordinator.RunOwnedWrite<T>(
-        string workspaceId, string path, Func<(T Result, byte[] WrittenBytes)> write)
+        string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
     {
         if (!_watchers.TryGetValue(workspaceId, out var entry))
         {
@@ -311,7 +383,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
         public void AddWatcher(FileSystemWatcher watcher) => _watchers.Add(watcher);
 
-        public T RunOwnedWrite<T>(string path, Func<(T Result, byte[] WrittenBytes)> write)
+        public T RunOwnedWrite<T>(string path, Func<EditorConfigFileTransaction, T> write)
         {
             var physicalPath = PhysicalPathResolver.Resolve(path);
             lock (_reasonLock)
@@ -323,9 +395,22 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     _ownedConfigBytes.Remove(physicalPath);
                     MarkStaleWithReason(StaleReasons.ExternalEdit);
                 }
+                EditorConfigFileTransaction? transaction = null;
                 try
                 {
-                    var (result, writtenBytes) = write();
+                    try
+                    {
+                        transaction = new EditorConfigFileTransaction(physicalPath, before);
+                    }
+                    catch (IOException ex)
+                    {
+                        throw new EditorConfigConcurrentEditException(ex);
+                    }
+                    var result = write(transaction);
+                    var writtenBytes = transaction.OwnedBytes
+                        ?? throw new InvalidOperationException("The coordinated .editorconfig write did not write bytes.");
+                    transaction.Dispose();
+                    transaction = null;
                     _ownedConfigBytes[physicalPath] = writtenBytes;
                     byte[]? current = null;
                     var readable = true;
@@ -351,8 +436,12 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     }
                     return result;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    var ownedBytes = transaction?.OwnedBytes;
+                    var writeStarted = transaction?.WriteStarted == true;
+                    var createdWithoutWrite = transaction is { CreatedNewFile: true, WriteStarted: false };
+                    transaction?.Dispose();
                     byte[]? after = null;
                     var readable = true;
                     try
@@ -367,7 +456,30 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     {
                         readable = false;
                     }
-                    if (readable && BytesEqual(before, after))
+                    Exception? cleanupFailure = null;
+                    if (createdWithoutWrite && after is { Length: 0 })
+                    {
+                        // Opening a new file is itself a mutation. If the callback failed
+                        // before writing, remove that empty file instead of stranding it.
+                        try
+                        {
+                            File.Delete(physicalPath);
+                            after = null;
+                        }
+                        catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
+                        {
+                            cleanupFailure = cleanupEx;
+                        }
+                    }
+                    if ((ex is EditorConfigConcurrentEditException &&
+                         (!readable || !BytesEqual(before, after))) ||
+                        (writeStarted && (!readable || !BytesEqual(ownedBytes, after))) ||
+                        (!writeStarted && !createdWithoutWrite && (!readable || !BytesEqual(before, after))))
+                    {
+                        _ownedConfigBytes.Remove(physicalPath);
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                    }
+                    else if (readable && BytesEqual(before, after))
                     {
                         // A failed write can still queue a watcher event. Its unchanged bytes
                         // are not a workspace change and must not turn the workspace stale.
@@ -375,11 +487,15 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     }
                     else
                     {
-                        _ownedConfigBytes[physicalPath] = after;
+                        _ownedConfigBytes[physicalPath] = writeStarted ? ownedBytes : after;
                         if (_staleReason != StaleReasons.ExternalEdit)
                         {
                             MarkStaleWithReason(StaleReasons.Apply);
                         }
+                    }
+                    if (cleanupFailure is not null)
+                    {
+                        throw new AggregateException(ex, cleanupFailure);
                     }
                     throw;
                 }
