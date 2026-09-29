@@ -26,7 +26,6 @@ namespace RoslynMcp.Tests;
 /// naming the timed-out phase.
 /// </summary>
 [TestClass]
-[DoNotParallelize]
 public sealed class WorkspaceValidationTimeoutTests : IsolatedWorkspaceTestBase
 {
     [ClassInitialize]
