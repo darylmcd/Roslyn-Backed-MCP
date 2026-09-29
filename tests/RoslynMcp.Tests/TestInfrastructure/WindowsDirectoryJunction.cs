@@ -41,7 +41,10 @@ internal static class WindowsDirectoryJunction
         }
 
         var fullTarget = Path.GetFullPath(targetPath);
-        var substituteName = Encoding.Unicode.GetBytes(@"\??\" + fullTarget);
+        var substitutePath = fullTarget.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? fullTarget[4..]
+            : fullTarget;
+        var substituteName = Encoding.Unicode.GetBytes(@"\??\" + substitutePath);
         var printName = Encoding.Unicode.GetBytes(fullTarget);
         var reparseDataLength = MountPointHeaderSize + substituteName.Length + 2 + printName.Length + 2;
         var buffer = new byte[ReparseHeaderSize + reparseDataLength];
@@ -92,6 +95,20 @@ internal static class WindowsDirectoryJunction
         }
     }
 
+    public static bool TryCreateVolumeRootLink(string linkPath)
+    {
+        var volumeName = new StringBuilder(64);
+        var driveRoot = Path.GetPathRoot(linkPath)
+            ?? throw new ArgumentException("Link path has no drive root.", nameof(linkPath));
+        if (!GetVolumeNameForVolumeMountPointW(driveRoot, volumeName, volumeName.Capacity))
+        {
+            return false;
+        }
+
+        Create(linkPath, volumeName.ToString());
+        return true;
+    }
+
     private static IOException Failure(string step, string linkPath, string targetPath)
     {
         var error = new Win32Exception(Marshal.GetLastPInvokeError());
@@ -109,6 +126,13 @@ internal static class WindowsDirectoryJunction
         uint creationDisposition,
         uint flagsAndAttributes,
         IntPtr templateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumeNameForVolumeMountPointW(
+        string volumeMountPoint,
+        StringBuilder volumeName,
+        int bufferLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

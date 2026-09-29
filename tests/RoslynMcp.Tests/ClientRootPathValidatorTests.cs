@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
@@ -339,6 +340,92 @@ public class ClientRootPathValidatorTests
         }
         finally
         {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    [TestMethod]
+    public void GetLinkTargetPath_WindowsVolumeMountTargets_UseVolumeRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Volume GUID mount points are a Windows filesystem concept.");
+            return;
+        }
+
+        var linkPath = Path.Combine(TestTempRoot.Current, "mount-link");
+        var volume = $@"Volume{{{Guid.NewGuid():D}}}\";
+        var extendedTarget = @"\\?\" + volume;
+        var expected = PhysicalPathResolver.GetLinkTargetPath(linkPath, extendedTarget);
+
+        foreach (var rawTarget in new[] { volume, @"\??\" + volume, extendedTarget })
+        {
+            Assert.AreEqual(expected, PhysicalPathResolver.GetLinkTargetPath(linkPath, rawTarget));
+        }
+
+        Assert.IsTrue(Path.IsPathFullyQualified(expected));
+        Assert.IsFalse(expected.StartsWith(Path.GetDirectoryName(linkPath)!, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task VolumeMountJunction_WorkspaceLoadAndSanctionedBoundary_UseExistingPhysicalPath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Volume GUID mount points are a Windows filesystem concept.");
+            return;
+        }
+
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-volume-mount-" + Guid.NewGuid().ToString("N"));
+        var sanctionedRoot = Path.Combine(testRoot, "sanctioned");
+        var siblingRoot = Path.Combine(testRoot, "sibling");
+        var linkPath = Path.Combine(testRoot, "mount");
+        Directory.CreateDirectory(sanctionedRoot);
+        Directory.CreateDirectory(siblingRoot);
+        var projectPath = Path.Combine(sanctionedRoot, "VolumeProbe.csproj");
+        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var siblingPath = Path.Combine(siblingRoot, "Outside.csproj");
+        File.WriteAllText(siblingPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+        try
+        {
+            if (!WindowsDirectoryJunction.TryCreateVolumeRootLink(linkPath))
+            {
+                Assert.Inconclusive("The test drive has no available volume GUID path.");
+                return;
+            }
+
+            var driveRoot = Path.GetPathRoot(testRoot)!;
+            var linkedRoot = Path.Combine(linkPath, Path.GetRelativePath(driveRoot, sanctionedRoot));
+            var linkedProject = Path.Combine(linkedRoot, "VolumeProbe.csproj");
+            var linkedSibling = Path.Combine(linkPath, Path.GetRelativePath(driveRoot, siblingPath));
+            Assert.IsTrue(File.Exists(linkedProject), "The junction must address the fixture project.");
+
+            var physicalProject = PhysicalPathResolver.Resolve(linkedProject);
+            Assert.IsTrue(File.Exists(physicalProject), "Canonicalization must preserve file identity.");
+            var options = new SecurityOptions { SanctionedRoots = [linkedRoot] };
+            Assert.AreEqual(physicalProject, await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null, linkedProject, CancellationToken.None, securityOptions: options));
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                    server: null, linkedSibling, CancellationToken.None, securityOptions: options));
+
+            using var manager = new WorkspaceManager(
+                NullLogger<WorkspaceManager>.Instance,
+                new PreviewStore(),
+                new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+                new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 });
+            var status = await manager.LoadAsync(linkedProject, CancellationToken.None);
+            Assert.IsTrue(status.IsLoaded, "workspace_load must reach an active session through the mount point.");
+            Assert.AreEqual(physicalProject, status.LoadedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(linkPath))
+            {
+                Directory.Delete(linkPath);
+            }
+
             TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
         }
     }

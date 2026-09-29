@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace RoslynMcp.Roslyn.Helpers;
 
 /// <summary>
@@ -29,6 +31,24 @@ public static class PhysicalPathResolver
 
     internal static string GetLinkTargetPath(string linkPath, string rawLinkTarget)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows mount-point junctions may expose a volume GUID without a path prefix.
+            // The NT object-manager spelling is also returned by some filesystem APIs.
+            var volumeTarget = rawLinkTarget.StartsWith(@"\??\", StringComparison.Ordinal)
+                || rawLinkTarget.StartsWith(@"\\?\", StringComparison.Ordinal)
+                ? rawLinkTarget[4..]
+                : rawLinkTarget;
+            if (volumeTarget.Length == 45
+                && volumeTarget.StartsWith("Volume{", StringComparison.OrdinalIgnoreCase)
+                && Guid.TryParseExact(volumeTarget.AsSpan(7, 36), "D", out _)
+                && volumeTarget[43] == '}'
+                && volumeTarget[44] == '\\')
+            {
+                return GetVolumeRootPath(volumeTarget);
+            }
+        }
+
         if (Path.IsPathFullyQualified(rawLinkTarget))
         {
             return rawLinkTarget;
@@ -44,6 +64,55 @@ public static class PhysicalPathResolver
 
         return Path.Join(Path.GetDirectoryName(linkPath), rawLinkTarget);
     }
+
+    private static string GetVolumeRootPath(string volumeTarget)
+    {
+        var volumePath = @"\\?\" + volumeTarget;
+        var mountPaths = new char[256];
+        if (!GetVolumePathNamesForVolumeNameW(
+                volumePath, mountPaths, (uint)mountPaths.Length, out var requiredLength))
+        {
+            if (requiredLength <= mountPaths.Length)
+            {
+                return volumePath;
+            }
+
+            mountPaths = new char[requiredLength];
+            if (!GetVolumePathNamesForVolumeNameW(
+                    volumePath, mountPaths, (uint)mountPaths.Length, out _))
+            {
+                return volumePath;
+            }
+        }
+
+        for (var start = 0; start < mountPaths.Length && mountPaths[start] != '\0';)
+        {
+            var end = Array.IndexOf(mountPaths, '\0', start);
+            if (end < 0)
+            {
+                break;
+            }
+
+            var mountPath = new string(mountPaths, start, end - start);
+            if (mountPath.Length == 3 && char.IsLetter(mountPath[0])
+                && mountPath[1] == ':' && mountPath[2] == '\\')
+            {
+                return mountPath;
+            }
+
+            start = end + 1;
+        }
+
+        return volumePath;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumePathNamesForVolumeNameW(
+        string volumeName,
+        char[] volumePathNames,
+        uint bufferLength,
+        out uint returnLength);
 
     private static string ResolveCore(
         string path,
