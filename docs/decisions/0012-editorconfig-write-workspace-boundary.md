@@ -1,4 +1,4 @@
-# ADR 0011: Bound editorconfig writes to the loaded workspace
+# ADR 0012: Bound editorconfig writes to the loaded workspace
 
 Status: Accepted, 2026-09-29.
 
