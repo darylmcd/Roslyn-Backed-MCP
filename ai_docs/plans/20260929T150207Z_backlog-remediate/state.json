@@ -13,7 +13,7 @@
     {
       "id": "analyzer-shadow-isolation-misses-loaded-generators",
       "order": 2,
-      "status": "in-progress",
+      "status": "in-review",
       "backlogRowsClosed": [
         "analyzer-shadow-isolation-misses-loaded-generators"
       ],
@@ -44,7 +44,7 @@
       "worktreePath": ".worktrees/analyzer-shadow-isolation-misses-loaded-generators",
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "PR #1671 head 1fd90e32 cold review cycle 1 passed; prior integration gate red on volume junction fixed by merged #1672; current-main gate pending generation landing.",
       "fileSetHash": "fece77200a3e0bec941820f3d8c5dc97843847ab5259c1728a1bc708ce63a66e",
       "stanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
       "reviewedStanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
