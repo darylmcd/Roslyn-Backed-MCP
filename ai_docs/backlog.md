@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-29T17:42:22Z
+**updated_at:** 2026-09-29T19:35:30Z
 
 ## Agent contract
 
@@ -166,6 +166,7 @@
 | `workspace-fork-project-mutation-preview` | Medium | — | **Align workspace_fork_apply with project-mutation tokens** — replay safely or narrow its claim. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/workspace-fork-project-mutation-preview.md |
 | `preview-token-consumed-reason` | Medium | — | **Report consumed preview tokens accurately** — distinguish already applied from reload and expiry. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-token-consumed-reason.md |
 | `notice-verifier-scoped-test-inherits-nuget-packages` | Medium | — | Isolate the scoped third-party notice verifier fixture from ambient NUGET_PACKAGES so its asset graph check is deterministic. | S | items/notice-verifier-scoped-test-inherits-nuget-packages.md |
+| `test-discovery-file-path-case-identity` | Medium | — | Preserve platform file-path identity in related-test discovery and direct-reference matching. | S | items/test-discovery-file-path-case-identity.md |
 
 ## Low
 
