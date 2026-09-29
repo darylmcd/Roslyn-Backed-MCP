@@ -221,14 +221,16 @@ hooks:
   - tool: Edit|Write|MultiEdit
     script: eng/guard-release-managed-files.ps1   # .claude/settings.json PreToolUse
     blocks: |
-      HARD BLOCK (exit 2) on these exact repo-relative paths:
+      HARD BLOCK (exit 2) on these exact paths relative to the checkout being edited,
+      in this repository's primary checkout or linked worktrees (same Git common dir):
         Directory.Build.props, manifest.json, CHANGELOG.md,
         .claude-plugin/{plugin,marketplace,mcp,server}.json,
         eng/verify-version-drift.ps1, eng/verify-skills-are-generic.ps1,
-        hooks/hooks.json, and any BannedSymbols.txt
+        hooks/hooks.json, and any BannedSymbols.txt in those checkouts
       Anything under tests/ or fixtures/ is exempt.
+      Paths in other repositories or outside Git checkouts are allowed.
     override: |
-      A sentinel file .release-managed-edit-allowed whose mtime is within
+      A sentinel file <checkout-root>/.release-managed-edit-allowed whose mtime is within
       RELEASE_SENTINEL_TTL_SECONDS (default 1800s). /bump, /release-cut and
       /ship create and remove it automatically. A subagent that needs one of
       these paths must either route through those skills or create the
@@ -258,7 +260,7 @@ marketplace-plugin `mcp__plugin_roslyn-mcp_roslyn__*` prefixes. They remain
 advisory-only prompts under either registration shape and must not widen to unrelated
 MCP servers. `hooks/hooks.json` is a hard-blocked release-managed path, so an
 initiative that intentionally edits it must first create the fresh
-`.release-managed-edit-allowed` sentinel described above and remove it before commit.
+`.release-managed-edit-allowed` sentinel in the checkout being edited and remove it before commit.
 
 Planning consequence: `CHANGELOG.md` is release-managed *as well as* virtually-shared, so a subagent editing it hits a hard block before the discipline break is ever noticed. The fragment convention below is the only sanctioned path.
 

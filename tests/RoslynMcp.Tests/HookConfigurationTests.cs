@@ -201,6 +201,62 @@ public sealed class HookConfigurationTests
         }
     }
 
+    [TestMethod]
+    public async Task ReleaseManagedGuard_ScopesManagedPathsAndSentinelsToCheckout()
+    {
+        var tempRoot = Path.Combine(TestTempRoot.Current, $"rmcp-guard-checkouts-{Guid.NewGuid():N}");
+        var primary = Path.Combine(tempRoot, "primary");
+        var linked = Path.Combine(tempRoot, "linked");
+        var unrelated = Path.Combine(tempRoot, "unrelated");
+        Directory.CreateDirectory(primary);
+        Directory.CreateDirectory(unrelated);
+        var linkedCreated = false;
+        try
+        {
+            await RunGitAsync(primary, "init");
+            await RunGitAsync(primary, "-c", "user.name=Hook Test", "-c", "user.email=hook-test@example.invalid",
+                "commit", "--allow-empty", "-m", "initial");
+            await RunGitAsync(primary, "worktree", "add", "--detach", linked);
+            linkedCreated = true;
+            await RunGitAsync(unrelated, "init");
+
+            var linkedProps = Path.Combine(linked, "Directory.Build.props");
+            var linkedHook = Path.Combine(linked, "hooks", "hooks.json");
+            var linkedBan = Path.Combine(linked, "nested", "BannedSymbols.txt");
+            var primaryBan = Path.Combine(primary, "BannedSymbols.txt");
+            var primarySentinel = Path.Combine(primary, ".release-managed-edit-allowed");
+            var linkedSentinel = Path.Combine(linked, ".release-managed-edit-allowed");
+
+            await AssertGuardExitAsync(primary, linkedProps, 2);
+            await AssertGuardExitAsync(primary, linkedHook, 2);
+            await AssertGuardExitAsync(primary, linkedBan, 2);
+            await AssertGuardExitAsync(primary, Path.Combine(unrelated, "CHANGELOG.md"), 0);
+            await AssertGuardExitAsync(primary, Path.Combine(unrelated, "BannedSymbols.txt"), 0);
+            await AssertGuardExitAsync(primary, Path.Combine(tempRoot, "BannedSymbols.txt"), 0);
+
+            File.WriteAllText(primarySentinel, string.Empty);
+            await AssertGuardExitAsync(primary, primaryBan, 0);
+            var denied = await RunReleaseManagedGuardAsync(GuardInput(linkedBan), primary);
+            Assert.AreEqual(2, denied.ExitCode, denied.StdErr);
+            StringAssert.Contains(denied.StdErr.Replace('\\', '/'), linkedSentinel.Replace('\\', '/'));
+            await AssertGuardExitAsync(primary, linkedProps, 2);
+
+            File.WriteAllText(linkedSentinel, string.Empty);
+            await AssertGuardExitAsync(primary, linkedProps, 0);
+            await AssertGuardExitAsync(primary, linkedBan, 0);
+            File.Delete(primarySentinel);
+            await AssertGuardExitAsync(primary, primaryBan, 2);
+        }
+        finally
+        {
+            if (linkedCreated)
+            {
+                await RunGitAsync(primary, "worktree", "remove", "--force", linked);
+            }
+            TestFixtureFileSystem.DeleteDirectoryIfExists(tempRoot);
+        }
+    }
+
     // ----- Helpers -----
 
     private static JsonDocument LoadShippedHooks()
@@ -291,7 +347,39 @@ public sealed class HookConfigurationTests
         }
     }
 
-    private static async Task<GuardResult> RunReleaseManagedGuardAsync(string input)
+    private static string GuardInput(string path)
+        => JsonSerializer.Serialize(new { tool_input = new { file_path = path } });
+
+    private static async Task AssertGuardExitAsync(string projectRoot, string path, int expectedExit)
+    {
+        var result = await RunReleaseManagedGuardAsync(GuardInput(path), projectRoot);
+        Assert.AreEqual(expectedExit, result.ExitCode, $"Path: {path}; stderr: {result.StdErr}");
+    }
+
+    private static async Task RunGitAsync(string directory, params string[] args)
+    {
+        var startInfo = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = directory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in args)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start git for release guard test.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.AreEqual(0, process.ExitCode, $"git {string.Join(' ', args)}: {await stdoutTask} {await stderrTask}");
+    }
+
+    private static async Task<GuardResult> RunReleaseManagedGuardAsync(string input, string? projectRoot = null)
     {
         var scriptPath = FindRepoRootFile(Path.Combine("eng", "guard-release-managed-files.ps1"));
         var tempRoot = Path.Combine(Path.GetTempPath(), $"rmcp-hook-{Guid.NewGuid():N}");
@@ -309,7 +397,7 @@ public sealed class HookConfigurationTests
             startInfo.ArgumentList.Add("-NoProfile");
             startInfo.ArgumentList.Add("-File");
             startInfo.ArgumentList.Add(scriptPath);
-            startInfo.Environment["CLAUDE_PROJECT_DIR"] = tempRoot;
+            startInfo.Environment["CLAUDE_PROJECT_DIR"] = projectRoot ?? tempRoot;
 
             using var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Failed to start release-managed guard process.");

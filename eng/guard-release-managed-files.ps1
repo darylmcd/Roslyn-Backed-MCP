@@ -4,8 +4,9 @@
 # release-managed set (the 7 version-source files plus 4 release-critical
 # infrastructure files), block the edit unless an override sentinel is present.
 #
-# Override sentinel: a file at $env:CLAUDE_PROJECT_DIR/.release-managed-edit-allowed
-# whose mtime is within RELEASE_SENTINEL_TTL_SECONDS (default 1800s / 30 min).
+# Override sentinel: a file at the root of the checkout being edited. The
+# project checkout and its linked worktrees share the guard, but each has its
+# own sentinel (default TTL 1800s / 30 min).
 # Skills like /bump, /release-cut, and /ship create this sentinel before mutating
 # release-managed files and remove it at end of flow.
 #
@@ -54,16 +55,45 @@ if ($null -eq $filePathProperty -or
 }
 $filePath = $filePathProperty.Value
 
-$repoRoot = $env:CLAUDE_PROJECT_DIR
-if (-not $repoRoot) { $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
-
-$normalized = $filePath -replace '\\', '/'
-$repoRootNorm = ($repoRoot -replace '\\', '/').TrimEnd('/')
-if ($normalized.StartsWith($repoRootNorm + '/', [StringComparison]::OrdinalIgnoreCase)) {
-    $relative = $normalized.Substring($repoRootNorm.Length + 1)
-} else {
-    $relative = $normalized
+$projectRoot = $env:CLAUDE_PROJECT_DIR
+if (-not $projectRoot) { $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+try {
+    $projectRoot = [IO.Path]::GetFullPath($projectRoot)
+    $targetPath = [IO.Path]::GetFullPath($filePath, $projectRoot)
+} catch {
+    [Console]::Error.WriteLine('Blocked: malformed release-managed hook input (invalid-file-path).')
+    exit 2
 }
+
+function Get-CheckoutInfo([string]$path) {
+    $ancestor = $path
+    while (-not (Test-Path -LiteralPath $ancestor -PathType Container)) {
+        $parent = [IO.Path]::GetDirectoryName($ancestor)
+        if (-not $parent -or $parent -eq $ancestor) { return $null }
+        $ancestor = $parent
+    }
+
+    $gitPaths = @(git -C $ancestor rev-parse --path-format=absolute --show-toplevel --git-common-dir 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $gitPaths.Count -ne 2) { return $null }
+    return [PSCustomObject]@{
+        Root = [IO.Path]::GetFullPath($gitPaths[0])
+        CommonDir = [IO.Path]::GetFullPath($gitPaths[1]).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    }
+}
+
+$projectCheckout = Get-CheckoutInfo $projectRoot
+$targetCheckout = Get-CheckoutInfo $targetPath
+$pathComparison = if ([OperatingSystem]::IsWindows()) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+if ($null -ne $projectCheckout) {
+    if ($null -eq $targetCheckout -or -not $projectCheckout.CommonDir.Equals($targetCheckout.CommonDir, $pathComparison)) { exit 0 }
+    $repoRoot = $targetCheckout.Root
+} else {
+    # Preserve the project-root fallback when CLAUDE_PROJECT_DIR is not a Git checkout.
+    $repoRoot = $projectRoot
+}
+
+$relative = [IO.Path]::GetRelativePath($repoRoot, $targetPath) -replace '\\', '/'
+if ($relative -eq '..' -or $relative.StartsWith('../', [StringComparison]::Ordinal) -or [IO.Path]::IsPathRooted($relative)) { exit 0 }
 $relativeLower = $relative.ToLowerInvariant()
 $basenameLower = (Split-Path -Leaf $relativeLower)
 
