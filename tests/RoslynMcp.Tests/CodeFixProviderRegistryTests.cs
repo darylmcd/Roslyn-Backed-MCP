@@ -190,29 +190,43 @@ public sealed class CodeFixProviderRegistryTests
             Path.GetDirectoryName(path)!,
             Path.GetFileName(path).ToUpperInvariant());
         Assert.AreNotEqual(path, caseVariant, "The fixture needs a path with different casing.");
-        var firstReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
-        var secondReference = new AnalyzerFileReference(caseVariant, new TestAnalyzerAssemblyLoader());
-        var loadCount = 0;
-        var registry = new CodeFixProviderRegistry(
-            NullLogger<CodeFixProviderRegistry>.Instance,
-            () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
-            _ =>
-            {
-                loadCount++;
-                return new FeatureProviderLoadResult<CodeFixProvider>([], []);
-            });
-        using var workspace = new AdhocWorkspace();
-        var firstProjectId = ProjectId.CreateNewId();
-        var secondProjectId = ProjectId.CreateNewId();
-        var solution = workspace.CurrentSolution
-            .AddProject(firstProjectId, "First", "First", LanguageNames.CSharp)
-            .AddAnalyzerReference(firstProjectId, firstReference)
-            .AddProject(secondProjectId, "Second", "Second", LanguageNames.CSharp)
-            .AddAnalyzerReference(secondProjectId, secondReference);
+        // Windows resolves the spelling against the existing file. On a
+        // case-sensitive filesystem the second spelling needs its own copy for
+        // AnalyzerFileReference's eager dependency-location validation.
+        var createdCaseVariant = !File.Exists(caseVariant);
+        if (createdCaseVariant)
+            File.Copy(path, caseVariant);
+        try
+        {
+            var firstReference = new AnalyzerFileReference(path, new TestAnalyzerAssemblyLoader());
+            var secondReference = new AnalyzerFileReference(caseVariant, new TestAnalyzerAssemblyLoader());
+            var loadCount = 0;
+            var registry = new CodeFixProviderRegistry(
+                NullLogger<CodeFixProviderRegistry>.Instance,
+                () => new FeatureProviderLoadResult<CodeFixProvider>([], []),
+                _ =>
+                {
+                    loadCount++;
+                    return new FeatureProviderLoadResult<CodeFixProvider>([], []);
+                });
+            using var workspace = new AdhocWorkspace();
+            var firstProjectId = ProjectId.CreateNewId();
+            var secondProjectId = ProjectId.CreateNewId();
+            var solution = workspace.CurrentSolution
+                .AddProject(firstProjectId, "First", "First", LanguageNames.CSharp)
+                .AddAnalyzerReference(firstProjectId, firstReference)
+                .AddProject(secondProjectId, "Second", "Second", LanguageNames.CSharp)
+                .AddAnalyzerReference(secondProjectId, secondReference);
 
-        _ = registry.GetProvidersForDetailed("TEST0001", solution);
+            _ = registry.GetProvidersForDetailed("TEST0001", solution);
 
-        Assert.AreEqual(2, loadCount);
+            Assert.AreEqual(2, loadCount);
+        }
+        finally
+        {
+            if (createdCaseVariant)
+                File.Delete(caseVariant);
+        }
     }
 
     [TestMethod]
