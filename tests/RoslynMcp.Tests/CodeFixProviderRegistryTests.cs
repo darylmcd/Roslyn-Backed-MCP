@@ -185,16 +185,18 @@ public sealed class CodeFixProviderRegistryTests
     [TestMethod]
     public void Registry_DistinctReferencesWithCaseVariantPathsEachUseOwnLoader()
     {
-        var path = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var fixtureDirectory = Directory.CreateTempSubdirectory("roslyn-provider-case-");
+        var assemblyPath = typeof(CodeFixProviderRegistryTests).Assembly.Location;
+        var path = Path.Combine(fixtureDirectory.FullName, Path.GetFileName(assemblyPath));
         var caseVariant = Path.Combine(
-            Path.GetDirectoryName(path)!,
+            fixtureDirectory.FullName,
             Path.GetFileName(path).ToUpperInvariant());
         Assert.AreNotEqual(path, caseVariant, "The fixture needs a path with different casing.");
+        File.Copy(assemblyPath, path);
         // Windows resolves the spelling against the existing file. On a
         // case-sensitive filesystem the second spelling needs its own copy for
         // AnalyzerFileReference's eager dependency-location validation.
-        var createdCaseVariant = !File.Exists(caseVariant);
-        if (createdCaseVariant)
+        if (!File.Exists(caseVariant))
             File.Copy(path, caseVariant);
         try
         {
@@ -224,8 +226,7 @@ public sealed class CodeFixProviderRegistryTests
         }
         finally
         {
-            if (createdCaseVariant)
-                File.Delete(caseVariant);
+            fixtureDirectory.Delete(recursive: true);
         }
     }
 
