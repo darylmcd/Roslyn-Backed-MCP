@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T22:39:48Z
+**updated_at:** 2026-09-29T15:02:24Z
 
 ## Agent contract
 
@@ -153,6 +153,7 @@
 | `tool-refusal-public-message-guard` | Medium | public-argument-exception-core-move | **Nothing stops new refusals being thrown as plain InvalidOperationException** — add a ratchet that fails any new plain InvalidOperationException in src, with explicit public and internal paths, so refusals stop collapsing to generic text. [type: bug] [source: retro-20260927] | M | items/tool-refusal-public-message-guard.md |
 | `project-name-not-found-misleading-reload-advice` | Medium | public-argument-exception-core-move | **Stop advising workspace_reload for unknown project names and symbol handles** — build_project/test_run/rename_preview say not found and list loaded projects; category and exceptionType stay unchanged on 4.x. [type: bug] [source: invalid-operation-throw-sites-lack-public-message] | M | items/project-name-not-found-misleading-reload-advice.md |
 | `release-lag-guard` | Medium | — | **No signal when Fixed fragments sit unreleased** — warn in CI and the release verifier when a Fixed changelog.d fragment has been unreleased for more than a configurable number of days (default 7). [type: chore] [source: retro-20260927] | S | items/release-lag-guard.md |
+| `workspace-load-existing-file-notfound` | Medium | — | **Investigate existing-file workspace_load failure** — reproduce and fix FileNotFound for a readable solution inside a sanctioned root. [type: chore] [source: BioFileTransfer backlog-remediate 2026-09-29] | M | items/workspace-load-existing-file-notfound.md |
 
 ## Low
 
