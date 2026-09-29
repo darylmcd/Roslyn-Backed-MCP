@@ -228,7 +228,8 @@ hooks:
         eng/verify-version-drift.ps1, eng/verify-skills-are-generic.ps1,
         hooks/hooks.json, and any BannedSymbols.txt in those checkouts
       Anything under tests/ or fixtures/ is exempt.
-      Paths in other repositories or outside Git checkouts are allowed.
+      With a Git project root, paths in other repositories or outside Git
+      checkouts are allowed. A non-Git project root guards paths inside itself.
     override: |
       A sentinel file <checkout-root>/.release-managed-edit-allowed whose mtime is within
       RELEASE_SENTINEL_TTL_SECONDS (default 1800s). /bump, /release-cut and

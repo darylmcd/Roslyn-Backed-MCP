@@ -75,7 +75,7 @@ guarded set:
 | 10 | `hooks/hooks.json` | The shipped hook config — release-critical even though the edit guard itself is repo-local. |
 | 11 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
 
-Files 1 and 3-8 are the seven version sources enumerated by `eng/verify-version-drift.ps1`; files 2 and 9-11 are extra release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1` as the canonical path list. The guard applies to this repository's primary checkout and linked worktrees, identified by their shared Git common directory. It allows paths in other repositories and outside Git checkouts.
+Files 1 and 3-8 are the seven version sources enumerated by `eng/verify-version-drift.ps1`; files 2 and 9-11 are extra release-critical infrastructure. Treat `eng/guard-release-managed-files.ps1` as the canonical path list. With a Git project root, the guard applies to this repository's primary checkout and linked worktrees, identified by their shared Git common directory; it allows paths in other repositories and outside Git checkouts. With a non-Git project root, it checks paths inside `CLAUDE_PROJECT_DIR` against the same managed set.
 
 **Bypass mechanism.** The guard checks only `tool_input.file_path` and allows the edit while the gitignored sentinel `.release-managed-edit-allowed` at the root of the checkout being edited is younger than the TTL (default 1800 s, override via `RELEASE_SENTINEL_TTL_SECONDS`); otherwise it exits 2. Relative paths resolve against `CLAUDE_PROJECT_DIR` (or the script checkout when unset). `/bump`, `/release-cut`, and `/ship` create and remove the sentinel themselves; for an intentional ad-hoc edit, create it in the checkout being edited, then edit:
 
