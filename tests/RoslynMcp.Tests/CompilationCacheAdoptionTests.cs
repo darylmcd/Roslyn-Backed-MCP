@@ -648,6 +648,7 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
             WorkspaceManager,
             new PreviewStore(),
             cache,
+            new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance),
             NullLogger<FixAllService>.Instance);
 
         // CollectDiagnosticsAsync is the converted site. PreviewFixAllAsync early-returns BEFORE it

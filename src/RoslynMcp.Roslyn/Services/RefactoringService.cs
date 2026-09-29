@@ -707,7 +707,7 @@ public sealed class RefactoringService : IRefactoringService
                 .ConfigureAwait(false);
         }
 
-        // code-fix-preview-vs-fix-all-preview-shape-inconsistency — mirror FixAllService:78-87's
+        // code-fix-preview-vs-fix-all-preview-shape-inconsistency — mirror FixAllService.PreviewFixAllAsync's
         // structured empty envelope when no provider is registered. Previously this branch threw
         // InvalidOperationException, forcing callers to catch a generic exception to discover the
         // same "no provider loaded" condition that fix_all_preview returns as data. Returning an
