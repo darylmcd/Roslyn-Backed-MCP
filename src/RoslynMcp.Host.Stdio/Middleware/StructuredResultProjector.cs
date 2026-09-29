@@ -77,7 +77,10 @@ internal static class StructuredResultProjector
             // Classify once. The resulting ErrorInfo determines both log/report severity and the
             // public formatter, eliminating the prior divergent second classification path.
             var errorInfo = ToolErrorHandler.ClassifyError(exception, toolName);
-            if (exception is not PublicArgumentException and not PublicInvalidOperationException &&
+            // Only the SDK binder's generic "arguments" failure can be refined from the
+            // schema. A tool may fail after workspace recovery while the original request
+            // still lacks workspaceId; that execution failure must keep its own category.
+            if (exception is ArgumentException { ParamName: "arguments" } &&
                 UnknownArgumentDetector.DetectMissingRequiredNames(context, toolName) is { Count: > 0 } missing)
             {
                 var message = missing.Count == 1
