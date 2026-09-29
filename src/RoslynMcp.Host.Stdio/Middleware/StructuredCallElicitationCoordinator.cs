@@ -305,7 +305,10 @@ internal static class StructuredCallElicitationCoordinator
         {
             context.Params.Name = toolName;
             context.Params.Arguments = new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
-            return await next(context, cancellationToken).ConfigureAwait(false);
+            StructuredResultProjector.RecordDispatchAttempt(context.Params.Arguments);
+            var result = await next(context, cancellationToken).ConfigureAwait(false);
+            StructuredResultProjector.CompleteDispatchAttempt();
+            return result;
         }
         catch (InputRequiredException inputRequired)
         {
