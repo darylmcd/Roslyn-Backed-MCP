@@ -47,12 +47,23 @@
       "notes": null,
       "fileSetHash": "fece77200a3e0bec941820f3d8c5dc97843847ab5259c1728a1bc708ce63a66e",
       "stanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
-      "reviewedStanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4"
+      "reviewedStanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
+      "integrationGate": {
+        "pr": 1671,
+        "base": "main",
+        "mainOid": "17346ae4cf13729a854e748be53c57f8ae846e2f",
+        "headOid": "1fd90e32744d4b27146cea349faefbc01a012dc9",
+        "gatedTree": "1bc17cbf5092d51f014b387883526b37de78ef56",
+        "exit": 1,
+        "diagnostic": "gate command exited 1 (log ~\\.codex\\scratch\\roslyn-plan-20260929T150207Z\\gate-analyzer-shadow-isolation-misses-loaded-generators-pr1671-20260929T162509218Z-44752.log)",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-analyzer-shadow-isolation-misses-loaded-generators-pr1671-20260929T162509218Z-44752.log",
+        "gatedAt": "2026-09-29T16:30:20.227Z"
+      }
     },
     {
       "id": "release-managed-guard-worktree-scope",
       "order": 3,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "release-managed-guard-worktree-scope"
       ],
@@ -83,8 +94,8 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/release-managed-guard-worktree-scope",
+      "worktreePath": ".worktrees/release-managed-guard-worktree-scope",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
