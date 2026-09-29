@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
@@ -383,13 +384,17 @@ public class ClientRootPathValidatorTests
         Directory.CreateDirectory(sanctionedRoot);
         Directory.CreateDirectory(siblingRoot);
         var projectPath = Path.Combine(sanctionedRoot, "VolumeProbe.csproj");
-        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var solutionPath = Path.Combine(sanctionedRoot, "VolumeProbe.slnx");
+        File.WriteAllText(solutionPath, "<Solution><Project Path=\"VolumeProbe.csproj\" /></Solution>");
+        File.WriteAllText(Path.Combine(sanctionedRoot, "Program.cs"), "public class Program { }");
         File.WriteAllText(Path.Combine(sanctionedRoot, "Directory.Packages.props"),
             "<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>" +
             "</PropertyGroup><ItemGroup><PackageVersion Include=\"Example.Package\" Version=\"1.0.0\" />" +
             "</ItemGroup></Project>");
         var siblingPath = Path.Combine(siblingRoot, "Outside.csproj");
         File.WriteAllText(siblingPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var externalSourcePath = Path.Combine(siblingRoot, "External.cs");
+        File.WriteAllText(externalSourcePath, "public class External { }");
 
         try
         {
@@ -402,7 +407,14 @@ public class ClientRootPathValidatorTests
             var driveRoot = Path.GetPathRoot(testRoot)!;
             var linkedRoot = Path.Combine(linkPath, Path.GetRelativePath(driveRoot, sanctionedRoot));
             var linkedProject = Path.Combine(linkedRoot, "VolumeProbe.csproj");
+            var linkedSolution = Path.Combine(linkedRoot, "VolumeProbe.slnx");
             var linkedSibling = Path.Combine(linkPath, Path.GetRelativePath(driveRoot, siblingPath));
+            var linkedExternalSource = Path.Combine(linkPath, Path.GetRelativePath(driveRoot, externalSourcePath));
+            File.WriteAllText(projectPath,
+                "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>" +
+                "<EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup>" +
+                "<Compile Include=\"Program.cs\" /><Compile Include=\"" + linkedExternalSource +
+                "\" /></ItemGroup></Project>");
             Assert.IsTrue(File.Exists(linkedProject), "The junction must address the fixture project.");
 
             var physicalProject = PhysicalPathResolver.Resolve(linkedProject);
@@ -423,14 +435,49 @@ public class ClientRootPathValidatorTests
                 ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                     server: null, linkedSibling, CancellationToken.None, securityOptions: options));
 
+            var restore = await new DotnetCommandRunner().RunAsync(
+                sanctionedRoot, solutionPath, ["restore", solutionPath, "--nologo"], CancellationToken.None);
+            Assert.IsTrue(restore.Succeeded,
+                $"The solution fixture must restore. ExitCode={restore.ExitCode} StdErr={restore.StdErr}");
+
             using var manager = new WorkspaceManager(
                 NullLogger<WorkspaceManager>.Instance,
                 new PreviewStore(),
                 new FileWatcherService(NullLogger<FileWatcherService>.Instance),
                 new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 1 });
-            var status = await manager.LoadAsync(linkedProject, CancellationToken.None);
-            Assert.IsTrue(status.IsLoaded, "workspace_load must reach an active session through the mount point.");
-            Assert.AreEqual(physicalProject, status.LoadedPath);
+            using var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), manager);
+            await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+                linkedRoot, CancellationToken.None);
+            var loadJson = await WorkspaceTools.LoadWorkspace(
+                serverSession.Server, gate, manager, warmService: null!, commandRunner: null!,
+                linkedSolution, prewarm: false, ct: CancellationToken.None);
+            using var load = JsonDocument.Parse(loadJson);
+            Assert.IsTrue(load.RootElement.GetProperty("isReady").GetBoolean(),
+                "workspace_load must reach a ready solution session through the mount point.");
+            Assert.AreEqual(1, load.RootElement.GetProperty("projectCount").GetInt32());
+            var workspaceId = load.RootElement.GetProperty("workspaceId").GetString()!;
+            Assert.AreEqual(PhysicalPathResolver.Resolve(linkedSolution), manager.GetStatus(workspaceId).LoadedPath);
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() => WorkspaceTools.LoadWorkspace(
+                serverSession.Server, gate, manager, warmService: null!, commandRunner: null!,
+                linkedSibling, prewarm: false, ct: CancellationToken.None));
+
+            var broadOptions = new SecurityOptions { SanctionedRoots = [linkPath] };
+            _ = await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server: null, linkedExternalSource, CancellationToken.None, securityOptions: broadOptions);
+            var current = manager.GetCurrentSolution(workspaceId);
+            Assert.IsTrue(current.Projects.Single().Documents.Any(document => document.Name == "External.cs"),
+                "External compile item must be loaded: " + string.Join(", ",
+                    current.Projects.Single().Documents.Select(document => document.FilePath)));
+            var externalDocument = current.Projects.Single().Documents.Single(document => document.Name == "External.cs");
+            Assert.AreNotEqual(externalDocument.FilePath, PhysicalPathResolver.Resolve(externalDocument.FilePath!));
+            var edited = current.WithDocumentText(externalDocument.Id, SourceText.From("public class Changed { }"));
+            Assert.ThrowsExactly<InvalidOperationException>(() => manager.TryApplyChanges(workspaceId, edited));
+            var persistence = new DocumentSetPersistenceService(manager, NullLogger.Instance);
+            var persisted = await persistence.PersistAsync(
+                workspaceId, current, edited, edited.GetChanges(current), CancellationToken.None);
+            Assert.IsFalse(persisted.Success, "Document-set persistence must reject the alias before writing.");
+            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath),
+                "An aliased external document must never be written through MSBuildWorkspace.");
         }
         finally
         {

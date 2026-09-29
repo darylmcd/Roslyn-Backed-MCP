@@ -560,6 +560,11 @@ public sealed class UndoService : IUndoService, IDisposable
         IReadOnlyList<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
+        foreach (var (filePath, _, _) in diskRestores)
+        {
+            WorkspaceManager.EnsurePhysicalPath(filePath);
+        }
+
         var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);
         if (!workspaceApplied)
         {
