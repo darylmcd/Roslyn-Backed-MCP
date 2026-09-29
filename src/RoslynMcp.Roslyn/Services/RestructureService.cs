@@ -479,9 +479,7 @@ public sealed class RestructureService : IRestructureService
 /// <summary>
 /// Resolves the project/document set a <see cref="RestructureScope"/> selects. Shared by
 /// <see cref="RestructureService"/> and <see cref="StringLiteralReplaceService"/>, which both
-/// scope solution-wide sweeps the same way. Kept in this file (rather than a dedicated one) to
-/// stay within the sweep's production-file budget; promote to its own file if a third consumer
-/// appears.
+/// scope solution-wide sweeps the same way.
 /// </summary>
 internal static class SolutionScopeHelper
 {
@@ -489,9 +487,13 @@ internal static class SolutionScopeHelper
     {
         if (!string.IsNullOrWhiteSpace(scope.ProjectName))
         {
+            var canonicalProjectPath = Path.IsPathFullyQualified(scope.ProjectName)
+                ? PhysicalPathResolver.Resolve(scope.ProjectName)
+                : null;
             var match = solution.Projects.FirstOrDefault(p =>
                 string.Equals(p.Name, scope.ProjectName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(p.FilePath, scope.ProjectName, StringComparison.OrdinalIgnoreCase));
+                (canonicalProjectPath is not null && p.FilePath is not null &&
+                    FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(p.FilePath), canonicalProjectPath)));
             if (match is null)
                 throw new InvalidOperationException($"Project '{scope.ProjectName}' not found in workspace.");
             return [match];
@@ -503,9 +505,10 @@ internal static class SolutionScopeHelper
     {
         if (!string.IsNullOrWhiteSpace(scope.FilePath))
         {
-            var fullPath = Path.GetFullPath(scope.FilePath);
+            var fullPath = PhysicalPathResolver.Resolve(scope.FilePath);
             var doc = project.Documents.FirstOrDefault(d =>
-                string.Equals(d.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+                d.FilePath is not null &&
+                FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(d.FilePath), fullPath));
             return doc is null ? [] : [doc];
         }
         return project.Documents.Where(d =>

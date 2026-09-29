@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Runtime;
 using RoslynMcp.Host.Stdio.Security;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
@@ -12,6 +13,18 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public class ClientRootPathValidatorTests
 {
+    private static string PhysicalExistingPath(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.IsTrue(FinalPathResolver.TryResolve(path, out var finalPath, out var error),
+                $"Windows must resolve existing fixture path '{path}'; Win32 error {error}.");
+            return finalPath!;
+        }
+
+        return Path.GetFullPath(path);
+    }
+
     // Converts a Windows-style absolute path to the platform's native absolute path so
     // IsPathUnderAnyRoot tests work on Linux CI without a separate test matrix.
     // "C:\foo\bar" → "/foo/bar" on Linux, unchanged on Windows.
@@ -37,7 +50,7 @@ public class ClientRootPathValidatorTests
     public void ResolvePath_Relative_Path_Resolves_Against_CurrentDirectory()
     {
         var result = ClientRootPathValidator.ResolvePath(".");
-        var expected = Path.GetFullPath(".");
+        var expected = PhysicalExistingPath(Path.GetFullPath("."));
         Assert.AreEqual(expected, result);
     }
 
@@ -47,7 +60,7 @@ public class ClientRootPathValidatorTests
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
         var pathWithTraversal = Path.Combine(repoRoot, "src", "..", "tests");
         var result = ClientRootPathValidator.ResolvePath(pathWithTraversal);
-        var expected = Path.GetFullPath(Path.Combine(repoRoot, "tests"));
+        var expected = PhysicalExistingPath(Path.Combine(repoRoot, "tests"));
         Assert.AreEqual(expected, result);
     }
 
@@ -67,7 +80,7 @@ public class ClientRootPathValidatorTests
         Assert.IsTrue(Directory.Exists(srcDir), "src directory must exist for this test");
 
         var result = ClientRootPathValidator.ResolvePath(srcDir);
-        Assert.AreEqual(Path.GetFullPath(srcDir), result);
+        Assert.AreEqual(PhysicalExistingPath(srcDir), result);
     }
 
     [TestMethod]
@@ -78,7 +91,7 @@ public class ClientRootPathValidatorTests
         Assert.IsTrue(File.Exists(filePath), "Directory.Build.props must exist for this test");
 
         var result = ClientRootPathValidator.ResolvePath(filePath);
-        Assert.AreEqual(Path.GetFullPath(filePath), result);
+        Assert.AreEqual(PhysicalExistingPath(filePath), result);
     }
 
     [TestMethod]
@@ -377,6 +390,59 @@ public class ClientRootPathValidatorTests
     }
 
     [TestMethod]
+    public void ResolvePath_TwoDriveLettersForOneVolume_ShareIdentity()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are a Windows filesystem concept.");
+            return;
+        }
+
+        var driveRoot = Path.GetPathRoot(TestTempRoot.Current)!;
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-drive-identity-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testRoot);
+        try
+        {
+            var filePath = Path.Combine(testRoot, "Probe.cs");
+            File.WriteAllText(filePath, "public class Probe { }");
+            using var alias = WindowsDriveAlias.Create(driveRoot);
+            var aliasPath = Path.Combine(alias.RootPath, Path.GetRelativePath(driveRoot, filePath));
+            Assert.IsTrue(File.Exists(aliasPath));
+            Assert.AreEqual(PhysicalPathResolver.Resolve(filePath), PhysicalPathResolver.Resolve(aliasPath));
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    [TestMethod]
+    public void ResolvePath_DriveAliasToSubdirectory_ClampsParentAtAliasRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Drive-letter aliases are a Windows filesystem concept.");
+            return;
+        }
+
+        var testRoot = Path.Combine(TestTempRoot.Current, "rmcp-alias-parent-" + Guid.NewGuid().ToString("N"));
+        var aliasTarget = Path.Combine(testRoot, "safe");
+        Directory.CreateDirectory(aliasTarget);
+        try
+        {
+            using var alias = WindowsDriveAlias.Create(aliasTarget);
+            var traversed = Path.Combine(alias.RootPath, "..", "Probe.cs");
+            var clamped = Path.Combine(aliasTarget, "Probe.cs");
+            Assert.AreEqual(Path.GetFullPath(Path.Combine(alias.RootPath, "Probe.cs")), Path.GetFullPath(traversed));
+            Assert.AreEqual(PhysicalPathResolver.Resolve(clamped), PhysicalPathResolver.Resolve(traversed));
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(testRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task VolumeMountJunction_WorkspaceLoadAndSanctionedBoundary_UseExistingPhysicalPath()
     {
         if (!OperatingSystem.IsWindows())
@@ -402,7 +468,8 @@ public class ClientRootPathValidatorTests
         var siblingPath = Path.Combine(siblingRoot, "Outside.csproj");
         File.WriteAllText(siblingPath, "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         var externalSourcePath = Path.Combine(siblingRoot, "External.cs");
-        File.WriteAllText(externalSourcePath, "public class External { }");
+        const string externalSource = "public class External { public int Value => 42; }";
+        File.WriteAllText(externalSourcePath, externalSource);
 
         try
         {
@@ -426,8 +493,8 @@ public class ClientRootPathValidatorTests
             Assert.IsTrue(File.Exists(linkedProject), "The junction must address the fixture project.");
 
             var physicalProject = PhysicalPathResolver.Resolve(linkedProject);
-            Assert.IsTrue(physicalProject.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase),
-                "Exercise the volume-only path even when this test drive also has a drive letter.");
+            Assert.AreEqual(Path.GetFullPath(projectPath), physicalProject,
+                "A volume junction with a drive mount must resolve to the physical drive path.");
             Assert.IsTrue(File.Exists(physicalProject), "Canonicalization must preserve file identity.");
             Assert.IsNotNull(ProjectMetadataParser.LoadProjectDocument(physicalProject));
             var packagesProps = MsBuildMetadataHelper.FindDirectoryPackagesProps(physicalProject);
@@ -478,13 +545,20 @@ public class ClientRootPathValidatorTests
                     current.Projects.Single().Documents.Select(document => document.FilePath)));
             var externalDocument = current.Projects.Single().Documents.Single(document => document.Name == "External.cs");
             Assert.AreNotEqual(externalDocument.FilePath, PhysicalPathResolver.Resolve(externalDocument.FilePath!));
+            var metrics = await new CodeMetricsService(manager).GetComplexityMetricsAsync(
+                workspaceId, linkedExternalSource, null, null, null, 100, CancellationToken.None);
+            Assert.IsNotEmpty(metrics, "A file filter must match an imported document whose path remains aliased.");
+            var restructure = await new RestructureService(manager, new PreviewStore())
+                .PreviewRestructureAsync(workspaceId, "42", "43",
+                    new RestructureScope(linkedExternalSource, null), CancellationToken.None);
+            Assert.AreEqual(1, restructure.Changes.Count);
             var edited = current.WithDocumentText(externalDocument.Id, SourceText.From("public class Changed { }"));
             Assert.ThrowsExactly<InvalidOperationException>(() => manager.TryApplyChanges(workspaceId, edited));
             var persistence = new DocumentSetPersistenceService(manager, NullLogger.Instance);
             var persisted = await persistence.PersistAsync(
                 workspaceId, current, edited, edited.GetChanges(current), CancellationToken.None);
             Assert.IsFalse(persisted.Success, "Document-set persistence must reject the alias before writing.");
-            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath),
+            Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath),
                 "An aliased external document must never be written through MSBuildWorkspace.");
 
             var programPath = Path.Combine(sanctionedRoot, "Program.cs");
@@ -498,7 +572,7 @@ public class ClientRootPathValidatorTests
             var compositeResult = await composite.ApplyCompositeAsync(token, CancellationToken.None);
             Assert.IsFalse(compositeResult.Success, "Composite apply must reject every aliased target before its first write.");
             Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
-            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath));
+            Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath));
 
             using var undo = new UndoService(NullLogger<UndoService>.Instance, manager);
             undo.CaptureBeforeApply(workspaceId, "alias rejection", preApplySolution: null,
@@ -509,7 +583,7 @@ public class ClientRootPathValidatorTests
             Assert.IsFalse(await undo.RevertAsync(workspaceId, CancellationToken.None),
                 "Snapshot undo must reject every aliased target before its first restore.");
             Assert.AreEqual("public class Program { }", File.ReadAllText(programPath));
-            Assert.AreEqual("public class External { }", File.ReadAllText(externalSourcePath));
+            Assert.AreEqual(externalSource, File.ReadAllText(externalSourcePath));
         }
         finally
         {

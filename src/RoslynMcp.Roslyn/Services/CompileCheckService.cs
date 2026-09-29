@@ -227,7 +227,7 @@ public sealed class CompileCheckService : ICompileCheckService
 
         var diagPath = lineSpan.Path;
         if (string.IsNullOrEmpty(diagPath)) return false;
-        return normalizedFileFilters.Contains(Path.GetFullPath(diagPath));
+        return normalizedFileFilters.Contains(PhysicalPathResolver.Resolve(diagPath));
     }
 
     /// <summary>
@@ -327,7 +327,7 @@ public sealed class CompileCheckService : ICompileCheckService
             return;
         }
 
-        normalized.Add(Path.GetFullPath(filePath));
+        normalized.Add(PhysicalPathResolver.Resolve(filePath));
     }
 
     private static (IReadOnlyList<Project> Projects, string? ScopeHint) ResolveProjectScope(
@@ -373,7 +373,7 @@ public sealed class CompileCheckService : ICompileCheckService
                     continue;
                 }
 
-                var documentPath = Path.GetFullPath(document.FilePath);
+                var documentPath = PhysicalPathResolver.Resolve(document.FilePath);
                 if (normalizedFileFilters.Contains(documentPath))
                 {
                     owningProjects.Add(project);

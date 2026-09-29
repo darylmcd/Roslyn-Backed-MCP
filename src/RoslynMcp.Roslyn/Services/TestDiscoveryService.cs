@@ -1,12 +1,12 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -436,12 +436,12 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
     private static Document? FindDocumentByPath(Solution solution, string filePath)
     {
-        var fullFilePath = Path.GetFullPath(filePath);
+        var fullFilePath = PhysicalPathResolver.Resolve(filePath);
         return solution
             .Projects
             .SelectMany(p => p.Documents)
             .FirstOrDefault(d => d.FilePath is not null &&
-                string.Equals(Path.GetFullPath(d.FilePath), fullFilePath, StringComparison.OrdinalIgnoreCase));
+                FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(d.FilePath), fullFilePath));
     }
 
     private static async Task AddDirectReferenceMatchesAsync(
