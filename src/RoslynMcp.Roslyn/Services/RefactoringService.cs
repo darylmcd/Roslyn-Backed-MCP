@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Simplification;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -617,31 +618,30 @@ public sealed class RefactoringService : IRefactoringService
         // nothing would change, then attribute any observed disk mutation to bugs
         // elsewhere in the apply pipeline.
         //
-        // Fix: format the whole document, then construct a "ranged" output by
-        // splicing — keep the formatter's text for lines inside [startLine, endLine]
-        // and the caller's original text outside. The formatter has full context
-        // (no boundary truncation) and the splice guarantees the apply path only
-        // touches lines the caller asked for. Whatever the splice produces is what
-        // the preview's `unifiedDiff` reports and what the apply will write to disk.
+        // Format the whole document for context, then project its text changes onto
+        // the original selected lines. Changes elsewhere cannot shift the selection.
+        // The projected text is shared by the preview diff and the stored apply solution.
         //
         // Sub-line column precision (startColumn/endColumn) is not threaded into the
-        // splice: the formatter's edits are line-anchored, so a column-precise splice
+        // projection: the formatter's edits are line-anchored, so a column-precise projection
         // would re-introduce the boundary-trivia drop bug this fix removes. The
         // caller's column inputs are still validated above so existing failure-mode
         // contracts (out-of-range column, inverted range) keep working.
         var formattedDoc = await Formatter.FormatAsync(document, options: null, cancellationToken: ct).ConfigureAwait(false);
-        var formattedText = await formattedDoc.GetTextAsync(ct).ConfigureAwait(false);
-
-        var rangedText = SpliceFormattedRange(text, formattedText, startLine, endLine);
+        var formatterChanges = await formattedDoc.GetTextChangesAsync(document, ct).ConfigureAwait(false);
+        var (rangedText, selectedEnd) = ProjectFormattedRange(
+            text, formatterChanges, startLine, endLine);
 
         // dr-9-7-only-partially-normalizes-whitespace: Formatter.FormatAsync re-indents and
-        // normalizes inter-token whitespace, and the splice picks up its trailing-whitespace
+        // normalizes inter-token whitespace, and the projection picks up its trailing-whitespace
         // strip on rewritten lines, but neither pass collapses runs of consecutive blank
         // lines (3+ newlines in a row → 2+ blank lines). That's a separate
         // normalization which Roslyn's trivia formatter doesn't perform, so we do it
-        // post-splice — only inside the caller's requested range so out-of-range blank-line
+        // after projection — only inside the caller's requested range so out-of-range blank-line
         // patterns stay untouched.
-        return CollapseBlankLineRunsInRange(rangedText, startLine, endLine);
+        var selectedEndLine = rangedText.Lines.GetLineFromPosition(
+            System.Math.Max(0, System.Math.Min(selectedEnd, rangedText.Length) - 1)).LineNumber + 1;
+        return CollapseBlankLineRunsInRange(rangedText, startLine, selectedEndLine);
     }
 
     public async Task<RefactoringPreviewDto> PreviewCodeFixAsync(
@@ -1167,45 +1167,268 @@ public sealed class RefactoringService : IRefactoringService
         };
 
     /// <summary>
-    /// Splices the formatter's output for the requested line range back into the original
-    /// text. Lines outside [<paramref name="startLine"/>, <paramref name="endLine"/>] (1-based,
-    /// inclusive) come from <paramref name="originalText"/>; lines inside come from the
-    /// formatter's whole-document output, mapped from the original anchor line.
+    /// Projects the formatter's changes onto the original requested full lines.
+    /// The original text outside the selection is preserved.
     ///
-    /// Why splice rather than apply <c>Formatter.FormatAsync(doc, [span])</c>: that overload
+    /// Why project rather than apply <c>Formatter.FormatAsync(doc, [span])</c>: that overload
     /// silently drops formatting edits whose target trivia falls outside the explicit span
     /// (see <c>format-range-preview-empty-diff-compile-check-filter-false-clean</c>). Whole-
-    /// document formatting + line-splice gives the formatter full context AND keeps the apply
+    /// document formatting + change projection gives the formatter full context AND keeps the apply
     /// scope honest to what the caller asked for.
     ///
-    /// Line correspondence is anchored at <c>startLine - 1</c>. A formatter result with a
-    /// different line count cannot be mapped without risking edits outside the requested
-    /// range, so this method explicitly refuses that result.
+    /// The returned end offset tracks line-count changes inside the selected span for the
+    /// post-format blank-line collapse.
     /// </summary>
-    internal static Microsoft.CodeAnalysis.Text.SourceText SpliceFormattedRange(
-        Microsoft.CodeAnalysis.Text.SourceText originalText,
-        Microsoft.CodeAnalysis.Text.SourceText formattedText,
+    internal static (SourceText Text, int SelectedEnd) ProjectFormattedRange(
+        SourceText originalText,
+        IEnumerable<TextChange> formatterChanges,
         int startLine,
         int endLine)
     {
-        var (startIdx, endIdx) = NormalizeSpliceRange(originalText, startLine, endLine);
+        var (startIdx, endIdx) = NormalizeProjectionRange(originalText, startLine, endLine);
         if (endIdx < startIdx)
         {
-            return originalText;
+            return (originalText, 0);
         }
 
-        if (originalText.Lines.Count != formattedText.Lines.Count)
+        var selection = TextSpan.FromBounds(
+            originalText.Lines[startIdx].Start,
+            originalText.Lines[endIdx].EndIncludingLineBreak);
+        var selectedChanges = new List<TextChange>();
+        var selectedEnd = selection.End;
+        foreach (var change in formatterChanges)
         {
-            throw new InvalidOperationException(
-                $"Format-range preview refused a formatter result that changed the line count " +
-                $"from {originalText.Lines.Count} to {formattedText.Lines.Count}; the requested range " +
-                $"cannot be kept bounded safely.");
+            var clipped = ClipFormatterChange(originalText, change, selection);
+            if (clipped is null)
+            {
+                if (change.Span.Start < selection.End && change.Span.End > selection.Start)
+                {
+                    throw new InvalidOperationException(
+                        "Format-range preview could not map a formatter change across the requested range boundary.");
+                }
+                continue;
+            }
+
+            selectedChanges.Add(clipped.Value);
+            selectedEnd += clipped.Value.NewText!.Length - clipped.Value.Span.Length;
         }
 
-        return SpliceMatchingLineCounts(originalText, formattedText, startIdx, endIdx);
+        return (selectedChanges.Count == 0 ? originalText : originalText.WithChanges(selectedChanges), selectedEnd);
     }
 
-    private static (int StartIdx, int EndIdx) NormalizeSpliceRange(
+    private static TextChange? ClipFormatterChange(SourceText originalText, TextChange change, TextSpan selection)
+    {
+        // Insertion at the end belongs to the following line, not the selection.
+        if (change.Span.Start >= selection.End ||
+            change.Span.End <= selection.Start && change.Span.Start < selection.Start)
+        {
+            return null;
+        }
+
+        if (change.Span.Start >= selection.Start && change.Span.End <= selection.End)
+        {
+            return change;
+        }
+
+        // Formatter changes can include adjacent trivia on both sides of a line boundary.
+        // Keep the original outside fragments and take only the replacement between them.
+        var insideStart = System.Math.Max(change.Span.Start, selection.Start);
+        var insideEnd = System.Math.Min(change.Span.End, selection.End);
+        var outsidePrefix = originalText.ToString(TextSpan.FromBounds(change.Span.Start, insideStart));
+        var outsideSuffix = originalText.ToString(TextSpan.FromBounds(insideEnd, change.Span.End));
+        var replacement = change.NewText ?? string.Empty;
+        if (insideStart == selection.Start && insideEnd == selection.End)
+        {
+            // A grouped edit can insert/delete lines outside the selection. Matching
+            // line ordinals then shifts the selected content. Require unique line
+            // identities; repeated or unmatched lines cannot be safely projected.
+            if (!TryMapFullSelectedLinesByContent(originalText, change, selection, replacement,
+                out var mappedStart, out var mappedEnd))
+            {
+                return null;
+            }
+
+            return new TextChange(selection, replacement.Substring(mappedStart, mappedEnd - mappedStart));
+        }
+
+        if (SourceText.From(originalText.ToString(change.Span)).Lines.Count !=
+            SourceText.From(replacement).Lines.Count)
+        {
+            // A line inserted or removed while crossing just one boundary cannot
+            // be assigned to the inside or outside from line ordinals alone.
+            return null;
+        }
+
+        var newStart = replacement.StartsWith(outsidePrefix, StringComparison.Ordinal)
+            ? outsidePrefix.Length
+            : BoundaryAfterSameNumberOfLines(outsidePrefix, replacement);
+        var newEnd = replacement.EndsWith(outsideSuffix, StringComparison.Ordinal)
+            ? replacement.Length - outsideSuffix.Length
+            : BoundaryAfterSameNumberOfLines(
+                originalText.ToString(TextSpan.FromBounds(change.Span.Start, insideEnd)), replacement);
+        if (newStart < 0 || newEnd < newStart)
+        {
+            return null;
+        }
+
+        return new TextChange(
+            TextSpan.FromBounds(insideStart, insideEnd),
+            replacement.Substring(newStart, newEnd - newStart));
+    }
+
+    private static bool TryMapFullSelectedLinesByContent(
+        SourceText originalText, TextChange change, TextSpan selection, string replacement,
+        out int mappedStart, out int mappedEnd)
+    {
+        mappedStart = mappedEnd = 0;
+        var oldText = originalText.ToString(change.Span);
+        var oldSelectedStart = selection.Start - change.Span.Start;
+        var oldSelectedEnd = selection.End - change.Span.Start;
+        var outsidePrefix = oldText[..oldSelectedStart];
+        var outsideSuffix = oldText[oldSelectedEnd..];
+        // Roslyn formatting preserves the ordered non-whitespace content. If a
+        // grouped replacement loses any of it, line identity cannot be inferred.
+        var orderedContentMatches = oldText.Where(c => !char.IsWhiteSpace(c))
+            .SequenceEqual(replacement.Where(c => !char.IsWhiteSpace(c)));
+        if (!orderedContentMatches)
+        {
+            return false;
+        }
+
+        // Intact outside bytes bound the replacement directly, including mixed code
+        // and blank selected lines. Keep the selected newline count unchanged so an
+        // adjacent outside line insertion/deletion cannot be mistaken for an in-range edit.
+        if (replacement.StartsWith(outsidePrefix, StringComparison.Ordinal) &&
+            replacement.EndsWith(outsideSuffix, StringComparison.Ordinal) &&
+            outsidePrefix.Length + outsideSuffix.Length <= replacement.Length)
+        {
+            var exactStart = outsidePrefix.Length;
+            var exactEnd = replacement.Length - outsideSuffix.Length;
+            if (oldText[oldSelectedStart..oldSelectedEnd].Count(c => c == '\n') ==
+                replacement[exactStart..exactEnd].Count(c => c == '\n'))
+            {
+                mappedStart = exactStart;
+                mappedEnd = exactEnd;
+                return true;
+            }
+        }
+
+        var oldLines = SourceText.From(oldText).Lines;
+        var newLines = SourceText.From(replacement).Lines;
+        var firstOldLine = oldLines.GetLineFromPosition(oldSelectedStart).LineNumber;
+        var lastOldLine = oldLines.GetLineFromPosition(oldSelectedEnd - 1).LineNumber;
+
+        var beforeCount = oldText[..oldSelectedStart].Count(c => !char.IsWhiteSpace(c));
+        var throughCount = oldText[..oldSelectedEnd].Count(c => !char.IsWhiteSpace(c));
+        var firstIsBlank = IsBlankLine(oldLines[firstOldLine]);
+        var lastIsBlank = IsBlankLine(oldLines[lastOldLine]);
+        var firstSignature = LineSignature(oldLines[firstOldLine]);
+        var lastSignature = LineSignature(oldLines[lastOldLine]);
+        var firstNewLine = -1;
+        var lastNewLine = -1;
+        if (!firstIsBlank && orderedContentMatches && throughCount > beforeCount)
+        {
+            var firstPosition = PositionOfNonWhitespaceOrdinal(replacement, beforeCount);
+            firstNewLine = newLines.GetLineFromPosition(firstPosition).LineNumber;
+        }
+        else if (firstIsBlank && HasUniqueLine(oldLines, firstSignature) &&
+                 TryFindUniqueLine(newLines, firstSignature, out var uniqueFirst))
+        {
+            firstNewLine = uniqueFirst;
+        }
+
+        if (!lastIsBlank && orderedContentMatches && throughCount > beforeCount)
+        {
+            var lastPosition = PositionOfNonWhitespaceOrdinal(replacement, throughCount - 1);
+            lastNewLine = newLines.GetLineFromPosition(lastPosition).LineNumber;
+        }
+        else if (lastIsBlank && HasUniqueLine(oldLines, lastSignature) &&
+                 TryFindUniqueLine(newLines, lastSignature, out var uniqueLast))
+        {
+            lastNewLine = uniqueLast;
+        }
+
+        var candidateStart = firstNewLine >= 0 ? newLines[firstNewLine].Start
+            : replacement.StartsWith(outsidePrefix, StringComparison.Ordinal) ? outsidePrefix.Length : -1;
+        var candidateEnd = lastNewLine >= 0 ? newLines[lastNewLine].EndIncludingLineBreak
+            : replacement.EndsWith(outsideSuffix, StringComparison.Ordinal) ? replacement.Length - outsideSuffix.Length : -1;
+        if (candidateStart >= 0 && candidateEnd >= candidateStart &&
+            (!firstIsBlank && !lastIsBlank ||
+             oldText[oldSelectedStart..oldSelectedEnd].Count(c => c == '\n') ==
+             replacement[candidateStart..candidateEnd].Count(c => c == '\n')))
+        {
+            mappedStart = candidateStart;
+            mappedEnd = candidateEnd;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int PositionOfNonWhitespaceOrdinal(string text, int ordinal)
+    {
+        for (var position = 0; position < text.Length; position++)
+        {
+            if (!char.IsWhiteSpace(text[position]) && ordinal-- == 0)
+            {
+                return position;
+            }
+        }
+
+        throw new InvalidOperationException("Formatter output lost the selected line's content.");
+    }
+
+    private static string LineSignature(TextLine line)
+    {
+        var content = line.ToString();
+        return content.All(char.IsWhiteSpace)
+            ? "blank:" + content
+            : "content:" + string.Concat(content.Where(c => !char.IsWhiteSpace(c)));
+    }
+
+    private static bool HasUniqueLine(TextLineCollection lines, string signature) =>
+        lines.Count(line => LineSignature(line) == signature) == 1;
+
+    private static bool TryFindUniqueLine(TextLineCollection lines, string signature, out int index)
+    {
+        index = -1;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (LineSignature(lines[i]) != signature)
+            {
+                continue;
+            }
+            if (index >= 0)
+            {
+                return false;
+            }
+            index = i;
+        }
+        return index >= 0;
+    }
+
+    private static int BoundaryAfterSameNumberOfLines(string originalPrefix, string replacement)
+    {
+        var lineBreaks = originalPrefix.Count(c => c == '\n');
+        if (lineBreaks == 0 || originalPrefix[^1] != '\n')
+        {
+            return -1;
+        }
+
+        var position = 0;
+        for (var i = 0; i < lineBreaks; i++)
+        {
+            position = replacement.IndexOf('\n', position);
+            if (position < 0)
+            {
+                return -1;
+            }
+            position++;
+        }
+        return position;
+    }
+
+    private static (int StartIdx, int EndIdx) NormalizeProjectionRange(
         Microsoft.CodeAnalysis.Text.SourceText originalText,
         int startLine,
         int endLine)
@@ -1223,32 +1446,12 @@ public sealed class RefactoringService : IRefactoringService
         return (startIdx, endIdx);
     }
 
-    private static Microsoft.CodeAnalysis.Text.SourceText SpliceMatchingLineCounts(
-        Microsoft.CodeAnalysis.Text.SourceText originalText,
-        Microsoft.CodeAnalysis.Text.SourceText formattedText,
-        int startIdx,
-        int endIdx)
-    {
-        var builder = new System.Text.StringBuilder(originalText.Length);
-        for (var lineIndex = 0; lineIndex < originalText.Lines.Count; lineIndex++)
-        {
-            var useFormattedLine = lineIndex >= startIdx && lineIndex <= endIdx;
-            var sourceText = useFormattedLine ? formattedText : originalText;
-            AppendLineAndBreak(builder, sourceText, sourceText.Lines[lineIndex]);
-        }
-
-        return Microsoft.CodeAnalysis.Text.SourceText.From(
-            builder.ToString(),
-            originalText.Encoding,
-            originalText.ChecksumAlgorithm);
-    }
-
     /// <summary>
     /// Collapses runs of two or more consecutive blank lines to a single blank line,
     /// but only when the entire run sits inside the caller's requested range
     /// [<paramref name="startLine"/>, <paramref name="endLine"/>] (1-based, inclusive).
     /// A "blank line" here is one whose <see cref="Microsoft.CodeAnalysis.Text.TextLine.ToString"/>
-    /// is empty or pure whitespace — the splice already strips trailing whitespace via
+    /// is empty or pure whitespace — the formatter projection already strips trailing whitespace via
     /// the formatter, so blank-by-whitespace and blank-by-emptiness collapse identically.
     ///
     /// Why this exists: Roslyn's <c>Formatter.FormatAsync</c> normalizes indentation and
@@ -1261,7 +1464,7 @@ public sealed class RefactoringService : IRefactoringService
     ///
     /// Out-of-range blank-line runs are preserved verbatim. A run that crosses the range
     /// boundary is also preserved — collapsing it would silently mutate text outside the
-    /// caller's selection, which the splice contract forbids.
+    /// caller's selection, which the range contract forbids.
     /// </summary>
     private static Microsoft.CodeAnalysis.Text.SourceText CollapseBlankLineRunsInRange(
         Microsoft.CodeAnalysis.Text.SourceText text,
