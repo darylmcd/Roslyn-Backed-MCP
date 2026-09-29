@@ -183,7 +183,7 @@
     {
       "id": "donotparallelize-audit-wave-40",
       "order": 6,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-40"
       ],
@@ -212,8 +212,8 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/donotparallelize-audit-wave-40",
+      "worktreePath": ".worktrees/donotparallelize-audit-wave-40",
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
