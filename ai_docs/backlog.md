@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-28T22:39:48Z
+**updated_at:** 2026-09-29T15:01:14Z
 
 ## Agent contract
 
@@ -53,6 +53,7 @@
 | `tool-binding-missing-parameter-named` | High | — | **Missing required tool arguments are reported as 'arguments' or '<unknown>'** — in the result projector, name the missing parameter from the tool's input-schema required list and the supplied arguments. [type: bug] [source: retro-20260927] | M | items/tool-binding-missing-parameter-named.md |
 | `compile-check-restore-required-handshake` | High | — | **compile_check returns success:false with zero diagnostics on unrestored workspaces** — add a structured nextCall to that result, and restore missing assets on load when autoRestore is omitted (false opts out); additive, 4.x-safe. [type: bug] [source: retro-20260927] | L | items/compile-check-restore-required-handshake.md |
 | `gated-build-test-operation-deadline` | High | — | **Build, test, coverage and vuln-scan tools die at the 2-minute gate request timeout** — run the dotnet command outside the workspace lock and throttle, bounded by its own build/test/scan timeout. [type: bug] [source: retro-20260927] | L | items/gated-build-test-operation-deadline.md |
+| `physical-path-resolver-volume-mount-junction` | High | — | **`workspace_load` reports FileNotFound for every solution under a volume-mount junction.** Resolve `Volume{guid}\` link targets as absolute in `PhysicalPathResolver.GetLinkTargetPath` instead of joining them to the link parent. [type: bug] [source: PriceIndex backlog-remediate 20260929T145557Z] | S | items/physical-path-resolver-volume-mount-junction.md |
 
 ## Medium
 
