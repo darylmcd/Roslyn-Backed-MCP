@@ -8,6 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -256,6 +257,95 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task PartiallySuppliedRequiredArguments_NameOnlyTheOmittedField()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var partial = new Dictionary<string, object?> { ["first"] = "supplied" };
+            var frame = await CallAndCaptureAsync(harness, "synthetic_required_arguments", partial);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+            StringAssert.Contains(payload["message"]!.GetValue<string>(), "'second'");
+            Assert.IsFalse(payload["message"]!.GetValue<string>().Contains("'first'", StringComparison.Ordinal));
+
+            var catalogPartial = new Dictionary<string, object?>
+            {
+                ["filePath"] = "C:/synthetic/source.cs",
+                ["line"] = 1,
+            };
+            var catalogFrame = await CallAndCaptureAsync(harness, "symbol_info", catalogPartial);
+            var catalogPayload = ErrorPayload(catalogFrame);
+            StringAssert.Contains(catalogPayload["message"]!.GetValue<string>(), "'column'");
+            Assert.IsFalse(catalogPayload["message"]!.GetValue<string>().Contains("'filePath'", StringComparison.Ordinal));
+            StringAssert.Contains(catalogPayload["schemaHint"]!.GetValue<string>(), "column");
+        }
+    }
+
+    [TestMethod]
+    public async Task AutoResolvedWorkspaceId_IsNotReportedMissingWhenAnotherFieldIsOmitted()
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(solutionPath)!;
+        try
+        {
+            using var manager = CreateIsolatedWorkspaceManager();
+            var workspace = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            try
+            {
+                foreach (var protocol in Protocols())
+                {
+                    await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
+                    var arguments = new Dictionary<string, object?>
+                    {
+                        ["filePath"] = Path.Combine(root, "SampleLib", "WidgetTarget.cs"),
+                        ["line"] = 1,
+                    };
+                    var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
+                    var payload = ErrorPayload(frame);
+                    Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), "'column'");
+                    Assert.IsFalse(payload["message"]!.GetValue<string>().Contains("'workspaceId'", StringComparison.Ordinal));
+                    StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "column");
+                }
+            }
+            finally
+            {
+                manager.Close(workspace.WorkspaceId);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task PublicArgumentRefusal_PreservesServerAuthoredMessageWithRequiredFieldAbsent()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var frame = await CallAndCaptureAsync(harness, "synthetic_public_refusal", arguments: null);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+            Assert.AreEqual(
+                "The server requires an explicit operator choice before this call.",
+                payload["message"]?.GetValue<string>(),
+                payload.ToJsonString());
+            Assert.AreEqual("PublicArgumentException", payload["exceptionType"]?.GetValue<string>());
+
+            var operationFrame = await CallAndCaptureAsync(harness, "synthetic_public_operation", arguments: null);
+            var operationPayload = ErrorPayload(operationFrame);
+            Assert.AreEqual("InvalidOperation", operationPayload["category"]?.GetValue<string>());
+            Assert.AreEqual(
+                "The server cannot continue this operation until its state changes.",
+                operationPayload["message"]?.GetValue<string>());
+            Assert.AreEqual("PublicInvalidOperationException", operationPayload["exceptionType"]?.GetValue<string>());
+        }
+    }
+
     private static WorkspaceManager CreateIsolatedWorkspaceManager()
     {
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
@@ -293,7 +383,19 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             .WithMessageFilters(static filters =>
                 filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(static filters =>
-                filters.AddCallToolFilter(StructuredCallToolFilter.Create));
+            {
+                filters.AddCallToolFilter(StructuredCallToolFilter.Create);
+                filters.AddCallToolFilter(next => (context, cancellationToken) =>
+                    context.Params?.Name switch
+                    {
+                        "synthetic_public_refusal" => throw new PublicArgumentException(
+                            "The server requires an explicit operator choice before this call.",
+                            "path"),
+                        "synthetic_public_operation" => throw new PublicInvalidOperationException(
+                            "The server cannot continue this operation until its state changes."),
+                        _ => next(context, cancellationToken),
+                    });
+            });
         var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
@@ -401,7 +503,7 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             string filePath,
             int line,
             int column,
-            string? workspaceId = null) => workspaceId ?? $"missing:{filePath}:{line}:{column}";
+            string workspaceId) => workspaceId;
 
         [McpServerTool(Name = "workspace_load")]
         public static string WorkspaceLoad(string path) => path;
@@ -411,5 +513,11 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 
         [McpServerTool(Name = "synthetic_required_arguments")]
         public static string RequireTwo(string first, string second) => first + second;
+
+        [McpServerTool(Name = "synthetic_public_refusal")]
+        public static string PublicRefusal(string path) => path;
+
+        [McpServerTool(Name = "synthetic_public_operation")]
+        public static string PublicOperation(string path) => path;
     }
 }
