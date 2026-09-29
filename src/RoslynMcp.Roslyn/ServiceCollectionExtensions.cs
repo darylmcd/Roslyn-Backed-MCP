@@ -138,7 +138,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IOperationService, OperationService>();
         services.AddSingleton<ISnippetAnalysisService, SnippetAnalysisService>();
         services.AddSingleton<IScriptingService, ScriptingService>();
-        services.AddSingleton<IEditorConfigService, EditorConfigService>();
+        services.AddSingleton<IEditorConfigService>(sp => new EditorConfigService(
+            sp.GetRequiredService<IWorkspaceManager>(),
+            sp.GetService<IUndoService>(),
+            sp.GetService<IChangeTracker>(),
+            sp.GetService<ILogger<EditorConfigService>>(),
+            sp.GetRequiredService<IFileWatcherService>() as IEditorConfigWriteCoordinator
+                ?? throw new InvalidOperationException("The file watcher cannot coordinate .editorconfig writes.")));
         services.AddSingleton<IExtractMethodService, ExtractMethodService>();
         services.AddSingleton<IChangeTracker, ChangeTracker>();
         services.AddSingleton<IRefactoringSuggestionService, RefactoringSuggestionService>();

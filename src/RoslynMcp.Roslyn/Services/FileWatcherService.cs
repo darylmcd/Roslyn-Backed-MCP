@@ -1,30 +1,28 @@
 using System.Collections.Concurrent;
-using RoslynMcp.Core.Services;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
 /// FileSystemWatcher-backed implementation of <see cref="IFileWatcherService"/>.
 /// Flags a workspace as stale when a tracked <c>.cs</c>/<c>.csproj</c>/<c>.props</c>/
-/// <c>.targets</c>/<c>.sln</c>/<c>.slnx</c> file changes, and records a reason so
+/// <c>.targets</c>/<c>.sln</c>/<c>.slnx</c>/<c>.editorconfig</c> file changes, and records a reason so
 /// <c>workspace_status</c> can distinguish server-generated writes (<c>apply</c> /
 /// <c>restore</c>) from genuinely external edits (<c>external-edit</c>).
 /// </summary>
 /// <remarks>
 /// <para>
 /// <strong>Attribution rule</strong> (<c>workspace-stale-after-external-edit-feedback</c>):
-/// watcher-driven marks always record <see cref="StaleReasons.ExternalEdit"/>. The server
-/// signals its own apply / restore writes by calling <see cref="MarkStale"/> explicitly with
-/// the appropriate reason, either before the on-disk commit (so the later watcher event
-/// finds the reason already set) or after (overwriting the external-edit attribution the
-/// watcher stamped). <em>Last-writer-wins</em> inside a single stale window
+/// watcher-driven marks record <see cref="StaleReasons.ExternalEdit"/> except delayed events
+/// whose .editorconfig bytes match a committed server write. Those preserve Apply. Other
+/// server apply / restore paths call <see cref="MarkStale"/> explicitly. That method is
+/// <em>last-writer-wins</em> inside a single stale window
 /// (<see cref="ClearStale"/> resets to a clean slate); two independent events do not
 /// compose. Callers that need to refuse on genuine external drift
 /// (<c>change_signature_preview</c> and friends) query <see cref="GetStaleReason"/>; server
-/// apply paths that want to preserve their attribution mark after the on-disk commit
-/// settles call <see cref="MarkStale"/> once the write lands, overwriting any
-/// <c>external-edit</c> stamp the watcher may have set.
+/// apply paths must coordinate their own watcher events when attribution matters.
 /// </para>
 /// <para>
 /// <strong>CPU cost</strong>: purely event-driven; no periodic scans. <c>FileSystemWatcher</c>
@@ -34,7 +32,12 @@ namespace RoslynMcp.Roslyn.Services;
 /// it touches; the flag is a single <see langword="volatile"/> read on the hot path.
 /// </para>
 /// </remarks>
-public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService
+internal interface IEditorConfigWriteCoordinator
+{
+    T RunOwnedWrite<T>(string workspaceId, string path, Func<(T Result, byte[] WrittenBytes)> write);
+}
+
+public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFileWatcherService, IEditorConfigWriteCoordinator
 {
     private readonly ConcurrentDictionary<string, WatcherEntry> _watchers = new(StringComparer.Ordinal);
 
@@ -60,6 +63,18 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         {
             var projWatcher = CreateWatcher(directory, filter, entry);
             entry.AddWatcher(projWatcher);
+        }
+
+        entry.AddWatcher(CreateWatcher(directory, ".editorconfig", entry));
+        // A config above the solution directory also applies to its documents. Watch each
+        // ancestor's single config name so external policy changes invalidate this workspace.
+        for (var ancestor = Path.GetDirectoryName(directory); ancestor is not null;
+             ancestor = Path.GetDirectoryName(ancestor))
+        {
+            if (Directory.Exists(ancestor))
+            {
+                entry.AddWatcher(CreateWatcher(ancestor, ".editorconfig", entry, recursive: false));
+            }
         }
 
         // A workspace is anchored to the exact solution/project path that was loaded, not just
@@ -145,6 +160,17 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
     }
 
+    T IEditorConfigWriteCoordinator.RunOwnedWrite<T>(
+        string workspaceId, string path, Func<(T Result, byte[] WrittenBytes)> write)
+    {
+        if (!_watchers.TryGetValue(workspaceId, out var entry))
+        {
+            throw new InvalidOperationException($"Workspace '{workspaceId}' is not watched.");
+        }
+
+        return entry.RunOwnedWrite(path, write);
+    }
+
     public void ClearStale(string workspaceId)
     {
         if (_watchers.TryGetValue(workspaceId, out var entry))
@@ -162,20 +188,21 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         _watchers.Clear();
     }
 
-    private static FileSystemWatcher CreateWatcher(string directory, string filter, WatcherEntry entry)
+    private static FileSystemWatcher CreateWatcher(
+        string directory, string filter, WatcherEntry entry, bool recursive = true)
     {
         var watcher = new FileSystemWatcher(directory)
         {
             Filter = filter,
-            IncludeSubdirectories = true,
+            IncludeSubdirectories = recursive,
             NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
             EnableRaisingEvents = true
         };
 
-        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
-        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
-        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
-        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
+        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
+        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
+        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
+        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath, recursive);
 
         return watcher;
     }
@@ -204,19 +231,16 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
     }
 
-    private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath)
+    private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath, bool checkExcludedPaths)
     {
-        if (ShouldIgnorePath(fullPath, entry.RootDirectory))
+        if (checkExcludedPaths && ShouldIgnorePath(fullPath, entry.RootDirectory))
         {
             return;
         }
 
-        // workspace-stale-after-external-edit-feedback: a watcher-driven mark always represents
-        // a file-system change from outside the server's in-process apply channel. Callers that
-        // want to attribute a change to an apply/restore MUST call MarkStale explicitly BEFORE
-        // the write hits disk (see WorkspaceManager.TryApplyChanges). External edits take
-        // precedence: once set, a subsequent explicit MarkStale("apply") does not downgrade.
-        entry.MarkStaleWithReason(StaleReasons.ExternalEdit);
+        // Compare config bytes with the committed owned write under the same state lock.
+        // Delayed events for those bytes preserve Apply; different bytes are ExternalEdit.
+        entry.MarkFileChange(fullPath);
     }
 
     private static bool ShouldIgnorePath(string fullPath, string rootDirectory)
@@ -245,6 +269,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private volatile bool _isStale;
         private string? _staleReason;
         private readonly object _reasonLock = new();
+        private readonly Dictionary<string, byte[]?> _ownedConfigBytes = new(FileSystemPath.Comparer);
         // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
         // single thread during entry construction, and the FileSystemWatcher event callbacks
         // (Changed/Created/Deleted/Renamed -> MarkStaleIfRelevant) only ever touch the
@@ -280,6 +305,141 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         }
 
         public void AddWatcher(FileSystemWatcher watcher) => _watchers.Add(watcher);
+
+        public T RunOwnedWrite<T>(string path, Func<(T Result, byte[] WrittenBytes)> write)
+        {
+            var physicalPath = PhysicalPathResolver.Resolve(path);
+            lock (_reasonLock)
+            {
+                var before = ReadBytesOrNull(physicalPath);
+                if (_ownedConfigBytes.TryGetValue(physicalPath, out var previous) &&
+                    !BytesEqual(previous, before))
+                {
+                    _ownedConfigBytes.Remove(physicalPath);
+                    MarkStaleWithReason(StaleReasons.ExternalEdit);
+                }
+                try
+                {
+                    var (result, writtenBytes) = write();
+                    _ownedConfigBytes[physicalPath] = writtenBytes;
+                    byte[]? current = null;
+                    var readable = true;
+                    try
+                    {
+                        current = ReadBytesOrNull(physicalPath);
+                    }
+                    catch (IOException)
+                    {
+                        readable = false;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        readable = false;
+                    }
+                    if (!readable || !BytesEqual(writtenBytes, current))
+                    {
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                    }
+                    else if (_staleReason != StaleReasons.ExternalEdit)
+                    {
+                        MarkStaleWithReason(StaleReasons.Apply);
+                    }
+                    return result;
+                }
+                catch
+                {
+                    byte[]? after = null;
+                    var readable = true;
+                    try
+                    {
+                        after = ReadBytesOrNull(physicalPath);
+                    }
+                    catch (IOException)
+                    {
+                        readable = false;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        readable = false;
+                    }
+                    if (readable && BytesEqual(before, after))
+                    {
+                        // A failed write can still queue a watcher event. Its unchanged bytes
+                        // are not a workspace change and must not turn the workspace stale.
+                        _ownedConfigBytes[physicalPath] = after;
+                    }
+                    else
+                    {
+                        _ownedConfigBytes[physicalPath] = after;
+                        if (_staleReason != StaleReasons.ExternalEdit)
+                        {
+                            MarkStaleWithReason(StaleReasons.Apply);
+                        }
+                    }
+                    throw;
+                }
+            }
+        }
+
+        public void MarkFileChange(string path)
+        {
+            lock (_reasonLock)
+            {
+                if (Path.GetFileName(path).Equals(".editorconfig", StringComparison.OrdinalIgnoreCase))
+                {
+                    string physicalPath;
+                    try
+                    {
+                        physicalPath = PhysicalPathResolver.Resolve(path);
+                    }
+                    catch (IOException)
+                    {
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        return;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        return;
+                    }
+                    catch (ArgumentException)
+                    {
+                        MarkStaleWithReason(StaleReasons.ExternalEdit);
+                        return;
+                    }
+                    byte[]? current;
+                    var readable = true;
+                    try
+                    {
+                        current = ReadBytesOrNull(physicalPath);
+                    }
+                    catch (IOException)
+                    {
+                        current = null;
+                        readable = false;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        current = null;
+                        readable = false;
+                    }
+                    if (readable && _ownedConfigBytes.TryGetValue(physicalPath, out var committed) &&
+                        BytesEqual(committed, current))
+                    {
+                        return;
+                    }
+                    _ownedConfigBytes.Remove(physicalPath);
+                }
+
+                MarkStaleWithReason(StaleReasons.ExternalEdit);
+            }
+        }
+
+        private static byte[]? ReadBytesOrNull(string path) =>
+            File.Exists(path) ? File.ReadAllBytes(path) : null;
+
+        private static bool BytesEqual(byte[]? left, byte[]? right) =>
+            left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
 
         /// <summary>
         /// Returns a task that completes once the entry is (or becomes) stale, honoring

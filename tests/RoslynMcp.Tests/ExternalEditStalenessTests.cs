@@ -48,6 +48,173 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
+    [TestMethod]
+    [DataRow(false, "create")]
+    [DataRow(false, "change")]
+    [DataRow(false, "delete")]
+    [DataRow(true, "create")]
+    [DataRow(true, "change")]
+    [DataRow(true, "delete")]
+    public async Task ExternalEditorConfigChange_InsideWorkspaceOrAncestor_IsExternalEdit(bool ancestor, string action)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-watch-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(root, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+        var solutionPath = Path.Combine(workspaceRoot, "Sample.slnx");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        var configPath = ancestor
+            ? Path.Combine(root, ".editorconfig")
+            : Path.Combine(workspaceRoot, "nested", ".editorconfig");
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        if (action != "create")
+        {
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        }
+
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            if (action == "delete")
+            {
+                File.Delete(configPath);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await watcher.WaitForStaleAsync(workspaceId, timeout.Token);
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task FailedOwnedEditorConfigWrite_TracksOnlyActualByteChanges()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-failure-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
+                () =>
+                {
+                    File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+                    throw new IOException("after identical bytes");
+                }));
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+            await Task.Delay(300);
+            Assert.IsFalse(watcher.IsStale(workspaceId), "A delayed event for unchanged bytes must also be ignored.");
+
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
+                () =>
+                {
+                    File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
+                    throw new IOException("after write");
+                }));
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
+                "A failed owned write that changed bytes remains a server apply.");
+            await Task.Delay(300);
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
+                "Delayed events for the bytes written before failure must remain Apply.");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnedEditorConfigWrite_DoesNotMaskLaterDifferentExternalBytes()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-race-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+                File.WriteAllBytes(configPath, bytes);
+                return (true, bytes);
+            });
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
+
+            // A later write with different bytes is genuine drift even though this path was
+            // previously owned and its first watcher event may still be queued.
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.IsTrue(SpinWait.SpinUntil(
+                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
+                TimeSpan.FromSeconds(5)));
+
+            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n");
+                File.WriteAllBytes(configPath, bytes);
+                return (true, bytes);
+            });
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
+                "An owned write must not erase a prior external-edit finding.");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnedEditorConfigWrite_ConcurrentReplacementKeepsExternalAttribution()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            coordinator.RunOwnedWrite(workspaceId, configPath, () =>
+            {
+                var intended = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+                File.WriteAllBytes(configPath, intended);
+                File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
+                return (true, intended);
+            });
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
+                "Disk bytes that differ from the server-written bytes must remain external-edit.");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Core validation scenario from the plan: load workspace → write to a tracked
     /// <c>.cs</c> via <see cref="System.IO.File"/> (simulating Claude Code's <c>Edit</c> tool
