@@ -78,7 +78,7 @@ Read this row before running the authoritative local gate. Re-measure it when th
 
 | gate | command | typical duration (measured 2026-09-20) | Bash timeout / background | hooks (pre-commit/pre-push + runtime) | CI-equivalent filter | regen companions | flake registry | parallelSafe |
 |---|---|---|---|---|---|---|---|---|
-| Local PR-equivalent aggregate | `just ci` | 11m18s | Run in background | No Git pre-commit/pre-push hooks; Claude `PreToolUse`: `eng/guard-release-managed-files.ps1`, 10 s cap, 0.3 s measured; Claude `PostToolUse`: `eng/verify-skills-on-edit.ps1`, 10 s cap, 0.7 s measured; Codex publication-boundary `PreToolUse`: `eng/verify-changelog-fragments.ps1`, 30 s cap, 1.7 s measured | `TestCategory!=Benchmark&TestCategory!=Network`; coverage disabled | — | `ai_docs/known-flakes.md` | false |
+| Local PR-equivalent aggregate | `just ci` | 11m18s | Run in background | No Git pre-commit/pre-push hooks; Claude `PreToolUse`: `eng/guard-release-managed-files.ps1`, 10 s cap, 0.4 s measured 2026-09-29; Claude `PostToolUse`: `eng/verify-skills-on-edit.ps1`, 10 s cap, 0.7 s measured; Codex publication-boundary `PreToolUse`: `eng/verify-changelog-fragments.ps1`, 30 s cap, 1.7 s measured | `TestCategory!=Benchmark&TestCategory!=Network`; coverage disabled | — | `ai_docs/known-flakes.md` | false |
 
 ## Planning Scope
 
