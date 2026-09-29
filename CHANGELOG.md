@@ -16,6 +16,192 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [4.3.0] - 2026-09-28
+
+### Fixed
+
+- **Fixed:** `revert_last_apply` immediately after `apply_composite_preview` now restores the composite's files (including files it created or deleted) instead of reverting the previous apply. (`apply-composite-no-undo-capture`)
+
+- **Fixed:** Surface sanctioned-root boundary refusals as such instead of misclassifying valid absolute paths as schema errors.
+
+- **Fixed:** `callers_callees`, `impact_analysis`, and `find_references` now attribute calls inside field and event-field initializers to the declaring field or event instead of dropping them (or reporting a null `containingMember`); a multi-declarator field maps each initializer to its own declarator. (`callers-callees-field-initializer-callers-dropped`)
+
+- **Fixed:** `change_signature_preview` `op=add` (and `remove`/`reorder`) now updates every implementation and call site when several live in the same document. Previously later declarations and callers in an already-edited document were skipped, leaving CS0535 and undercounting `callsiteUpdates`.
+
+- **Fixed:** `change_type_namespace_preview` now emits valid, formatted namespace syntax when the relocated type stays in a file with other types (previously `namespaceX.Y{`). A file-scoped source namespace is converted to block form so the file never mixes file-scoped and block declarations (CS8955), and the moved type's doc comment is no longer duplicated in the source namespace.
+
+- **Fixed:** `find_dead_fields`, `find_unused_symbols` and `get_coupling_metrics` no longer report live code as unreferenced in projects with source generators; the compilation cache now serves the Solution-owned compilation for symbol analysis and keeps the generator-rerun compilation for diagnostics only.
+
+- **Fixed:** `get_coupling_metrics` with `summary=true` now rolls up every type instead of only the first `limit` (default 100); `limit` is ignored in summary mode. (`coupling-summary-rollup-limited-to-page`)
+
+- **Fixed:** `get_di_registrations` reports the constructed type for factory lambdas like `sp => new Foo(sp.GetRequiredService<Bar>())` (expression or block body) instead of the first resolved dependency; direct `GetRequiredService<T>()` / `GetService<T>()` forwards still report `T`, and other returned shapes fall back to `factory`. Closes `di-registrations-factory-lambda-impl-misattributed`.
+
+- **Fixed:** CI: a missing, empty, or stale docs-only test allowlist (`eng/docs-only-test-classes.txt`) now falls back to running the full test suite on shard 0 with a warning instead of failing CI. Closes `docs-only-allowlist-throws-instead-of-fallback`.
+
+- **Fixed:** `find_dead_locals` no longer reports an outer local that a local function assigns and the enclosing method later reads; each local is now judged only by the body that declares it, so a local declared inside a local function is also no longer reported twice. (`find-dead-locals-captured-by-local-function`)
+
+- **Fixed:** `find_duplicate_helpers` no longer reports helpers whose outermost call merely ends a pipeline (e.g. `…Select(…).ToArray()`); it now requires the call to forward exactly the helper's own parameters (receiver and arguments), so constant-argument specializations such as `s => s.Split(',')` are also no longer reported.
+
+- **Fixed:** `find_implementations` anchored at a source position on a corlib interface (e.g. `IDisposable`) now returns the workspace implementers instead of the corlib hint with count 0. The hint still fires for `metadataName` / `symbolHandle` locators, where its source-anchor advice now leads to a working query.
+
+- **Fixed:** `analyze_data_flow` / `analyze_control_flow` now return `effectiveStartLine`/`effectiveEndLine` and a warning when a range spanning multiple blocks or members is narrowed to one block, instead of silently analyzing a different region. (`flow-analysis-silent-region-narrowing`)
+
+- **Fixed:** the formatter-baseline generator no longer stalls under host contention — spawned `dotnet` children now disable MSBuild node reuse, and the contract test's stdout/stderr drain is bounded on the success path so a lingering handle-inheriting descendant can no longer hang the harness past the nominal timeout.
+
+- **Fixed:** `prompts/get` now accepts spec-compliant string values for integer prompt arguments (e.g. `consumer_impact {line:"19"}`), and invalid-params errors name the missing or mistyped argument.
+
+- **Fixed:** Gate the README stable-only callable tool count against the live surface catalog so tier promotions cannot leave it stale. Closes `readme-stable-callable-count-ungated`.
+
+- **Fixed:** `replace_invocation_preview` no longer rewrites call sites inside the replacement method's own body (which produced infinite recursion when the replacement delegates to the old method).
+
+- **Fixed:** Improve resource cache-hint wire failures with era-specific frames and repeated-read coverage.
+
+- **Fixed:** `restructure_preview` now parenthesizes a captured expression (and a substituted goal) when it lands in an operator-operand slot, so operator precedence is preserved (`__a__ + 1` -> `__a__ * 3` over `a + b + 1` now yields `(a + b) * 3`, not `a + b * 3`).
+
+- **Fixed:** Make shipped Roslyn prompt hooks recognize both bare-server and marketplace-plugin tool prefixes.
+
+- **Fixed:** `workspace_load` and other path-taking tools now return an actionable error naming `ROSLYNMCP_SANCTIONED_ROOTS` / `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` when no sanctioned roots are configured, instead of a generic invalid-parameter message. The requested path stays redacted from the client message.
+
+- **Fixed:** `split_service_with_di_preview` generated constructors now reproduce the source constructor exactly: each partition and the facade inject only the fields the source constructor assigned, keep the original parameter types, names, attributes and defaults (an `ILogger<T>` parameter no longer becomes an unresolvable non-generic `ILogger`), keep `?? throw` null guards in source statement order, and no longer demand a DI parameter for a field the constructor never assigned. The split is now refused, with a specific reason, for a service with more than one instance constructor (previously its overloads silently collapsed into one), a copied parameter or guard that names a member only the source type has, and a parameter self-assignment (`x = x;`).
+
+- **Fixed:** `split_service_with_di_preview` no longer deletes other types, the base list, or constants declared in the same file as the split service. The facade now replaces only the source type's declaration inside the original file, keeps its attributes, constraints and non-method members, preserves the file's line endings, and injects retained fields its constructor assigned. Constructor and field shapes the generated facade cannot reproduce are now refused with a specific reason instead of silently changing behavior: primary or chained constructors, constructor logic beyond parameter-to-field copies, constructor assignments that override a field initializer, mutable fields that would exist on both the facade and a partition, and facade parameter-name collisions.
+
+- **Fixed:** Remove the stale repo-local remediation executor so sweeps inherit prefix-aware Roslyn discovery and the current staged-ship contract.
+
+- **Fixed:** `project_diagnostics`, `security_diagnostics`, and `list_analyzers` now reject an unknown `projectName` with the same InvalidArgument error as `compile_check`, instead of returning an empty or all-zero result. (`unknown-projectname-silently-empty`)
+
+- **Fixed:** Tool calls with unrecognized argument names now report them in `_meta.unknownArguments`, each with a closest-name `suggestion` when one is within two edits. Previously a typo such as `severty` was silently dropped by the SDK binder. The call is not rejected; the field is additive and omitted when every name is recognized. Closes `unknown-tool-arguments-silently-ignored`.
+
+- **Fixed:** `build_workspace`, `build_project`, `test_discover`, `test_run`, `test_related`, and `test_related_files` now return failures with `isError: true` through the shared error pipeline, keeping `category` and `schemaHint` and gaining `_meta`, instead of reporting them as successful calls. Unexpected (`InternalError`) failures in these tools are now correlated and reported like every other tool's.
+
+- **Fixed:** Validate Markdown heading fragments in relative AI-documentation links.
+
+- **Fixed:** Release verification's third-party license check now reads only the current solution's restored asset graphs, so switching `NUGET_PACKAGES` roots no longer reports ambiguous nuspec paths. Closes `verify-release-stale-package-cache-asset-graph`.
+
+- **Fixed:** `workspace_close(drainProcesses: true)` now kills a `testhost` / `vstest.console` under the workspace even when it started just before the close. The drain previously read each candidate's path through `Process.MainModule`, which on Windows fails or returns null until the new process's loader has run, so such a candidate was skipped silently and kept its `bin/` file locks. The path now comes from the image name the OS recorded at process creation (`QueryFullProcessImageNameW` on Windows, `/proc/<pid>/exe` on Linux). On Windows the drain also compares against the workspace directory's canonical path, so a workspace loaded through a `subst` drive letter still matches its testhosts, which the OS reports on the backing volume's drive letter. A candidate the drain leaves running is logged at Warning and returned in a new optional `undrainedProcesses` array (`processName`, `processId`, `reason`). The field is omitted when every candidate was handled, so the existing response shape is unchanged.
+
+- **Fixed:** `workspace_close` no longer advertises its internal `getProcessesByName` / `processDrainTimeout` test seams in its input schema, so clients can no longer see or set the process-drain timeout. A new schema-hygiene test fails when any tool exposes an undocumented or unsupported-type parameter. (`workspace-close-schema-leaks-test-seams`)
+
+### Changed
+
+- **Changed:** CI now runs the checksum-pinned `eng/verify-actionlint.ps1` on the hosted artifact-owner leg, making the workflow-lint gate that `just ci` already ran a real pull-request merge gate.
+
+- **Changed:** Migration: use `apply_composite`; the misleading `apply_composite_preview` name remains as a deprecated compatibility alias with identical destructive safeguards.
+
+- **Changed:** CI: the docs-only route now runs a declared documentation-contract test allowlist (`eng/docs-only-test-classes.txt`) instead of the full sharded suite, failing closed to the full suite on any unclassifiable input. Closes `docs-only-route-runs-full-test-suite`.
+
+- **Changed:** `server_info.update.updateAvailable` keeps its 4.x boolean type, schema, and meaning (`true` only when a known registry version is strictly newer, otherwise `false`, including while the check is `neverChecked`, `pending`, `failed`, or `timedOut`); `update.checkStatus` with `lastCheckedAt` is now the documented authority for whether `false` means up to date (`succeeded`) or unknown, and both `/roslyn-mcp:update` and the plugin's `server_info` hook read it instead of reporting "no update" from an unfinished check. **Deprecation:** 5.0 will make `updateAvailable` nullable (`null` = unknown); read `checkStatus` before trusting `false`. Closes `server-info-update-unknown-not-false`.
+
+- **Changed:** An unknown or never-loaded `workspaceId` still fails with `category: "NotFound"` and `exceptionType: "KeyNotFoundException"`, and the error envelope now adds an optional `reason: "WorkspaceNotFound"` field (symbol, file, and metadata-name misses carry no `reason`) plus remediation text naming `workspace_list` and `workspace_load`. When the miss races an in-call auto-reload it keeps the 4.x `category: "WorkspaceReloadedDuringCall"` and `exceptionType: "KeyNotFoundException"`, and now carries the same `reason` with workspace remediation text instead of symbol re-resolve advice. Workspace-scoped `resources/read` errors keep their category prefix and error code and add `reason: WorkspaceNotFound` to the sanitized message. **Deprecation:** 5.0 will promote both paths to `category: "WorkspaceNotFound"`; branch on `reason` now. Closes `workspace-id-unknown-error-category`.
+
+### Maintenance
+
+- **Maintenance:** Add a measured canonical validation-runtime contract and replace duplicated runtime guidance with pointers.
+
+- **Maintenance:** CI: pull requests that change only audit evidence, backlog item details or report archives (`ai_docs/audits/**`, `ai_docs/reports/**`, `ai_docs/items/**`, `audit-reports/**`, minus files tests read) now take a pwsh-only `evidence-lint` route with no build or test legs. `CHANGELOG.md`-only changes take the docs route, which now runs the version-drift and breaking-version gates, instead of the full Windows/Linux matrix. `audit-reports/` no longer requires a changelog fragment. Closes `ci-evidence-tier-route`.
+
+- **Maintenance:** CI now runs on GitHub merge-queue groups (`merge_group`) and reports the required `validate` check for them, routing every queued group to the full code-PR topology so pull requests can land through a merge queue. (`ci-merge-group-validate-support`)
+
+- **Maintenance:** Refresh the published line and branch coverage baseline, test count, and test-priority guidance from a current full release measurement.
+
+- **Maintenance:** Bump MSTest.TestAdapter and MSTest.TestFramework to 4.4.1, with synchronized upgrade matrix and third-party notices.
+
+- **Maintenance:** Bump Microsoft.NET.Test.Sdk to 18.10.1, with synchronized upgrade matrix and third-party notices.
+
+- **Maintenance:** Documentation audit (doc-audit standard v24): trimmed the root README to a landing page, corrected stale docs against source (workspace cap default 16, hook and sanctioned-roots guidance, product contract), extracted the env-var reference, indexed the ADR log, and refreshed backlog anchors, headers and sizes.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `AliasToolsTests`, `AnalysisToolsTests`, and `AnalyzerInfoToolsTests` — all three classes only read through the already-synchronized `WorkspaceIdCache`/read-only services with no shared mutable state, so the opt-out was removed from each, proven safe by repeated concurrent test runs.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `AnalyzerShadowLoaderLifecycleTests.cs`, `AuditFixesTests.cs`, and `AutoReloadCascadeHostCrashTests.cs` — removed the opt-out proven safe by repeated concurrent runs, and documented the retained ones with their concrete shared-state dependency.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `BacklogFixTests`, `BuildTestToolsShimTests`, and `BulkRefactoringTests`. Removed the opt-out from `BacklogFixTests` and `BuildTestToolsShimTests` after confirming every test method only reads through the already-synchronized `WorkspaceIdCache`/`WorkspaceExecutionGate` read path and validating with a >=3x repeated run alongside its wave siblings. Retained `[DoNotParallelize]` on `BulkRefactoringTests` and documented the concrete shared-state dependency: it calls `WorkspaceManager.LoadAsync`/`.Close` directly on the assembly-shared `WorkspaceManager` instance.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `CodeActionServiceTests.cs`, `CompileCheckZeroProjectsTests.cs`, and `ConsumerAnalysisTests.cs`. All three classes only perform read-side operations (`GetCodeActionsAsync`, `CompileCheckService.CheckAsync`, `ConsumerAnalysisService.FindConsumersAsync`) through the already-synchronized `WorkspaceIdCache`, with no workspace reload, `*_apply` call, or other shared mutable state touched. Removed the opt-outs after 3 consecutive green concurrent runs (13/13 passing each time) alongside their wave siblings under the assembly's class-level parallelism.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `CouplingAnalysisTests.cs`, `DeadCodeIntegrationTests.cs`, and `DiagnosticFixIntegrationTests.cs` — removed the opt-out from `CouplingAnalysisTests` after proving it safe with repeated concurrent runs alongside parallel-enabled sibling classes, and documented the two retained opt-outs (`DeadCodeIntegrationTests`, `DiagnosticFixIntegrationTests`) with the concrete shared-state dependency (`RefactoringService.ApplyRefactoringAsync` mutating the assembly-shared `UndoService`/`ChangeTracker` singletons) that still requires serialization.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `DiagnosticServiceFilterTotalsTests.cs`, `DiagnosticServicePerfTests.cs`, and `DiagnosticSourceGeneratorParityTests.cs`. Removed the opt-out on `DiagnosticServiceFilterTotalsTests` — every test method only reads through the already-synchronized `DiagnosticService` cache and locally-scoped query helpers, proven safe by a repeated (3x) concurrent run alongside its wave siblings. Retained the opt-outs on `DiagnosticServicePerfTests` and `DiagnosticSourceGeneratorParityTests`, each now documented with the concrete mid-test `WorkspaceManager.ReloadAsync`/process-spawn dependency that still requires serialization.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `DocumentSymbolsSymbolHandleTests.cs`, `DotnetCommandRunnerPipeLifetimeTests.cs`, and `ExpandedSurfaceIntegrationTests.CoverageProcess.cs` — removed the opt-out on `DocumentSymbolsSymbolHandleTests.cs` (proven safe by repeated concurrent runs: reads only through the already-synchronized `WorkspaceIdCache`, no other shared mutable state), and documented the two retained opt-outs with their concrete shared-state dependency: `DotnetCommandRunnerPipeLifetimeTests.cs` (machine-global `dotnet build-server shutdown` and `-nodeReuse:true` worker nodes) and `ExpandedSurfaceIntegrationTests.CoverageProcess.cs` (a real out-of-process `dotnet test` build against the shared, non-isolated `SampleLib.Tests` project).
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `ExpandedSurfaceIntegrationTests.cs`, `ExpandedSurfaceIntegrationTests.RepoSolutionAnalysis.cs`, and `ExpandedSurfaceIntegrationTests.ToolContract.cs` — removed the opt-out on `ExpandedSurfaceIntegrationTests_ToolContract` after proving it safe with repeated concurrent runs, and documented the retained opt-outs with their concrete shared-state dependency. Closes `donotparallelize-audit-wave-08`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `FetchMcpResourceReadinessTests.cs`, `FindImplementationsCorlibHintTests.cs`, and `FindOverloadsTests.cs` — removed the opt-outs on `FindImplementationsCorlibHintTests` and `FindOverloadsTests` after proving them safe with repeated concurrent runs, and documented the retained opt-out on `FetchMcpResourceReadinessTests` (it reloads the assembly-shared sample workspace). Closes `donotparallelize-audit-wave-09`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `FindOverridesCorlibSuppressionTests`, `FindPropertyWritesHintLocatorShapeTests`, and `FindPropertyWritesPositionalRecordTests` — the first only reads through the synchronized `WorkspaceIdCache`, and the other two load and close their own isolated sample-solution copies, so the opt-out was removed from all three, proven safe by repeated concurrent test runs.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `FindReferencesSummaryTests.cs`, `FindReflectionUsagesPaginationTests.cs`, and `FixAllServiceGuidanceTests.cs` — removed all three opt-outs after proving them safe with repeated concurrent runs (readers of the synchronized shared workspace or per-test isolated fixture copies, no apply/reload/process-global state), each documented with a source-adjacent rationale comment. Closes `donotparallelize-audit-wave-11`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `FixAllServiceIntegrationTests.cs`, `FlowAnalysisServiceTests.cs`, and `GetSyntaxTreeBudgetTests.cs` — removed all three, proven safe by repeated (3x) concurrent runs alongside parallel peers: `FixAllServiceIntegrationTests` and `GetSyntaxTreeBudgetTests` read only through the already-synchronized `WorkspaceIdCache` (no preview token minted, no apply/reload/filesystem write), and `FlowAnalysisServiceTests` loads, mutates, reloads, and closes only its own private SampleSolution copy — the same isolated shape parallel `IsolatedWorkspaceTestBase` classes already use. Each removal is documented beside its class.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `GetSyntaxTreeRangeOverlapTests.cs`, `GoToTypeDefinitionTests.cs`, and `HardeningBehaviorTests.cs`. Repeated concurrent runs proved `GetSyntaxTreeRangeOverlapTests` and `GoToTypeDefinitionTests` safe, so their opt-outs are removed. The opt-out on `HardeningBehaviorTests` stays, with a source comment naming its dependency: a before/after count of workspaces on the assembly-shared `WorkspaceManager`. Closes `donotparallelize-audit-wave-13`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `HighValueCoverageIntegrationTests.cs` and `IntegrationTests.SymbolNavigation.cs` — removed both after proving them safe with repeated concurrent runs (read-only use of the synchronized shared workspace cache), and made `CompileCheck_BuildFailureSolution_Reports_Errors` close the BuildFailureSolution workspace session it loads (path-deduplicated, so shared with `ValidationIntegrationTests`, which keeps `[DoNotParallelize]`) instead of leaking a slot. `InMemoryMcpClientServerHarness.cs` carries no attribute (only a historical doc note) and is unchanged. Closes `donotparallelize-audit-wave-14`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `IntegrationTests.WorkspaceCore.cs`, `MemberHierarchyCrossToolConsistencyTests.cs`, and `MetadataNameLocatorTests.cs` — removed all three opt-outs after proving each class only reads the shared sample workspace through the synchronized `WorkspaceIdCache`, with repeated concurrent runs green. Closes `donotparallelize-audit-wave-15`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `MissingWorkspaceRootRetirementTests.cs`, `MutationAnalysisSideEffectsTests.cs`, and `NegativeEdgeCaseTests.cs`. `NegativeEdgeCaseTests` only reads through the synchronized `WorkspaceIdCache`; the other two load and mutate only private GUID-named sample copies under `TestTempRoot.Current`, with id-filtered watchers and `WorkspaceClosed` handlers. Removed all three opt-outs (each documented with a source-adjacent note) after 3x green runs alone, 3x alongside each other, and 3x in a concurrent mix with fixture-copy sibling classes (113/113 passing each time).
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `NuGetDependencySummaryTests.cs`, `NuGetVulnerabilityScanIntegrationTests.cs`, and `P4BehavioralBundleTests.cs` — removed the class-level opt-outs proven safe by repeated concurrent runs, and narrowed the vulnerability-scan class's opt-out to its live `Network` test, documented with its concrete shared-state dependency (an implicit restore against the shared sample fixture). Closes `donotparallelize-audit-wave-17`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `PerformanceBaselineTests`, `PerformanceBehaviorTests`, and `PositionProbeTests` — removed the opt-out from `PositionProbeTests` (read-only through the synchronized `WorkspaceIdCache`) and `PerformanceBehaviorTests` (private temp-copy workspace, now closed after use, plus local fakes), proven safe by repeated concurrent runs; retained it on `PerformanceBaselineTests`, documenting that its wall-clock budgets depend on not sharing the process CPU with sibling classes.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `PostApplySymbolRotationTests`, `PreviewApplyBoundaryRevalidationTests`, and `PreviewMultiFileEditSyntaxRegressionTests` — removed the opt-out from `PostApplySymbolRotationTests` and `PreviewMultiFileEditSyntaxRegressionTests` (each works only on its own isolated sample-solution copy through per-workspace-keyed concurrent services), proven safe by repeated concurrent runs; retained the documented opt-out on `PreviewApplyBoundaryRevalidationTests`, which mutates the process-global `SecurityOptionsSnapshot` and `RootExpansionGrantRegistry`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `PreviewRouteBindingEditingTests.cs`, `ProgressEmissionTests.cs`, and `ProjectFilterTests.cs` — removed the opt-outs on `ProjectFilterTests` and `PreviewRouteBindingEditingProducerTests` (read-only through the synchronized `WorkspaceIdCache`, proven safe by repeated concurrent runs) and documented the retained `ProgressEmissionTests` opt-out (child `dotnet build` / `dotnet test` against the shared SampleSolution fixture).
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `PromptShimToolsTests.cs`, `PromptSmokeTests.cs`, and `RecordFieldAdditionImpactTests.cs` — removed all three opt-outs after proving them safe with repeated concurrent runs; each class only reads through the synchronized shared workspace cache, renders read-only prompts or stubs, or loads and closes its own isolated fixture copy. Closes `donotparallelize-audit-wave-21`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `RefactoringToolsIntegrationTests.cs`, `ReferenceServiceFindImplementationsTests.cs`, and `RenameSummaryModeTests.cs` — removed all three after repeated concurrent runs proved them safe (shared-workspace access is preview/read-only through the synchronized `WorkspaceIdCache`; apply/reload paths use GUID-unique workspace copies whose undo/change state is keyed by workspace id), each with a source-adjacent comment recording the evidence. Closes `donotparallelize-audit-wave-22`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `ReplaceInvocationTests.cs`, `RestructureServiceTests.cs`, and `SamplingMrtrWireTests.cs` — removed all three after proving them safe with repeated concurrent runs (preview-only work against per-test isolated copies, the synchronized shared-workspace cache, or per-test in-memory MCP harnesses), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-23`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `SecurityDiagnosticIntegrationTests.cs`, `SelectionRangeCodeActionTests.cs`, and `SemanticExpansionTests.cs` — removed all three after proving them safe with repeated concurrent runs (read-only or preview-only work through the synchronized shared-workspace cache, per-test isolated copies, and fixtures no other class loads or builds), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-24`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `SemanticGrepServiceTests`, `SemanticSearchFallbackTests`, and `ServerDiscoveryWireTests.DeprecatedAlias_ToolsListAndOmittedWorkspaceDispatchMatchCanonical` — the first two only read the shared sample workspace through the synchronized `WorkspaceIdCache`, and the wire test loads into its own private `WorkspaceManager`, so all three opt-outs were removed with source-adjacent rationale, proven safe by repeated concurrent test runs.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs (wave 26): removed it from `NavigationToolsNotFoundMessageTests` (read-gate-only tool calls, green across repeated concurrent runs) and documented the retained opt-outs on `ServerInfoPathBoundaryTests` (writes the process-global `SecurityOptionsSnapshot`) and `ServiceCoverageTests` (spawns a real `dotnet test` that rewrites the shared sample's `obj/` tree while parallel classes copy it). (`donotparallelize-audit-wave-26`)
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `SymbolInfoNotFoundMessageTests.cs`, `StringLiteralReplaceServiceTests.cs`, and `SuppressionToolsTests.cs` — removed all three after proving them safe with repeated concurrent runs (read-only lookups and preview-only calls through the synchronized shared-workspace cache, or per-test isolated copies with per-test in-memory MCP hosts), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-27`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `SymbolDisambiguationElicitationTests.cs`, `SymbolImpactSweepBudgetTests.cs`, and `SymbolMapperTests.cs` — removed all three after proving them safe with repeated concurrent runs (read-only access to the shared sample workspace through the synchronized cache, class-local services, per-test fakes and in-memory `AdhocWorkspace` fixtures), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-28`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `SymbolRelationshipsBuiltinTypeSuppressionTests.cs` and `SymbolSearchPaginationTests.cs` — removed both after proving them safe with repeated concurrent runs (read-only queries against the synchronized shared-workspace cache), with a source-adjacent comment recording each decision. `TestAssemblyFixtureTests.cs` carried no opt-out, so there was nothing to audit. Closes `donotparallelize-audit-wave-29`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `TestReferenceMapServiceTests.cs`, `ToolCallErrorWireContractTests.cs` and `ToolDispatchTests.cs`. Removed the class-level opt-outs on the first two after repeated concurrent runs proved them safe: one runs read-only queries against the synchronized shared-workspace cache, the other uses only harness-private services and temp paths. Retained the three method-level opt-outs in `ToolDispatchTests.cs` and documented their dependency: they overwrite the process-global `SecurityOptionsSnapshot` that every `*_apply` token redemption reads. Closes `donotparallelize-audit-wave-30`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `Top10V2RegressionTests.cs`, `Top10V3RegressionTests.cs` and `TypeConsumersServiceTests.cs` — removed all three after proving them safe with repeated concurrent runs (read-only queries against the synchronized shared-workspace cache; the only `*_apply` tests run against per-test isolated workspace copies), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-31`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `TypeExtractionTests.cs`, `TypeMoveTests.cs` and `UnresolvedAnalyzerReferenceStripperTests.cs` — removed all three after proving them safe with repeated concurrent runs (each test works on its own GUID-unique fixture copy, with no shared-workspace reload, static or environment mutation), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-32`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `UnusedSymbolsTestBridgeExclusionTests.cs`, `ValidateRecentGitChangesTests.cs` and `ValidateWorkspaceChangeTrackerReconcileTests.cs`. Removed the opt-outs on `UnusedSymbolsTestBridgeExclusionTests` (read-only query against the synchronized shared-workspace cache) and `ValidateWorkspaceChangeTrackerReconcileTests` (per-test isolated workspace copies) after repeated concurrent runs stayed green. Retained the opt-out on `ValidateRecentGitChangesTests` and documented why: it mutates the process-global `GIT_DIR`/`GIT_WORK_TREE` variables that concurrent git fixture processes inherit. Closes `donotparallelize-audit-wave-33`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `ValidateWorkspaceSummaryTests`, `ValidationIntegrationTests`, and `ValidationToolsIntegrationTests`. Removed the opt-out from `ValidateWorkspaceSummaryTests` (read-only validation through the synchronized `WorkspaceIdCache`, proven safe by repeated concurrent runs); retained it on the other two with source-adjacent comments naming the child `dotnet build`/`dotnet test` runs against in-repo fixtures, the path-deduplicated `BuildFailureSolution` session, and the exclusive analyzer-DLL open they depend on.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `WindowsPathResourceTests`, `WorkspaceCachePrewarmTests`, and `WorkspaceForkApplyTests` — each class only reads the shared sample workspace through the synchronized `WorkspaceIdCache` or works on its own isolated workspace copy (fork, restore, and close scoped to that copy), so the opt-out was removed from all three, proven safe by repeated concurrent test runs.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `WorkspaceLoadCacheFastPathTests.cs`, `WorkspaceCapLruEvictionTests.cs` and `WorkspaceCloseDrainTests.cs` — removed all three after proving them safe with repeated concurrent runs (per-test workspace managers, cache roots, fixture copies and fakes; helper processes reached only through the pid seam), with a source-adjacent comment recording each decision. Closes `donotparallelize-audit-wave-36`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `WorkspaceEvictionAutoRetryTests.cs`, `WorkspaceLoadDedupTests.cs` and `WorkspaceLoadRestoreRaceTests.cs` — removed the first two after repeated concurrent runs proved them safe (each works only against its own `WorkspaceManager` or its own isolated sample-solution copy), and retained the third with a source-adjacent comment naming its wall-clock load-time ceilings, which a concurrent run breached (12244 ms against a 10000 ms ceiling). Closes `donotparallelize-audit-wave-37`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `WorkspaceManagerEvictionTests.cs`, `WorkspacePathMrtrWireTests.cs` and `WorkspaceReadinessReportIntegrationTests.cs`. Removed the `WorkspacePathMrtrWireTests` opt-out after repeated concurrent runs (per-test in-memory harness, class-private statics only). Retained the other two with source-adjacent comments naming the shared dependency: the process-wide `WorkspaceEvictionRegistry` recycle signal, and path-deduplicated repository-solution loads plus `Close` on the shared `WorkspaceManager`. Closes `donotparallelize-audit-wave-38`.
+
+- **Maintenance:** Re-audited `[DoNotParallelize]` opt-outs on `WorkspaceReloadedEventTests.cs`, `WorkspaceResourceTests.cs` and `WorkspaceSessionLoaderFailureTests.cs`. Removed the `WorkspaceResourceTests` (read-only through the shared `WorkspaceIdCache`) and `WorkspaceSessionLoaderFailureTests` (private `WorkspaceManager` and loader double) opt-outs after repeated concurrent runs. Retained `WorkspaceReloadedEventTests` with a source-adjacent comment naming its dependency: it reloads and closes the SampleSolution session on the assembly-shared `WorkspaceManager` that parallel readers hold by id. Closes `donotparallelize-audit-wave-39`.
+
+- **Maintenance:** Added generator-project regression cover for `find_type_consumers` and `find_type_mutations` (the resolution fix shipped with the Solution-owned compilation slot).
+
+- **Maintenance:** Removed two load-sensitive test flakes: the formatter-baseline timed-out-capture test now starts its 2-second generator timeout only after its nested PowerShell fixture publishes readiness (previously two cold starts raced the timeout), and Windows directory-junction fixtures are created in-process via `FSCTL_SET_REPARSE_POINT` instead of a `cmd /c mklink /J` launch whose 5-second wait silently turned link-boundary tests inconclusive under load.
+
+- **Maintenance:** The consume-once previous-process snapshot behind `server_info` / `server_heartbeat` `previousStdioPid` / `previousExitedAt` / `previousRecycleReason` is now per-instance state on the DI-injected `ServerProcessMetadata` instead of a process-wide static, and the static direct-call `ServerProcessMetadata` fallback in `ServerTools` is removed. This closes a cross-class test race in which a concurrently running test class that probed `server_info` could drain a snapshot another class had just published. Wire shape and production behavior are unchanged: the host still publishes once at startup and the first probe still carries the fields.
+
+- **Maintenance:** Repository hygiene: removed a developer's local user-profile path from nine tracked audit, retro, plan and runbook files (`docs/self-hosted-runner.md` now derives paths from `$env:USERPROFILE`). `verify-ai-docs.ps1` now rejects any tracked or pending file that introduces a non-placeholder user-profile path, on every CI route. Closes `local-user-path-leaks-sanitize-and-guard`.
+
+- **Maintenance:** Tests: `MissingWorkspaceRootRetirementTests.TransientGateFailure_RetriesUntilMissingWorkspaceRetires` now awaits the fake gate's `RemoveGate` signal instead of reading its counter in the window between `RunWriteAsync` completing and the production `RemoveGate` call. That race began failing CI once the class ran in parallel.
+
+- **Maintenance:** Correct the multi-session retrospective window and Codex tool-call extraction rules for current transcript records.
+
+- **Maintenance:** Documented that the Claude Code plugin's shipped `ROSLYNMCP_SANCTIONED_ROOTS: "."` default resolves to the session's working directory, plus the supported ways to point a plugin-launched session at a different repo.
+
 ## [4.2.1] - 2026-09-18
 
 ### Fixed
