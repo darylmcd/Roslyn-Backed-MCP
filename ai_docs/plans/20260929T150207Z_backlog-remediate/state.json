@@ -13,7 +13,7 @@
     {
       "id": "analyzer-shadow-isolation-misses-loaded-generators",
       "order": 2,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "analyzer-shadow-isolation-misses-loaded-generators"
       ],
@@ -42,28 +42,28 @@
       "dependsOn": [],
       "branch": "remediation/analyzer-shadow-isolation-misses-loaded-generators",
       "worktreePath": ".worktrees/analyzer-shadow-isolation-misses-loaded-generators",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "PR #1671 head 1fd90e32 cold review cycle 1 passed; prior integration gate red on volume junction fixed by merged #1672; current-main gate pending generation landing.",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1671",
+      "mergedAt": "2026-09-29T20:54:33Z",
+      "notes": null,
       "fileSetHash": "fece77200a3e0bec941820f3d8c5dc97843847ab5259c1728a1bc708ce63a66e",
       "stanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
       "reviewedStanzaHash": "54962409f531bb166f755886c27ac4e55b4719937b81db9f63137a57dd62baa4",
       "integrationGate": {
         "pr": 1671,
         "base": "main",
-        "mainOid": "17346ae4cf13729a854e748be53c57f8ae846e2f",
+        "mainOid": "574273c798e884bcd6ff6080d1cb2eb3b140d8f5",
         "headOid": "1fd90e32744d4b27146cea349faefbc01a012dc9",
-        "gatedTree": "1bc17cbf5092d51f014b387883526b37de78ef56",
-        "exit": 1,
-        "diagnostic": "gate command exited 1 (log ~\\.codex\\scratch\\roslyn-plan-20260929T150207Z\\gate-analyzer-shadow-isolation-misses-loaded-generators-pr1671-20260929T162509218Z-44752.log)",
-        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-analyzer-shadow-isolation-misses-loaded-generators-pr1671-20260929T162509218Z-44752.log",
-        "gatedAt": "2026-09-29T16:30:20.227Z"
+        "gatedTree": "5dd06473de26b4f02f3bc6eeee2b096dce4acbe2",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-analyzer-shadow-isolation-misses-loaded-generators-pr1671-20260929T203927163Z-54620.log",
+        "gatedAt": "2026-09-29T20:53:58.584Z"
       }
     },
     {
       "id": "release-managed-guard-worktree-scope",
       "order": 3,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "release-managed-guard-worktree-scope"
       ],
@@ -96,17 +96,28 @@
       "dependsOn": [],
       "branch": "remediation/release-managed-guard-worktree-scope",
       "worktreePath": ".worktrees/release-managed-guard-worktree-scope",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "PR #1673 head e95978b5 cold review passed; waiting for current-main integration gate and generation landing.",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1673",
+      "mergedAt": "2026-09-29T21:09:40Z",
+      "notes": null,
       "fileSetHash": "997882f98c465bec2aa97bdcb6b953b20ecce31940e87dee443b6cafe743e346",
       "stanzaHash": "d269054ddda7986fff807730a7a594b7f998549f4d518978c79e0fa694ce4ac5",
-      "reviewedStanzaHash": "d269054ddda7986fff807730a7a594b7f998549f4d518978c79e0fa694ce4ac5"
+      "reviewedStanzaHash": "d269054ddda7986fff807730a7a594b7f998549f4d518978c79e0fa694ce4ac5",
+      "integrationGate": {
+        "pr": 1673,
+        "base": "main",
+        "mainOid": "79ee2392bd0fe61a4573406eb081a9a61ed5893b",
+        "headOid": "1a5624ac1edae18434cc6fe792a199fd05c81c12",
+        "gatedTree": "fda4b5480d65e83741adbcb49cdcc4e46163c494",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-release-managed-guard-worktree-scope-pr1673-20260929T205515208Z-52924.log",
+        "gatedAt": "2026-09-29T21:09:14.004Z"
+      }
     },
     {
       "id": "tool-binding-missing-parameter-named",
       "order": 4,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "tool-binding-missing-parameter-named"
       ],
@@ -137,17 +148,28 @@
       "dependsOn": [],
       "branch": "remediation/tool-binding-missing-parameter-named",
       "worktreePath": ".worktrees/tool-binding-missing-parameter-named",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "PR #1674 head 433c0e7f cold review cycle 1 passed; waiting for current-main integration gate and generation landing.",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1674",
+      "mergedAt": "2026-09-29T21:24:16Z",
+      "notes": null,
       "fileSetHash": "3521cfc976ca938a2e5f66428e15154d7cebab02e3e2b1dc151fd3f095690d40",
       "stanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c",
-      "reviewedStanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c"
+      "reviewedStanzaHash": "ea6dcaa431e680c715a44580e45508a46059deec21d08bfde500a8079e4aa71c",
+      "integrationGate": {
+        "pr": 1674,
+        "base": "main",
+        "mainOid": "762c0303af68bba8d12e4855fd2826a12f2465ee",
+        "headOid": "6455ea3d97497cf51ed4ea5cf302ba4794023915",
+        "gatedTree": "cc2f51694cf851e624857ef0b9dd2e173f2e0d80",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-tool-binding-missing-parameter-named-pr1674-20260929T211017534Z-34336.log",
+        "gatedAt": "2026-09-29T21:23:40.362Z"
+      }
     },
     {
       "id": "coverlet-net10-session-end-crash-upgrade",
       "order": 5,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "coverlet-net10-session-end-crash-upgrade"
       ],
@@ -172,18 +194,29 @@
       },
       "dependsOn": [],
       "branch": "remediation/coverlet-net10-session-end-crash-upgrade",
-      "worktreePath": ".worktrees/coverlet-net10-session-end-crash-upgrade",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Immutable generation base predates merged PR #1672; full and coverage gates red only at base WorkspaceManager path guard. Four-file change preserved staged for fresh-base validation after generation boundary.",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/coverlet-net10-session-end-crash-upgrade",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1679",
+      "mergedAt": "2026-09-29T21:57:28Z",
+      "notes": null,
       "fileSetHash": "5baf5f9e448ad54ab25a091adee0da05d4d228481c9200518fcb1b53a65d4156",
       "stanzaHash": "bf77414f0989b9a41ebba70b26d1451c02563f94cdf681c5dc9eced7e9d040e6",
-      "reviewedStanzaHash": "bf77414f0989b9a41ebba70b26d1451c02563f94cdf681c5dc9eced7e9d040e6"
+      "reviewedStanzaHash": "bf77414f0989b9a41ebba70b26d1451c02563f94cdf681c5dc9eced7e9d040e6",
+      "integrationGate": {
+        "pr": 1679,
+        "base": "main",
+        "mainOid": "d518174ae0966b1f65c9fb2c67cbcc8b9939543e",
+        "headOid": "893a31e85432d33e883ffe89ac9399ee3d5e6d2b",
+        "gatedTree": "5a19a43a35d03de2848cccb06d82dd001311ee38",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-coverlet-net10-session-end-crash-upgrade-pr1679-20260929T214301440Z-15764.log",
+        "gatedAt": "2026-09-29T21:55:41.293Z"
+      }
     },
     {
       "id": "donotparallelize-audit-wave-40",
       "order": 6,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "donotparallelize-audit-wave-40"
       ],
@@ -213,32 +246,51 @@
       },
       "dependsOn": [],
       "branch": "remediation/donotparallelize-audit-wave-40",
-      "worktreePath": ".worktrees/donotparallelize-audit-wave-40",
-      "prUrl": null,
-      "mergedAt": null,
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/donotparallelize-audit-wave-40",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1684",
+      "mergedAt": "2026-09-29T22:56:54Z",
       "notes": null,
       "fileSetHash": "4e6dd81b96cd6a0af9fc58c17527074dafc337e04292bc94a1fe8b83e88da13a",
       "stanzaHash": "4da1b3b47108ecb0a059cd7ba7afaa5dd596feefecca8d260a08c40528435084",
-      "reviewedStanzaHash": "4da1b3b47108ecb0a059cd7ba7afaa5dd596feefecca8d260a08c40528435084"
+      "reviewedStanzaHash": "4da1b3b47108ecb0a059cd7ba7afaa5dd596feefecca8d260a08c40528435084",
+      "integrationGate": {
+        "pr": 1684,
+        "base": "main",
+        "mainOid": "2ef48f7343623652909e299e84fdb8d19e3e3cb8",
+        "headOid": "736ea0e98c24e819772d304364f391a0bfcbd91c",
+        "gatedTree": "3d68d39ec754a4c28d19e79778f855ae59bd4b06",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-donotparallelize-audit-wave-40-pr1684-20260929T224656296Z-41172.log",
+        "gatedAt": "2026-09-29T22:56:45.273Z"
+      }
     },
     {
       "id": "fix-all-analyzer-assembly-provider-not-found",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
-        "fix-all-analyzer-assembly-provider-not-found"
+        "fix-all-analyzer-assembly-provider-not-found",
+        "code-fix-provider-cache-reference-lifetime"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 3,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/FixAllService.cs"
+        "src/RoslynMcp.Roslyn/Services/FixAllService.cs",
+        "src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs",
+        "src/RoslynMcp.Roslyn/Services/RefactoringService.cs"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 6,
       "testFiles": [
-        "tests/RoslynMcp.Tests/FixAllServiceIntegrationTests.cs"
+        "tests/RoslynMcp.Tests/FixAllServiceIntegrationTests.cs",
+        "tests/RoslynMcp.Tests/FixAllServiceTests.cs",
+        "tests/RoslynMcp.Tests/CompilationCacheAdoptionTests.cs",
+        "tests/RoslynMcp.Tests/PreviewRouteBindingFileOpsTests.cs",
+        "tests/RoslynMcp.Tests/CodeFixProviderRegistryTests.cs",
+        "tests/RoslynMcp.Tests/FixAllServiceGuidanceTests.cs"
       ],
       "docFiles": "changelog.d/fix-all-analyzer-assembly-provider-not-found.md",
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": 30000,
+      "rowsClosedCount": 2,
+      "estimatedContextTokens": 50000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
@@ -250,19 +302,81 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/fix-all-analyzer-assembly-provider-not-found",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/fix-all-analyzer-assembly-provider-not-found",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1677",
+      "mergedAt": "2026-09-29T23:18:46Z",
       "notes": null,
       "fileSetHash": "62b6032df8e4396264d16aa08aa2f42c28a108d4c93f23d8bbae6f1578186ffd",
-      "stanzaHash": "c290c83690bc3d0a6d6b52fc9b39404b8f1bec40aa7e38c62cecbbd8049aa1b6",
-      "reviewedStanzaHash": "c290c83690bc3d0a6d6b52fc9b39404b8f1bec40aa7e38c62cecbbd8049aa1b6"
+      "stanzaHash": "a6252e2ff55c359fb38c171e493625edfad79a4d20ab8d284ec8f3e2088763f9",
+      "reviewedStanzaHash": "a6252e2ff55c359fb38c171e493625edfad79a4d20ab8d284ec8f3e2088763f9",
+      "amendments": [
+        {
+          "at": "2026-09-29T19:57:49.698Z",
+          "finding": "The approved FullPath-only approach still bypasses the reference loader and duplicates provider discovery.",
+          "reason": "Use the existing registry and update all required test constructors.",
+          "previousStanzaHash": "c290c83690bc3d0a6d6b52fc9b39404b8f1bec40aa7e38c62cecbbd8049aa1b6",
+          "stanzaHash": "776f17242eabffd490e0da8ec96627223e7b0f98da5709f3290dd03a81892157"
+        },
+        {
+          "at": "2026-09-29T20:00:04.284Z",
+          "finding": "Provider discovery failures are currently dropped and misreported as no provider.",
+          "reason": "Use detailed registry results, continue with a found provider, and name incomplete discovery when no provider can be selected.",
+          "previousStanzaHash": "776f17242eabffd490e0da8ec96627223e7b0f98da5709f3290dd03a81892157",
+          "stanzaHash": "335f194e6f945eab936bbc35e101df34ee39e72e58e87b6646a8e985b577ccbc"
+        },
+        {
+          "at": "2026-09-29T20:00:50.626Z",
+          "finding": "Reusing the singleton registry without changing its path-only cache introduces stale providers after same-path workspace reload.",
+          "reason": "Bundle the existing cache-lifetime row, key by active reference identity, and test replacement-reference loading.",
+          "previousStanzaHash": "335f194e6f945eab936bbc35e101df34ee39e72e58e87b6646a8e985b577ccbc",
+          "stanzaHash": "24db3c3fa79e5d8b384af5bea12e86ee1a125565b2318a3ec0996823329e2457"
+        },
+        {
+          "at": "2026-09-29T20:01:09.100Z",
+          "finding": "Stanza wording and context estimate lagged its widened cache-lifetime scope.",
+          "reason": "Align text and estimate with the five-test two-production-file bundle.",
+          "previousStanzaHash": "24db3c3fa79e5d8b384af5bea12e86ee1a125565b2318a3ec0996823329e2457",
+          "stanzaHash": "a26f5232d741be0e7a2328228e0713f2367ef6f83c94fa31f14544e597a1fc08"
+        },
+        {
+          "at": "2026-09-29T20:02:10.770Z",
+          "finding": "Strong reference-key caching would retain retired analyzer load contexts indefinitely.",
+          "reason": "Require weak-key ownership and a collectibility regression alongside same-path behavior.",
+          "previousStanzaHash": "a26f5232d741be0e7a2328228e0713f2367ef6f83c94fa31f14544e597a1fc08",
+          "stanzaHash": "9f8cda166ea336f6aa8c7baaacf01fba22f1c2cd5cb6289711a06f00a304e605"
+        },
+        {
+          "at": "2026-09-29T20:46:53.041Z",
+          "finding": "Cold review found same-path distinct-reference masking and legacy-constructor diagnostic loss; implementation exposed two stale comments outside listed scope.",
+          "reason": "Require identity-based lookup for distinct references, preserve logging, test both regressions, and include the stale-comment edits in the file set.",
+          "previousStanzaHash": "9f8cda166ea336f6aa8c7baaacf01fba22f1c2cd5cb6289711a06f00a304e605",
+          "stanzaHash": "da0daab2bfd79c032c460302721f90a72b58cc55545898e30cf5691c6b2e2a1f"
+        },
+        {
+          "at": "2026-09-29T20:47:07.855Z",
+          "finding": "Scope estimate text lagged the widened cold-review patch.",
+          "reason": "Align stanza estimate with the state entry and 3-production/6-test file scope.",
+          "previousStanzaHash": "da0daab2bfd79c032c460302721f90a72b58cc55545898e30cf5691c6b2e2a1f",
+          "stanzaHash": "a6252e2ff55c359fb38c171e493625edfad79a4d20ab8d284ec8f3e2088763f9"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1677,
+        "base": "main",
+        "mainOid": "66e4cd5386dbc376c5b72c3beea6117004217055",
+        "headOid": "4e6efaa5fbc95f81f50bcf740d6cae3a399ff73f",
+        "gatedTree": "e96f180dea3eb9f1a70bd211196364b23fe39910",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-fix-all-analyzer-assembly-provider-not-found-pr1677-20260929T230854633Z-18492.log",
+        "gatedAt": "2026-09-29T23:18:36.583Z"
+      }
     },
     {
       "id": "format-range-refuses-on-unrelated-line-count-change",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "format-range-refuses-on-unrelated-line-count-change"
       ],
@@ -288,33 +402,75 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/format-range-refuses-on-unrelated-line-count-change",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/format-range-refuses-on-unrelated-line-count-change",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1680",
+      "mergedAt": "2026-09-29T23:29:28Z",
       "notes": null,
       "fileSetHash": "ccc8fe98dc3efb06d2fd08fa3dbe8debb767fcfc012ba04de851b4b9920a1ee6",
-      "stanzaHash": "a34cf196c8d188705e982c5f14ed26d192df62be81af61970fb5ff2ba65b342b",
-      "reviewedStanzaHash": "a34cf196c8d188705e982c5f14ed26d192df62be81af61970fb5ff2ba65b342b"
+      "stanzaHash": "8ee028e40ea2e90d444ce8e8ee5f62f1320dd16fef55880bc3fddc55ed0342af",
+      "reviewedStanzaHash": "8ee028e40ea2e90d444ce8e8ee5f62f1320dd16fef55880bc3fddc55ed0342af",
+      "amendments": [
+        {
+          "at": "2026-09-29T19:58:02.674Z",
+          "finding": "The plan test used a removable blank line, but the source audit reproduced an inserted blank line after namespace.",
+          "reason": "Test the observed insertion shape and preserve outside-range text across boundary and in-range line-count changes.",
+          "previousStanzaHash": "a34cf196c8d188705e982c5f14ed26d192df62be81af61970fb5ff2ba65b342b",
+          "stanzaHash": "376b843078cdc0685bb8e97f872407f32dad9e1e41652cace8d7a5796637053a"
+        },
+        {
+          "at": "2026-09-29T20:00:13.450Z",
+          "finding": "The chosen fixture may not actually trigger a formatter line-count change.",
+          "reason": "Assert the formatter delta and red old-guard failure before accepting the regression test.",
+          "previousStanzaHash": "376b843078cdc0685bb8e97f872407f32dad9e1e41652cace8d7a5796637053a",
+          "stanzaHash": "8ee028e40ea2e90d444ce8e8ee5f62f1320dd16fef55880bc3fddc55ed0342af"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1680,
+        "base": "main",
+        "mainOid": "1f4216e7a0da66803eb8ead73659d04891b87aa2",
+        "headOid": "70855189620b6646b4358ecc6eac570a250701cf",
+        "gatedTree": "ad02b11161a0d74c220b8a2a02b03743406c97c3",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-format-range-refuses-on-unrelated-line-count-change-pr1680-20260929T231923230Z-46488.log",
+        "gatedAt": "2026-09-29T23:29:17.227Z"
+      }
     },
     {
       "id": "editorconfig-write-no-workspace-invalidation",
       "order": 10,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": [
-        "editorconfig-write-no-workspace-invalidation"
+        "editorconfig-write-no-workspace-invalidation",
+        "editorconfig-write-outside-workspace",
+        "editorconfig-prewrite-snapshot-coherence",
+        "editorconfig-owned-write-external-race",
+        "editorconfig-failed-write-displaces-undo-target",
+        "filewatcher-markstaleifrelevant-stale-precedence-comment"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 8,
       "productionFiles": [
-        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs"
+        "src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs",
+        "src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs",
+        "src/RoslynMcp.Roslyn/Services/EditService.cs",
+        "src/RoslynMcp.Roslyn/Services/EditorConfigService.cs",
+        "src/RoslynMcp.Roslyn/Services/FileWatcherService.cs",
+        "src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs",
+        "src/RoslynMcp.Roslyn/Services/UndoService.cs",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"
       ],
-      "testFilesAdded": 1,
+      "testFilesAdded": 4,
       "testFiles": [
-        "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs"
+        "tests/RoslynMcp.Tests/CompositeApplyOrchestratorTests.cs",
+        "tests/RoslynMcp.Tests/EditUndoCohesionTests.cs",
+        "tests/RoslynMcp.Tests/EditorConfigServiceTests.cs",
+        "tests/RoslynMcp.Tests/ExternalEditStalenessTests.cs"
       ],
       "docFiles": "changelog.d/editorconfig-write-no-workspace-invalidation.md",
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": 35000,
+      "rowsClosedCount": 6,
+      "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": 1,
@@ -326,21 +482,112 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
+      "branch": "remediation/editorconfig-write-no-workspace-invalidation",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/editorconfig-write-no-workspace-invalidation",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1678",
       "mergedAt": null,
-      "notes": null,
+      "notes": "Final head 9fda93f8 passed focused Windows/Linux Release suites and independent cold review. Final exact-head current-main integration gate pending; ADR 0012 release choice pending.",
       "fileSetHash": "c82c1d3680b8e7d89f8f44f00098a1f9382ae7d5194f10a598b834b5508d0265",
-      "stanzaHash": "c7a69aafccfdc55c4d8d7aea96ed8f90d462025d6855a26243cc33a025008e1b",
-      "reviewedStanzaHash": "c7a69aafccfdc55c4d8d7aea96ed8f90d462025d6855a26243cc33a025008e1b"
+      "stanzaHash": "d7e7433f5f36ee43a7628f9af4bb19bbe81ed7bfe93806f312fe79a40b4b4781",
+      "reviewedStanzaHash": "d7e7433f5f36ee43a7628f9af4bb19bbe81ed7bfe93806f312fe79a40b4b4781",
+      "amendments": [
+        {
+          "at": "2026-09-29T20:14:04.783Z",
+          "finding": "Own and external editorconfig writes both miss invalidation; watcher attribution races and the writer permits outside paths.",
+          "reason": "Coordinate owned writes internally, watch config events, validate workspace document ownership, and preserve public contracts.",
+          "previousStanzaHash": "c7a69aafccfdc55c4d8d7aea96ed8f90d462025d6855a26243cc33a025008e1b",
+          "stanzaHash": "4c84138fd8bd94b58a614d78ac966333c4ed21b681a96b60e741f9a3e9cc1e10"
+        },
+        {
+          "at": "2026-09-29T20:17:01.969Z",
+          "finding": "A matched document alias could still select an outside config destination; ancestor config changes are outside the current watcher root.",
+          "reason": "Derive destination from matched physical document and watch each applicable ancestor directory.",
+          "previousStanzaHash": "4c84138fd8bd94b58a614d78ac966333c4ed21b681a96b60e741f9a3e9cc1e10",
+          "stanzaHash": "381944a0d4264eda38f4f9e0c510c38e37b8d631a702a0a84b05508378419dfc"
+        },
+        {
+          "at": "2026-09-29T21:13:36.072Z",
+          "finding": "Cold review found outside-workspace linked and ancestor writes, concurrent external-byte misattribution, alternate-manager bypass, and partial owned-write attribution; DI wiring adds a production file.",
+          "reason": "Constrain physical writes, coordinate intended bytes via DI, fail closed without a coordinator, preserve attribution, and list the complete implementation scope.",
+          "previousStanzaHash": "381944a0d4264eda38f4f9e0c510c38e37b8d631a702a0a84b05508378419dfc",
+          "stanzaHash": "68fd35f20bd42d48e0d30b89e79472f64e3100a8c23b2c685cb1324cf21564a2"
+        },
+        {
+          "at": "2026-09-29T21:13:57.693Z",
+          "finding": "The DI file path in the preceding scope amendment did not resolve.",
+          "reason": "Use the actual src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs path in stanza and state.",
+          "previousStanzaHash": "68fd35f20bd42d48e0d30b89e79472f64e3100a8c23b2c685cb1324cf21564a2",
+          "stanzaHash": "602c9be6ac805590192e2d044c3e9358c5a895e264271583889299fe65e23b0e"
+        },
+        {
+          "at": "2026-09-29T21:56:54.674Z",
+          "finding": "Stable set_editorconfig_option now refuses ancestor writes, a public behavior change requiring migration under release policy.",
+          "reason": "ADR 0011, decision index, and breaking changelog fragment record the boundary, operator migration, and major-release requirement.",
+          "previousStanzaHash": "602c9be6ac805590192e2d044c3e9358c5a895e264271583889299fe65e23b0e",
+          "stanzaHash": "e99caf03de186b59a29031a6e532923ddf47a61752dd491f67be90cb88e00ba6"
+        },
+        {
+          "at": "2026-09-29T22:23:31.876Z",
+          "finding": "Cold review: ADR 0011 is reserved for the 5.0 release contract decision",
+          "reason": "Editorconfig decision and all plan references now use ADR 0012",
+          "previousStanzaHash": "e99caf03de186b59a29031a6e532923ddf47a61752dd491f67be90cb88e00ba6",
+          "stanzaHash": "b65a807888b17a829062835f1454b03e136b20b3e7550ca5754c199800a813df"
+        },
+        {
+          "at": "2026-09-29T22:47:43.396Z",
+          "finding": "Cold review: separate pre-write byte and line reads can capture different external-edit versions",
+          "reason": "One pre-write byte snapshot now supplies both undo and parsing, with a deterministic interleaving regression; bundled exact backlog row",
+          "previousStanzaHash": "b65a807888b17a829062835f1454b03e136b20b3e7550ca5754c199800a813df",
+          "stanzaHash": "f42681befaefd291ade6b1cd9a4c91aebd4185928485a2fd109ddc53a354da21"
+        },
+        {
+          "at": "2026-09-29T23:03:50.905Z",
+          "finding": "Hosted undo failure and cold review exposed watcher-delete sharing and lost external-write attribution during owned mutation",
+          "reason": "A locked single-handle transaction, delete-sharing watcher reads, and deterministic contention regressions cover the shared write/watch contract",
+          "previousStanzaHash": "f42681befaefd291ade6b1cd9a4c91aebd4185928485a2fd109ddc53a354da21",
+          "stanzaHash": "8810159cc6dc8ec4ad7518cdde4f2a5cd6e8914a706778d133bbf7fa2c01306b"
+        },
+        {
+          "at": "2026-09-29T23:12:04.480Z",
+          "finding": "Cold review: POSIX path replacement returned false success and failed config edits displaced prior undo state",
+          "reason": "Condensed plan requires failure on replaced target, successful-write-only undo capture, exact regressions, and dependency-chained remainder",
+          "previousStanzaHash": "8810159cc6dc8ec4ad7518cdde4f2a5cd6e8914a706778d133bbf7fa2c01306b",
+          "stanzaHash": "1b73b42d6739936847dce8534b7e98e247733dd85544dea84880b44609403e18"
+        },
+        {
+          "at": "2026-09-29T23:36:06.312Z",
+          "finding": "Linux hosted failure and cold review exposed same-inode contention plus unrecoverable partial-write undo",
+          "reason": "Plan now requires held-inode recheck, Linux advisory lock, compensation or explicit recovery record, and tracked external-owner POSIX limit",
+          "previousStanzaHash": "1b73b42d6739936847dce8534b7e98e247733dd85544dea84880b44609403e18",
+          "stanzaHash": "c4b75d33d0ce67e3029becb59904e77d2727bcc9701bef28ba0d05ee5ab67466"
+        },
+        {
+          "at": "2026-09-30T00:35:52.008Z",
+          "finding": "Full gate undo failure and cold review exposed shared AtomicFileWriter reader contention, temp collision, path ownership, logger, and lazy parser handles.",
+          "reason": "Widened to the complete owned-write mechanism, cross-platform regressions, explicit external-writer residual row, and actual touched file set.",
+          "previousStanzaHash": "c4b75d33d0ce67e3029becb59904e77d2727bcc9701bef28ba0d05ee5ab67466",
+          "stanzaHash": "d7e7433f5f36ee43a7628f9af4bb19bbe81ed7bfe93806f312fe79a40b4b4781"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1678,
+        "base": "main",
+        "mainOid": "f60c9a86eeef08e3f7cec6b9811c778ec025703b",
+        "headOid": "9fda93f855f65f0149713b41579f43acf8795b2f",
+        "gatedTree": "584aa22ff333d55e334f20144893a9638764917e",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-editorconfig-write-no-workspace-invalidation-pr1678-20260930T003600950Z-12544.log",
+        "gatedAt": "2026-09-30T00:46:07.344Z"
+      }
     },
     {
       "id": "extract-method-nullable-return-flow-state",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
-        "extract-method-nullable-return-flow-state"
+        "extract-method-nullable-return-flow-state",
+        "extract-method-write-only-outer-local"
       ],
       "productionFilesTouched": 1,
       "productionFiles": [
@@ -353,7 +600,7 @@
       "docFiles": [
         "changelog.d/extract-method-nullable-return-flow-state.md"
       ],
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 2,
       "estimatedContextTokens": 35000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -366,19 +613,46 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/extract-method-nullable-return-flow-state",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/extract-method-nullable-return-flow-state",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1676",
+      "mergedAt": "2026-09-29T23:40:25Z",
       "notes": null,
       "fileSetHash": "5f4504c691753333dd51e27aea7c180743b051f75a25d633564b453c6b2cdcbf",
-      "stanzaHash": "c750bbf4189581194acfeef23b3bad47aa33c325168e8f8cfd7db9bcaa70de72",
-      "reviewedStanzaHash": "c750bbf4189581194acfeef23b3bad47aa33c325168e8f8cfd7db9bcaa70de72"
+      "stanzaHash": "5ce81698c30e6a1def1583119050ebf4689f872734b42d13b5d6b0c0bba69682",
+      "reviewedStanzaHash": "5ce81698c30e6a1def1583119050ebf4689f872734b42d13b5d6b0c0bba69682",
+      "amendments": [
+        {
+          "at": "2026-09-29T21:14:20.083Z",
+          "finding": "The new nullable-flow regression exposed a write-only outer-local outflow that generated an unbound identifier.",
+          "reason": "Bundle the distinct tracked row into this same file slice and require the declaration fix with compile regression.",
+          "previousStanzaHash": "c750bbf4189581194acfeef23b3bad47aa33c325168e8f8cfd7db9bcaa70de72",
+          "stanzaHash": "41f2a92a2f35e611b1b8708eb69a8b0fa9744655cd3c763f603b5036084476d6"
+        },
+        {
+          "at": "2026-09-29T22:19:39.352Z",
+          "finding": "Cold review: narrowing the extracted return can accidentally narrow a generated caller-local var and break downstream nullable assignment",
+          "reason": "Approach now preserves the original caller local type and validation requires a downstream-null regression",
+          "previousStanzaHash": "41f2a92a2f35e611b1b8708eb69a8b0fa9744655cd3c763f603b5036084476d6",
+          "stanzaHash": "5ce81698c30e6a1def1583119050ebf4689f872734b42d13b5d6b0c0bba69682"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1676,
+        "base": "main",
+        "mainOid": "64d5f7330ab4bdcc96052da94028e52ac53b2755",
+        "headOid": "a6e436b78f509a3d3f0cbe473bc478160f9f7a41",
+        "gatedTree": "926ee12cb8fc76bd56406fe84bf26b303b6062c4",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-extract-method-nullable-return-flow-state-pr1676-20260929T233001884Z-36580.log",
+        "gatedAt": "2026-09-29T23:40:03.053Z"
+      }
     },
     {
       "id": "replace-string-literals-const-self-reference",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "replace-string-literals-const-self-reference"
       ],
@@ -404,19 +678,46 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/replace-string-literals-const-self-reference",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/replace-string-literals-const-self-reference",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1681",
+      "mergedAt": "2026-09-29T22:46:23Z",
       "notes": null,
       "fileSetHash": "9be92ef4cfec80d9aa71b221d003b8ba3648f8c76bc0126ef3c1e153f7760add",
-      "stanzaHash": "769c9df0a766e3d4cd97d66c874f531bbc432e6dfb21888844d031a8b6b1a850",
-      "reviewedStanzaHash": "769c9df0a766e3d4cd97d66c874f531bbc432e6dfb21888844d031a8b6b1a850"
+      "stanzaHash": "506bbceff1f95ed8593e60b8c20e8df3015b48c5adecc2d6ae8567f8061a1266",
+      "reviewedStanzaHash": "506bbceff1f95ed8593e60b8c20e8df3015b48c5adecc2d6ae8567f8061a1266",
+      "amendments": [
+        {
+          "at": "2026-09-29T20:08:21.487Z",
+          "finding": "Syntax-only fallback on failed target binding can still emit the same self-reference.",
+          "reason": "Use semantic symbol identity across documents and fail closed when it is unavailable.",
+          "previousStanzaHash": "769c9df0a766e3d4cd97d66c874f531bbc432e6dfb21888844d031a8b6b1a850",
+          "stanzaHash": "02eb263b2fe25fa648c0352ea19726ec9a3dfc5b33a197628090674bc8973797"
+        },
+        {
+          "at": "2026-09-29T20:11:42.062Z",
+          "finding": "Unconditional binding requirement rejects valid symbol-free expression replacements observed in the audit.",
+          "reason": "Classify expressions; preserve symbol-free rewrites and fail closed only for unresolved symbol-bearing targets.",
+          "previousStanzaHash": "02eb263b2fe25fa648c0352ea19726ec9a3dfc5b33a197628090674bc8973797",
+          "stanzaHash": "506bbceff1f95ed8593e60b8c20e8df3015b48c5adecc2d6ae8567f8061a1266"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1681,
+        "base": "main",
+        "mainOid": "89edc1cb96ad1e427acae49108b276f205014938",
+        "headOid": "6fabeb91cbbab00ad54c0dae4033114b16faffb6",
+        "gatedTree": "a54a656e386121019431d5c0e095b214ac653c7b",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-replace-string-literals-const-self-reference-pr1681-20260929T223513275Z-54948.log",
+        "gatedAt": "2026-09-29T22:46:02.133Z"
+      }
     },
     {
       "id": "record-satellites-line-insert-outside-initializer",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "record-satellites-line-insert-outside-initializer"
       ],
@@ -445,14 +746,41 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/record-satellites-line-insert-outside-initializer",
+      "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/record-satellites-line-insert-outside-initializer",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1683",
+      "mergedAt": "2026-09-29T23:08:15Z",
       "notes": null,
       "fileSetHash": "f57c3da5f528eed428569389b57c60c03abe98bd5e71126974d1932940bfec1e",
-      "stanzaHash": "250ae5d08463b2afab48efebaab44081b0acbee4fb0d0f0e883439c20497212a",
-      "reviewedStanzaHash": "250ae5d08463b2afab48efebaab44081b0acbee4fb0d0f0e883439c20497212a"
+      "stanzaHash": "15ac4da4183bc82cad269ea0e1c1161ba962d5f94b2b141443dd5fd1dcc3275b",
+      "reviewedStanzaHash": "15ac4da4183bc82cad269ea0e1c1161ba962d5f94b2b141443dd5fd1dcc3275b",
+      "amendments": [
+        {
+          "at": "2026-09-29T20:08:35.256Z",
+          "finding": "Preview inserts satellites but not the target field; a compile-after-apply fixture without the field would fail for the wrong reason.",
+          "reason": "Declare the field in the fixture and verify only the satellite insertion contract, including additive public labels.",
+          "previousStanzaHash": "250ae5d08463b2afab48efebaab44081b0acbee4fb0d0f0e883439c20497212a",
+          "stanzaHash": "270c26e802a066725225eadc0fbc7d9e3cb6231105b90deb2d79d529a60214f6"
+        },
+        {
+          "at": "2026-09-29T20:11:58.483Z",
+          "finding": "Placement-only edits leave WithB referencing an unbound source and tuple Snapshot return signatures stale.",
+          "reason": "Generate a matching WithC for the supported pattern, update tuple signatures, and compile applied previews.",
+          "previousStanzaHash": "270c26e802a066725225eadc0fbc7d9e3cb6231105b90deb2d79d529a60214f6",
+          "stanzaHash": "15ac4da4183bc82cad269ea0e1c1161ba962d5f94b2b141443dd5fd1dcc3275b"
+        }
+      ],
+      "integrationGate": {
+        "pr": 1683,
+        "base": "main",
+        "mainOid": "e5422ec5a659b20b4fd32d8e11ca82df885e2642",
+        "headOid": "32dc17959173f5473d5b38968d0a2b36f14b4698",
+        "gatedTree": "962359eccf92445ecaa0320d9d9ac63fded9c990",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/.codex/scratch/roslyn-plan-20260929T150207Z/gate-record-satellites-line-insert-outside-initializer-pr1683-20260929T225727115Z-36948.log",
+        "gatedAt": "2026-09-29T23:07:08.710Z"
+      }
     }
   ],
   "anchorVerification": "performed",
@@ -873,8 +1201,8 @@
   },
   "lastReviewFindings": [],
   "conflictGraphInputHash": "08ead03bd28d5c91f1f80eebc5bf6dae00e3d695fb244848ad77f81e81bc20a7",
-  "planHash": "592d78476319c358efc61dced1950c8606260adf8d020f39daedfea483d8c7d8",
+  "planHash": "a6f1d82efdaf7cefbbb2d81bac411f952d002967e7bdae7b2dc488a1df11c1ad",
   "backlogSnapshotHash": "fd4125a6ce66c45dd1015952a6d06eb161fc7fcae22150921eccc75274daea19",
-  "reviewedPlanHash": "592d78476319c358efc61dced1950c8606260adf8d020f39daedfea483d8c7d8",
+  "reviewedPlanHash": "a6f1d82efdaf7cefbbb2d81bac411f952d002967e7bdae7b2dc488a1df11c1ad",
   "reviewedBacklogSnapshotHash": "fd4125a6ce66c45dd1015952a6d06eb161fc7fcae22150921eccc75274daea19"
 }

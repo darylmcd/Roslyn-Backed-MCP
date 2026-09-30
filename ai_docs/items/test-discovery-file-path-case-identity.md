@@ -5,7 +5,6 @@
 ## Anchors
 
 - `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:277-300`
-- `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:439-444`
 - `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:724-738`
 - `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:894-924`
 
@@ -17,8 +16,8 @@
 
 ## Evidence
 
-- Code inspection 2026-09-29: file-path sets at lines 277, 733, and 894 use `StringComparer.OrdinalIgnoreCase`; exact document lookup at line 444 uses `StringComparison.OrdinalIgnoreCase`. These merge distinct file paths on Linux even though the workspace path helper already exposes platform-specific comparison.
+- Code inspection 2026-09-29: file-path sets at lines 277, 733, and 894 use `StringComparer.OrdinalIgnoreCase`; related-file de-duplication at line 724 uses `StringComparer.OrdinalIgnoreCase`. These merge distinct file paths on Linux even though the workspace path helper already exposes platform-specific comparison.
 
 ## Context
 
-- Found while correcting junction alias selection in `FindDocumentByPath`. This is a separate case-identity mechanism; the junction fix does not address it.
+- Found while correcting junction alias selection in `FindDocumentByPath`. That caller-path lookup now uses platform identity; these related-test collections still collapse distinct paths on case-sensitive volumes.
