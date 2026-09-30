@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-29T15:35:17Z
+**updated_at:** 2026-09-30T14:07:07Z
 
 ## Agent contract
 
@@ -165,6 +165,7 @@
 | `preview-apply-tool-descriptions` | Medium | scaffold-batch-preview-apply-route | **Name each previews apply tool** — align five producer descriptions with tested token routes. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-apply-tool-descriptions.md |
 | `workspace-fork-project-mutation-preview` | Medium | — | **Align workspace_fork_apply with project-mutation tokens** — replay safely or narrow its claim. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/workspace-fork-project-mutation-preview.md |
 | `preview-token-consumed-reason` | Medium | — | **Report consumed preview tokens accurately** — distinguish already applied from reload and expiry. [type: bug] [source: preview-token-store-mismatch-false-stale] | M | items/preview-token-consumed-reason.md |
+| `client-root-widening-drive-root-parent` | Medium | — | **Decide sibling-worktree widening when repo root parent is a drive root** — expandSanctionedRoots skips D:\ parents, so D:\<repo>-audit-* siblings are rejected; choose prefix-scoped widening or keep skip, implement + test + document [type: decision] [source: PR #1685 fixture change] | S | items/client-root-widening-drive-root-parent.md |
 
 ## Low
 
