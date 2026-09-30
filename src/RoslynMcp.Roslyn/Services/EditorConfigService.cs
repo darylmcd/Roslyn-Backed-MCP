@@ -140,7 +140,9 @@ public sealed class EditorConfigService : IEditorConfigService
     internal static IEnumerable<(string Key, string Value)> ParseEditorconfigCsKeys(string editorconfigPath)
     {
         var inApplicableSection = false;
-        foreach (var rawLine in File.ReadLines(editorconfigPath))
+        // Finish the disk read before yielding: a lazy File.ReadLines enumerator
+        // otherwise holds a Windows handle that blocks atomic undo replacement.
+        foreach (var rawLine in File.ReadAllLines(editorconfigPath))
         {
             var line = rawLine.Trim();
             if (line.Length == 0 || line[0] == '#' || line[0] == ';')

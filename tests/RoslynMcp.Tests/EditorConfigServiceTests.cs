@@ -251,6 +251,27 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ParseEditorconfigCsKeys_ClosesReadHandleBeforeYielding()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
+        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        try
+        {
+            using var entries = EditorConfigService.ParseEditorconfigCsKeys(configPath).GetEnumerator();
+            Assert.IsTrue(entries.MoveNext());
+            Assert.AreEqual("4", entries.Current.Value);
+            await AtomicFileWriter.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n", CancellationToken.None);
+            Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
     public async Task SetDiagnosticSeverity_RefreshesGatedDiagnosticsWithoutManualReload()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();

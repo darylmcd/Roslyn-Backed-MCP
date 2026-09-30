@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32.SafeHandles;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -223,9 +225,11 @@ internal static class AtomicFileWriter
         IUnexpectedExceptionReporter? exceptionReporter = null)
         => await WriteAtomicAsync(
             path,
-            tmp => encoding is null
-                ? File.WriteAllTextAsync(tmp, content, ct)
-                : File.WriteAllTextAsync(tmp, content, encoding, ct),
+            async (_, stream) =>
+            {
+                await using var writer = new StreamWriter(stream, encoding ?? new UTF8Encoding(false), leaveOpen: true);
+                await writer.WriteAsync(content.AsMemory(), ct).ConfigureAwait(false);
+            },
             ct,
             logger,
             exceptionReporter).ConfigureAwait(false);
@@ -238,24 +242,25 @@ internal static class AtomicFileWriter
         IUnexpectedExceptionReporter? exceptionReporter = null)
         => await WriteAtomicAsync(
             path,
-            tmp => File.WriteAllBytesAsync(tmp, content, ct),
+            (_, stream) => stream.WriteAsync(content, ct).AsTask(),
             ct,
             logger,
             exceptionReporter).ConfigureAwait(false);
 
     internal static Task WriteAtomicAsync(
         string path,
-        Func<string, Task> writeTempAsync,
+        Func<string, FileStream, Task> writeTempAsync,
         CancellationToken ct,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
         ct.ThrowIfCancellationRequested();
+        var (tmp, stream) = ReserveUniqueTempPath(path);
         return WriteAtomicAtTempPathAsync(
-            path, ReserveUniqueTempPath(path), writeTempAsync, ct, logger, exceptionReporter);
+            path, tmp, stream, writeTempAsync, ct, logger, exceptionReporter);
     }
 
-    private static string ReserveUniqueTempPath(string path)
+    private static (string Path, FileStream Stream) ReserveUniqueTempPath(string path)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))
             ?? throw new InvalidOperationException("The target has no containing directory.");
@@ -264,8 +269,9 @@ internal static class AtomicFileWriter
             var candidate = Path.Combine(directory, ".rmcp-" + Path.GetRandomFileName() + ".tmp");
             try
             {
-                using var reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                return candidate;
+                var reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write,
+                    FileShare.Read | FileShare.Delete);
+                return (candidate, reservation);
             }
             catch (IOException) when (File.Exists(candidate))
             {
@@ -276,39 +282,51 @@ internal static class AtomicFileWriter
         throw new IOException("Could not reserve a unique atomic-write temporary file.");
     }
 
-    // The explicit path is also used by fault-injection tests for temp cleanup.
     internal static async Task WriteAtomicAtTempPathAsync(
         string path,
         string tmp,
-        Func<string, Task> writeTempAsync,
+        FileStream stream,
+        Func<string, FileStream, Task> writeTempAsync,
         CancellationToken ct,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
-        try
+        using (stream)
         {
-            await writeTempAsync(tmp).ConfigureAwait(false);
-            await ReplaceAfterTransientReaderAsync(tmp, path, ct).ConfigureAwait(false);
-        }
-        catch
-        {
-            TryDeleteTemp(tmp, path, logger, exceptionReporter);
-            throw;
+            try
+            {
+                await writeTempAsync(tmp, stream).ConfigureAwait(false);
+                await stream.FlushAsync(ct).ConfigureAwait(false);
+                await ReplaceAfterTransientReaderAsync(tmp, path, stream, ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                TryDeleteTemp(tmp, path, stream, logger, exceptionReporter);
+                throw;
+            }
         }
     }
 
     private static async Task ReplaceAfterTransientReaderAsync(
         string tmp,
         string path,
+        FileStream stream,
         CancellationToken ct)
     {
         const int maxAttempts = 10;
         for (var attempt = 1; ; attempt++)
         {
             ct.ThrowIfCancellationRequested();
+            // The check detects a temp name replaced while the callback ran or a reader held
+            // the destination. An uncooperative process can still rename between this check
+            // and the path-based move; the post-move check makes that conflict observable.
+            if (!TempHandleStillNamesPath(tmp, stream))
+                throw new IOException("Atomic-write temporary file ownership changed before replacement.");
             try
             {
                 File.Move(tmp, path, overwrite: true);
+                if (!TempHandleStillNamesPath(path, stream))
+                    throw new IOException("Atomic-write destination ownership changed after replacement.");
                 return;
             }
             catch (Exception ex) when (attempt < maxAttempts &&
@@ -332,18 +350,86 @@ internal static class AtomicFileWriter
     private static bool IsSharingViolation(IOException exception) =>
         exception.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021);
 
+    private static bool TempHandleStillNamesPath(string path, FileStream stream)
+    {
+        if (stream.SafeFileHandle.IsClosed || stream.SafeFileHandle.IsInvalid) return false;
+        try
+        {
+            // A rename or replacement changes the held handle's current name. A symlink at
+            // the reserved name is never owned, even if it resolves to identical bytes.
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0) return false;
+            var heldPath = GetHandlePath(stream.SafeFileHandle);
+            using var named = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            return GetHandlePath(named.SafeFileHandle).Equals(heldPath,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static string GetHandlePath(SafeFileHandle handle)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            var fdPath = "/proc/self/fd/" + handle.DangerousGetHandle().ToInt32();
+            return Path.GetFullPath(new FileInfo(fdPath).LinkTarget
+                ?? throw new IOException("Could not resolve atomic-write handle."));
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            var buffer = new StringBuilder(32768);
+            var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0 || length >= buffer.Capacity)
+                throw new IOException("Could not resolve atomic-write handle.");
+            return NormalizeWindowsHandlePath(buffer.ToString());
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            const int fGetPath = 50;
+            var buffer = new byte[1024];
+            if (FcntlGetPath(handle.DangerousGetHandle().ToInt32(), fGetPath, buffer) != 0)
+                throw new IOException("Could not resolve atomic-write handle.");
+            var end = Array.IndexOf(buffer, (byte)0);
+            return Path.GetFullPath(Encoding.UTF8.GetString(buffer, 0, end < 0 ? buffer.Length : end));
+        }
+
+        throw new NotSupportedException("Atomic-write handle identity is unavailable on this platform.");
+    }
+
+    internal static string NormalizeWindowsHandlePath(string value)
+    {
+        if (value.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+            return @"\\" + value[8..];
+        return value.StartsWith(@"\\?\", StringComparison.Ordinal) ? value[4..] : value;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path,
+        uint length, uint flags);
+
+    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    private static extern int FcntlGetPath(int fd, int command, byte[] path);
+
     private static void TryDeleteTemp(
         string tmp,
         string path,
+        FileStream stream,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
         try
         {
-            if (File.Exists(tmp))
-            {
-                File.Delete(tmp);
-            }
+            if (!TempHandleStillNamesPath(tmp, stream))
+                throw new IOException("Atomic-write temporary file ownership changed before cleanup.");
+            // File.Delete is a no-op when the name is absent; File.Exists misses dangling links.
+            File.Delete(tmp);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -360,7 +446,7 @@ internal static class AtomicFileWriter
                     ex,
                     UnexpectedExceptionCategory.CompositeApply).Server;
                 logger.LogWarning(
-                    "{CleanupCategory}: failed to delete an orphaned temp file for {TargetFile} after a failed write; a temp artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
+                    "{CleanupCategory}: temporary artifact cleanup for {TargetFile} was incomplete after a failed write; an artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
                     TempCleanupCategory,
                     Path.GetFileName(path),
                     diagnostic.CorrelationId,

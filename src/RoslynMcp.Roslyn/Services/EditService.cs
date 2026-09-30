@@ -810,6 +810,7 @@ public sealed class EditService : IEditService
                 canonicalWritePath ?? document.FilePath,
                 sourceText.ToString(),
                 ct,
+                logger: _logger,
                 encoding: SourceFileEncoding.FromSourceText(sourceText.Encoding)).ConfigureAwait(false);
             return true;
         }
