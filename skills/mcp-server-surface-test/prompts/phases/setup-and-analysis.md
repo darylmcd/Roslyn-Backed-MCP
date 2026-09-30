@@ -21,7 +21,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
    - `version`, `catalogVersion`, `runtime`, `os`.
    - `surface.tools.{stable,experimental}`, `surface.resources.{stable,experimental}`, `surface.prompts.{stable,experimental}`, `surface.registered.*`, `surface.registered.parityOk` (must be `true`; `false` is a P2 finding).
    - `resourceServerNames.canonical`, `.aliases[]`, and `.probeGuidance`. When the client asks for a resource server name, use the actually-listed server handle that matches this hint. Prefer `roslyn` when present; otherwise match an alias exactly. Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name unless that exact underscore alias is listed by the host.
-   - `connection.state` — if `initializing` or `degraded`, wait briefly and call `server_heartbeat` once before proceeding. If the state never becomes `ready`, halt and surface the diagnostic.
+   - `connection.state` — `idle` (no workspace loaded yet) and `ready` are both acceptable pre-load; the server stays `idle` until a `workspace_load`, so never wait for `ready` here. If it is `initializing` or `degraded`, wait briefly and call `server_heartbeat` once before proceeding; if it never becomes `idle` or `ready`, halt and surface the diagnostic. After Phase 0 `workspace_load`, require `connection.state == ready`.
 
 3. **Record the live totals** from `server_info` — these are the authoritative counts the coverage ledger and scorecard will reconcile against. Any prose in this prompt that disagrees with the live numbers is drift and is itself a finding (log it in *Improvement suggestions*).
 
@@ -29,7 +29,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 5. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once before Phase 1's first semantic call. Capture `status` (`healthy` / `degraded` / `unhealthy`), `staleness` indicators, and any returned remediation hints. A non-`healthy` status before any mutation is a P1 finding — surface it and either reload or halt; do not march on against a degraded workspace. (`server_heartbeat` covers transport readiness; `workspace_health` covers per-workspace state.)
 
-**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
+**Hard-gate checkpoint:** Did a suffix-matched `server_info` return a Roslyn-shaped response? Is `connection.state` `idle` or `ready` pre-load (and `ready` after Phase 0 `workspace_load`)? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
 
 ---
 
@@ -60,7 +60,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 ### Phase 0.5: Subagent dispatch plan (MANDATORY for `--full`, skip when `--single-agent`)
 
-The full tier exercises 250+ MCP tool calls across 19 phases. A single agent that tries to run them all in one context will burn through its window long before Phase 19 and silently truncate to a "representative probe" — that is a contract violation of the `--full` tier, not a feature. The fix is structural: the **orchestrator owns coordination** (workspace lifecycle, worktree lifecycle, report writes, finding emission) and **dispatches phase groups to `audit-phase-runner` subagents** that each return a compact structured summary the orchestrator pastes into the report.
+The full tier exercises 250+ MCP tool calls across 19 phases. A single agent that tries to run them all in one context will burn through its window long before Phase 19 and silently truncate to a "representative probe" — that is a contract violation of the `--full` tier, not a feature. The fix is structural: the **orchestrator owns coordination** (workspace lifecycle, worktree lifecycle, report writes, finding emission) and **dispatches phase groups to `roslyn-mcp:audit-phase-runner` subagents** (the plugin agent shipped in `agents/`) that each return a compact structured summary the orchestrator pastes into the report.
 
 **Orchestrator-owned phases (never dispatched):**
 
@@ -70,7 +70,7 @@ The full tier exercises 250+ MCP tool calls across 19 phases. A single agent tha
 - Phase 19 — finding emission (routing decision via `Test-IsMaintainer`, `gh issue create` calls).
 - All writes to `audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md` and `_latest-promotion-scorecard.json`. Subagents return structured summaries; the orchestrator alone touches the files (no concurrent-writer hazard).
 
-**Subagent dispatch groups (run via `audit-phase-runner`, parallel where independent):**
+**Subagent dispatch groups (run via `roslyn-mcp:audit-phase-runner`, parallel where independent):**
 
 Group all dispatches in a single message with multiple `Agent` tool-use blocks where the listed groups are independent. Phases inside a group are run by the same subagent in sequence so they can share intermediate analysis (e.g., the diagnostic IDs Phase 1 surfaces feed the metric thresholds in Phase 2).
 

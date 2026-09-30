@@ -10,5 +10,6 @@
   "license": "MIT",
   "keywords": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"],
   "mcpServers": "./.claude-plugin/mcp.json",
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "agents": "./agents/"
 }
