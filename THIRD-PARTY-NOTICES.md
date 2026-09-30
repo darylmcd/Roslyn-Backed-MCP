@@ -32,7 +32,6 @@ Roslyn-Backed MCP Server uses the following open-source packages. Versions come 
 | Microsoft.Build.Utilities.Core | 17.14.28 | MIT | https://github.com/dotnet/msbuild |
 | Microsoft.CodeAnalysis.Analyzers | 5.9.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
 | Microsoft.CodeAnalysis.BannedApiAnalyzers | 5.6.0 | MIT | https://github.com/dotnet/roslyn-analyzers |
-| Microsoft.CodeAnalysis.NetAnalyzers | 10.0.401 | MIT | https://github.com/dotnet/sdk |
 | Microsoft.SourceLink.GitHub | 10.0.401 | MIT | https://github.com/dotnet/sourcelink |
 
 ## Test Dependencies

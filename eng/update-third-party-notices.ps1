@@ -32,7 +32,6 @@ $attributions = @{
     'Microsoft.Build.Framework' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
     'Microsoft.Build.Tasks.Core' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
     'Microsoft.Build.Utilities.Core' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/msbuild' }
-    'Microsoft.CodeAnalysis.NetAnalyzers' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/sdk' }
     'Microsoft.CodeAnalysis.BannedApiAnalyzers' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/roslyn-analyzers' }
     'Microsoft.SourceLink.GitHub' = @{ Category = 'Build-Time Dependencies'; License = 'MIT'; Project = 'https://github.com/dotnet/sourcelink' }
 
