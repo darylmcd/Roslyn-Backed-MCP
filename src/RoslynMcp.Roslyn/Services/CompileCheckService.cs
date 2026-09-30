@@ -63,7 +63,12 @@ public sealed class CompileCheckService : ICompileCheckService
                     RestoreHint: "Workspace package restore is required; call workspace_reload with autoRestore=true, then retry compile_check.",
                     CompletedProjects: 0, TotalProjects: projectList.Count,
                     RequestedScope: requestedScope, ActualScope: requestedScope)
-                { Readiness = "restore-required" };
+                {
+                    Readiness = "restore-required",
+                    NextCall = new NextCallDto(
+                        "workspace_reload",
+                        new Dictionary<string, object?> { ["workspaceId"] = workspaceId, ["autoRestore"] = true }),
+                };
             }
 
             await CollectDiagnosticsAsync(projectList, emitValidation, minSeverity, normalizedFileFilters, acc, ct)
