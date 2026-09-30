@@ -1021,9 +1021,10 @@ public class ClientRootPathValidatorTests
     {
         // The mcp-server-surface-test skill's disposable worktree at ../<sibling> —
         // verifies the canonical Phase 6/9/10/12/13 disposable-worktree audit path.
-        var roots = new[] { P(@"C:\Code-Repo\TradeWise") };
+        // The root's parent (D:\Dev) must not be a drive root: widening skips filesystem-root parents.
+        var roots = new[] { P(@"D:\Dev\TradeWise") };
         Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
-            P(@"C:\Code-Repo\TradeWise-surface-audit-20260511\src\App.csproj"),
+            P(@"D:\Dev\TradeWise-surface-audit-20260511\src\App.csproj"),
             roots,
             expandSanctionedRoots: true));
     }
@@ -1032,7 +1033,7 @@ public class ClientRootPathValidatorTests
     public void IsPathUnderAnyRoot_Grandparent_Path_Rejected_Even_With_Flag()
     {
         // Widening is exactly ONE level — a grandparent path must still be rejected.
-        var roots = new[] { P(@"C:\Code-Repo\TradeWise") };
+        var roots = new[] { P(@"D:\Dev\TradeWise") };
         Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
             P(@"C:\Other\anything.cs"), roots, expandSanctionedRoots: true));
     }

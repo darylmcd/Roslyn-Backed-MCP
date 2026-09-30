@@ -5,7 +5,7 @@
 Run from the **Roslyn-Backed-MCP** repo root:
 
 ```powershell
-Set-Location C:\Code-Repo\Roslyn-Backed-MCP
+Set-Location D:\Roslyn-Backed-MCP
 ```
 
 ## Produce audits (per repo)

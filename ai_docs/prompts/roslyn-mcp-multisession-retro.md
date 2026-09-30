@@ -17,7 +17,7 @@ Both harnesses are in scope. Each reaches the server through different plumbing 
 |---|---|---|
 | Files | `~/.claude/projects/<encoded-repo-path>/*.jsonl` — one dir per repo; worktrees get their own dir (attribute to the parent repo, keep the worktree marker in notes) | `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl` (live) **and** `~/.codex/archived_sessions/rollout-*.jsonl` (flat, no date dirs). Scan both — Codex evidence may sit entirely in the archived dir |
 | Session id | `.jsonl` basename (UUID) | `session_meta.payload.id` |
-| Repo | decode the dir name against real `C:/Code-Repo/*` names — a blanket `-`→`/` replace mangles hyphenated repos | `session_meta.payload.cwd` (authoritative; the file path carries only a date) |
+| Repo | decode the dir name against real `D:/*` names — a blanket `-`→`/` replace mangles hyphenated repos | `session_meta.payload.cwd` (authoritative; the file path carries only a date) |
 | Tool call | `.message.content[]` entry with `.type=="tool_use"`; `.name` is flat and fully qualified | `response_item` with `.payload.type=="custom_tool_call"` and `.payload.name=="exec"`; inspect the JavaScript `.payload.input` for an awaited `tools.<flat-tool-name>(...)` or `tools["<flat-tool-name>"](...)` call |
 | Tool result | `tool_result` matched by `tool_use_id`; `is_error` or error text | `response_item` with `.payload.type=="custom_tool_call_output"`, matched to the call by `.payload.call_id`; inspect `.payload.output` for error text or a non-success status |
 | Subagents | separate session files | separate rollouts with `thread_source: "subagent"` and `parent_thread_id` — roll up under the parent and count them in frontmatter |

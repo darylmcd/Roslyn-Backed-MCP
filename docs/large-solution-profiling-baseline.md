@@ -34,7 +34,7 @@ This document implements **Phase 6** of the release-hardening plan: a **repeatab
 ## Automation
 
 Use `eng/profile-large-solution.ps1` to run the repeatable MCP timing pass. The
-default target is `C:\Code-Repo\OrchardCore\OrchardCore.slnx`, a local 50+ project
+default target is `D:\OrchardCore\OrchardCore.slnx`, a local 50+ project
 representative solution when present. See
 `ai_docs/prompts/profile-large-solution.md` for the runbook and interpretation steps.
 
