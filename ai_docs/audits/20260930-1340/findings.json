@@ -1,0 +1,349 @@
+{
+  "audit_run": {
+    "id": "20260930-1340",
+    "scope": "observability",
+    "since": "full",
+    "repo": "Roslyn-Backed-MCP",
+    "commit": "123ffd3a",
+    "started_at": "2026-09-30T18:30:00Z",
+    "finished_at": "2026-09-30T18:45:38.478Z",
+    "tiers_run": [
+      0,
+      1,
+      2
+    ],
+    "parallel_subagents": 0
+  },
+  "findings": [
+    {
+      "fingerprint": "58135eebe78afb634553d99a3155df6079af042b",
+      "title": "Serialize ILogger state as structured fields in the JSON-lines sink",
+      "severity": "Medium",
+      "dimension": "A1",
+      "dimensions": "A1/A5",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:78",
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredResultProjector.cs:59",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs:93"
+      ],
+      "evidence": [
+        "evidence/run1.stderr.txt",
+        "state/roslyn-mcp/logs/roslyn-mcp-45020.jsonl"
+      ],
+      "description": "JsonLinesFileLoggerProvider.Write keeps only the formatted message (line 78-84); the ILogger state key/values are discarded, so tool name, outcome and elapsedMs exist only inside prose (\"Tool symbol_search completed; outcome=success; elapsedMs=1389\"). V3 (p95 timing) needed a regex over `message` instead of a jq field read. The stderr sink emits eventName + an exception object while the file sink emits neither (line SO:93-100 flattens it to prose), so the same UnexpectedFailure event has two schemas. Every one of the 197 direct log calls + 10 LoggerMessage definitions loses its named arguments.",
+      "acceptance": [
+        "JSON-lines records carry a `fields` object holding every named template argument of the log call, and `eventName` from EventId.Name.",
+        "V3 works as `jq -r 'select(.eventName==\"ToolCompleted\")|.fields.elapsedMs'` — a p95 recipe needs no regex over `message`.",
+        "FileServerObservabilitySink records carry exceptionTypes and stackFrameCount as fields, not prose.",
+        "Existing secret-sentinel assertions still pass (state args are the same values already rendered in `message`).",
+        "The file-provider drift test pins the full key set (ts, level, category, eventId, eventName, message, correlationId, fields)."
+      ],
+      "suggested_approach": "In JsonLinesFileLogger.Write read `state as IReadOnlyList<KeyValuePair<string, object?>>`, drop the synthetic {OriginalFormat} entry, and serialize the rest under `fields`; add eventName. Fix the root (the provider discards state) rather than regex-extracting from the message. Additive schema change; note it in docs/stdio-client-integration.md.",
+      "backlog_id": "logging-jsonl-drops-structured-state",
+      "first_seen_run": "20260930-1340"
+    },
+    {
+      "fingerprint": "e9ae616556de5bc58d49620577192dcd4cdda6cd",
+      "title": "Enable the bounded file sink by default for installed users",
+      "severity": "High",
+      "dimension": "A6",
+      "dimensions": "A6",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs:21",
+        ".claude-plugin/mcp.json:5",
+        "docs/setup.md:123"
+      ],
+      "evidence": [
+        "evidence/run1.stderr.txt"
+      ],
+      "description": "ServerObservabilityOptions.Parse maps null/empty to Disabled (ServerObservability.cs:21); Program.cs:45 only installs the file provider when the variable says `file`. The plugin launch config (.claude-plugin/mcp.json) sets only ROSLYNMCP_SANCTIONED_ROOTS. For an MCP server stderr is usually swallowed by the host, so in the shipped default configuration there is no agent-reachable sink: the first failure leaves no record and the agent must learn the env var, restart the server and reproduce. The file sink itself is sound (stable per-user path, V1/V2/V7 all succeeded once enabled).",
+      "acceptance": [
+        "Default (variable unset) installs the file sink; `disabled` remains an explicit opt-out; `stderr` unchanged.",
+        "Behaviour change recorded per contract-care: ADR in docs/decisions/ + CHANGELOG migration note; docs/setup.md table default updated.",
+        "Startup line (or heartbeat) reports the resolved log file path so an agent can locate it without reading docs.",
+        "Runs only after the retention row lands so default-on cannot grow unbounded."
+      ],
+      "suggested_approach": "Flip the Parse default to File; add the resolved path to the Startup record and server_info. Do not add a second default-on sink. Gate behind the retention row (deps).",
+      "counterargument": "Public published artifact: default-on disk writes change behaviour and put local paths on disk unasked. Mitigation: bounded size + retention row + documented opt-out; the records are already designed operator-safe (no exception text).",
+      "backlog_id": "logging-default-sink-disabled-stderr-swallowed",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-retention-destroys-repro-evidence"
+      ]
+    },
+    {
+      "fingerprint": "5e1022196aea8267dc8ebed2bc29fd4dfad3733c",
+      "title": "Bound JSON-lines retention without deleting repro evidence",
+      "severity": "Medium",
+      "dimension": "A12",
+      "dimensions": "A12",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:160",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:40"
+      ],
+      "evidence": [
+        "state/roslyn-mcp/logs/roslyn-mcp-45020.jsonl",
+        "state/roslyn-mcp/logs/roslyn-mcp-41544.jsonl"
+      ],
+      "description": "RotateIfNeeded does File.Delete(RotatedFilePath) then File.Move (lines 160-161): once a session writes >10 MiB the startup, load and earliest-repro records are destroyed mid-session (Durable dimension b). Conversely nothing ever removes roslyn-mcp-<pid>.jsonl of exited processes (V6: prior pid file survived restart, which is right, but no pruning exists anywhere — rg for Delete/Enumerate in src finds no log pruning), so the directory grows by up to 10 MiB per session forever.",
+      "acceptance": [
+        "Segment cap and segment count are configurable (env) and documented; default keeps ≥3 segments.",
+        "Startup prunes files of other processes older than N days (default 14) or beyond a total-size cap, never the live pid file or files held open by another live host.",
+        "Test: writing 3× the cap keeps the first-written record reachable within the retained segments up to the documented bound; test: prune leaves a live-pid file alone."
+      ],
+      "suggested_approach": "Numbered segments (.1 .. .N) with shift-rename instead of delete; startup sweep of stale per-pid files using last-write time. Keep per-pid naming (concurrent hosts must not share a file).",
+      "backlog_id": "logging-retention-destroys-repro-evidence",
+      "first_seen_run": "20260930-1340"
+    },
+    {
+      "fingerprint": "5d37d692748b97c48d16274d1f043239d15b5fc4",
+      "title": "Give every LoggerMessage a unique EventId and publish the catalog",
+      "severity": "Medium",
+      "dimension": "A2",
+      "dimensions": "A2/A12",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs:17",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:28",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/TransportDisconnectDiagnostics.cs:10"
+      ],
+      "evidence": [
+        "state/roslyn-mcp/logs/roslyn-mcp-41544.jsonl"
+      ],
+      "description": "EventId(1, …) is reused by LogProviderExecutionFailed, LogTransportDisconnected, LogCommandExecuted, LogProcessTreeKillFailed, LogProviderEnumerationFailed and LogWorkspaceLoaded; the file sink records only the numeric id, so `eventId==1` matches six unrelated occurrences (V7 log: GatedCommandExecutor and WorkspaceManager both emit eventId 1). Only the tool lifecycle (2101-2104) and UnexpectedFailure (1001) have deliberate codes; there is no in-repo catalog and the drift test (ServerObservabilitySinkTests) does not pin any event code.",
+      "acceptance": [
+        "One `LogEvents` constants class (ranges per subsystem) owns every EventId; no two events share an id.",
+        "A drift test enumerates the catalog via reflection and fails on duplicate ids or a renamed/removed code.",
+        "docs/stdio-client-integration.md publishes the code table (published contract).",
+        "All six colliding definitions use catalog ids."
+      ],
+      "suggested_approach": "Constants class in RoslynMcp.Core (shared by both assemblies); replace inline `new EventId(1, …)`; reflection-based uniqueness test; generate the doc table from the catalog in the same test or a just recipe.",
+      "backlog_id": "logging-event-id-collisions-no-catalog",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-jsonl-drops-structured-state"
+      ]
+    },
+    {
+      "fingerprint": "38c9bdf76d942f531006499a339d30a83b8eb15a",
+      "title": "Assign catalog EventIds to the remaining zero-id log call sites",
+      "severity": "Low",
+      "dimension": "A2",
+      "dimensions": "A2",
+      "sizing": "L",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredWorkspaceResolver.cs:114",
+        "src/RoslynMcp.Roslyn/Services/ReferenceService.cs"
+      ],
+      "evidence": [
+        "state/roslyn-mcp/logs/roslyn-mcp-45020.jsonl"
+      ],
+      "description": "rg census: 51 `LogXxx(\"literal …\")` calls pass no EventId (→ eventId 0 in the sink), e.g. \"Tool symbol_search called without workspaceId; resolved to the single loaded workspace …\" (V1 log). A zero id is unenumerable, so agents can only grep English wording that drifts with copy edits.",
+      "acceptance": [
+        "No `Log*(\"literal\"` call without an EventId remains in src/ (enforced by a test or analyzer rule).",
+        "Each site uses a catalog constant from logging-event-id-collisions-no-catalog."
+      ],
+      "suggested_approach": "Mechanical conversion per subsystem using catalog ranges; add the enforcing test first (red-first). L by anchors: expect the remediation engine to split by subsystem.",
+      "backlog_id": "logging-event-ids-remaining-call-sites",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-event-id-collisions-no-catalog"
+      ]
+    },
+    {
+      "fingerprint": "18b28b0d3a714b198190639b1897a67122965fd9",
+      "title": "Put error category and sanitized frames in tool-failure log records",
+      "severity": "Medium",
+      "dimension": "A4",
+      "dimensions": "A4",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredDispatchPipeline.cs:113",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/ServerObservability.cs:96"
+      ],
+      "evidence": [
+        "evidence/V2-chain.jsonl",
+        "evidence/run1.transcript.json"
+      ],
+      "description": "V2: a failing find_references (unknown workspaceId) produced ONE log record — \"Tool find_references failed; outcome=expected-error; elapsedMs=1\" — while the client envelope carried category NotFound and the actionable message. An agent reading only the server log cannot tell which error category or parameter failed. Unexpected failures log exceptionTypes and stackFrameCount only (ServerObservability.cs:96-100): the agent learns THAT a stack exists, never where.",
+      "acceptance": [
+        "Tool-failed records carry `errorCategory` (and `paramName` for InvalidArgument) as fields.",
+        "Unexpected-failure records carry the top N frames as `Type.Method` symbol names only — no file paths, no exception messages, no argument values.",
+        "Secret-sentinel test proves no message/path/argument text reaches the record.",
+        "V2 recipe: one correlation-id query yields category + type + frames."
+      ],
+      "suggested_approach": "Reuse ToolErrorHandler.ClassifyError output (already computed at dispatch) for category; build frame symbols from StackTrace.GetFrames() method metadata through the existing PublicExceptionDetailPolicy projection so the sanitization stays single-sourced.",
+      "counterargument": "The repo deliberately omits exception text and stacks from the sink (public artifact; logs land on customer machines). Type.Method names are code identifiers, not user data, so the policy holds; the cost is a slightly larger projection surface to keep secret-safe.",
+      "backlog_id": "logging-failure-records-lack-diagnosis",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-jsonl-drops-structured-state"
+      ]
+    },
+    {
+      "fingerprint": "b2b4def1fb9679a7f29bd009e9d8011eb6c0df79",
+      "title": "Emit duration and outcome for subprocess and workspace-load boundaries",
+      "severity": "Medium",
+      "dimension": "A13",
+      "dimensions": "A13",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Roslyn/Services/GatedCommandExecutor.cs:16",
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:28"
+      ],
+      "evidence": [
+        "state/roslyn-mcp/logs/roslyn-mcp-41544.jsonl"
+      ],
+      "description": "V7 (build_workspace): the only boundary record is \"Executed dotnet command … (ExitCode=0)\" (GatedCommandExecutor.cs:16-18) with the correlation id but no duration_ms; total tool time was 2220 ms and the agent cannot split process time from gate/queue time. workspace_load took 3725 ms in V1 with three MSBuild warnings and a single \"Loaded workspace\" line — no boundary duration for MSBuild evaluation vs file-watcher start. NuGet update check records (default HttpClient logging) carry no outcome/duration in the captured window.",
+      "acceptance": [
+        "Subprocess boundary record carries target kind, exitCode/outcome and `durationMs` fields.",
+        "workspace_load logs a boundary record with durationMs and project count.",
+        "Both join the tool record by one correlationId query (V7 re-run shown in the PR).",
+        "No command arguments containing secrets are captured (arguments already path-only; add a sanitizer test)."
+      ],
+      "suggested_approach": "Stopwatch around DotnetCommandRunner process lifetime and workspace load; emit through the structured-fields path with catalog EventIds. No new abstraction layer.",
+      "backlog_id": "logging-dependency-boundary-duration-missing",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-jsonl-drops-structured-state"
+      ]
+    },
+    {
+      "fingerprint": "9b162c60591e37fcf61264af862e396978a5fb2a",
+      "title": "Expose process vitals in server_heartbeat and the JSON-lines stream",
+      "severity": "Medium",
+      "dimension": "A11",
+      "dimensions": "A11",
+      "sizing": "M",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs",
+        "src/RoslynMcp.Core/Models/ConnectionStateDto.cs:35"
+      ],
+      "evidence": [
+        "evidence/run1.transcript.json"
+      ],
+      "description": "server_heartbeat/server_info return connection state, pid, start time, loaded workspace count and surface counts (good — headless, no workspace needed) plus `_meta.queuedMs/heldMs/elapsedMs`. No memory, GC or thread-pool figures exist (rg for GC.GetGCMemoryInfo/WorkingSet/ThreadPool/Meter over src finds none), and no periodic stats event is written. A long-lived host that leaks memory or starves the pool cannot be diagnosed headlessly.",
+      "acceptance": [
+        "server_heartbeat returns `vitals`: workingSetBytes, gcHeapBytes, gen0/1/2 counts, totalPauseMs, threadPoolThreads/queue, gate in-flight+queued, workspaceCount.",
+        "Optional `ROSLYNMCP_VITALS_INTERVAL_SECONDS` writes the same block as a periodic structured record to the log stream (off by default).",
+        "Additive output-schema change covered by the surface/schema contract tests."
+      ],
+      "suggested_approach": "Read from GC.GetGCMemoryInfo, Process, ThreadPool and the existing execution-gate counters; one provider class injected into ServerTools; a hosted timer only when the interval is set.",
+      "backlog_id": "logging-process-vitals-absent",
+      "first_seen_run": "20260930-1340"
+    },
+    {
+      "fingerprint": "2698990ee373973cd6f0d1df875f01f18c2b4680",
+      "title": "Complete the observability contract docs with agent recipes",
+      "severity": "Medium",
+      "dimension": "A10",
+      "dimensions": "A10",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 1,
+      "anchors": [
+        "docs/stdio-client-integration.md:35",
+        "AGENTS.md"
+      ],
+      "evidence": [
+        "report.md"
+      ],
+      "description": "Consumer docs (docs/stdio-client-integration.md:35-65) document the path, sink values, verbosity env keys and six record fields — solid — but omit the file name pattern (roslyn-mcp-<pid>.jsonl + .1 rotation), a correlate-one-request command, a timing (p95) recipe, the heartbeat invocation as a recipe, and the event-code table. AGENTS.md has no observability section at all, so contributor agents re-derive the surface every session. Published artifact: contract docs must ship consumer-visible.",
+      "acceptance": [
+        "Docs table answers the A10 questions with exact rg/jq commands that were run in this audit (V1, V2, V3, V5).",
+        "Event-code table present (generated from the catalog row).",
+        "AGENTS.md carries the agent-first observability contract section pointing at the consumer doc.",
+        "Doc link checker (verify-ai-docs) passes."
+      ],
+      "suggested_approach": "Fill the A10 template from the audit prompt with the verified commands; keep AGENTS.md section a pointer table, consumer doc the authority.",
+      "backlog_id": "logging-observability-contract-doc-incomplete",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-jsonl-drops-structured-state",
+        "logging-event-id-collisions-no-catalog"
+      ]
+    },
+    {
+      "fingerprint": "96ebb14d6cb8819643a27da9d042727e3bce04be",
+      "title": "Keep the JSON-lines file open instead of open/stat/append per record",
+      "severity": "Low",
+      "dimension": "A5",
+      "dimensions": "A5",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 1,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:95",
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:147"
+      ],
+      "evidence": [
+        "report.md"
+      ],
+      "description": "Write() (lines 95-101) performs four filesystem operations per record inside `lock (_writeLock)`, synchronously on whichever thread logs. At Debug verbosity the SDK alone emits dozens of records per request (V4: 23 Debug records for a 4-call session), serializing all request threads behind disk I/O. Not a correctness bug; it taxes exactly the verbose repro mode the sink exists to support.",
+      "acceptance": [
+        "One FileStream (FileShare.Read, flush per record) and a tracked length replace per-record open/stat.",
+        "Rotation and Dispose close/reopen the stream; test covers rotate-under-open-handle on Windows.",
+        "Benchmark or timing test shows per-record cost drops (recorded in the PR)."
+      ],
+      "suggested_approach": "Hold the stream inside the existing lock; flush per record so last-gasp records survive a crash. Avoid a background writer (would lose the final records on abrupt exit).",
+      "backlog_id": "logging-file-sink-sync-io-per-record",
+      "first_seen_run": "20260930-1340",
+      "dependencies": [
+        "logging-retention-destroys-repro-evidence"
+      ]
+    },
+    {
+      "fingerprint": "253ec6dba79a5a9fe67e9bc571fb9c9894e55217",
+      "title": "Observability Info digest",
+      "severity": "Info",
+      "dimension": "A3",
+      "dimensions": "A3/A9/A10",
+      "sizing": "S",
+      "status": "open",
+      "confidence": "high",
+      "tier": 2,
+      "anchors": [
+        "src/RoslynMcp.Host.Stdio/Diagnostics/JsonLinesFileLoggerProvider.cs:110"
+      ],
+      "evidence": [
+        "state/roslyn-mcp/logs/roslyn-mcp-45020.jsonl"
+      ],
+      "description": "Info-level observations from the audit: (1) ModelContextProtocol.* records in the JSONL stream carry correlationId null (the correlation scope is pushed by the tool filter, after the SDK logs request-received); (2) records carry no pid/version — attribution depends on the per-pid filename and the single Startup record; (3) the stderr stream uses the Simple console formatter (prose), acceptable because the file sink is the machine stream, but it is the DEFAULT stream today (see logging-default-sink-disabled-stderr-swallowed); (4) workspace paths and MSBuild diagnostic text appear in records (operator-local; note for any future remote export).",
+      "acceptance": [
+        "Each observation is either filed as its own row or explicitly dropped with a reason in this row before closing."
+      ],
+      "suggested_approach": "Triage pass; most likely fold (2) into the fields row as a static `pid`/`version` header on the startup record.",
+      "backlog_id": "logging-info-observations",
+      "first_seen_run": "20260930-1340"
+    }
+  ]
+}
