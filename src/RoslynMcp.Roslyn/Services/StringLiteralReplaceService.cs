@@ -10,14 +10,15 @@ using RoslynMcp.Roslyn.Helpers;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Item 7 implementation. Rewrites <see cref="LiteralExpressionSyntax"/> nodes of kind
+/// Rewrites <see cref="LiteralExpressionSyntax"/> nodes of kind
 /// <see cref="SyntaxKind.StringLiteralExpression"/> whose parent is one of:
 /// <list type="bullet">
 ///   <item><description><see cref="ArgumentSyntax"/> — method call / constructor arg.</description></item>
 ///   <item><description><see cref="AttributeArgumentSyntax"/> — attribute positional/named arg.</description></item>
-///   <item><description><see cref="EqualsValueClauseSyntax"/> — default value / field initializer.</description></item>
+///   <item><description><see cref="EqualsValueClauseSyntax"/> — default value / field or local initializer.</description></item>
 ///   <item><description><see cref="AssignmentExpressionSyntax"/> right side — property or field assignment.</description></item>
-///   <item><description><see cref="ArrayInitializerExpressionSyntax"/> element — collection initializer.</description></item>
+///   <item><description><see cref="InitializerExpressionSyntax"/> element — collection initializer.</description></item>
+///   <item><description><see cref="ReturnStatementSyntax"/> — returned literal.</description></item>
 /// </list>
 /// Skips <c>nameof()</c> and interpolated-string holes (they are not <c>LiteralExpressionSyntax</c>
 /// in the first place).
@@ -52,6 +53,11 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
             byLiteral[r.LiteralValue] = r;
         }
 
+        var expressions = byLiteral.ToDictionary(
+            pair => pair.Key,
+            pair => SyntaxFactory.ParseExpression(pair.Value.ReplacementExpression),
+            StringComparer.Ordinal);
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var accumulator = solution;
         var changes = new List<FileChangeDto>();
@@ -65,21 +71,53 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is not CompilationUnitSyntax compilationUnit) continue;
 
-                var rewriter = new LiteralRewriter(byLiteral);
+                // Bind symbol-bearing expressions in their actual insertion context. A
+                // constant can be declared in another document, so syntax names alone
+                // cannot identify its own initializer.
+                var probe = new LiteralRewriter(byLiteral, expressions);
+                var probeRoot = (CompilationUnitSyntax)probe.Visit(compilationUnit)!;
+                if (probe.HitCount == 0) continue;
+                var excludedPositions = new HashSet<int>();
+                if (probe.Pending.Count > 0)
+                {
+                    probeRoot = AddRequiredUsings(probeRoot, probe.RequiredUsings);
+                    var probeDocument = document.WithSyntaxRoot(probeRoot);
+                    var boundRoot = await probeDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException("Replacement syntax could not be loaded.");
+                    var semanticModel = await probeDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException("Replacement expression could not be bound.");
+                    foreach (var pending in probe.Pending)
+                    {
+                        var expression = boundRoot.GetAnnotatedNodes(pending.Annotation)
+                            .OfType<ExpressionSyntax>().Single();
+                        var declarator = expression.Ancestors().OfType<VariableDeclaratorSyntax>().FirstOrDefault();
+                        var declaringSymbol = declarator is null ? null : semanticModel.GetDeclaredSymbol(declarator, ct);
+                        var isOwnConstInitializer = false;
+                        foreach (var name in expression.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+                        {
+                            var symbol = semanticModel.GetSymbolInfo(name, ct).Symbol;
+                            if (symbol is null || symbol is IErrorTypeSymbol)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Replacement expression '{pending.ReplacementExpression}' could not be bound in {document.Name}.");
+                            }
+                            if ((declaringSymbol is IFieldSymbol { IsConst: true } ||
+                                 declaringSymbol is ILocalSymbol { IsConst: true }) &&
+                                SymbolEqualityComparer.Default.Equals(symbol, declaringSymbol))
+                            {
+                                isOwnConstInitializer = true;
+                            }
+                        }
+                        if (isOwnConstInitializer)
+                            excludedPositions.Add(pending.OriginalPosition);
+                    }
+                }
+
+                var rewriter = new LiteralRewriter(byLiteral, expressions, excludedPositions);
                 var newRoot = (CompilationUnitSyntax)rewriter.Visit(compilationUnit)!;
                 if (rewriter.HitCount == 0) continue;
                 totalHits += rewriter.HitCount;
-
-                // Inject required using directives from matched replacements.
-                foreach (var ns in rewriter.RequiredUsings)
-                {
-                    if (!HasUsing(newRoot, ns))
-                    {
-                        var usingDir = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns))
-                            .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
-                        newRoot = newRoot.AddUsings(usingDir);
-                    }
-                }
+                newRoot = AddRequiredUsings(newRoot, rewriter.RequiredUsings);
 
                 var oldText = compilationUnit.ToFullString();
                 var newText = newRoot.ToFullString();
@@ -121,15 +159,38 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
         return false;
     }
 
+    private static CompilationUnitSyntax AddRequiredUsings(CompilationUnitSyntax root, IEnumerable<string> namespaces)
+    {
+        foreach (var ns in namespaces)
+        {
+            if (!HasUsing(root, ns))
+            {
+                var usingDir = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns))
+                    .NormalizeWhitespace()
+                    .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed);
+                root = root.AddUsings(usingDir);
+            }
+        }
+        return root;
+    }
+
     private sealed class LiteralRewriter : CSharpSyntaxRewriter
     {
         private readonly IReadOnlyDictionary<string, StringLiteralReplacementDto> _byLiteral;
+        private readonly IReadOnlyDictionary<string, ExpressionSyntax> _expressions;
+        private readonly IReadOnlySet<int> _excludedPositions;
         public int HitCount { get; private set; }
         public HashSet<string> RequiredUsings { get; } = new(StringComparer.Ordinal);
+        public List<PendingReplacement> Pending { get; } = [];
 
-        public LiteralRewriter(IReadOnlyDictionary<string, StringLiteralReplacementDto> byLiteral)
+        public LiteralRewriter(
+            IReadOnlyDictionary<string, StringLiteralReplacementDto> byLiteral,
+            IReadOnlyDictionary<string, ExpressionSyntax> expressions,
+            IReadOnlySet<int>? excludedPositions = null)
         {
             _byLiteral = byLiteral;
+            _expressions = expressions;
+            _excludedPositions = excludedPositions ?? new HashSet<int>();
         }
 
         public override SyntaxNode? VisitLiteralExpression(LiteralExpressionSyntax node)
@@ -144,14 +205,17 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
                 return base.VisitLiteralExpression(node);
 
             var value = node.Token.ValueText;
-            if (!_byLiteral.TryGetValue(value, out var replacement))
+            if (!_byLiteral.TryGetValue(value, out var replacement) || _excludedPositions.Contains(node.SpanStart))
                 return base.VisitLiteralExpression(node);
 
             HitCount++;
             if (!string.IsNullOrWhiteSpace(replacement.UsingNamespace))
                 RequiredUsings.Add(replacement.UsingNamespace!);
 
-            var expr = SyntaxFactory.ParseExpression(replacement.ReplacementExpression).WithTriviaFrom(node);
+            var annotation = new SyntaxAnnotation();
+            var expr = _expressions[value].WithTriviaFrom(node).WithAdditionalAnnotations(annotation);
+            if (expr.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>().Any())
+                Pending.Add(new PendingReplacement(annotation, node.SpanStart, replacement.ReplacementExpression));
             return expr;
         }
 
@@ -166,4 +230,6 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
             _ => false,
         };
     }
+
+    private sealed record PendingReplacement(SyntaxAnnotation Annotation, int OriginalPosition, string ReplacementExpression);
 }

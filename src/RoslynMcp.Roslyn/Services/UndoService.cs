@@ -342,6 +342,19 @@ public sealed class UndoService : IUndoService, IDisposable
         var diskOk = true;
         var restoredAny = false;
 
+        try
+        {
+            foreach (var file in snapshot.FileSnapshots!)
+            {
+                WorkspaceManager.EnsurePhysicalPath(file.FilePath);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            _logger.LogWarning("UndoService.RevertAsync (file-snapshot): rejected a filesystem-link target.");
+            return false;
+        }
+
         foreach (var file in snapshot.FileSnapshots!)
         {
             try
@@ -560,6 +573,11 @@ public sealed class UndoService : IUndoService, IDisposable
         IReadOnlyList<(string FilePath, string Text, Encoding? Encoding)> diskRestores,
         CancellationToken cancellationToken)
     {
+        foreach (var (filePath, _, _) in diskRestores)
+        {
+            WorkspaceManager.EnsurePhysicalPath(filePath);
+        }
+
         var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);
         if (!workspaceApplied)
         {

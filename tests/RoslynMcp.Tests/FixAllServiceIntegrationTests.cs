@@ -41,6 +41,28 @@ public sealed class FixAllServiceIntegrationTests : SharedWorkspaceTestBase
         StringAssert.Contains(result.GuidanceMessage ?? "", "No code fix provider");
     }
 
+    [TestMethod]
+    public async Task PreviewFixAll_CA1822_UsesAnalyzerPackageProviderLikeCodeFixPreview()
+    {
+        var document = WorkspaceManager.GetCurrentSolution(WorkspaceId).Projects
+            .SelectMany(project => project.Documents)
+            .Single(candidate => candidate.Name == "AnimalService.cs");
+
+        var individual = await RefactoringService.PreviewCodeFixAsync(
+            WorkspaceId, "CA1822", document.FilePath!, 7, 26, null, CancellationToken.None);
+        Assert.IsNotEmpty(individual.Changes, individual.GuidanceMessage ??
+            "The fixture must expose a working analyzer-package code fix.");
+
+        var preview = await FixAllService.PreviewFixAllAsync(
+            WorkspaceId, "CA1822", "document", document.FilePath, null, CancellationToken.None);
+
+        Assert.IsFalse(
+            preview.GuidanceMessage?.Contains("No code fix provider", StringComparison.OrdinalIgnoreCase) ?? false,
+            preview.GuidanceMessage);
+        Assert.IsNotEmpty(preview.Changes, preview.GuidanceMessage ??
+            "FixAll must use the same analyzer-package provider as code_fix_preview.");
+    }
+
     /// <summary>
     /// CS8019 is handled by <see cref="RefactoringService.PreviewCodeFixAsync"/> today; <see cref="FixAllService"/>
     /// only sees fixers loaded Features/analyzer assemblies and may not register a CS8019 FixAll provider.

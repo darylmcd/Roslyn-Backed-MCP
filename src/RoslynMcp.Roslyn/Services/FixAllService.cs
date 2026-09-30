@@ -9,7 +9,6 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
-using System.Reflection;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -20,7 +19,8 @@ public sealed class FixAllService : IFixAllService
     private readonly FixAllDiagnosticCollector _diagnosticCollector;
     private readonly ILogger<FixAllService> _logger;
     private readonly IUnexpectedExceptionReporter? _exceptionReporter;
-    private readonly Lazy<FeatureProviderLoadResult<CodeFixProvider>> _codeFixProviders;
+    private readonly ICodeFixProviderRegistry _codeFixRegistry;
+    private readonly ImmutableArray<CodeFixProvider>? _codeFixProviderOverride;
     private readonly Lazy<ImmutableArray<DiagnosticAnalyzer>> _analyzers;
 
     public FixAllService(
@@ -29,7 +29,24 @@ public sealed class FixAllService : IFixAllService
         ICompilationCache compilationCache,
         ILogger<FixAllService> logger,
         IUnexpectedExceptionReporter? exceptionReporter = null)
-        : this(workspace, previewStore, compilationCache, logger, exceptionReporter, null)
+        : this(
+            workspace,
+            previewStore,
+            compilationCache,
+            new CodeFixProviderRegistry(logger, exceptionReporter),
+            logger,
+            exceptionReporter)
+    {
+    }
+
+    public FixAllService(
+        IWorkspaceManager workspace,
+        IPreviewStore previewStore,
+        ICompilationCache compilationCache,
+        ICodeFixProviderRegistry codeFixRegistry,
+        ILogger<FixAllService> logger,
+        IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this(workspace, previewStore, compilationCache, codeFixRegistry, logger, exceptionReporter, null)
     {
     }
 
@@ -37,6 +54,7 @@ public sealed class FixAllService : IFixAllService
         IWorkspaceManager workspace,
         IPreviewStore previewStore,
         ICompilationCache compilationCache,
+        ICodeFixProviderRegistry codeFixRegistry,
         ILogger<FixAllService> logger,
         ImmutableArray<CodeFixProvider> codeFixProviders,
         IUnexpectedExceptionReporter? exceptionReporter = null)
@@ -44,9 +62,10 @@ public sealed class FixAllService : IFixAllService
             workspace,
             previewStore,
             compilationCache,
+            codeFixRegistry,
             logger,
             exceptionReporter,
-            new FeatureProviderLoadResult<CodeFixProvider>(codeFixProviders, []))
+            codeFixProviders)
     {
     }
 
@@ -54,18 +73,18 @@ public sealed class FixAllService : IFixAllService
         IWorkspaceManager workspace,
         IPreviewStore previewStore,
         ICompilationCache compilationCache,
+        ICodeFixProviderRegistry codeFixRegistry,
         ILogger<FixAllService> logger,
         IUnexpectedExceptionReporter? exceptionReporter,
-        FeatureProviderLoadResult<CodeFixProvider>? codeFixProviderOverride)
+        ImmutableArray<CodeFixProvider>? codeFixProviderOverride)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _diagnosticCollector = new FixAllDiagnosticCollector(compilationCache);
         _logger = logger;
         _exceptionReporter = exceptionReporter;
-        _codeFixProviders = new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
-            () => codeFixProviderOverride ??
-                  CSharpFeatureProviderLoader.Load<CodeFixProvider>(_logger, _exceptionReporter));
+        _codeFixRegistry = codeFixRegistry;
+        _codeFixProviderOverride = codeFixProviderOverride;
         _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(
             () => codeFixProviderOverride is null ? LoadAnalyzers() : []);
     }
@@ -113,10 +132,14 @@ public sealed class FixAllService : IFixAllService
         var fixAllScope = targetRequest.Scope;
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        var staticProviders = _codeFixProviders.Value.Providers;
-        var analyzerAssemblyProviders = LoadCodeFixProvidersFromAnalyzerReferences(solution);
-        var provider = FindCodeFixProvider(staticProviders, diagnosticId)
-            ?? FindCodeFixProvider(analyzerAssemblyProviders.Providers, diagnosticId);
+        var lookup = _codeFixProviderOverride is { } overrideProviders
+            ? new CodeFixProviderLookupResult(
+                overrideProviders.Where(provider => provider.FixableDiagnosticIds.Contains(diagnosticId)).ToArray(),
+                IsComplete: true,
+                FailedProviderCount: 0,
+                LoadedProviderCount: overrideProviders.Length)
+            : _codeFixRegistry.GetProvidersForDetailed(diagnosticId, solution);
+        var provider = lookup.Providers.FirstOrDefault();
         if (provider is null)
         {
             return new FixAllPreviewDto(
@@ -125,7 +148,9 @@ public sealed class FixAllService : IFixAllService
                 Scope: scope,
                 FixedCount: 0,
                 Changes: [],
-                GuidanceMessage: BuildNoProviderGuidance(diagnosticId));
+                GuidanceMessage: lookup.IsComplete
+                    ? BuildNoProviderGuidance(diagnosticId)
+                    : BuildIncompleteProviderGuidance(diagnosticId, lookup.FailedProviderCount));
         }
 
         var fixAllProvider = provider.GetFixAllProvider();
@@ -317,37 +342,6 @@ public sealed class FixAllService : IFixAllService
         return provider.GetType().Name;
     }
 
-    private static CodeFixProvider? FindCodeFixProvider(ImmutableArray<CodeFixProvider> providers, string diagnosticId) =>
-        providers.FirstOrDefault(p => p.FixableDiagnosticIds.Contains(diagnosticId));
-
-    private FeatureProviderLoadResult<CodeFixProvider> LoadCodeFixProvidersFromAnalyzerReferences(Solution solution)
-    {
-        var providers = ImmutableArray.CreateBuilder<CodeFixProvider>();
-        var failures = ImmutableArray.CreateBuilder<FeatureProviderLoadFailure>();
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in solution.Projects)
-        {
-            foreach (var ar in project.AnalyzerReferences)
-            {
-                if (ar is not AnalyzerFileReference afr)
-                    continue;
-                var analyzerPath = afr.Display;
-                if (string.IsNullOrWhiteSpace(analyzerPath) || !paths.Add(analyzerPath))
-                    continue;
-                var result = CSharpFeatureProviderLoader.LoadFromAssemblyFactory<CodeFixProvider>(
-                    () => Assembly.LoadFrom(analyzerPath),
-                    _logger,
-                    _exceptionReporter);
-                providers.AddRange(result.Providers);
-                failures.AddRange(result.Failures);
-            }
-        }
-
-        return new FeatureProviderLoadResult<CodeFixProvider>(
-            providers.ToImmutable(),
-            failures.ToImmutable());
-    }
-
     private static ImmutableArray<DiagnosticAnalyzer> CollectProjectAnalyzersForDiagnosticId(
         Solution solution, string diagnosticId)
     {
@@ -467,9 +461,8 @@ public sealed class FixAllService : IFixAllService
     }
 
     /// <summary>
-    /// Builds the uniform "no fix provider loaded" guidance returned when neither the
-    /// reflection-loaded CSharp.Features fix providers nor the project's analyzer-reference
-    /// fix providers cover <paramref name="diagnosticId"/>. The message has the same structural
+    /// Builds the uniform "no fix provider loaded" guidance when complete registry discovery
+    /// finds no provider for <paramref name="diagnosticId"/>. The message has the same structural
     /// shape regardless of the diagnostic's severity or whether the id is IDE-prefixed: it
     /// always names the diagnostic, calls out <c>list_analyzers</c> as the discovery tool, and
     /// suggests <c>add_pragma_suppression</c> / <c>set_diagnostic_severity</c> as fallbacks.
@@ -497,10 +490,15 @@ public sealed class FixAllService : IFixAllService
         return hint is null ? baseline : baseline + " " + hint;
     }
 
+    internal static string BuildIncompleteProviderGuidance(string diagnosticId, int failedProviderCount) =>
+        $"Code fix provider discovery for diagnostic '{diagnosticId}' was incomplete: " +
+        $"{failedProviderCount} provider load(s) failed. Restore analyzer packages and use " +
+        "list_analyzers to inspect loaded diagnostic IDs; retry after resolving the load failure.";
+
     /// <summary>
     /// Returns an alternative tool suggestion for known IDE diagnostics that lack FixAll providers.
     /// Many IDE code fix providers require constructor parameters that cannot be satisfied via
-    /// reflection instantiation, so they are silently skipped. This mapping directs agents to
+    /// reflection instantiation, so the loader records them as intentional skips. This mapping directs agents to
     /// the correct alternative tool or manual workaround.
     /// </summary>
     /// <remarks>

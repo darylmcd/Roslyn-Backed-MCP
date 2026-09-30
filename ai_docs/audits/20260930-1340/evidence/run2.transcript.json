@@ -1,0 +1,91 @@
+[
+ {
+  "step": {
+   "name": "workspace_load",
+   "args": {
+    "path": "D:/Roslyn-Backed-MCP/SampleSolution.slnx"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"workspaceId\": \"b222aa25ae0148db93cf95e5dd5ad7c0\",\r\n  \"loadedPath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleSolution.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"b222aa25ae0148db93cf95e5dd5ad7c0:1\",\r\n  \"loadedAtUtc\": \"2026-09-30T18:42:06.7934838\\u002B00:00\",\r\n  \"projectCount\": 3,\r\n  \"documentCount\": 24,\r\n  \"isLoaded\": true,\r\n  \"isStale\": false,\r\n  \"workspaceDiagnosticCount\": 3,\r\n  \"workspaceErrorCount\": 3,\r\n  \"workspaceWarningCount\": 0,\r\n  \"isReady\": false,\r\n  \"analyzersReady\": true,\r\n  \"restoreRequired\": true,\r\n  \"buildRequired\": false,\r\n  \"restoreHint\": \"Package-restore inputs changed since the last restore. Run \\u0060dotnet restore\\u0060 on the solution or project, then \\u0060workspace_reload\\u0060.\",\r\n  \"solutionFileName\": \"SampleSolution.slnx\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"load\",\r\n    \"queuedMs\": 2,\r\n    \"heldMs\": 2384,\r\n    \"elapsedMs\": 2411,\r\n    \"cacheHit\": true\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 2,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "symbol_search",
+   "args": {
+    "query": "Dog"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"count\": 6,\r\n  \"totalCount\": 6,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [\r\n    {\r\n      \"name\": \"GetAllAnimals_Returns_Dog_And_Cat\",\r\n      \"fullyQualifiedName\": \"SampleLib.Tests.AnimalServiceTests.GetAllAnimals_Returns_Dog_And_Cat()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLlRlc3RzLkFuaW1hbFNlcnZpY2VUZXN0cy5HZXRBbGxBbmltYWxzX1JldHVybnNfRG9nX0FuZF9DYXQoKSIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWIuVGVzdHNcXEFuaW1hbFNlcnZpY2VUZXN0cy5jcyIsIkxpbmUiOjIxLCJDb2x1bW4iOjE3fQ==\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Tests.AnimalServiceTests\",\r\n      \"namespace\": \"SampleLib.Tests\",\r\n      \"project\": \"SampleLib.Tests\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n      \"startLine\": 21,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 21,\r\n      \"endColumn\": 50,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n        \"startLine\": 21,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 21,\r\n        \"endColumn\": 50,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Dog\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRGlzcGxheU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6MywiQ29sdW1uIjoxNH0=\",\r\n      \"kind\": \"Class\",\r\n      \"containingType\": null,\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 3,\r\n      \"startColumn\": 14,\r\n      \"endLine\": 3,\r\n      \"endColumn\": 17,\r\n      \"returnType\": null,\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": [\r\n        \"SampleLib.IAnimal\"\r\n      ],\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 3,\r\n        \"startColumn\": 14,\r\n        \"endLine\": 3,\r\n        \"endColumn\": 17,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NSwiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Property\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 23,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": true,\r\n      \"hasSetter\": false,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 23,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"get_Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name.get\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lLmdldCIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWJcXERvZy5jcyIsIkxpbmUiOjUsIkNvbHVtbiI6Mjd9\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 27,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 32,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 27,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 32,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Speak\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Speak()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5TcGVhaygpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NywiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 7,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 7,\r\n      \"endColumn\": 24,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 7,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 7,\r\n        \"endColumn\": 24,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Fetch\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Fetch(string)\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5GZXRjaChzdHJpbmcpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6OSwiQ29sdW1uIjoxN30=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 9,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 9,\r\n      \"endColumn\": 22,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [\r\n        \"string item\"\r\n      ],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 9,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 9,\r\n        \"endColumn\": 22,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 5,\r\n    \"heldMs\": 1297,\r\n    \"elapsedMs\": 1312,\r\n    \"autoResolution\": \"single-workspace\"\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 3,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "build_workspace",
+   "args": {
+    "workspaceId": "PLACEHOLDER"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"execution\": {\r\n    \"command\": \"dotnet\",\r\n    \"arguments\": [\r\n      \"build\",\r\n      \"SampleSolution.slnx\",\r\n      \"--nologo\"\r\n    ],\r\n    \"workingDirectory\": \".\",\r\n    \"targetPath\": \"SampleSolution.slnx\",\r\n    \"exitCode\": 0,\r\n    \"succeeded\": true,\r\n    \"durationMs\": 1947,\r\n    \"stdOut\": \"  Determining projects to restore...\\r\\n  Restored SampleApp/SampleApp.csproj (in 247 ms).\\r\\n  Restored SampleLib/SampleLib.csproj (in 247 ms).\\r\\n  Restored SampleLib.Tests/SampleLib.Tests.csproj (in 284 ms).\\r\\nSampleLib/DiagnosticsProbe.cs(9,24): warning CS0414: The field \\u0027DiagnosticsProbe._unusedForDiagnostics\\u0027 is assigned but its value is never used [SampleLib/SampleLib.csproj]\\r\\n  SampleLib -\\u003E SampleLib/bin/Debug/net10.0/SampleLib.dll\\r\\n  SampleApp -\\u003E SampleApp/bin/Debug/net10.0/SampleApp.dll\\r\\n  SampleLib.Tests -\\u003E SampleLib.Tests/bin/Debug/net10.0/SampleLib.Tests.dll\\r\\n\\r\\nBuild succeeded.\\r\\n\\r\\nSampleLib/DiagnosticsProbe.cs(9,24): warning CS0414: The field \\u0027DiagnosticsProbe._unusedForDiagnostics\\u0027 is assigned but its value is never used [SampleLib/SampleLib.csproj]\\r\\n    1 Warning(s)\\r\\n    0 Error(s)\\r\\n\\r\\nTime Elapsed 00:00:01.74\\r\\n\",\r\n    \"stdErr\": \"\",\r\n    \"earlyKillReason\": null\r\n  },\r\n  \"diagnostics\": [\r\n    {\r\n      \"id\": \"CS0414\",\r\n      \"message\": \"The field \\u0027DiagnosticsProbe._unusedForDiagnostics\\u0027 is assigned but its value is never used\",\r\n      \"severity\": \"Warning\",\r\n      \"category\": \"Build\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\DiagnosticsProbe.cs\",\r\n      \"startLine\": 9,\r\n      \"startColumn\": 24,\r\n      \"endLine\": 9,\r\n      \"endColumn\": 45,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\DiagnosticsProbe.cs\",\r\n        \"startLine\": 9,\r\n        \"startColumn\": 24,\r\n        \"endLine\": 9,\r\n        \"endColumn\": 45,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    }\r\n  ],\r\n  \"errorCount\": 0,\r\n  \"warningCount\": 1,\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 2219,\r\n    \"elapsedMs\": 2220\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 4,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "server_heartbeat",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"connection\": {\r\n    \"state\": \"ready\",\r\n    \"loadedWorkspaceCount\": 1,\r\n    \"stdioPid\": 41544,\r\n    \"serverStartedAt\": \"2026-09-30T18:42:03.8820450\\u002B00:00\",\r\n    \"previousStdioPid\": 45020,\r\n    \"previousExitedAt\": \"2026-09-30T18:41:26.5281293Z\",\r\n    \"previousRecycleReason\": \"graceful\"\r\n  },\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 4\r\n  }\r\n}"
+     }
+    ],
+    "structuredContent": {
+     "connection": {
+      "state": "ready",
+      "loadedWorkspaceCount": 1,
+      "stdioPid": 41544,
+      "serverStartedAt": "2026-09-30T18:42:03.8820450+00:00",
+      "previousStdioPid": 45020,
+      "previousExitedAt": "2026-09-30T18:41:26.5281293Z",
+      "previousRecycleReason": "graceful"
+     }
+    }
+   },
+   "id": 5,
+   "jsonrpc": "2.0"
+  }
+ }
+]

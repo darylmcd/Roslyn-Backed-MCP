@@ -1,6 +1,6 @@
-using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -63,7 +63,7 @@ public static class TestCoverageCoordinator
 
         foreach (var path in paths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
-            var doc = XDocument.Load(path);
+            var doc = XmlFileLoader.Load(path);
             var coverage = doc.Root!;
             var fileLineRate = double.TryParse(coverage.Attribute("line-rate")?.Value, out var lr) ? lr : (double?)null;
             var fileBranchRate = double.TryParse(coverage.Attribute("branch-rate")?.Value, out var br) ? br : (double?)null;
@@ -99,10 +99,8 @@ public static class TestCoverageCoordinator
         double? rolledBranchRate;
         if (paths.Count == 1)
         {
-            var doc = XDocument.Load(paths[0]);
-            var coverage = doc.Root!;
-            rolledLineRate = double.TryParse(coverage.Attribute("line-rate")?.Value, out var lr) ? lr * 100 : (double?)null;
-            rolledBranchRate = double.TryParse(coverage.Attribute("branch-rate")?.Value, out var br) ? br * 100 : (double?)null;
+            rolledLineRate = perFileLineRates.Count == 0 ? null : perFileLineRates[0].rate * 100;
+            rolledBranchRate = perFileBranchRates.Count == 0 ? null : perFileBranchRates[0].rate * 100;
         }
         else
         {

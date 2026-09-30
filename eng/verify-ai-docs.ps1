@@ -495,11 +495,11 @@ $safeBacklogIntakeExamples = @(
     'node ~/.claude/scripts/backlog.mjs add . --id example-row --pri Medium --do-file row-do.md --items-file row-detail.md',
     'node ~/.claude/scripts/backlog.mjs count .',
     'git mv review-inbox/example.md review-inbox/archive/20260910T000000Z/example.md',
-    'git rm C:/Code-Repo/Sibling/backlog.d/example-row.md',
+    'git rm D:/Sibling/backlog.d/example-row.md',
     'Do not append a new row to the matching priority band; use backlog.mjs add instead.',
     'Do not use Edit to change ai_docs/backlog.md; use backlog.mjs update instead.',
     'Never directly rewrite the backlog table; use backlog.mjs update instead.',
-    'echo "fragment" >> C:/Code-Repo/Sibling/backlog.d/example-row.md',
+    'echo "fragment" >> D:/Sibling/backlog.d/example-row.md',
     'Move-Item review-inbox/example.md review-inbox/archive/example.md',
     'severity: P2 is raw source metadata, not a local priority.',
     'Do not edit the table directly; use backlog.mjs update --do-file instead.'

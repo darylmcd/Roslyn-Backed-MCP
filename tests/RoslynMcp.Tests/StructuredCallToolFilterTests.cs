@@ -41,14 +41,15 @@ public sealed class StructuredCallToolFilterTests
     // ── Pre-binding failures (the original bug this filter fixes) ─────────────
 
     [TestMethod]
-    public void BuildErrorResult_MissingRequiredParameter_SurfacesInvalidArgumentAndNamesParameter()
+    public void BuildErrorResult_MissingRequiredParameter_WithoutRequestContextUsesBinderParameter()
     {
         // Simulates the SDK's reflection-based argument binder throwing when a required
-        // parameter is absent from the arguments dictionary. Pre-filter this surfaced as
-        // a bare "An error occurred invoking '<tool>'." string with no paramName.
+        // parameter is absent from the arguments dictionary. The real SDK binder identifies
+        // the dictionary as "arguments", not the omitted schema property. The context-aware
+        // result projector resolves the property in the wire test.
         var binderException = new ArgumentException(
             "The arguments dictionary is missing a value for the required parameter 'path'.",
-            paramName: "path");
+            paramName: "arguments");
 
         using var scope = AmbientGateMetrics.BeginRequest();
         var result = StructuredCallToolFilter.BuildErrorResult("workspace_load", binderException);
@@ -62,8 +63,8 @@ public sealed class StructuredCallToolFilterTests
 
         Assert.AreEqual("InvalidArgument", payload.GetProperty("category").GetString());
         Assert.AreEqual("workspace_load", payload.GetProperty("tool").GetString());
-        StringAssert.Contains(payload.GetProperty("message").GetString(), "path",
-            "Envelope message MUST name the offending parameter so the LLM can self-correct on retry.");
+        StringAssert.Contains(payload.GetProperty("message").GetString(), "arguments",
+            "This context-free helper cannot infer the missing property from the binder exception.");
     }
 
     [TestMethod]

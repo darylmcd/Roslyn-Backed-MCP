@@ -1,9 +1,9 @@
-using RoslynMcp.Core.Models;
-using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -40,7 +40,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
         {
             documents = solution.Projects
                 .SelectMany(p => p.Documents)
-                .Where(d => d.FilePath is not null && targetPaths.Contains(Path.GetFullPath(d.FilePath)));
+                .Where(d => d.FilePath is not null && targetPaths.Contains(PhysicalPathResolver.Resolve(d.FilePath)));
         }
         else
         {
@@ -97,7 +97,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
     private static void AddTargetPath(ISet<string> targetPaths, string? path)
     {
         if (!string.IsNullOrWhiteSpace(path))
-            targetPaths.Add(Path.GetFullPath(path));
+            targetPaths.Add(PhysicalPathResolver.Resolve(path));
     }
 
     /// <summary>

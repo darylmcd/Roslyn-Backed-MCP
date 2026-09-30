@@ -1,5 +1,5 @@
 param(
-    [string]$SolutionPath = "C:\Code-Repo\OrchardCore\OrchardCore.slnx",
+    [string]$SolutionPath = "D:\OrchardCore\OrchardCore.slnx",
     [string]$McpCommand = "roslynmcp",
     [string[]]$McpArguments = @(),
     [int]$Iterations = 5,

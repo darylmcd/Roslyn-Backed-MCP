@@ -8,6 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -193,6 +194,13 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
                     await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
                     var frame = await CallAndCaptureAsync(harness, "compile_check", arguments: null);
                     AssertFastFailFrame(frame, "loaded workspace", protocol.Modern);
+
+                    var validateFrame = await CallAndCaptureAsync(harness, "validate_workspace", arguments: null);
+                    AssertFastFailFrame(validateFrame, "Candidates:", protocol.Modern);
+                    var payload = ErrorPayload(validateFrame);
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), firstWorkspace.WorkspaceId);
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), secondWorkspace.WorkspaceId);
+                    StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "workspaceId");
                 }
             }
             finally
@@ -229,6 +237,173 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task MissingRequiredArguments_NameEveryOmittedFieldOnTheWire()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var frame = await CallAndCaptureAsync(harness, "workspace_load", arguments: null);
+            AssertFastFailFrame(frame, "path", protocol.Modern);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("ArgumentException", payload["exceptionType"]?.GetValue<string>());
+            StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "path");
+
+            var multipleFrame = await CallAndCaptureAsync(harness, "synthetic_required_arguments", arguments: null);
+            var multiplePayload = ErrorPayload(multipleFrame);
+            Assert.AreEqual("InvalidArgument", multiplePayload["category"]?.GetValue<string>());
+            StringAssert.Contains(multiplePayload["message"]!.GetValue<string>(), "first");
+            StringAssert.Contains(multiplePayload["message"]!.GetValue<string>(), "second");
+        }
+    }
+
+    [TestMethod]
+    public async Task PartiallySuppliedRequiredArguments_NameOnlyTheOmittedField()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var partial = new Dictionary<string, object?> { ["first"] = "supplied" };
+            var frame = await CallAndCaptureAsync(harness, "synthetic_required_arguments", partial);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+            StringAssert.Contains(payload["message"]!.GetValue<string>(), "'second'");
+            Assert.IsFalse(payload["message"]!.GetValue<string>().Contains("'first'", StringComparison.Ordinal));
+
+            var catalogPartial = new Dictionary<string, object?>
+            {
+                ["workspaceId"] = "synthetic-workspace",
+                ["filePath"] = "C:/synthetic/source.cs",
+                ["line"] = 1,
+            };
+            var catalogFrame = await CallAndCaptureAsync(harness, "symbol_info", catalogPartial);
+            var catalogPayload = ErrorPayload(catalogFrame);
+            StringAssert.Contains(catalogPayload["message"]!.GetValue<string>(), "'column'");
+            Assert.IsFalse(catalogPayload["message"]!.GetValue<string>().Contains("'filePath'", StringComparison.Ordinal));
+            StringAssert.Contains(catalogPayload["schemaHint"]!.GetValue<string>(), "column");
+        }
+    }
+
+    [TestMethod]
+    public async Task MalformedSuppliedValue_WithOmittedRequiredField_NamesTheOmission()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var arguments = new Dictionary<string, object?>
+            {
+                ["workspaceId"] = "synthetic-workspace",
+                ["filePath"] = "C:/synthetic/source.cs",
+                ["line"] = "not-an-integer",
+            };
+            var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+            Assert.AreEqual("JsonException", payload["exceptionType"]?.GetValue<string>());
+            StringAssert.Contains(payload["message"]!.GetValue<string>(), "'column'");
+            StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "column");
+        }
+    }
+
+    [TestMethod]
+    public async Task MrtrRetry_UsesRecoveredArgumentsToNameTheRemainingOmission()
+    {
+        await using var harness = await CreateHarnessAsync(
+            protocolVersion: null,
+            workspaceManager: new FailClosedWorkspaceManagerStub(),
+            elicitationHandler: (_, _) => ValueTask.FromResult(new ElicitResult
+            {
+                Action = "accept",
+                Content = new Dictionary<string, JsonElement>
+                {
+                    ["path"] = JsonSerializer.SerializeToElement("C:/synthetic/recovered.slnx"),
+                },
+            }));
+
+        var priorMessageCount = harness.RawServerMessages.Count;
+        _ = await harness.Client.CallToolAsync(
+            "symbol_info",
+            new Dictionary<string, object?> { ["line"] = 1, ["column"] = 1 },
+            cancellationToken: CancellationToken.None);
+        var frames = harness.RawServerMessages
+            .Skip(priorMessageCount)
+            .Select(static raw => JsonNode.Parse(raw))
+            .OfType<JsonObject>()
+            .Where(static frame => frame["result"] is not null || frame["error"] is not null)
+            .ToArray();
+        Assert.HasCount(2, frames);
+        Assert.AreEqual("input_required", frames[0]["result"]?["resultType"]?.GetValue<string>());
+        var payload = ErrorPayload(frames[1]);
+        Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+        Assert.AreEqual("ArgumentException", payload["exceptionType"]?.GetValue<string>());
+        StringAssert.Contains(payload["message"]!.GetValue<string>(), "'filePath'");
+        Assert.IsFalse(payload["message"]!.GetValue<string>().Contains("'workspaceId'", StringComparison.Ordinal));
+        StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "filePath");
+    }
+
+    [TestMethod]
+    public async Task AutoResolvedWorkspaceId_IsNotReportedMissingWhenAnotherFieldIsOmitted()
+    {
+        var solutionPath = CreateSampleSolutionCopy();
+        var root = Path.GetDirectoryName(solutionPath)!;
+        try
+        {
+            using var manager = CreateIsolatedWorkspaceManager();
+            var workspace = await manager.LoadAsync(solutionPath, CancellationToken.None);
+            try
+            {
+                foreach (var protocol in Protocols())
+                {
+                    await using var harness = await CreateHarnessAsync(protocol.Requested, manager);
+                    var arguments = new Dictionary<string, object?>
+                    {
+                        ["filePath"] = Path.Combine(root, "SampleLib", "WidgetTarget.cs"),
+                        ["line"] = 1,
+                    };
+                    var frame = await CallAndCaptureAsync(harness, "symbol_info", arguments);
+                    var payload = ErrorPayload(frame);
+                    Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+                    StringAssert.Contains(payload["message"]!.GetValue<string>(), "'column'");
+                    Assert.IsFalse(payload["message"]!.GetValue<string>().Contains("'workspaceId'", StringComparison.Ordinal));
+                    StringAssert.Contains(payload["schemaHint"]!.GetValue<string>(), "column");
+                }
+            }
+            finally
+            {
+                manager.Close(workspace.WorkspaceId);
+            }
+        }
+        finally
+        {
+            TestFixtureFileSystem.DeleteDirectoryIfExists(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task PublicArgumentRefusal_PreservesServerAuthoredMessageWithRequiredFieldAbsent()
+    {
+        foreach (var protocol in Protocols())
+        {
+            await using var harness = await CreateHarnessAsync(protocol.Requested);
+            var frame = await CallAndCaptureAsync(harness, "synthetic_public_refusal", arguments: null);
+            var payload = ErrorPayload(frame);
+            Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>());
+            Assert.AreEqual(
+                "The server requires an explicit operator choice before this call.",
+                payload["message"]?.GetValue<string>(),
+                payload.ToJsonString());
+            Assert.AreEqual("PublicArgumentException", payload["exceptionType"]?.GetValue<string>());
+
+            var operationFrame = await CallAndCaptureAsync(harness, "synthetic_public_operation", arguments: null);
+            var operationPayload = ErrorPayload(operationFrame);
+            Assert.AreEqual("InvalidOperation", operationPayload["category"]?.GetValue<string>());
+            Assert.AreEqual(
+                "The server cannot continue this operation until its state changes.",
+                operationPayload["message"]?.GetValue<string>());
+            Assert.AreEqual("PublicInvalidOperationException", operationPayload["exceptionType"]?.GetValue<string>());
+        }
+    }
+
     private static WorkspaceManager CreateIsolatedWorkspaceManager()
     {
         var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
@@ -242,7 +417,8 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
     private static async Task<InMemoryMcpClientServerHarness> CreateHarnessAsync(
         string? protocolVersion,
         IWorkspaceManager? workspaceManager = null,
-        string? sanctionedRoot = null)
+        string? sanctionedRoot = null,
+        Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? elicitationHandler = null)
     {
         var services = new ServiceCollection();
         if (workspaceManager is not null)
@@ -266,14 +442,30 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             .WithMessageFilters(static filters =>
                 filters.AddIncomingFilter(RequestCorrelationMessageFilter.Create))
             .WithRequestFilters(static filters =>
-                filters.AddCallToolFilter(StructuredCallToolFilter.Create));
+            {
+                filters.AddCallToolFilter(StructuredCallToolFilter.Create);
+                filters.AddCallToolFilter(next => (context, cancellationToken) =>
+                    context.Params?.Name switch
+                    {
+                        "synthetic_public_refusal" => throw new PublicArgumentException(
+                            "The server requires an explicit operator choice before this call.",
+                            "path"),
+                        "synthetic_public_operation" => throw new PublicInvalidOperationException(
+                            "The server cannot continue this operation until its state changes."),
+                        _ => next(context, cancellationToken),
+                    });
+            });
         var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         return await InMemoryMcpClientServerHarness.CreateAsync(
             transportName: $"tool-call-error-{protocolVersion ?? "modern"}",
-            clientCapabilities: new ClientCapabilities(),
-            clientHandlers: new McpClientHandlers(),
+            clientCapabilities: elicitationHandler is null
+                ? new ClientCapabilities()
+                : new ClientCapabilities { Elicitation = new ElicitationCapability() },
+            clientHandlers: elicitationHandler is null
+                ? new McpClientHandlers()
+                : new McpClientHandlers { ElicitationHandler = elicitationHandler },
             disposalFailureContext: "tool-call-error-wire",
             cancellationToken: CancellationToken.None,
             protocolVersion: protocolVersion,
@@ -310,11 +502,17 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
             Assert.IsNull(result["resultType"], rawFrame);
         }
 
-        var content = Assert.IsInstanceOfType<JsonArray>(result["content"]);
-        var block = Assert.IsInstanceOfType<JsonObject>(content.Single());
-        var payload = Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(block["text"]!.GetValue<string>()));
+        var payload = ErrorPayload(frame);
         Assert.AreEqual("InvalidArgument", payload["category"]?.GetValue<string>(), rawFrame);
         StringAssert.Contains(payload["message"]?.GetValue<string>(), expectedMessage);
+    }
+
+    private static JsonObject ErrorPayload(JsonObject frame)
+    {
+        var result = Assert.IsInstanceOfType<JsonObject>(frame["result"]);
+        var content = Assert.IsInstanceOfType<JsonArray>(result["content"]);
+        var block = Assert.IsInstanceOfType<JsonObject>(content.Single());
+        return Assert.IsInstanceOfType<JsonObject>(JsonNode.Parse(block["text"]!.GetValue<string>()));
     }
 
     private static IEnumerable<(string? Requested, bool Modern)> Protocols()
@@ -365,9 +563,28 @@ public sealed class ToolCallErrorWireContractTests : IsolatedWorkspaceTestBase
 
         [McpServerTool(Name = "symbol_info")]
         public static string SymbolInfo(
+            string workspaceId,
             string filePath,
             int line,
-            int column,
-            string? workspaceId = null) => workspaceId ?? $"missing:{filePath}:{line}:{column}";
+            int column) => workspaceId;
+
+        [McpServerTool(Name = "workspace_load")]
+        public static string WorkspaceLoad(string path) => JsonSerializer.Serialize(new
+        {
+            workspaceId = "synthetic-recovered-workspace",
+            loadedPath = path,
+        });
+
+        [McpServerTool(Name = "validate_workspace")]
+        public static string ValidateWorkspace(string workspaceId) => workspaceId;
+
+        [McpServerTool(Name = "synthetic_required_arguments")]
+        public static string RequireTwo(string first, string second) => first + second;
+
+        [McpServerTool(Name = "synthetic_public_refusal")]
+        public static string PublicRefusal(string path) => path;
+
+        [McpServerTool(Name = "synthetic_public_operation")]
+        public static string PublicOperation(string path) => path;
     }
 }

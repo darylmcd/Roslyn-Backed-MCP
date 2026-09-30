@@ -8,7 +8,7 @@
 2. For this checkout, call `workspace_load` with:
 
    ```json
-   { "path": "C:/Code-Repo/Roslyn-Backed-MCP/RoslynMcp.slnx" }
+   { "path": "D:/Roslyn-Backed-MCP/RoslynMcp.slnx" }
    ```
 
    In another worktree, resolve that worktree's absolute `RoslynMcp.slnx` path first.

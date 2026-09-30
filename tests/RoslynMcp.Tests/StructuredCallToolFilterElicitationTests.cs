@@ -20,7 +20,7 @@ public sealed class StructuredCallToolFilterElicitationTests
     {
         var binderException = new ArgumentException(
             "The arguments dictionary is missing a value for the required parameter 'path'.",
-            paramName: "path");
+            paramName: "arguments");
 
         using var scope = AmbientGateMetrics.BeginRequest();
         var result = StructuredCallToolFilter.BuildErrorResult("workspace_load", binderException);
@@ -33,6 +33,6 @@ public sealed class StructuredCallToolFilterElicitationTests
         Assert.AreEqual("InvalidArgument", payload.GetProperty("category").GetString(),
             "Unsupported or declined recovery must preserve the established error category.");
         Assert.AreEqual("workspace_load", payload.GetProperty("tool").GetString());
-        StringAssert.Contains(payload.GetProperty("message").GetString(), "path");
+        StringAssert.Contains(payload.GetProperty("message").GetString(), "arguments");
     }
 }

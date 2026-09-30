@@ -754,9 +754,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         string fullPath;
         try
         {
-            fullPath = Path.GetFullPath(filePath);
+            fullPath = PhysicalPathResolver.Resolve(filePath);
         }
-        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException)
         {
             return [];
         }
@@ -880,6 +880,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public async Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct)
     {
         var solution = GetCurrentSolution(workspaceId);
+        var canonicalFilePath = PhysicalPathResolver.Resolve(filePath);
         var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
 
         // Also search source-generated documents if not found in regular documents
@@ -892,7 +893,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
                     document = sourceGenDocs.FirstOrDefault(d =>
                         d.FilePath is not null &&
-                        FileSystemPath.Comparer.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath)));
+                        FileSystemPath.Comparer.Equals(PhysicalPathResolver.Resolve(d.FilePath), canonicalFilePath));
                     if (document is not null) break;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1028,6 +1029,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         }
 
+        EnsureChangedDocumentPathsArePhysical(session.Workspace.CurrentSolution, newSolution);
         var result = session.Workspace.TryApplyChanges(newSolution);
         if (result)
         {
@@ -1458,6 +1460,35 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         foreach (var project in solution.Projects)
         {
             EnsurePhysicalPath(project.FilePath);
+            var projectDirectory = Path.GetDirectoryName(project.FilePath);
+            foreach (var document in project.Documents
+                         .Concat<TextDocument>(project.AdditionalDocuments)
+                         .Concat(project.AnalyzerConfigDocuments))
+            {
+                if (string.IsNullOrWhiteSpace(document.FilePath)) continue;
+
+                var physicalPath = PhysicalPathResolver.Resolve(document.FilePath);
+                // MSBuild imports some source documents from outside the project (for example,
+                // SDK files in the NuGet cache). Those paths are read-only in this workspace:
+                // TryApplyChanges rejects edits to any document whose path is not physical.
+                if (IsPathUnderDirectory(physicalPath, projectDirectory))
+                {
+                    EnsurePhysicalPath(document.FilePath);
+                }
+            }
+        }
+    }
+
+    internal static void EnsureChangedDocumentPathsArePhysical(Solution current, Solution next)
+    {
+        foreach (var project in next.Projects)
+        {
+            EnsurePhysicalPath(project.FilePath);
+        }
+
+        var changes = next.GetChanges(current);
+        foreach (var project in changes.GetAddedProjects().Concat(changes.GetRemovedProjects()))
+        {
             foreach (var document in project.Documents
                          .Concat<TextDocument>(project.AdditionalDocuments)
                          .Concat(project.AnalyzerConfigDocuments))
@@ -1466,17 +1497,53 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             }
         }
 
-        static void EnsurePhysicalPath(string? path)
+        foreach (var change in changes.GetProjectChanges())
         {
-            if (string.IsNullOrWhiteSpace(path)) return;
+            foreach (var id in change.GetChangedDocuments()
+                         .Concat(change.GetAddedDocuments())
+                         .Concat(change.GetRemovedDocuments()))
+            {
+                EnsurePhysicalPath(current.GetDocument(id)?.FilePath);
+                EnsurePhysicalPath(next.GetDocument(id)?.FilePath);
+            }
 
-            var physicalPath = PhysicalPathResolver.Resolve(path);
-            if (FileSystemPath.Comparer.Equals(path, physicalPath)) return;
+            foreach (var id in change.GetChangedAdditionalDocuments()
+                         .Concat(change.GetAddedAdditionalDocuments())
+                         .Concat(change.GetRemovedAdditionalDocuments()))
+            {
+                EnsurePhysicalPath(current.GetAdditionalDocument(id)?.FilePath);
+                EnsurePhysicalPath(next.GetAdditionalDocument(id)?.FilePath);
+            }
 
-            throw new InvalidOperationException(
-                "Workspace loading left a project or document path with a filesystem-link component. " +
-                "Load the workspace through its physical solution or project path.");
+            foreach (var id in change.GetChangedAnalyzerConfigDocuments()
+                         .Concat(change.GetAddedAnalyzerConfigDocuments())
+                         .Concat(change.GetRemovedAnalyzerConfigDocuments()))
+            {
+                EnsurePhysicalPath(current.GetAnalyzerConfigDocument(id)?.FilePath);
+                EnsurePhysicalPath(next.GetAnalyzerConfigDocument(id)?.FilePath);
+            }
         }
+    }
+
+    internal static void EnsurePhysicalPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        var physicalPath = PhysicalPathResolver.Resolve(path);
+        if (FileSystemPath.Comparer.Equals(path, physicalPath)) return;
+
+        throw new InvalidOperationException(
+            "Workspace project or modified document path has a filesystem-link component. " +
+            "Load and edit through the physical path.");
+    }
+
+    private static bool IsPathUnderDirectory(string path, string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) return false;
+        var prefix = directory.EndsWith(Path.DirectorySeparatorChar)
+            ? directory
+            : directory + Path.DirectorySeparatorChar;
+        return path.StartsWith(prefix, FileSystemPath.Comparison);
     }
 
     private static ImmutableHashSet<string> BuildDocumentPathIndex(Solution solution) =>
@@ -1484,7 +1551,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             .SelectMany(project => project.Documents)
             .Select(document => document.FilePath)
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Select(path => Path.GetFullPath(path!))
+            .Select(path => PhysicalPathResolver.Resolve(path!))
             .ToImmutableHashSet(FileSystemPath.Comparer);
 
     private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)

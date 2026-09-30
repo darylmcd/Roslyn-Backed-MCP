@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
@@ -78,7 +77,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
 
         try
         {
-            var doc = XDocument.Load(projectFilePath, LoadOptions.None);
+            var doc = XmlFileLoader.Load(projectFilePath);
             var includes = doc.Descendants("PackageReference")
                 .Select(e => e.Attribute("Include")?.Value)
                 .Where(i => !string.IsNullOrWhiteSpace(i))
@@ -111,7 +110,7 @@ public sealed partial class ScaffoldingService : IScaffoldingService
 
         try
         {
-            var doc = XDocument.Load(project.FilePath, LoadOptions.None);
+            var doc = XmlFileLoader.Load(project.FilePath);
 
             // Check <IsTestProject>true</IsTestProject>
             var isTestProject = doc.Descendants("IsTestProject")

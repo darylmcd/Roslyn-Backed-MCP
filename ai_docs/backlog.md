@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-30T00:43:13Z
+**updated_at:** 2026-09-30T18:46:56Z
 
 ## Agent contract
 
@@ -58,6 +58,7 @@
 | `workspace-restore-public-failure` | High | — | **Explain explicit restore failure safely** — return a path-free public reason with the existing error category. [type: bug] [source: compile-check-restore-required-handshake] | S | items/workspace-restore-public-failure.md |
 | `editorconfig-write-outside-workspace` | High | — | Reject .editorconfig writes for source paths outside the loaded workspace. [type: security] [source: editorconfig invalidation review 2026-09-29] | M | items/editorconfig-write-outside-workspace.md |
 | `editorconfig-owned-write-external-race` | High | — | Prevent detectable external .editorconfig edits from being lost or misattributed during an owned write; track uncooperative POSIX writers separately. [type: bug] [source: backlog-remediate cold review 20260929] | M | items/editorconfig-owned-write-external-race.md |
+| `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
 
 ## Medium
 
@@ -164,6 +165,14 @@
 | `editorconfig-prewrite-snapshot-coherence` | Medium | — | Capture one pre-write byte snapshot for .editorconfig undo and mutation parsing so external edits cannot mix versions. [type: bug] [source: backlog-remediate cold review 20260929] | S | items/editorconfig-prewrite-snapshot-coherence.md |
 | `editorconfig-failed-write-displaces-undo-target` | Medium | — | Preserve prior undo on unchanged set_editorconfig_option failures and keep any partial failed write recoverable. [type: bug] [source: backlog-remediate cold review 20260929] | M | items/editorconfig-failed-write-displaces-undo-target.md |
 | `other-failed-apply-displaces-undo-target` | Medium | editorconfig-failed-write-displaces-undo-target | Preserve prior revert_last_apply target when EditService, ProjectMutationService, or RefactoringService fails after preparing undo. [type: bug] [source: backlog-remediate cold review 20260929] | L | items/other-failed-apply-displaces-undo-target.md |
+| `client-root-widening-drive-root-parent` | Medium | — | **Decide sibling-worktree widening when repo root parent is a drive root** — expandSanctionedRoots skips D:\ parents, so D:\<repo>-audit-* siblings are rejected; choose prefix-scoped widening or keep skip, implement + test + document [type: decision] [source: PR #1685 fixture change] | S | items/client-root-widening-drive-root-parent.md |
+| `logging-jsonl-drops-structured-state` | Medium | — | **Serialize ILogger state as structured fields in the JSON-lines sink** — emit `fields` (toolName, outcome, elapsedMs, exceptionTypes…) and `eventName` per record instead of only the formatted prose message. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-jsonl-drops-structured-state.md |
+| `logging-retention-destroys-repro-evidence` | Medium | — | **Bound JSON-lines retention without deleting repro evidence** — rotation deletes the prior segment (10 MiB/process ceiling) and per-pid files of dead processes are never pruned. [type: quality] [source: logging-audit 20260930-1340] | S | items/logging-retention-destroys-repro-evidence.md |
+| `logging-event-id-collisions-no-catalog` | Medium | logging-jsonl-drops-structured-state | **Give every LoggerMessage a unique EventId and publish the catalog** — six unrelated events share EventId 1; add a constants catalog, drift test and docs table. [type: quality] [source: logging-audit 20260930-1340] | L | items/logging-event-id-collisions-no-catalog.md |
+| `logging-failure-records-lack-diagnosis` | Medium | logging-jsonl-drops-structured-state | **Put error category and sanitized frames in tool-failure log records** — expected failures log only `outcome=expected-error`; unexpected ones log exception types + a frame count with no frames. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-failure-records-lack-diagnosis.md |
+| `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
+| `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
+| `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
 
 ## Low
 
@@ -395,6 +404,9 @@
 | `workspace-close-drain-pid-reuse-between-resolve-and-kill` | Low | — | **workspace_close drain can kill a recycled pid** — hold one process handle per candidate from the path query through termination so the pid cannot be reissued in between. [type: bug] [source: PR #1666 review 2026-09-28] | M | items/workspace-close-drain-pid-reuse-between-resolve-and-kill.md |
 | `format-range-test-fixture-lifecycle-deduplication` | Low | — | **Share custom format-range fixture lifecycle** — consolidate repeated sample-copy/load/close setup in FormatRangeServiceTests. [type: test-infrastructure] [source: format-range code review 2026-09-29] | S | items/format-range-test-fixture-lifecycle-deduplication.md |
 | `validation-test-compile-stub-deduplication` | Low | — | Share the duplicated cancellation-only compile test stub used by validation timeout and recent-Git-change tests. [type: code-quality] [source: wave-40 audit] | S | items/validation-test-compile-stub-deduplication.md |
+| `logging-event-ids-remaining-call-sites` | Low | logging-event-id-collisions-no-catalog | **Assign catalog EventIds to the remaining zero-id log call sites** — 51 direct Log* calls use EventId 0 (eventId-0 is the majority of the stream); add a test that rejects new zero-id sites. [type: quality] [source: logging-audit 20260930-1340] | L | items/logging-event-ids-remaining-call-sites.md |
+| `logging-file-sink-sync-io-per-record` | Low | logging-retention-destroys-repro-evidence | **Keep the JSON-lines file open instead of open/stat/append per record** — every log line does Directory.CreateDirectory, File.Exists, FileInfo.Length and AppendAllText under one global lock on the request thread. [type: perf] [source: logging-audit 20260930-1340] | S | items/logging-file-sink-sync-io-per-record.md |
+| `logging-info-observations` | Low | — | **Observability Info digest** — SDK transport records have null correlationId; records lack version/pid (only in filename and startup line); default stderr stream is prose. Triage or drop. [type: quality] [source: logging-audit 20260930-1340] | S | items/logging-info-observations.md |
 
 ## Defer
 
