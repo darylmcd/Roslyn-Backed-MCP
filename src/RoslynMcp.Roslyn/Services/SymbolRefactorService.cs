@@ -368,6 +368,15 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 $"Method(s) not found on '{sourceType}': {string.Join(", ", missingMembers)}");
         }
 
+        // Another part of a partial type may declare constructors and members this declaration
+        // cannot see, so the facade would end up with two constructors or clashing members.
+        if (typeDeclaration.Modifiers.Any(token => token.IsKind(SyntaxKind.PartialKeyword)))
+        {
+            throw new InvalidOperationException(
+                $"'{sourceType}' is a partial type, which split_service_with_di_preview does not support: another part may declare " +
+                "constructors or members the facade would duplicate. Merge the parts into one declaration, then split.");
+        }
+
         // The facade replaces every instance constructor with the partition-injecting one. A
         // primary constructor or a chained `: base(...)` / `: this(...)` initializer cannot be
         // carried over faithfully, so refuse instead of emitting a facade that fails CS8862/CS7036.
@@ -387,6 +396,8 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 $"A constructor of '{sourceType}' chains to '{chainedConstructor.Initializer}', which split_service_with_di_preview " +
                 "cannot carry onto the facade constructor. Remove the chained initializer, then split.");
         }
+
+        RefuseSourceMembersNamedLikeFacadeFields(typeDeclaration, sourceType, partitions);
 
         var constructorInjections = CollectConstructorInjections(typeDeclaration, sourceType, fieldDeclarations);
 
@@ -416,6 +427,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         List<CompositeFileMutation> mutations,
         List<FileChangeDto> changes)
     {
+        var claimedPartitionFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var partition in partitions)
         {
             var rawPartitionMethods = context.MethodDeclarations
@@ -429,6 +441,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             var referencedFields = ResolveFieldsReferencedByMethods(context.FieldDeclarations, rawPartitionMethods);
 
             var partitionFilePath = Path.Combine(context.SourceDirectory, $"{partition.TypeName}.cs");
+            RefusePartitionFileCollision(context, partition.TypeName, partitionFilePath, claimedPartitionFiles);
             var partitionInjections = referencedFields
                 .SelectMany(field => field.Declaration.Variables)
                 .Select(declarator => context.ConstructorInjections.GetValueOrDefault(declarator.Identifier.ValueText))
@@ -1042,17 +1055,73 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     }
 
     /// <summary>
-    /// A partition constructor carries the source parameters and <c>?? throw</c> values verbatim,
-    /// but the partition does not carry the source type's other members. Refuses when a copied
-    /// parameter type, default value, attribute, or guard names a member of the source type
-    /// (a constant default, a static guard helper, a nested type), which would not compile there.
+    /// Refuses a partition whose generated file would overwrite something: the source file
+    /// (the facade mutation targets it), a file already on disk, a document already in the
+    /// workspace, or the file of an earlier partition in the same preview (duplicate TypeName).
+    /// The composite apply writes each mutation unconditionally, so a collision destroys content.
     /// </summary>
-    private static void RefuseInjectionsNamingSourceMembers(
-        TypeDeclarationSyntax sourceDeclaration,
+    private static void RefusePartitionFileCollision(
+        SplitServiceContext context,
         string partitionTypeName,
-        IReadOnlyList<ConstructorInjection> partitionInjections)
+        string partitionFilePath,
+        Dictionary<string, string> claimedPartitionFiles)
     {
-        var sourceMemberNames = sourceDeclaration.Members
+        var fullPath = Path.GetFullPath(partitionFilePath);
+        if (claimedPartitionFiles.TryGetValue(fullPath, out var earlier))
+        {
+            throw new InvalidOperationException(
+                $"Partitions '{earlier}' and '{partitionTypeName}' would both be written to '{fullPath}'. Give each partition a distinct TypeName.");
+        }
+
+        claimedPartitionFiles[fullPath] = partitionTypeName;
+
+        var sourcePath = context.Document.FilePath;
+        if (sourcePath is not null && string.Equals(Path.GetFullPath(sourcePath), fullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Partition '{partitionTypeName}' would be written to the source file '{fullPath}', which the facade rewrite also targets. " +
+                "Choose a partition TypeName that differs from the source file name.");
+        }
+
+        var inWorkspace = context.Document.Project.Solution.Projects
+            .SelectMany(project => project.Documents)
+            .Any(candidate => candidate.FilePath is not null
+                && string.Equals(Path.GetFullPath(candidate.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        if (inWorkspace || File.Exists(fullPath))
+        {
+            throw new InvalidOperationException(
+                $"Partition '{partitionTypeName}' would overwrite the existing file '{fullPath}'. " +
+                "Choose an unused partition TypeName or remove the file, then split.");
+        }
+    }
+
+    /// <summary>
+    /// The facade declares a private <c>_{partition}</c> field per partition; a source member with
+    /// the same name would make the facade fail with CS0102. Refuses instead of emitting that.
+    /// </summary>
+    private static void RefuseSourceMembersNamedLikeFacadeFields(
+        TypeDeclarationSyntax sourceDeclaration,
+        string sourceType,
+        IReadOnlyList<SplitServicePartition> partitions)
+    {
+        var sourceMemberNames = CollectSourceMemberNames(sourceDeclaration);
+        foreach (var partition in partitions)
+        {
+            var fieldName = FacadePartitionFieldName(partition.TypeName);
+            if (sourceMemberNames.Contains(fieldName))
+            {
+                throw new InvalidOperationException(
+                    $"'{sourceType}' already declares a member named '{fieldName}', which the facade would also declare to hold partition " +
+                    $"'{partition.TypeName}' (CS0102). Rename that member or the partition type, then split.");
+            }
+        }
+    }
+
+    private static string FacadePartitionFieldName(string partitionTypeName) => $"_{LowerFirst(partitionTypeName)}";
+
+    // Names of the fields, methods, properties, events, nested types and delegates a type declares.
+    private static HashSet<string> CollectSourceMemberNames(TypeDeclarationSyntax declaration) =>
+        declaration.Members
             .SelectMany(member => member switch
             {
                 BaseFieldDeclarationSyntax field => field.Declaration.Variables.Select(declarator => declarator.Identifier.ValueText),
@@ -1064,6 +1133,19 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
                 _ => [],
             })
             .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A partition constructor carries the source parameters and <c>?? throw</c> values verbatim,
+    /// but the partition does not carry the source type's other members. Refuses when a copied
+    /// parameter type, default value, attribute, or guard names a member of the source type
+    /// (a constant default, a static guard helper, a nested type), which would not compile there.
+    /// </summary>
+    private static void RefuseInjectionsNamingSourceMembers(
+        TypeDeclarationSyntax sourceDeclaration,
+        string partitionTypeName,
+        IReadOnlyList<ConstructorInjection> partitionInjections)
+    {
+        var sourceMemberNames = CollectSourceMemberNames(sourceDeclaration);
 
         foreach (var injection in partitionInjections)
         {
@@ -1129,7 +1211,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var fieldMembers = partitions
             .Select(partition => SyntaxFactory.FieldDeclaration(
                 SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(partition.TypeName))
-                    .AddVariables(SyntaxFactory.VariableDeclarator($"_{LowerFirst(partition.TypeName)}")))
+                    .AddVariables(SyntaxFactory.VariableDeclarator(FacadePartitionFieldName(partition.TypeName))))
                 .AddModifiers(
                     SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
                     SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)))
@@ -1144,7 +1226,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
             SyntaxFactory.ExpressionStatement(
                 SyntaxFactory.AssignmentExpression(
                     SyntaxKind.SimpleAssignmentExpression,
-                    SyntaxFactory.IdentifierName($"_{LowerFirst(partition.TypeName)}"),
+                    SyntaxFactory.IdentifierName(FacadePartitionFieldName(partition.TypeName)),
                     SyntaxFactory.IdentifierName(LowerFirst(partition.TypeName))))));
         // Retained fields reproduce the source constructor's copies, exactly as partitions do.
         var retainedInjection = BuildInjectingConstructor(sourceType, retainedInjections);
@@ -1174,7 +1256,7 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
         var invocation = SyntaxFactory.InvocationExpression(
             SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
-                SyntaxFactory.IdentifierName($"_{LowerFirst(partitionTypeName)}"),
+                SyntaxFactory.IdentifierName(FacadePartitionFieldName(partitionTypeName)),
                 SyntaxFactory.IdentifierName(original.Identifier.ValueText)),
             SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
                 original.ParameterList.Parameters.Select(parameter =>
