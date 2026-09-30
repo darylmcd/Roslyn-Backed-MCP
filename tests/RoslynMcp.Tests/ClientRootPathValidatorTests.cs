@@ -524,7 +524,7 @@ public class ClientRootPathValidatorTests
             await using var serverSession = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
                 linkedRoot, CancellationToken.None);
             var loadJson = await WorkspaceTools.LoadWorkspace(
-                serverSession.Server, gate, manager, warmService: null!, commandRunner: null!,
+                serverSession.Server, gate, manager, warmService: null!, commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
                 linkedSolution, prewarm: false, ct: CancellationToken.None);
             using var load = JsonDocument.Parse(loadJson);
             Assert.IsTrue(load.RootElement.GetProperty("isReady").GetBoolean(),
@@ -533,7 +533,7 @@ public class ClientRootPathValidatorTests
             var workspaceId = load.RootElement.GetProperty("workspaceId").GetString()!;
             Assert.AreEqual(PhysicalPathResolver.Resolve(linkedSolution), manager.GetStatus(workspaceId).LoadedPath);
             await Assert.ThrowsExactlyAsync<ArgumentException>(() => WorkspaceTools.LoadWorkspace(
-                serverSession.Server, gate, manager, warmService: null!, commandRunner: null!,
+                serverSession.Server, gate, manager, warmService: null!, commandExecutor: null!, validationOptions: new ValidationServiceOptions(),
                 linkedSibling, prewarm: false, ct: CancellationToken.None));
 
             var broadOptions = new SecurityOptions { SanctionedRoots = [linkPath] };
