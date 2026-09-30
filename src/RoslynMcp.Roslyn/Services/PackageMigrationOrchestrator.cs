@@ -52,8 +52,24 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         // fires for the no-op case (the correct failure mode).
         if (mutations.Count > 0 && usesCentralPackageManagement && packagesPropsPath is not null && File.Exists(packagesPropsPath))
         {
+            // migrate-package-removes-shared-central-version: projects outside the loaded workspace
+            // were not rewritten above, so they still reference oldPackageId and rely on its central
+            // PackageVersion. Keep that entry when any such consumer exists (removing it breaks their
+            // restore with NU1010) and tell the operator which files still need migrating.
+            var outOfWorkspaceConsumers = CentralPackageConsumerScanner.FindConsumers(
+                packagesPropsPath, oldPackageId, status.Projects.Select(project => project.FilePath));
+            if (outOfWorkspaceConsumers.Count > 0)
+            {
+                warnings.Add(
+                    $"Kept central PackageVersion '{oldPackageId}' in '{packagesPropsPath}' because it is still referenced by " +
+                    $"file(s) outside the loaded workspace: {string.Join(", ", outOfWorkspaceConsumers)}. " +
+                    "Migrate those files, then remove the old central version.");
+            }
+
             await BuildCentralVersionEditAsync(
-                packagesPropsPath, oldPackageId, newPackageId, newVersion, mutations, changes, ct).ConfigureAwait(false);
+                packagesPropsPath, oldPackageId, newPackageId, newVersion,
+                keepOldCentralVersion: outOfWorkspaceConsumers.Count > 0,
+                mutations, changes, ct).ConfigureAwait(false);
         }
 
         if (mutations.Count == 0)
@@ -154,6 +170,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         string oldPackageId,
         string newPackageId,
         string newVersion,
+        bool keepOldCentralVersion,
         List<CompositeFileMutation> mutations,
         List<FileChangeDto> changes,
         CancellationToken ct)
@@ -163,7 +180,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
 
         var oldCentralVersion = propsDocument.Descendants("PackageVersion")
             .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase));
-        if (oldCentralVersion is not null)
+        if (oldCentralVersion is not null && !keepOldCentralVersion)
         {
             OrchestrationMsBuildXml.RemoveElementCleanly(oldCentralVersion);
         }

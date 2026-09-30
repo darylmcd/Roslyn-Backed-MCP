@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -48,6 +49,118 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(packagesXml.Descendants("PackageVersion").Any(element =>
             string.Equals((string?)element.Attribute("Include"), "Modern.Package", StringComparison.OrdinalIgnoreCase) &&
             string.Equals((string?)element.Attribute("Version"), "2.5.0", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task Migrate_Package_Preview_Keeps_Central_Version_And_Warns_When_Out_Of_Workspace_Project_Still_References_It()
+    {
+        // migrate-package-removes-shared-central-version: a project outside the loaded solution still
+        // references the old package and relies on its central PackageVersion. Removing it would fail
+        // that project's restore with NU1010, so the old entry must be kept and the consumer named.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sampleLibProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var propsPath = workspace.GetPath("Directory.Packages.props");
+        InjectPackageReference(sampleLibProject, "Legacy.Package");
+        InjectCentralPackageVersion(propsPath, "Legacy.Package", "1.0.0");
+        var outsideProject = workspace.GetPath("OutsideConsumer", "OutsideConsumer.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(outsideProject)!);
+        await File.WriteAllTextAsync(
+            outsideProject,
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"legacy.package\" /></ItemGroup></Project>",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+            workspace.WorkspaceId,
+            "Legacy.Package",
+            "Modern.Package",
+            "2.5.0",
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings);
+        var warning = preview.Warnings.Single(w => w.Contains("outside the loaded workspace", StringComparison.Ordinal));
+        StringAssert.Contains(warning, outsideProject);
+        Assert.IsFalse(warning.Contains(sampleLibProject, StringComparison.OrdinalIgnoreCase),
+            $"A workspace project that was rewritten must not be reported as a consumer. Warning: {warning}");
+
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var packagesXml = XDocument.Load(propsPath);
+        Assert.IsTrue(packagesXml.Descendants("PackageVersion").Any(element =>
+            string.Equals((string?)element.Attribute("Include"), "Legacy.Package", StringComparison.OrdinalIgnoreCase)),
+            "Old central PackageVersion must be kept while an out-of-workspace project references it.");
+        Assert.IsTrue(packagesXml.Descendants("PackageVersion").Any(element =>
+            string.Equals((string?)element.Attribute("Include"), "Modern.Package", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals((string?)element.Attribute("Version"), "2.5.0", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task Migrate_Package_Preview_Removes_Old_Central_Version_Without_Warning_When_No_Outside_Consumer()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var propsPath = workspace.GetPath("Directory.Packages.props");
+        InjectPackageReference(workspace.GetPath("SampleLib", "SampleLib.csproj"), "Legacy.Package");
+        InjectCentralPackageVersion(propsPath, "Legacy.Package", "1.0.0");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+            workspace.WorkspaceId,
+            "Legacy.Package",
+            "Modern.Package",
+            "2.5.0",
+            CancellationToken.None);
+
+        Assert.IsNull(preview.Warnings);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsFalse(XDocument.Load(propsPath).Descendants("PackageVersion").Any(element =>
+            string.Equals((string?)element.Attribute("Include"), "Legacy.Package", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void CentralPackageConsumerScanner_Skips_Build_Output_Worktrees_And_Excluded_Files_And_Falls_Back_On_Malformed_Xml()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpm-scan-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string Write(string relative, string content)
+            {
+                var path = Path.Combine(root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, content);
+                return Path.GetFullPath(path);
+            }
+
+            const string reference = "<Project><ItemGroup><PackageReference Include=\"Some.Package\" /></ItemGroup></Project>";
+            var propsPath = Write("Directory.Packages.props", "<Project><ItemGroup><PackageVersion Include=\"Some.Package\" Version=\"1.0.0\" /></ItemGroup></Project>");
+            var included = Write(Path.Combine("src", "A", "A.csproj"), reference.Replace("Some.Package", "SOME.package"));
+            var viaProps = Write(Path.Combine("build", "shared.props"), reference);
+            var malformed = Write(Path.Combine("src", "B", "B.csproj"), "<Project><ItemGroup><PackageReference Include=\"Some.Package\"></Project>");
+            var excluded = Write(Path.Combine("src", "C", "C.csproj"), reference);
+            Write(Path.Combine("src", "A", "obj", "project.csproj"), reference);
+            Write(Path.Combine("src", "A", "bin", "copy.csproj"), reference);
+            Write(Path.Combine(".worktrees", "x", "X.csproj"), reference);
+            Write(Path.Combine("node_modules", "pkg", "P.csproj"), reference);
+            Write(Path.Combine("src", "D", "D.csproj"), "<Project><ItemGroup><PackageReference Include=\"Other.Package\" /></ItemGroup></Project>");
+            Write(Path.Combine("src", "D", "notes.txt"), reference);
+
+            var consumers = CentralPackageConsumerScanner.FindConsumers(propsPath, "Some.Package", [excluded, null]);
+
+            CollectionAssert.AreEquivalent(new[] { included, viaProps, malformed }, consumers.ToArray());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void CentralPackageConsumerScanner_Returns_Empty_When_Props_Directory_Is_Missing()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "cpm-scan-missing-" + Guid.NewGuid().ToString("N"), "Directory.Packages.props");
+
+        Assert.AreEqual(0, CentralPackageConsumerScanner.FindConsumers(missing, "Some.Package").Count);
     }
 
     [TestMethod]
