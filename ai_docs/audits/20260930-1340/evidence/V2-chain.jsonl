@@ -1,0 +1,1 @@
+{"ts":"2026-09-30T18:41:26.479Z","level":"Warning","category":"RoslynMcp.StructuredCallToolFilter","eventId":2104,"message":"Tool find_references failed; outcome=expected-error; elapsedMs=1","correlationId":"f2ec3a368de24aca88b682c605ac2455"}

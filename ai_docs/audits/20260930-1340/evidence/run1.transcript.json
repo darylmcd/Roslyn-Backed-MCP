@@ -1,0 +1,284 @@
+[
+ {
+  "step": {
+   "name": "server_heartbeat",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"connection\": {\r\n    \"state\": \"idle\",\r\n    \"loadedWorkspaceCount\": 0,\r\n    \"stdioPid\": 45020,\r\n    \"serverStartedAt\": \"2026-09-30T18:41:20.6173787\\u002B00:00\"\r\n  },\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 22\r\n  }\r\n}"
+     }
+    ],
+    "structuredContent": {
+     "connection": {
+      "state": "idle",
+      "loadedWorkspaceCount": 0,
+      "stdioPid": 45020,
+      "serverStartedAt": "2026-09-30T18:41:20.6173787+00:00"
+     }
+    }
+   },
+   "id": 2,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "workspace_load",
+   "args": {
+    "path": "D:/Roslyn-Backed-MCP/SampleSolution.slnx"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"workspaceId\": \"1b1ef8600c924f23895ac94321289073\",\r\n  \"loadedPath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleSolution.slnx\",\r\n  \"workspaceVersion\": 1,\r\n  \"snapshotToken\": \"1b1ef8600c924f23895ac94321289073:1\",\r\n  \"loadedAtUtc\": \"2026-09-30T18:41:24.9831237\\u002B00:00\",\r\n  \"projectCount\": 3,\r\n  \"documentCount\": 24,\r\n  \"isLoaded\": true,\r\n  \"isStale\": false,\r\n  \"workspaceDiagnosticCount\": 3,\r\n  \"workspaceErrorCount\": 3,\r\n  \"workspaceWarningCount\": 0,\r\n  \"isReady\": false,\r\n  \"analyzersReady\": true,\r\n  \"restoreRequired\": true,\r\n  \"buildRequired\": false,\r\n  \"restoreHint\": \"Package-restore inputs changed since the last restore. Run \\u0060dotnet restore\\u0060 on the solution or project, then \\u0060workspace_reload\\u0060.\",\r\n  \"solutionFileName\": \"SampleSolution.slnx\",\r\n  \"_meta\": {\r\n    \"gateMode\": \"load\",\r\n    \"queuedMs\": 2,\r\n    \"heldMs\": 3714,\r\n    \"elapsedMs\": 3725,\r\n    \"cacheHit\": false\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 3,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "workspace_list",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"count\": 1,\r\n  \"workspaces\": [\r\n    {\r\n      \"workspaceId\": \"1b1ef8600c924f23895ac94321289073\",\r\n      \"loadedPath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleSolution.slnx\",\r\n      \"workspaceVersion\": 1,\r\n      \"snapshotToken\": \"1b1ef8600c924f23895ac94321289073:1\",\r\n      \"loadedAtUtc\": \"2026-09-30T18:41:24.9831237\\u002B00:00\",\r\n      \"projectCount\": 3,\r\n      \"documentCount\": 24,\r\n      \"isLoaded\": true,\r\n      \"isStale\": false,\r\n      \"workspaceDiagnosticCount\": 3,\r\n      \"workspaceErrorCount\": 3,\r\n      \"workspaceWarningCount\": 0,\r\n      \"isReady\": false,\r\n      \"analyzersReady\": true,\r\n      \"restoreRequired\": true,\r\n      \"buildRequired\": false,\r\n      \"restoreHint\": \"Package-restore inputs changed since the last restore. Run \\u0060dotnet restore\\u0060 on the solution or project, then \\u0060workspace_reload\\u0060.\",\r\n      \"solutionFileName\": \"SampleSolution.slnx\"\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 1\r\n  }\r\n}"
+     }
+    ],
+    "structuredContent": {
+     "count": 1,
+     "workspaces": [
+      {
+       "workspaceId": "1b1ef8600c924f23895ac94321289073",
+       "loadedPath": "D:\\Roslyn-Backed-MCP\\SampleSolution.slnx",
+       "workspaceVersion": 1,
+       "snapshotToken": "1b1ef8600c924f23895ac94321289073:1",
+       "loadedAtUtc": "2026-09-30T18:41:24.9831237+00:00",
+       "projectCount": 3,
+       "documentCount": 24,
+       "isLoaded": true,
+       "isStale": false,
+       "workspaceDiagnosticCount": 3,
+       "workspaceErrorCount": 3,
+       "workspaceWarningCount": 0,
+       "isReady": false,
+       "analyzersReady": true,
+       "restoreRequired": true,
+       "buildRequired": false,
+       "restoreHint": "Package-restore inputs changed since the last restore. Run `dotnet restore` on the solution or project, then `workspace_reload`.",
+       "solutionFileName": "SampleSolution.slnx"
+      }
+     ]
+    }
+   },
+   "id": 4,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "symbol_search",
+   "args": {
+    "query": "Dog"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"count\": 6,\r\n  \"totalCount\": 6,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [\r\n    {\r\n      \"name\": \"GetAllAnimals_Returns_Dog_And_Cat\",\r\n      \"fullyQualifiedName\": \"SampleLib.Tests.AnimalServiceTests.GetAllAnimals_Returns_Dog_And_Cat()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLlRlc3RzLkFuaW1hbFNlcnZpY2VUZXN0cy5HZXRBbGxBbmltYWxzX1JldHVybnNfRG9nX0FuZF9DYXQoKSIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWIuVGVzdHNcXEFuaW1hbFNlcnZpY2VUZXN0cy5jcyIsIkxpbmUiOjIxLCJDb2x1bW4iOjE3fQ==\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Tests.AnimalServiceTests\",\r\n      \"namespace\": \"SampleLib.Tests\",\r\n      \"project\": \"SampleLib.Tests\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n      \"startLine\": 21,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 21,\r\n      \"endColumn\": 50,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n        \"startLine\": 21,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 21,\r\n        \"endColumn\": 50,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Dog\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRGlzcGxheU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6MywiQ29sdW1uIjoxNH0=\",\r\n      \"kind\": \"Class\",\r\n      \"containingType\": null,\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 3,\r\n      \"startColumn\": 14,\r\n      \"endLine\": 3,\r\n      \"endColumn\": 17,\r\n      \"returnType\": null,\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": [\r\n        \"SampleLib.IAnimal\"\r\n      ],\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 3,\r\n        \"startColumn\": 14,\r\n        \"endLine\": 3,\r\n        \"endColumn\": 17,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NSwiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Property\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 23,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": true,\r\n      \"hasSetter\": false,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 23,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"get_Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name.get\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lLmdldCIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWJcXERvZy5jcyIsIkxpbmUiOjUsIkNvbHVtbiI6Mjd9\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 27,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 32,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 27,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 32,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Speak\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Speak()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5TcGVhaygpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NywiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 7,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 7,\r\n      \"endColumn\": 24,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 7,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 7,\r\n        \"endColumn\": 24,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Fetch\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Fetch(string)\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5GZXRjaChzdHJpbmcpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6OSwiQ29sdW1uIjoxN30=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 9,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 9,\r\n      \"endColumn\": 22,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [\r\n        \"string item\"\r\n      ],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 9,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 9,\r\n        \"endColumn\": 22,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 5,\r\n    \"heldMs\": 1376,\r\n    \"elapsedMs\": 1389,\r\n    \"autoResolution\": \"single-workspace\"\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 5,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "symbol_search",
+   "args": {
+    "query": "Dog"
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"count\": 6,\r\n  \"totalCount\": 6,\r\n  \"hasMore\": false,\r\n  \"offset\": 0,\r\n  \"limit\": 50,\r\n  \"summary\": false,\r\n  \"symbols\": [\r\n    {\r\n      \"name\": \"GetAllAnimals_Returns_Dog_And_Cat\",\r\n      \"fullyQualifiedName\": \"SampleLib.Tests.AnimalServiceTests.GetAllAnimals_Returns_Dog_And_Cat()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLlRlc3RzLkFuaW1hbFNlcnZpY2VUZXN0cy5HZXRBbGxBbmltYWxzX1JldHVybnNfRG9nX0FuZF9DYXQoKSIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWIuVGVzdHNcXEFuaW1hbFNlcnZpY2VUZXN0cy5jcyIsIkxpbmUiOjIxLCJDb2x1bW4iOjE3fQ==\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Tests.AnimalServiceTests\",\r\n      \"namespace\": \"SampleLib.Tests\",\r\n      \"project\": \"SampleLib.Tests\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n      \"startLine\": 21,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 21,\r\n      \"endColumn\": 50,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib.Tests\\\\AnimalServiceTests.cs\",\r\n        \"startLine\": 21,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 21,\r\n        \"endColumn\": 50,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Dog\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRGlzcGxheU5hbWUiOiJTYW1wbGVMaWIuRG9nIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6MywiQ29sdW1uIjoxNH0=\",\r\n      \"kind\": \"Class\",\r\n      \"containingType\": null,\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 3,\r\n      \"startColumn\": 14,\r\n      \"endLine\": 3,\r\n      \"endColumn\": 17,\r\n      \"returnType\": null,\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": [\r\n        \"SampleLib.IAnimal\"\r\n      ],\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 3,\r\n        \"startColumn\": 14,\r\n        \"endLine\": 3,\r\n        \"endColumn\": 17,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NSwiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Property\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 23,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": null,\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": true,\r\n      \"hasSetter\": false,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 23,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"get_Name\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Name.get\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5OYW1lLmdldCIsIkZpbGVQYXRoIjoiRDpcXFJvc2x5bi1CYWNrZWQtTUNQXFxTYW1wbGVMaWJcXERvZy5jcyIsIkxpbmUiOjUsIkNvbHVtbiI6Mjd9\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 5,\r\n      \"startColumn\": 27,\r\n      \"endLine\": 5,\r\n      \"endColumn\": 32,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 5,\r\n        \"startColumn\": 27,\r\n        \"endLine\": 5,\r\n        \"endColumn\": 32,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Speak\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Speak()\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5TcGVhaygpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6NywiQ29sdW1uIjoxOX0=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 7,\r\n      \"startColumn\": 19,\r\n      \"endLine\": 7,\r\n      \"endColumn\": 24,\r\n      \"returnType\": \"string\",\r\n      \"parameters\": [],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 7,\r\n        \"startColumn\": 19,\r\n        \"endLine\": 7,\r\n        \"endColumn\": 24,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"Fetch\",\r\n      \"fullyQualifiedName\": \"SampleLib.Dog.Fetch(string)\",\r\n      \"symbolHandle\": \"eyJNZXRhZGF0YU5hbWUiOm51bGwsIkRpc3BsYXlOYW1lIjoiU2FtcGxlTGliLkRvZy5GZXRjaChzdHJpbmcpIiwiRmlsZVBhdGgiOiJEOlxcUm9zbHluLUJhY2tlZC1NQ1BcXFNhbXBsZUxpYlxcRG9nLmNzIiwiTGluZSI6OSwiQ29sdW1uIjoxN30=\",\r\n      \"kind\": \"Method\",\r\n      \"containingType\": \"SampleLib.Dog\",\r\n      \"namespace\": \"SampleLib\",\r\n      \"project\": \"SampleLib\",\r\n      \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n      \"startLine\": 9,\r\n      \"startColumn\": 17,\r\n      \"endLine\": 9,\r\n      \"endColumn\": 22,\r\n      \"returnType\": \"void\",\r\n      \"parameters\": [\r\n        \"string item\"\r\n      ],\r\n      \"modifiers\": [\r\n        \"public\"\r\n      ],\r\n      \"baseTypes\": null,\r\n      \"interfaces\": null,\r\n      \"documentation\": \"\",\r\n      \"hasGetter\": null,\r\n      \"hasSetter\": null,\r\n      \"setterAccessibility\": null,\r\n      \"location\": {\r\n        \"filePath\": \"D:\\\\Roslyn-Backed-MCP\\\\SampleLib\\\\Dog.cs\",\r\n        \"startLine\": 9,\r\n        \"startColumn\": 17,\r\n        \"endLine\": 9,\r\n        \"endColumn\": 22,\r\n        \"containingMember\": null,\r\n        \"previewText\": null,\r\n        \"classification\": null\r\n      }\r\n    }\r\n  ],\r\n  \"_meta\": {\r\n    \"gateMode\": \"rw-lock\",\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 75,\r\n    \"elapsedMs\": 77,\r\n    \"autoResolution\": \"single-workspace\"\r\n  }\r\n}"
+     }
+    ]
+   },
+   "id": 6,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "find_references",
+   "args": {
+    "workspaceId": "does-not-exist",
+    "filePath": "D:/Roslyn-Backed-MCP/SampleLib/Dog.cs",
+    "line": 1,
+    "column": 1
+   }
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"NotFound\",\r\n  \"tool\": \"find_references\",\r\n  \"message\": \"The workspaceId is unknown to this server (never loaded, or lost after a restart). Call workspace_list to see active sessions, then workspace_load to create one and retry with its workspaceId.\",\r\n  \"exceptionType\": \"KeyNotFoundException\",\r\n  \"reason\": \"WorkspaceNotFound\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 1,\r\n    \"autoResolution\": \"explicit\"\r\n  }\r\n}"
+     }
+    ],
+    "isError": true
+   },
+   "id": 7,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "symbol_search",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"symbol_search\",\r\n  \"message\": \"Required parameter \\u0027query\\u0027 is missing. Provide a value and retry.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"symbol_search(query: string \\u2014 Search query \\u2014 substring match (case-insensitive))\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0,\r\n    \"autoResolution\": \"single-workspace\"\r\n  }\r\n}"
+     }
+    ],
+    "isError": true
+   },
+   "id": 8,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "build_workspace",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"error\": true,\r\n  \"category\": \"InvalidArgument\",\r\n  \"tool\": \"build_workspace\",\r\n  \"message\": \"Required parameter \\u0027workspaceId\\u0027 is missing. Provide a value and retry.\",\r\n  \"exceptionType\": \"ArgumentException\",\r\n  \"schemaHint\": \"build_workspace(workspaceId: string \\u2014 The workspace session identifier returned by workspace_load)\",\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 0\r\n  }\r\n}"
+     }
+    ],
+    "isError": true
+   },
+   "id": 9,
+   "jsonrpc": "2.0"
+  }
+ },
+ {
+  "step": {
+   "name": "server_info",
+   "args": {}
+  },
+  "response": {
+   "result": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\r\n  \"server\": \"roslyn-mcp\",\r\n  \"version\": \"4.3.0\\u002B123ffd3aa82b8861f7f115bb6958c06facbd4101\",\r\n  \"productShape\": \"local-first\",\r\n  \"runtime\": \".NET 10.0.12\",\r\n  \"os\": \"Microsoft Windows 10.0.26200\",\r\n  \"roslynVersion\": \"5.9.0.0\",\r\n  \"workspaceCount\": 1,\r\n  \"workspaceCountHint\": null,\r\n  \"connection\": {\r\n    \"state\": \"ready\",\r\n    \"loadedWorkspaceCount\": 1,\r\n    \"stdioPid\": 45020,\r\n    \"serverStartedAt\": \"2026-09-30T18:41:20.6173787\\u002B00:00\"\r\n  },\r\n  \"catalogVersion\": \"2026.04\",\r\n  \"surface\": {\r\n    \"tools\": {\r\n      \"stable\": 113,\r\n      \"experimental\": 62\r\n    },\r\n    \"resources\": {\r\n      \"stable\": 9,\r\n      \"experimental\": 5\r\n    },\r\n    \"prompts\": {\r\n      \"stable\": 0,\r\n      \"experimental\": 20\r\n    },\r\n    \"registered\": {\r\n      \"tools\": 175,\r\n      \"resources\": 14,\r\n      \"prompts\": 20,\r\n      \"parityOk\": true\r\n    }\r\n  },\r\n  \"resourceServerNames\": {\r\n    \"canonical\": \"roslyn\",\r\n    \"aliases\": [\r\n      \"roslyn\",\r\n      \"plugin:roslyn-mcp:roslyn\",\r\n      \"plugin_roslyn-mcp_roslyn\",\r\n      \"roslyn-mcp\"\r\n    ],\r\n    \"probeGuidance\": \"Use the server name exposed by your MCP host when reading roslyn:// resources. Prefer \\u0027roslyn\\u0027 when present; otherwise match one of the aliases exactly and do not synthesize underscore variants from colon-delimited names.\"\r\n  },\r\n  \"productBoundaries\": [\r\n    \"Stable support targets the local stdio host on a developer workstation.\",\r\n    \"Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.\",\r\n    \"Remote HTTP/SSE hosting is not part of the current stable release contract.\"\r\n  ],\r\n  \"capabilities\": {\r\n    \"tools\": true,\r\n    \"resources\": true,\r\n    \"prompts\": true,\r\n    \"logging\": false,\r\n    \"progress\": true\r\n  },\r\n  \"update\": {\r\n    \"current\": \"4.3.0\",\r\n    \"latest\": null,\r\n    \"updateAvailable\": false,\r\n    \"command\": null,\r\n    \"checkStatus\": \"pending\",\r\n    \"lastCheckedAt\": null\r\n  },\r\n  \"pathBoundary\": {\r\n    \"configuredRootCount\": 1,\r\n    \"failOpen\": false,\r\n    \"enforcing\": true,\r\n    \"hint\": null\r\n  },\r\n  \"_meta\": {\r\n    \"queuedMs\": 0,\r\n    \"heldMs\": 0,\r\n    \"elapsedMs\": 16\r\n  }\r\n}"
+     }
+    ],
+    "structuredContent": {
+     "server": "roslyn-mcp",
+     "version": "4.3.0+123ffd3aa82b8861f7f115bb6958c06facbd4101",
+     "productShape": "local-first",
+     "runtime": ".NET 10.0.12",
+     "os": "Microsoft Windows 10.0.26200",
+     "roslynVersion": "5.9.0.0",
+     "workspaceCount": 1,
+     "workspaceCountHint": null,
+     "connection": {
+      "state": "ready",
+      "loadedWorkspaceCount": 1,
+      "stdioPid": 45020,
+      "serverStartedAt": "2026-09-30T18:41:20.6173787+00:00"
+     },
+     "catalogVersion": "2026.04",
+     "surface": {
+      "tools": {
+       "stable": 113,
+       "experimental": 62
+      },
+      "resources": {
+       "stable": 9,
+       "experimental": 5
+      },
+      "prompts": {
+       "stable": 0,
+       "experimental": 20
+      },
+      "registered": {
+       "tools": 175,
+       "resources": 14,
+       "prompts": 20,
+       "parityOk": true
+      }
+     },
+     "resourceServerNames": {
+      "canonical": "roslyn",
+      "aliases": [
+       "roslyn",
+       "plugin:roslyn-mcp:roslyn",
+       "plugin_roslyn-mcp_roslyn",
+       "roslyn-mcp"
+      ],
+      "probeGuidance": "Use the server name exposed by your MCP host when reading roslyn:// resources. Prefer 'roslyn' when present; otherwise match one of the aliases exactly and do not synthesize underscore variants from colon-delimited names."
+     },
+     "productBoundaries": [
+      "Stable support targets the local stdio host on a developer workstation.",
+      "Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.",
+      "Remote HTTP/SSE hosting is not part of the current stable release contract."
+     ],
+     "capabilities": {
+      "tools": true,
+      "resources": true,
+      "prompts": true,
+      "logging": false,
+      "progress": true
+     },
+     "update": {
+      "current": "4.3.0",
+      "latest": null,
+      "updateAvailable": false,
+      "command": null,
+      "checkStatus": "pending",
+      "lastCheckedAt": null
+     },
+     "pathBoundary": {
+      "configuredRootCount": 1,
+      "failOpen": false,
+      "enforcing": true,
+      "hint": null
+     }
+    }
+   },
+   "id": 10,
+   "jsonrpc": "2.0"
+  }
+ }
+]
