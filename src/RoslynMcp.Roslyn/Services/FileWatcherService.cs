@@ -57,7 +57,7 @@ internal sealed class EditorConfigFileTransaction : IDisposable
                 _stream.Lock(0, long.MaxValue);
             }
             OriginalBytes = CreatedNewFile ? null : ReadCurrentBytes();
-            if (!BytesEqual(expectedBytes, OriginalBytes))
+            if (!EditorConfigBytes.AreEqual(expectedBytes, OriginalBytes))
             {
                 throw new EditorConfigConcurrentEditException();
             }
@@ -79,7 +79,7 @@ internal sealed class EditorConfigFileTransaction : IDisposable
         // On POSIX an uncooperative writer can ignore the advisory lock. Check the
         // held inode again immediately before changing it, and refuse known drift.
         var expectedBytes = WriteStarted ? OwnedBytes : CreatedNewFile ? [] : OriginalBytes;
-        if (!BytesEqual(expectedBytes, ReadCurrentBytes()))
+        if (!EditorConfigBytes.AreEqual(expectedBytes, ReadCurrentBytes()))
         {
             throw new EditorConfigConcurrentEditException();
         }
@@ -126,10 +126,14 @@ internal sealed class EditorConfigFileTransaction : IDisposable
         return buffer.ToArray();
     }
 
-    private static bool BytesEqual(byte[]? left, byte[]? right) =>
-        left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
-
     public void Dispose() => _stream.Dispose();
+}
+
+/// <summary>Byte-exact comparison of .editorconfig snapshots shared by the transaction and the watcher.</summary>
+internal static class EditorConfigBytes
+{
+    internal static bool AreEqual(byte[]? left, byte[]? right) =>
+        left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
 }
 
 internal sealed class EditorConfigConcurrentEditException : IOException
@@ -428,7 +432,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 var before = ReadBytesOrNull(physicalPath);
                 if (_ownedConfigBytes.TryGetValue(physicalPath, out var previous) &&
-                    !BytesEqual(previous, before))
+                    !EditorConfigBytes.AreEqual(previous, before))
                 {
                     _ownedConfigBytes.Remove(physicalPath);
                     MarkStaleWithReason(StaleReasons.ExternalEdit);
@@ -450,21 +454,8 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     transaction.Dispose();
                     transaction = null;
                     _ownedConfigBytes[physicalPath] = writtenBytes;
-                    byte[]? current = null;
-                    var readable = true;
-                    try
-                    {
-                        current = ReadBytesOrNull(physicalPath);
-                    }
-                    catch (IOException)
-                    {
-                        readable = false;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        readable = false;
-                    }
-                    if (!readable || !BytesEqual(writtenBytes, current))
+                    var readable = TryReadBytesOrNull(physicalPath, out var current);
+                    if (!readable || !EditorConfigBytes.AreEqual(writtenBytes, current))
                     {
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
                         throw new EditorConfigConcurrentEditException();
@@ -487,7 +478,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                         {
                             // Check the pathname before restoring the held handle: on POSIX
                             // a rename can replace the pathname while the old inode is locked.
-                            pathMatchedOwnedBytes = BytesEqual(writtenBytes, ReadBytesOrNull(physicalPath));
+                            pathMatchedOwnedBytes = EditorConfigBytes.AreEqual(writtenBytes, ReadBytesOrNull(physicalPath));
                             if (pathMatchedOwnedBytes)
                             {
                                 transaction.RestoreOriginalBytes();
@@ -500,20 +491,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     }
                     var ownedBytes = transaction?.OwnedBytes;
                     transaction?.Dispose();
-                    byte[]? after = null;
-                    var readable = true;
-                    try
-                    {
-                        after = ReadBytesOrNull(physicalPath);
-                    }
-                    catch (IOException)
-                    {
-                        readable = false;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        readable = false;
-                    }
+                    var readable = TryReadBytesOrNull(physicalPath, out var after);
                     Exception? cleanupFailure = null;
                     if ((createdWithoutWrite || (pathMatchedOwnedBytes && transaction?.CreatedNewFile == true)) &&
                         after is { Length: 0 })
@@ -531,15 +509,15 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                         }
                     }
                     if (!readable ||
-                        (writeStarted && !pathMatchedOwnedBytes && !BytesEqual(before, after)) ||
-                        (writeStarted && !BytesEqual(ownedBytes, after) && !BytesEqual(before, after)) ||
-                        (!writeStarted && !createdWithoutWrite && !BytesEqual(before, after)) ||
+                        (writeStarted && !pathMatchedOwnedBytes && !EditorConfigBytes.AreEqual(before, after)) ||
+                        (writeStarted && !EditorConfigBytes.AreEqual(ownedBytes, after) && !EditorConfigBytes.AreEqual(before, after)) ||
+                        (!writeStarted && !createdWithoutWrite && !EditorConfigBytes.AreEqual(before, after)) ||
                         (!writeStarted && createdWithoutWrite && after is { Length: > 0 }))
                     {
                         _ownedConfigBytes.Remove(physicalPath);
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
                     }
-                    else if (readable && BytesEqual(before, after))
+                    else if (readable && EditorConfigBytes.AreEqual(before, after))
                     {
                         // A failed write can still queue a watcher event. Its unchanged bytes
                         // are not a workspace change and must not turn the workspace stale.
@@ -584,39 +562,14 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
                     {
                         physicalPath = PhysicalPathResolver.Resolve(path);
                     }
-                    catch (IOException)
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
                     {
                         MarkStaleWithReason(StaleReasons.ExternalEdit);
                         return;
                     }
-                    catch (UnauthorizedAccessException)
-                    {
-                        MarkStaleWithReason(StaleReasons.ExternalEdit);
-                        return;
-                    }
-                    catch (ArgumentException)
-                    {
-                        MarkStaleWithReason(StaleReasons.ExternalEdit);
-                        return;
-                    }
-                    byte[]? current;
-                    var readable = true;
-                    try
-                    {
-                        current = ReadBytesOrNull(physicalPath);
-                    }
-                    catch (IOException)
-                    {
-                        current = null;
-                        readable = false;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        current = null;
-                        readable = false;
-                    }
+                    var readable = TryReadBytesOrNull(physicalPath, out var current);
                     if (readable && _ownedConfigBytes.TryGetValue(physicalPath, out var committed) &&
-                        BytesEqual(committed, current))
+                        EditorConfigBytes.AreEqual(committed, current))
                     {
                         return;
                     }
@@ -637,8 +590,20 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             return buffer.ToArray();
         }
 
-        private static bool BytesEqual(byte[]? left, byte[]? right) =>
-            left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
+        // Unreadable (sharing or permission failure) is distinct from absent: callers treat it as drift.
+        private static bool TryReadBytesOrNull(string path, out byte[]? bytes)
+        {
+            try
+            {
+                bytes = ReadBytesOrNull(path);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                bytes = null;
+                return false;
+            }
+        }
 
         /// <summary>
         /// Returns a task that completes once the entry is (or becomes) stale, honoring

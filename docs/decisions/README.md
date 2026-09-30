@@ -14,4 +14,4 @@ Architecture decision records (ADRs) for breaking, compatibility, and security d
 | [0008-workspace-id-optional-adoption.md](0008-workspace-id-optional-adoption.md) | Measured optional `workspaceId` adoption, NO-GO expansion decision, retired flip batches, and concrete recheck trigger | Accepted 2026-09-04 |
 | [0009-tool-surface-policy.md](0009-tool-surface-policy.md) | Tool consolidation risk buckets and compatibility aliases | Accepted 2026-09-04 |
 | [0010-validation-verdict-completeness.md](0010-validation-verdict-completeness.md) | Incomplete compilation verdicts and retryable test-phase timeouts | Accepted 2026-09-15 |
-| [0012-editorconfig-write-workspace-boundary.md](0012-editorconfig-write-workspace-boundary.md) | Stable editorconfig write boundary and ancestor-config migration | Accepted 2026-09-29 |
+| [0012-editorconfig-write-workspace-boundary.md](0012-editorconfig-write-workspace-boundary.md) | Stable editorconfig write boundary and ancestor-config migration | Proposed 2026-09-29 (pending operator release decision) |

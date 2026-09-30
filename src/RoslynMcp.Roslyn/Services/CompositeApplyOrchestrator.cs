@@ -410,11 +410,12 @@ internal static class AtomicFileWriter
     }
 
     [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode,
-        SetLastError = true)]
+        SetLastError = true, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path,
         uint length, uint flags);
 
-    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    [DllImport("libc", EntryPoint = "fcntl", SetLastError = true, ExactSpelling = true)]
     private static extern int FcntlGetPath(int fd, int command, byte[] path);
 
     private static void TryDeleteTemp(
