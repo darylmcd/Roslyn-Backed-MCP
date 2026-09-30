@@ -10,6 +10,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using RoslynMcp.Tests.TestInfrastructure;
 
 #pragma warning disable RS1036 // Test-only analyzer double; not shipped
@@ -86,6 +87,70 @@ public sealed class FixAllServiceTests
             new DiagnosticDescriptor("CA5350", "t", "m", "cat", DiagnosticSeverity.Warning, true)));
         var selected = FixAllService.SelectAnalyzersForFixAllCollection("CA5350", [], proj);
         CollectionAssert.AreEqual(proj.ToArray(), selected.ToArray());
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task PreviewFixAll_FailedProviderLoad_DoesNotClaimAuthoritativeAbsence(bool hasHealthyProvider)
+    {
+        using var workspace = new AdhocWorkspace();
+        var workspaceManager = new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = _ => workspace.CurrentSolution,
+        };
+        var providers = hasHealthyProvider
+            ? ImmutableArray.Create<CodeFixProvider>(new FailFirstCodeFixProvider("test"))
+            : ImmutableArray<CodeFixProvider>.Empty;
+        var registry = new CodeFixProviderRegistry(
+            NullLogger<CodeFixProviderRegistry>.Instance,
+            () => new FeatureProviderLoadResult<CodeFixProvider>(
+                providers,
+                [new FeatureProviderLoadFailure(FeatureProviderLoadFailureKind.AssemblyLoad, null)]),
+            _ => new FeatureProviderLoadResult<CodeFixProvider>([], []));
+        var service = new FixAllService(
+            workspaceManager,
+            new PreviewStore(),
+            null!,
+            registry,
+            NullLogger<FixAllService>.Instance);
+
+        var preview = await service.PreviewFixAllAsync(
+            "fixture", "IDE0001", "solution", null, null, CancellationToken.None);
+
+        if (hasHealthyProvider)
+        {
+            StringAssert.Contains(preview.GuidanceMessage!, "does not support FixAll");
+        }
+        else
+        {
+            StringAssert.Contains(preview.GuidanceMessage!, "discovery");
+            StringAssert.Contains(preview.GuidanceMessage!, "incomplete");
+            Assert.DoesNotContain("No code fix provider is loaded", preview.GuidanceMessage!);
+        }
+    }
+
+    [TestMethod]
+    public async Task LegacyConstructor_ForwardsProviderLoadDiagnosticsToSuppliedLogger()
+    {
+        using var workspace = new AdhocWorkspace();
+        var workspaceManager = new FailClosedWorkspaceManagerStub
+        {
+            GetCurrentSolutionHandler = _ => workspace.CurrentSolution,
+        };
+        var logger = new ListLogger<FixAllService>();
+        var service = new FixAllService(
+            workspaceManager,
+            new PreviewStore(),
+            null!,
+            logger);
+
+        _ = await service.PreviewFixAllAsync(
+            "fixture", "UNKNOWN_DIAGNOSTIC", "solution", null, null, CancellationToken.None);
+
+        Assert.IsTrue(logger.Entries.Any(entry =>
+            entry.Message.Contains("Feature provider load for CodeFixProvider", StringComparison.Ordinal)),
+            "The published constructor must retain provider discovery diagnostics on its supplied logger.");
     }
 
     // ----------------------------------------------------------------------
@@ -186,6 +251,7 @@ public sealed class FixAllServiceTests
             null!,
             null!,
             null!,
+            null!,
             NullLogger<FixAllService>.Instance,
             reporter);
 
@@ -264,6 +330,7 @@ public sealed class FixAllServiceTests
         var reporter = new ServerObservabilityReporter(sink);
         var logger = new ListLogger<FixAllService>();
         var service = new FixAllService(
+            null!,
             null!,
             null!,
             null!,

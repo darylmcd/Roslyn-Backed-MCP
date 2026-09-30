@@ -21,7 +21,7 @@
     # Emits one row per skill and identifies any missing contract values.
 
 .EXAMPLE
-    pwsh -NoProfile -File eng/list-skills.ps1 -RepoRoot C:/Code-Repo/Roslyn-Backed-MCP
+    pwsh -NoProfile -File eng/list-skills.ps1 -RepoRoot D:/Roslyn-Backed-MCP
 #>
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)

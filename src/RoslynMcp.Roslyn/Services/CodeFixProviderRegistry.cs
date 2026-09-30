@@ -1,16 +1,17 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
 /// Resolves <see cref="CodeFixProvider"/> instances for a given diagnostic id by combining
 /// providers loaded from the IDE Features assembly (one-time, cached) with providers loaded
-/// from each project's analyzer references (lazy per analyzer-assembly path).
+/// from each project's analyzer references (lazy per reference identity).
 ///
 /// This is shared by <see cref="RefactoringService.PreviewCodeFixAsync"/> and
 /// <see cref="FixAllService.PreviewFixAllAsync"/> so a single source of truth tracks which
@@ -24,16 +25,22 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
     private readonly Func<AnalyzerFileReference, FeatureProviderLoadResult<CodeFixProvider>> _analyzerProviderLoader;
 
     /// <summary>
-    /// Cache of providers loaded from individual analyzer assembly paths. Many projects share
-    /// the same analyzer assembly (e.g. Microsoft.CodeAnalysis.NetAnalyzers), so caching by
-    /// path avoids re-reflecting on every PreviewCodeFix call.
+    /// Cache by reference identity: the reference owns its loader and load context. Weak keys
+    /// let retired references and their providers leave with the old workspace snapshot.
     /// </summary>
-    private readonly ConcurrentDictionary<string, FeatureProviderLoadResult<CodeFixProvider>> _byAssemblyPath
-        = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConditionalWeakTable<AnalyzerFileReference, Lazy<FeatureProviderLoadResult<CodeFixProvider>>>
+        _byReference = new();
 
     public CodeFixProviderRegistry(
         ILogger<CodeFixProviderRegistry> logger,
         IUnexpectedExceptionReporter? exceptionReporter = null)
+        : this((ILogger)logger, exceptionReporter)
+    {
+    }
+
+    internal CodeFixProviderRegistry(
+        ILogger logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
         : this(
             logger,
             () => CSharpFeatureProviderLoader.Load<CodeFixProvider>(logger, exceptionReporter),
@@ -46,7 +53,7 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
     }
 
     internal CodeFixProviderRegistry(
-        ILogger<CodeFixProviderRegistry> logger,
+        ILogger logger,
         Func<FeatureProviderLoadResult<CodeFixProvider>> staticProviderLoader,
         Func<AnalyzerFileReference, FeatureProviderLoadResult<CodeFixProvider>> analyzerProviderLoader)
     {
@@ -116,18 +123,28 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
 
     private IEnumerable<FeatureProviderLoadResult<CodeFixProvider>> EnumerateProjectProviderResults(Solution solution)
     {
-        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenReferencesByPath = new Dictionary<string, HashSet<AnalyzerFileReference>>(
+            FileSystemPath.Comparer);
         foreach (var project in solution.Projects)
         {
             foreach (var reference in project.AnalyzerReferences)
             {
                 if (reference is not AnalyzerFileReference fileRef) continue;
                 var path = fileRef.FullPath;
-                if (string.IsNullOrWhiteSpace(path) || !seenPaths.Add(path)) continue;
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                if (!seenReferencesByPath.TryGetValue(path, out var seenReferences))
+                {
+                    seenReferences = new HashSet<AnalyzerFileReference>(ReferenceEqualityComparer.Instance);
+                    seenReferencesByPath.Add(path, seenReferences);
+                }
+
+                if (!seenReferences.Add(fileRef)) continue;
 
                 // Preserve the reference's dependency resolver and isolated load context.
-                var providers = _byAssemblyPath.GetOrAdd(path, _ => _analyzerProviderLoader(fileRef));
-                yield return providers;
+                var providers = _byReference.GetValue(fileRef, reference =>
+                    new Lazy<FeatureProviderLoadResult<CodeFixProvider>>(
+                        () => _analyzerProviderLoader(reference)));
+                yield return providers.Value;
             }
         }
     }

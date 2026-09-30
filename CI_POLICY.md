@@ -89,6 +89,22 @@ Measured from the five most recent successful PR legs before this refactor:
 
 Fresh Windows TRX baseline: 2,536 cases (2,530 passed, 6 skipped) in 16m30s. MSTest spent about 6m13s in the parallelizable phase and 10m17s in the serialized `[DoNotParallelize]` tail. The same run proved that scripting watchdog tests left eight CPU-bound background threads alive for the remainder of the testhost. Treat this baseline as pre-refactor evidence; use uploaded per-leg TRX from the merged workflow for the new steady state.
 
+Wave 40 local Windows timing probe (2026-09-29): repeat the command below three times on each side of removing `WorkspaceValidationTimeoutTests`'s opt-out, changing only the TRX filename per run. All six two-class TRX files recorded 25 passed, 0 failed. Durations below are from TRX test start/end timestamps, not the `dotnet test` process wall time.
+
+```powershell
+$probeOutput = Join-Path ([IO.Path]::GetTempPath()) 'roslyn-wave40-evidence'
+New-Item -ItemType Directory -Force -Path $probeOutput | Out-Null
+dotnet test tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj --no-restore --settings eng/ci.runsettings --filter 'ClassName=RoslynMcp.Tests.WorkspaceToolsIntegrationTests|ClassName=RoslynMcp.Tests.WorkspaceValidationTimeoutTests' --results-directory $probeOutput --logger 'trx;LogFileName=wave40-before-1.trx'
+```
+
+| Local probe | Run 1 | Run 2 | Run 3 |
+|---|---:|---:|---:|
+| Before: both classes in serialized tail | 23.0 s | 20.2 s | 14.1 s |
+| After: retained `WorkspaceToolsIntegrationTests` serialized tail | 6.7 s | 6.7 s | 6.6 s |
+| After: parallel-eligible `WorkspaceValidationTimeoutTests` | 7.2 s | 6.9 s | 7.0 s |
+
+An additional three-class probe appended `|ClassName=RoslynMcp.Tests.StringLiteralReplaceServiceTests` to the filter after removal. Each of its three TRX files recorded 27 passed, 0 failed; the timeout class overlapped that parallel-enabled companion for 4.0 s, 4.5 s, and 4.2 s, respectively. The retained shared-workspace class ran alone in the serialized tail for 6.3 s, 8.2 s, and 6.1 s. These bounded local runs establish the class-level ownership change; they do not replace a full-suite or hosted-runner baseline.
+
 The first hosted two-shard calibration completed Windows in 19m50s and 16m29s, with cumulative per-test TRX durations of 2,549s and 1,764s. Because that did not improve the prior 16m09s repository-level median, code pull requests use four hosted Windows shards.
 
 GitHub's public-repository `ubuntu-latest` and `windows-latest` standard runners currently provide 4 CPUs and 16 GB RAM. Do not retain the retired 2-vCPU assumption in repository documentation.

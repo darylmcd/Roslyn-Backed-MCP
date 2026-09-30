@@ -3,7 +3,7 @@ namespace RoslynMcp.Core.Models;
 /// <summary>
 /// Result of <c>record_field_add_with_satellites_preview</c>: coordinated edit suggestions for
 /// adding a new field to a type whose existing fields participate in a satellite-sync convention
-/// (Clone / Snapshot / With / ToJson / Increment mirror types or methods).
+/// (Clone / Snapshot / Reset / With / ToJson / Increment mirror types or methods).
 ///
 /// <para>
 /// Pattern inference is intentionally conservative — the service requires at least two sibling
@@ -23,7 +23,8 @@ namespace RoslynMcp.Core.Models;
 /// fields with identical coverage. Empty when the pattern could not be inferred (see
 /// <see cref="PatternDetectionReason"/>). Each entry is a structural label such as
 /// <c>"CloneMethodBody"</c>, <c>"SnapshotType.Field"</c>, <c>"WithMethod.Assignment"</c>,
-/// <c>"IncrementMethod"</c>, <c>"ToJson.Case"</c>.
+/// <c>"IncrementMethod"</c>, <c>"ToJson.Case"</c>, <c>"Snapshot.Tuple"</c>,
+/// <c>"ResetMethodBody"</c>. Existing labels retain their meanings.
 /// </param>
 /// <param name="PatternDetectionReason">
 /// Human-readable explanation when <see cref="InferredPattern"/> is empty (e.g. "only one sibling
@@ -32,7 +33,7 @@ namespace RoslynMcp.Core.Models;
 /// </param>
 /// <param name="ProposedEdits">
 /// Ordered list of edits the caller should review/apply. Each entry names the file, the
-/// zero-anchored insertion location, the satellite-site kind it addresses, and the new text to
+/// 1-based insertion location in the original file, the satellite-site kind it addresses, and the new text to
 /// splice in. When <see cref="InferredPattern"/> is empty this list is also empty.
 /// </param>
 /// <param name="PreviewToken">

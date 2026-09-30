@@ -56,11 +56,62 @@ public sealed class ExtractMethodService : IExtractMethodService
                 semanticModel, statementsInSelection, enclosingMember,
                 _exceptionReporter, startLine, endLine);
 
+        var returnValueAnnotation = new SyntaxAnnotation();
+        var extractedMethodAnnotation = new SyntaxAnnotation();
+        var callSiteAnnotation = new SyntaxAnnotation();
         var (newMethod, callStatement) =
-            BuildMethodAndCallSite(methodName, parameters, flowsOut, variablesDeclaredInRegion, isStatic, statementsInSelection);
+            BuildMethodAndCallSite(methodName, parameters, flowsOut, variablesDeclaredInRegion, isStatic,
+                statementsInSelection, returnValueAnnotation, extractedMethodAnnotation, callSiteAnnotation);
 
         var newRoot = ReplaceStatementsAndInsertMethod(
             root, parentBlock, statementsInSelection, callStatement, newMethod, enclosingMember);
+
+        if (flowsOut.Count == 1 && flowsOut[0].Type is { IsReferenceType: true } declaredType &&
+            declaredType.NullableAnnotation != NullableAnnotation.None)
+        {
+            // The local's declared annotation does not describe its flow state at the
+            // synthesized return. Ask the semantic model of the candidate method, where
+            // the moved statements and parameters have their final scope and order.
+            var candidateDocument = document.WithSyntaxRoot(newRoot);
+            newRoot = await candidateDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
+                ?? throw new InvalidOperationException("Extracted method produced no syntax root.");
+            var candidateModel = await candidateDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Extracted method semantic model could not be created.");
+            var returnedValue = newRoot.GetAnnotatedNodes(returnValueAnnotation)
+                .OfType<IdentifierNameSyntax>()
+                .Single();
+            var flowState = candidateModel.GetTypeInfo(returnedValue, ct).Nullability.FlowState;
+            var returnAnnotation = flowState switch
+            {
+                NullableFlowState.NotNull => NullableAnnotation.NotAnnotated,
+                NullableFlowState.MaybeNull => NullableAnnotation.Annotated,
+                _ => declaredType.NullableAnnotation,
+            };
+            if (returnAnnotation != declaredType.NullableAnnotation)
+            {
+                var candidateMethod = newRoot.GetAnnotatedNodes(extractedMethodAnnotation)
+                    .OfType<MethodDeclarationSyntax>()
+                    .Single();
+                var returnType = SyntaxFactory.ParseTypeName(
+                    declaredType.WithNullableAnnotation(returnAnnotation)
+                        .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                newRoot = newRoot.ReplaceNode(candidateMethod,
+                    candidateMethod.WithReturnType(returnType.WithTriviaFrom(candidateMethod.ReturnType)));
+
+                if (variablesDeclaredInRegion.Contains(flowsOut[0].Name))
+                {
+                    // A `var` replacement would infer the narrowed method return type,
+                    // changing the original local's declared nullable type at the caller.
+                    var callSite = newRoot.GetAnnotatedNodes(callSiteAnnotation)
+                        .OfType<LocalDeclarationStatementSyntax>()
+                        .Single();
+                    var localType = SyntaxFactory.ParseTypeName(
+                        declaredType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                    newRoot = newRoot.ReplaceNode(callSite,
+                        callSite.WithDeclaration(callSite.Declaration.WithType(localType)));
+                }
+            }
+        }
 
         // dr-9-7-produces-output-that-violates-project-formatting +
         // dr-9-9-format-bug-004-produces-malformed-body-closing-b: route the synthesized
@@ -251,7 +302,10 @@ public sealed class ExtractMethodService : IExtractMethodService
             List<(string Name, ITypeSymbol? Type)> flowsOut,
             HashSet<string> variablesDeclaredInRegion,
             bool isStatic,
-            List<StatementSyntax> statementsInSelection)
+            List<StatementSyntax> statementsInSelection,
+            SyntaxAnnotation returnValueAnnotation,
+            SyntaxAnnotation extractedMethodAnnotation,
+            SyntaxAnnotation callSiteAnnotation)
     {
         var returnType = flowsOut.Count == 1
             ? SyntaxFactory.ParseTypeName(flowsOut[0].Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))
@@ -277,9 +331,25 @@ public sealed class ExtractMethodService : IExtractMethodService
         var extractedStatements = new List<StatementSyntax>(statementsInSelection);
         if (flowsOut.Count == 1)
         {
+            var outName = flowsOut[0].Name;
+            if (!variablesDeclaredInRegion.Contains(outName) &&
+                !parameters.Any(parameter => parameter.Name == outName))
+            {
+                // A write-only outer local is in DataFlowsOut but not DataFlowsIn. It
+                // still needs a declaration inside the extracted method; passing the
+                // caller's value would reject an originally unassigned local.
+                extractedStatements.Insert(0,
+                    SyntaxFactory.LocalDeclarationStatement(
+                        SyntaxFactory.VariableDeclaration(
+                            SyntaxFactory.ParseTypeName(flowsOut[0].Type!
+                                .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)),
+                            SyntaxFactory.SingletonSeparatedList(
+                                SyntaxFactory.VariableDeclarator(outName)))));
+            }
             extractedStatements.Add(
                 SyntaxFactory.ReturnStatement(
-                    SyntaxFactory.IdentifierName(flowsOut[0].Name)));
+                    SyntaxFactory.IdentifierName(outName)
+                        .WithAdditionalAnnotations(returnValueAnnotation)));
         }
 
         var body = SyntaxFactory.Block(
@@ -302,7 +372,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             .WithParameterList(parameterList)
             .WithBody(body)
             .WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
-            .WithAdditionalAnnotations(Formatter.Annotation);
+            .WithAdditionalAnnotations(Formatter.Annotation, extractedMethodAnnotation);
 
         // Build call site with raw factory nodes; spacing around `=`, `,`, etc. is
         // handled by Formatter.FormatAsync via the Formatter.Annotation tag below.
@@ -352,7 +422,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         callStatement = callStatement
             .WithLeadingTrivia(statementsInSelection[0].GetLeadingTrivia())
             .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
-            .WithAdditionalAnnotations(Formatter.Annotation);
+            .WithAdditionalAnnotations(Formatter.Annotation, callSiteAnnotation);
 
         return (newMethod, callStatement);
     }

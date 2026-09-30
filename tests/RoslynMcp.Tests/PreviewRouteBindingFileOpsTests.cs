@@ -228,6 +228,7 @@ public sealed class PreviewRouteBindingFileOpsTests : IsolatedWorkspaceTestBase
             WorkspaceManager,
             PreviewStore,
             new CompilationCache(WorkspaceManager),
+            new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance),
             NullLogger<FixAllService>.Instance,
             [new TestFixAllCodeFixProvider()]);
 

@@ -15,6 +15,9 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+// The class reloads the assembly-shared SampleSolution workspace in two tests and
+// deliberately holds its session LoadLock in another. Other classes read that same
+// cached workspace, so this class must not overlap their requests.
 [DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
