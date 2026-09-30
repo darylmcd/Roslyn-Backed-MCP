@@ -226,6 +226,7 @@ internal static class AtomicFileWriter
             tmp => encoding is null
                 ? File.WriteAllTextAsync(tmp, content, ct)
                 : File.WriteAllTextAsync(tmp, content, encoding, ct),
+            ct,
             logger,
             exceptionReporter).ConfigureAwait(false);
 
@@ -238,20 +239,56 @@ internal static class AtomicFileWriter
         => await WriteAtomicAsync(
             path,
             tmp => File.WriteAllBytesAsync(tmp, content, ct),
+            ct,
             logger,
             exceptionReporter).ConfigureAwait(false);
 
-    private static async Task WriteAtomicAsync(
+    internal static Task WriteAtomicAsync(
         string path,
         Func<string, Task> writeTempAsync,
+        CancellationToken ct,
         ILogger? logger,
         IUnexpectedExceptionReporter? exceptionReporter)
     {
-        var tmp = path + ".tmp";
+        ct.ThrowIfCancellationRequested();
+        return WriteAtomicAtTempPathAsync(
+            path, ReserveUniqueTempPath(path), writeTempAsync, ct, logger, exceptionReporter);
+    }
+
+    private static string ReserveUniqueTempPath(string path)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path))
+            ?? throw new InvalidOperationException("The target has no containing directory.");
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var candidate = Path.Combine(directory, ".rmcp-" + Path.GetRandomFileName() + ".tmp");
+            try
+            {
+                using var reservation = new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                return candidate;
+            }
+            catch (IOException) when (File.Exists(candidate))
+            {
+                // The create-new operation is atomic; a collision gets another name.
+            }
+        }
+
+        throw new IOException("Could not reserve a unique atomic-write temporary file.");
+    }
+
+    // The explicit path is also used by fault-injection tests for temp cleanup.
+    internal static async Task WriteAtomicAtTempPathAsync(
+        string path,
+        string tmp,
+        Func<string, Task> writeTempAsync,
+        CancellationToken ct,
+        ILogger? logger,
+        IUnexpectedExceptionReporter? exceptionReporter)
+    {
         try
         {
             await writeTempAsync(tmp).ConfigureAwait(false);
-            File.Move(tmp, path, overwrite: true);
+            await ReplaceAfterTransientReaderAsync(tmp, path, ct).ConfigureAwait(false);
         }
         catch
         {
@@ -259,6 +296,41 @@ internal static class AtomicFileWriter
             throw;
         }
     }
+
+    private static async Task ReplaceAfterTransientReaderAsync(
+        string tmp,
+        string path,
+        CancellationToken ct)
+    {
+        const int maxAttempts = 10;
+        for (var attempt = 1; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(tmp, path, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts &&
+                                       IsRetryableWindowsReplacementFailure(ex))
+            {
+                await Task.Delay(Math.Min(25 << (attempt - 1), 400), ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static bool IsRetryableWindowsReplacementFailure(Exception exception)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        if (exception is IOException io && IsSharingViolation(io)) return true;
+        // On Windows, File.Move(overwrite: true) reports access denied for a held
+        // destination even when the reader shares writes and deletes. The retry is
+        // bounded; a real ACL denial still surfaces after the last attempt.
+        return exception is UnauthorizedAccessException { HResult: unchecked((int)0x80070005) };
+    }
+
+    private static bool IsSharingViolation(IOException exception) =>
+        exception.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021);
 
     private static void TryDeleteTemp(
         string tmp,
@@ -275,7 +347,7 @@ internal static class AtomicFileWriter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Best-effort cleanup — a stray .tmp is non-fatal and must not mask the original failure.
+            // Best-effort cleanup — a stray temp is non-fatal and must not mask the original failure.
             // The primary write exception is still re-thrown by the caller; this only records that the
             // orphaned temp artifact could not be removed so it is not left on disk silently.
             // The caught exception and the absolute temp/target paths are deliberately NOT logged
@@ -288,7 +360,7 @@ internal static class AtomicFileWriter
                     ex,
                     UnexpectedExceptionCategory.CompositeApply).Server;
                 logger.LogWarning(
-                    "{CleanupCategory}: failed to delete orphaned temp file {TargetFile}.tmp after a failed write; a stray .tmp artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
+                    "{CleanupCategory}: failed to delete an orphaned temp file for {TargetFile} after a failed write; a temp artifact may remain on disk. correlationId={CorrelationId} exceptionTypes={ExceptionTypes} stackFrameCount={StackFrameCount}",
                     TempCleanupCategory,
                     Path.GetFileName(path),
                     diagnostic.CorrelationId,

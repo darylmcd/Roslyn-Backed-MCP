@@ -311,6 +311,32 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SetEditorConfigOption_RevertWaitsForTransientReadHandle()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var configPath = workspace.GetPath("SampleLib", ".editorconfig");
+        const string original = "[*.cs]\nindent_size = 4\n";
+        await File.WriteAllTextAsync(configPath, original);
+        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "indent_size", "8", "set_editorconfig_option", CancellationToken.None);
+
+        Task<bool> revert;
+        using (var reader = new FileStream(configPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            revert = UndoService.RevertAsync(workspace.WorkspaceId);
+            var first = await Task.WhenAny(revert, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            Assert.AreNotSame(revert, first,
+                "A temporary reader must leave the undo pending until the reader releases its handle.");
+        }
+
+        Assert.IsTrue(await revert);
+        Assert.AreEqual(original, await File.ReadAllTextAsync(configPath));
+    }
+
+    [TestMethod]
     public async Task SetEditorConfigOption_CreatesNewFile_RevertDeletesIt()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

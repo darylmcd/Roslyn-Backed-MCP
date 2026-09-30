@@ -1,6 +1,6 @@
 # ADR 0012: Bound editorconfig writes to the loaded workspace
 
-Status: Accepted, 2026-09-29.
+Status: Proposed, 2026-09-29; pending the operator's release decision.
 
 ## Context
 
@@ -33,7 +33,7 @@ cannot provide that coordination through the existing public constructor.
 ## Compatibility and migration
 
 This changes the behavior of a stable tool for clients that previously edited
-an ancestor `.editorconfig`; ship it in the next major release. A refused call
+an ancestor `.editorconfig`; it requires a major release if accepted. A refused call
 must be handled as a boundary error. To edit the ancestor file, use an
 operator-authorized editor outside this tool. To keep edits inside the loaded
 workspace, create or select an applicable `.editorconfig` under its physical
