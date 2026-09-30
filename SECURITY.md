@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.26.x  | Yes       |
-| < 1.26  | No        |
+| 4.3.x   | Yes       |
+| < 4.3   | No        |
 
 ## Reporting a Vulnerability
 
@@ -41,4 +41,4 @@ Loading a `.sln` or `.csproj` file triggers MSBuild evaluation, which can execut
 
 ### Path Validation
 
-The server validates file paths against MCP client roots (when advertised) and resolves symlinks/junctions to prevent traversal attacks. However, path validation is a defense-in-depth measure and does not replace trust in the workspace content itself.
+The server owns its path boundary. `ROSLYNMCP_SANCTIONED_ROOTS` (`SecurityOptions.SanctionedRoots`) configures the sanctioned roots that every path tool validates against; an empty boundary fails closed unless `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true` is set as an explicit, temporary compatibility escape hatch. Client-advertised or request-provided roots can only narrow the configured boundary and never widen it. Paths and roots are canonicalized component by component, resolving every existing symlink or junction in the ancestor chain, to prevent traversal. Sibling-worktree widening needs both the server operator opt-in (`ROSLYNMCP_ALLOW_ROOT_EXPANSION=true`) and a per-request opt-in. See [ADR 0002](docs/decisions/0002-configured-sanctioned-root-boundary.md). Path validation is a defense-in-depth measure and does not replace trust in the workspace content itself.
