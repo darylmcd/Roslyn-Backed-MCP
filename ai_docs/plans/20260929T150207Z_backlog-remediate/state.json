@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
   "generatedAt": "2026-09-29T15:02:14.416Z",
-  "backlogSnapshot": "2026-09-28T22:39:48Z",
+  "backlogSnapshot": "2026-09-30T21:28:52Z",
   "addendaLoaded": true,
   "phase": "complete",
   "cycleCount": 1,
   "maxCycles": 2,
-  "completed": false,
+  "completed": true,
   "reviewStatus": "passed",
   "readyForExecute": true,
   "initiatives": [
@@ -441,7 +441,7 @@
     {
       "id": "editorconfig-write-no-workspace-invalidation",
       "order": 10,
-      "status": "in-review",
+      "status": "merged",
       "backlogRowsClosed": [
         "editorconfig-write-no-workspace-invalidation",
         "editorconfig-write-outside-workspace",
@@ -485,8 +485,8 @@
       "branch": "remediation/editorconfig-write-no-workspace-invalidation",
       "worktreePath": "D:/Roslyn-Backed-MCP/.worktrees/editorconfig-write-no-workspace-invalidation",
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1678",
-      "mergedAt": null,
-      "notes": "Final head 9fda93f8 passed focused Windows/Linux Release suites and independent cold review. Final exact-head current-main integration gate pending; ADR 0012 release choice pending.",
+      "mergedAt": "2026-09-30T21:28:21Z",
+      "notes": null,
       "fileSetHash": "c82c1d3680b8e7d89f8f44f00098a1f9382ae7d5194f10a598b834b5508d0265",
       "stanzaHash": "d7e7433f5f36ee43a7628f9af4bb19bbe81ed7bfe93806f312fe79a40b4b4781",
       "reviewedStanzaHash": "d7e7433f5f36ee43a7628f9af4bb19bbe81ed7bfe93806f312fe79a40b4b4781",
@@ -1204,5 +1204,6 @@
   "planHash": "a6f1d82efdaf7cefbbb2d81bac411f952d002967e7bdae7b2dc488a1df11c1ad",
   "backlogSnapshotHash": "fd4125a6ce66c45dd1015952a6d06eb161fc7fcae22150921eccc75274daea19",
   "reviewedPlanHash": "a6f1d82efdaf7cefbbb2d81bac411f952d002967e7bdae7b2dc488a1df11c1ad",
-  "reviewedBacklogSnapshotHash": "fd4125a6ce66c45dd1015952a6d06eb161fc7fcae22150921eccc75274daea19"
+  "reviewedBacklogSnapshotHash": "fd4125a6ce66c45dd1015952a6d06eb161fc7fcae22150921eccc75274daea19",
+  "completedAt": "2026-09-30T21:29:02.494Z"
 }
