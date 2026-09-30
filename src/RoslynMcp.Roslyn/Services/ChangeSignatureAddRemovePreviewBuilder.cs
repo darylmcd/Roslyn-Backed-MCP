@@ -132,7 +132,11 @@ internal static class ChangeSignatureAddRemovePreviewBuilder
             foreach (var span in docTargets.CallerSpans)
             {
                 var invocation = oldRoot.FindNode(span).FirstAncestorOrSelf<InvocationExpressionSyntax>();
-                if (invocation is not null) nodesToRewrite.Add(invocation);
+                // Only a reference that IS the invoked expression is a call site. Method-group and
+                // nameof() references sit in an argument list, so the nearest enclosing invocation
+                // (e.g. Select(...), nameof(...)) is an unrelated call and must not be rewritten.
+                if (invocation is not null && invocation.Expression.FullSpan.Contains(span))
+                    nodesToRewrite.Add(invocation);
             }
 
             if (nodesToRewrite.Count == 0) continue;
