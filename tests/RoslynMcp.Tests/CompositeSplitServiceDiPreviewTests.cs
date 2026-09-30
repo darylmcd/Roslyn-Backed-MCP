@@ -511,12 +511,21 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 "    public OverloadedService() { }\n    public OverloadedService(string name) { _name = name; }\n" +
                 "    public int A() => 1;\n    public int B() => _name.Length;\n}\n",
                 "2 instance constructors"),
-            // Retained field and partition map to the same facade constructor parameter.
+            // Retained field's constructor parameter and the partition map to the same facade constructor parameter.
             ("CollidingService",
-                "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _collidingServicePart;\n" +
-                "    public CollidingService(string collidingServicePart) { _collidingServicePart = collidingServicePart; }\n" +
-                "    public int A() => 1;\n    public int B() => _collidingServicePart.Length;\n}\n",
+                "namespace SampleLib;\n\npublic sealed class CollidingService\n{\n    private readonly string _name;\n" +
+                "    public CollidingService(string collidingServicePart) { _name = collidingServicePart; }\n" +
+                "    public int A() => 1;\n    public int B() => _name.Length;\n}\n",
                 "declared twice"),
+            // Another part of a partial type may declare a second constructor the facade cannot see.
+            ("PartialService",
+                "namespace SampleLib;\n\npublic sealed partial class PartialService\n{\n    public int A() => 1;\n    public int B() => 2;\n}\n",
+                "partial type"),
+            // The source already declares the `_partition` field the facade would add (CS0102).
+            ("FieldClashService",
+                "namespace SampleLib;\n\npublic sealed class FieldClashService\n{\n    private int _fieldClashServicePart;\n" +
+                "    public int A() => 1;\n    public int B() => _fieldClashServicePart;\n}\n",
+                "'_fieldClashServicePart'"),
         };
 
         // Cases that need a second partition (method "B") to reproduce cross-partition sharing.
@@ -545,6 +554,58 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
                 hostRegistrationFile: null,
                 CancellationToken.None));
             StringAssert.Contains(ex.Message, expectedFragment, $"Refusal for '{typeName}' must explain the unsupported constructor shape.");
+        }
+    }
+
+    [TestMethod]
+    public async Task Split_Service_With_Di_Preview_Refuses_Partition_Files_That_Would_Overwrite_Existing_Content()
+    {
+        // The composite apply writes every mutation unconditionally, so a partition file that
+        // collides with the source file, a file already on disk, a workspace document, or another
+        // partition in the same preview must be refused at preview time.
+        const string source =
+            "namespace SampleLib;\n\npublic sealed class OverwriteService\n{\n    public int A() => 1;\n    public int B() => 2;\n}\n";
+        const string existingContent = "namespace SampleLib;\n\npublic sealed class Existing { }\n";
+
+        // ExistingFile: file to create next to the source; WrittenAfterLoad: true keeps it out of the workspace.
+        var cases = new (string Label, string ExistingFile, bool WrittenAfterLoad, string[] PartitionTypeNames, string ExpectedFragment)[]
+        {
+            ("on-disk file not in the workspace", "OnDiskOnly.cs", true, ["OnDiskOnly"], "would overwrite the existing file"),
+            ("workspace document", "Existing.cs", false, ["Existing"], "would overwrite the existing file"),
+            ("source file", "", false, ["OverwriteService"], "source file"),
+            ("duplicate partition", "", false, ["OverwriteServiceDup", "OverwriteServiceDup"], "would both be written"),
+        };
+
+        foreach (var (label, existingFile, writtenAfterLoad, partitionTypeNames, expectedFragment) in cases)
+        {
+            await using var workspace = CreateIsolatedWorkspaceCopy();
+            var serviceFilePath = workspace.GetPath("SampleLib", "OverwriteService.cs");
+            await File.WriteAllTextAsync(serviceFilePath, source, CancellationToken.None);
+            var existingPath = existingFile.Length > 0 ? workspace.GetPath("SampleLib", existingFile) : null;
+            if (existingPath is not null && !writtenAfterLoad)
+            {
+                await File.WriteAllTextAsync(existingPath, existingContent, CancellationToken.None);
+            }
+
+            await workspace.LoadAsync(CancellationToken.None);
+            if (existingPath is not null && writtenAfterLoad)
+            {
+                await File.WriteAllTextAsync(existingPath, existingContent, CancellationToken.None);
+            }
+
+            var partitions = partitionTypeNames
+                .Select((typeName, index) => new SplitServicePartition(typeName, new[] { index == 0 ? "A" : "B" }))
+                .ToArray();
+
+            var service = CreateSymbolRefactorService(new CompositePreviewStore());
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => service.PreviewSplitServiceWithDiAsync(
+                workspace.WorkspaceId,
+                serviceFilePath,
+                "OverwriteService",
+                partitions,
+                hostRegistrationFile: null,
+                CancellationToken.None));
+            StringAssert.Contains(ex.Message, expectedFragment, $"Refusal for the '{label}' collision must name the conflict.");
         }
     }
 
