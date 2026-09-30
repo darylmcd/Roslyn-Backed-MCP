@@ -35,7 +35,7 @@ Each fragment lives at:
 Example layout for an audit run on a sibling repo `tradewise`:
 
 ```
-C:/Code-Repo/TradeWise/
+D:/TradeWise/
 ├── ai_docs/
 │   └── audit-reports/
 │       └── 20260507T203015Z_tradewise_mcp-server-audit.md   # prose report (stays here)

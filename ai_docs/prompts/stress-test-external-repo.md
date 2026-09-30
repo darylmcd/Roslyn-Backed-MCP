@@ -5,7 +5,7 @@
 > **This prompt is a null-op without the Roslyn MCP server.** If no tool whose name ends in `server_info` returns a Roslyn-shaped response, stop and ask the user to start the server. Phase -1 verifies this as a hard gate.
 
 > Use this prompt with an AI coding agent that has an MCP client connected to the Roslyn MCP server.
-> **Run from the external repo's directory** (e.g., `C:\Code-Repo\jellyfin`), not from the Roslyn-Backed-MCP repo.
+> **Run from the external repo's directory** (e.g., `D:\jellyfin`), not from the Roslyn-Backed-MCP repo.
 > All findings are written to `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/` using the standard naming convention. If you can't resolve `<Roslyn-Backed-MCP-root>`, fall back to the current workspace root under `ai_docs/audit-reports/` and note the intended copy destination in the header.
 
 ---
