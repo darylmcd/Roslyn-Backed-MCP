@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-30T21:28:52Z
+**updated_at:** 2026-09-30T21:36:22Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `gated-build-test-operation-deadline` | High | — | **Build, test, coverage and vuln-scan tools die at the 2-minute gate request timeout** — run the dotnet command outside the workspace lock and throttle, bounded by its own build/test/scan timeout. [type: bug] [source: retro-20260927] | L | items/gated-build-test-operation-deadline.md |
 | `compile-check-restore-next-call` | High | — | **compile_check names its restore action** — add top-level nextCall for restore-required results and wire coverage. [type: bug] [source: compile-check-restore-required-handshake] | M | items/compile-check-restore-next-call.md |
 | `workspace-load-restore-next-call` | High | compile-check-restore-next-call | **Load results name their restore action** — add top-level nextCall to lean and verbose load/reload results. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-load-restore-next-call.md |
 | `workspace-restore-safe-execution` | High | — | **Serialize workspace restore with build/test** — run existing explicit restore through the per-workspace command gate. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-restore-safe-execution.md |
@@ -57,6 +56,10 @@
 | `workspace-restore-packages-path` | High | — | **Preserve assets package path on restore** — pass the recorded packagesPath to server-side restore. [type: bug] [source: compile-check-restore-required-handshake] | M | items/workspace-restore-packages-path.md |
 | `workspace-restore-public-failure` | High | — | **Explain explicit restore failure safely** — return a path-free public reason with the existing error category. [type: bug] [source: compile-check-restore-required-handshake] | S | items/workspace-restore-public-failure.md |
 | `logging-default-sink-disabled-stderr-swallowed` | High | logging-retention-destroys-repro-evidence | **Enable the bounded file sink by default for installed users** — ROSLYNMCP_OBSERVABILITY_SINK defaults to `disabled` and the plugin mcp.json never sets it, so an MCP host that swallows stderr leaves no evidence of a first failure. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-default-sink-disabled-stderr-swallowed.md |
+| `gated-build-command-budget` | High | workspace-restore-safe-execution | **Bound build_workspace/build_project by BuildTimeout, not the 2-minute gate timeout** — release the workspace lock during the dotnet command and warn when the workspace changed mid-run. [type: bug] [source: gated-build-test-operation-deadline] | M | items/gated-build-command-budget.md |
+| `gated-test-run-command-budget` | High | gated-build-command-budget | **Bound test_run and test_coverage by TestTimeout, not the 2-minute gate timeout** — reuse the release-then-execute pattern and keep the timeout result envelopes. [type: bug] [source: gated-build-test-operation-deadline] | M | items/gated-test-run-command-budget.md |
+| `gated-validate-test-phase-budget` | High | gated-test-run-command-budget | **Run validate_* and workspace_fork_apply test phases under TestTimeout** — move them off the 25 s phase cap, report timeout verdicts, release the fork source lock, amend ADR 0010. [type: bug] [source: gated-build-test-operation-deadline] | M | items/gated-validate-test-phase-budget.md |
+| `gated-vuln-scan-command-budget` | High | gated-build-command-budget | **Bound nuget_vulnerability_scan by VulnerabilityScanTimeout, not the 2-minute gate timeout** — apply the release-then-execute pattern to the scan command. [type: bug] [source: gated-build-test-operation-deadline] | M | items/gated-vuln-scan-command-budget.md |
 
 ## Medium
 
