@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-09-30T21:36:22Z
+**updated_at:** 2026-09-30T21:43:51Z
 
 ## Agent contract
 
@@ -171,6 +171,7 @@
 | `logging-dependency-boundary-duration-missing` | Medium | logging-jsonl-drops-structured-state | **Emit duration and outcome for subprocess and workspace-load boundaries** — the dotnet-command event has target+exit code but no duration; MSBuild workspace load has no boundary event. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-dependency-boundary-duration-missing.md |
 | `logging-process-vitals-absent` | Medium | — | **Expose process vitals in server_heartbeat and the JSON-lines stream** — memory, GC, thread-pool and execution-gate depth are visible nowhere an agent can read headlessly. [type: quality] [source: logging-audit 20260930-1340] | M | items/logging-process-vitals-absent.md |
 | `logging-observability-contract-doc-incomplete` | Medium | logging-jsonl-drops-structured-state,logging-event-id-collisions-no-catalog | **Complete the observability contract docs with agent recipes** — add file-name pattern, correlate/timing/health recipes and event table to consumer docs, and the A10 section to AGENTS.md. [type: docs] [source: logging-audit 20260930-1340] | S | items/logging-observability-contract-doc-incomplete.md |
+| `restore-callers-missing-packages-path` | Medium | workspace-restore-packages-path | **Pass the assets-recorded packagesPath in the test-runner and fork-apply restores** — reuse the helper from workspace-restore-packages-path. [type: bug] [source: plan 20260930T213336Z workspace-restore-packages-path deepener] | S | items/restore-callers-missing-packages-path.md |
 
 ## Low
 
@@ -404,6 +405,7 @@
 | `logging-event-ids-remaining-call-sites` | Low | logging-event-id-collisions-no-catalog | **Assign catalog EventIds to the remaining zero-id log call sites** — 51 direct Log* calls use EventId 0 (eventId-0 is the majority of the stream); add a test that rejects new zero-id sites. [type: quality] [source: logging-audit 20260930-1340] | L | items/logging-event-ids-remaining-call-sites.md |
 | `logging-file-sink-sync-io-per-record` | Low | logging-retention-destroys-repro-evidence | **Keep the JSON-lines file open instead of open/stat/append per record** — every log line does Directory.CreateDirectory, File.Exists, FileInfo.Length and AppendAllText under one global lock on the request thread. [type: perf] [source: logging-audit 20260930-1340] | S | items/logging-file-sink-sync-io-per-record.md |
 | `logging-info-observations` | Low | — | **Observability Info digest** — SDK transport records have null correlationId; records lack version/pid (only in filename and startup line); default stderr stream is prose. Triage or drop. [type: quality] [source: logging-audit 20260930-1340] | S | items/logging-info-observations.md |
+| `audit-phase-runner-stale-stress-reference` | Low | — | **Update the stale /mcp-server-stress reference in agents/audit-phase-runner.md** — point it at /mcp-server-surface-test; full gate required. [type: docs] [source: plan 20260930T213336Z surface-test-skill-prompt-drift deepener] | S | items/audit-phase-runner-stale-stress-reference.md |
 
 ## Defer
 
