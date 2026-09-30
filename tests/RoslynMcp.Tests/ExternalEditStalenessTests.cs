@@ -48,6 +48,335 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
 
+    [TestMethod]
+    public void ConfigComparisonRead_DoesNotBlockUndoDeletion()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        try
+        {
+            // Undo deletes a newly created config while the filesystem watcher can be
+            // comparing its bytes. The comparison handle must permit that delete on Windows.
+            using var comparison = FileWatcherService.OpenConfigReadStream(configPath);
+            File.Delete(configPath);
+            Assert.IsFalse(File.Exists(configPath));
+        }
+        finally
+        {
+            if (File.Exists(configPath)) File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
+    public void ConfigWriteTransaction_RejectsDriftBeforeAcquiringWriteHandle()
+    {
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-drift-{Guid.NewGuid():N}.editorconfig");
+        var original = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+        File.WriteAllBytes(configPath, original);
+        try
+        {
+            // The coordinator may observe original bytes before another writer changes
+            // the file. The exclusive handle must verify that pre-image before writing.
+            File.WriteAllText(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                new EditorConfigFileTransaction(configPath, original));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
+    public void FailedNewConfigWriteBeforeBytes_RemovesEmptyFileWithoutStaleness()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-empty-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(
+                workspaceId, configPath, _ => throw new IOException("before write")));
+            Assert.IsFalse(File.Exists(configPath));
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false, "create")]
+    [DataRow(false, "change")]
+    [DataRow(false, "delete")]
+    [DataRow(true, "create")]
+    [DataRow(true, "change")]
+    [DataRow(true, "delete")]
+    public async Task ExternalEditorConfigChange_InsideWorkspaceOrAncestor_IsExternalEdit(bool ancestor, string action)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-watch-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(root, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+        var solutionPath = Path.Combine(workspaceRoot, "Sample.slnx");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        var configPath = ancestor
+            ? Path.Combine(root, ".editorconfig")
+            : Path.Combine(workspaceRoot, "nested", ".editorconfig");
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        if (action != "create")
+        {
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        }
+
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            if (action == "delete")
+            {
+                File.Delete(configPath);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await watcher.WaitForStaleAsync(workspaceId, timeout.Token);
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task FailedOwnedEditorConfigWrite_TracksOnlyActualByteChanges()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-failure-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
+                transaction =>
+                {
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n"));
+                    throw new IOException("after identical bytes");
+                }));
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+            await Task.Delay(300);
+            Assert.IsFalse(watcher.IsStale(workspaceId), "A delayed event for unchanged bytes must also be ignored.");
+
+            Assert.ThrowsExactly<IOException>(() => coordinator.RunOwnedWrite<object>(workspaceId, configPath,
+                transaction =>
+                {
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                    throw new IOException("after write");
+                }));
+            Assert.AreEqual("[*.cs]\nindent_size = 4\n", await File.ReadAllTextAsync(configPath));
+            Assert.IsFalse(watcher.IsStale(workspaceId), "A restored failed write has no lasting mutation.");
+            await Task.Delay(300);
+            Assert.IsFalse(watcher.IsStale(workspaceId));
+
+            Assert.ThrowsExactly<EditorConfigUnrecoveredWriteException>(() =>
+                coordinator.RunOwnedWrite<object>(workspaceId, configPath, transaction =>
+                {
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                    transaction.Dispose(); // Deterministically prevent compensation after a partial write.
+                    throw new IOException("after write with failed restoration");
+                }));
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId),
+                "An unrecovered owned write must remain attributable to Apply.");
+            Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnedEditorConfigWrite_DoesNotMaskLaterDifferentExternalBytes()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-race-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+                transaction.WriteBytes(bytes);
+                return true;
+            });
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
+
+            // A later write with different bytes is genuine drift even though this path was
+            // previously owned and its first watcher event may still be queued.
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.IsTrue(SpinWait.SpinUntil(
+                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
+                TimeSpan.FromSeconds(5)));
+
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n");
+                transaction.WriteBytes(bytes);
+                return true;
+            });
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId),
+                "An owned write must not erase a prior external-edit finding.");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task OwnedEditorConfigWrite_WindowsConcurrentReplacementCannotOverwriteLockedFile()
+    {
+        // POSIX permits another writer to open the held inode. The Linux pathname
+        // replacement invariant is covered by OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess.
+        if (!OperatingSystem.IsWindows()) return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-replace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var solutionPath = Path.Combine(root, "Sample.slnx");
+        var configPath = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(solutionPath, "<Solution />");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var coordinator = (IEditorConfigWriteCoordinator)watcher;
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, solutionPath);
+            coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+            {
+                var intended = System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 4\n");
+                Assert.ThrowsExactly<IOException>(() =>
+                {
+                    using var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                });
+                transaction.WriteBytes(intended);
+                return true;
+            });
+            Assert.AreEqual(StaleReasons.Apply, watcher.GetStaleReason(workspaceId));
+            await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n");
+            Assert.IsTrue(SpinWait.SpinUntil(
+                () => watcher.GetStaleReason(workspaceId) == StaleReasons.ExternalEdit,
+                TimeSpan.FromSeconds(5)));
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void OwnedEditorConfigWrite_PosixSameInodeEditBeforeWriteIsExternalEdit()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-inode-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+                {
+                    // Linux permits a noncooperating writer on the held inode.
+                    using (var competing = new FileStream(configPath, FileMode.Open, FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        competing.SetLength(0);
+                        competing.Write(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 8\n"));
+                    }
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
+                    return true;
+                }));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void OwnedEditorConfigWrite_PosixRenameReplacementRefusesSuccess()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-rename-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var configPath = Path.Combine(root, ".editorconfig");
+        var replacementPath = Path.Combine(root, "replacement.editorconfig");
+        File.WriteAllText(configPath, "[*.cs]\nindent_size = 4\n");
+        File.WriteAllText(replacementPath, "[*.cs]\nindent_size = 8\n");
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        var workspaceId = Guid.NewGuid().ToString("N");
+        try
+        {
+            watcher.Watch(workspaceId, Path.Combine(root, "Sample.slnx"));
+            var coordinator = (IEditorConfigWriteCoordinator)watcher;
+            Assert.ThrowsExactly<EditorConfigConcurrentEditException>(() =>
+                coordinator.RunOwnedWrite(workspaceId, configPath, transaction =>
+                {
+                    // POSIX rename can replace the pathname while the transaction still
+                    // owns its old inode. A subsequent write updates only that unlinked inode.
+                    File.Move(replacementPath, configPath, overwrite: true);
+                    transaction.WriteBytes(System.Text.Encoding.UTF8.GetBytes("[*.cs]\nindent_size = 2\n"));
+                    return true;
+                }));
+            Assert.AreEqual(StaleReasons.ExternalEdit, watcher.GetStaleReason(workspaceId));
+            StringAssert.Contains(File.ReadAllText(configPath), "indent_size = 8");
+        }
+        finally
+        {
+            watcher.Unwatch(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Core validation scenario from the plan: load workspace → write to a tracked
     /// <c>.cs</c> via <see cref="System.IO.File"/> (simulating Claude Code's <c>Edit</c> tool

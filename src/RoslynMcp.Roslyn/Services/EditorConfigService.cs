@@ -13,6 +13,7 @@ public sealed class EditorConfigService : IEditorConfigService
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
     private readonly ILogger<EditorConfigService>? _logger;
+    private readonly IEditorConfigWriteCoordinator? _writeCoordinator;
 
     public EditorConfigService(
         IWorkspaceManager workspace,
@@ -24,6 +25,18 @@ public sealed class EditorConfigService : IEditorConfigService
         _undoService = undoService;
         _changeTracker = changeTracker;
         _logger = logger;
+        _writeCoordinator = (workspace as WorkspaceManager)?.EditorConfigWriteCoordinator;
+    }
+
+    internal EditorConfigService(
+        IWorkspaceManager workspace,
+        IUndoService? undoService,
+        IChangeTracker? changeTracker,
+        ILogger<EditorConfigService>? logger,
+        IEditorConfigWriteCoordinator writeCoordinator)
+        : this(workspace, undoService, changeTracker, logger)
+    {
+        _writeCoordinator = writeCoordinator;
     }
 
     public async Task<EditorConfigOptionsDto> GetOptionsAsync(
@@ -127,7 +140,9 @@ public sealed class EditorConfigService : IEditorConfigService
     internal static IEnumerable<(string Key, string Value)> ParseEditorconfigCsKeys(string editorconfigPath)
     {
         var inApplicableSection = false;
-        foreach (var rawLine in File.ReadLines(editorconfigPath))
+        // Finish the disk read before yielding: a lazy File.ReadLines enumerator
+        // otherwise holds a Windows handle that blocks atomic undo replacement.
+        foreach (var rawLine in File.ReadAllLines(editorconfigPath))
         {
             var line = rawLine.Trim();
             if (line.Length == 0 || line[0] == '#' || line[0] == ';')
@@ -331,63 +346,117 @@ public sealed class EditorConfigService : IEditorConfigService
         string workspaceId, string sourceFilePath, string key, string value, string toolName, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        _ = _workspace.GetCurrentSolution(workspaceId);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         if (string.IsNullOrWhiteSpace(key))
         {
             throw new ArgumentException("Key is required.", nameof(key));
         }
 
-        var normalizedSource = Path.GetFullPath(sourceFilePath);
+        var document = SymbolResolver.FindDocument(solution, sourceFilePath)
+            ?? throw new FileNotFoundException($"Document not found in workspace: {sourceFilePath}");
+        var normalizedSource = PhysicalPathResolver.Resolve(document.FilePath
+            ?? throw new InvalidOperationException("Loaded document has no physical file path."));
+        var loadedPath = _workspace.GetStatus(workspaceId).LoadedPath
+            ?? throw new InvalidOperationException("Workspace has no loaded path.");
+        var workspaceRoot = PhysicalPathResolver.Resolve(Path.GetDirectoryName(loadedPath)
+            ?? throw new InvalidOperationException("Workspace has no root directory."));
+        if (!IsWithinWorkspace(workspaceRoot, normalizedSource))
+        {
+            throw new UnauthorizedAccessException("The source document is outside the loaded workspace.");
+        }
+
+        var coordinator = _writeCoordinator
+            ?? throw new InvalidOperationException("EditorConfig writes require a coordinated file watcher.");
         var editorconfigPath = FindEditorconfigPath(normalizedSource)
             ?? Path.Combine(Path.GetDirectoryName(normalizedSource) ?? throw new InvalidOperationException("Invalid source path."), ".editorconfig");
-
-        var created = !File.Exists(editorconfigPath);
-        var existingBytes = created ? null : File.ReadAllBytes(editorconfigPath);
-        var lines = created ? new List<string>() : File.ReadAllLines(editorconfigPath).ToList();
-
-        // set-editorconfig-option-not-undoable: capture the pre-apply content so
-        // revert_last_apply can restore the .editorconfig file (or delete it if we created it).
-        // Uses the authoritative FileSnapshotDto path in UndoService (FLAG-9A).
-        if (_undoService is not null)
+        if (!IsWithinWorkspace(workspaceRoot, PhysicalPathResolver.Resolve(editorconfigPath)))
         {
-            var snapshot = new[]
+            throw new UnauthorizedAccessException("The applicable .editorconfig is outside the loaded workspace.");
+        }
+
+        FileSnapshotDto? preApplySnapshot = null;
+        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) Write(EditorConfigFileTransaction transaction)
+        {
+            var created = transaction.CreatedNewFile;
+            var existingBytes = transaction.OriginalBytes;
+            // Parse the same byte snapshot captured for undo. A second disk read could see
+            // an external edit between reads, then attribute a mixed operation to Apply.
+            var lines = existingBytes is null ? new List<string>() : ReadConfigLines(existingBytes);
+
+            var snapshot = FileSnapshotCapture.FromBytesOrFallback(
+                editorconfigPath, existingBytes, fallbackText: null);
+            preApplySnapshot = snapshot;
+
+            const string csharpSection = "[*.{cs,csx,cake}]";
+            UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
+
+            // Render with the original encoding before writing so the watcher can compare
+            // its events with the exact bytes this operation committed. A new config uses
+            // the UTF-8-no-BOM default; existing BOMs remain intact.
+            using var buffer = new MemoryStream();
+            using (var writer = new StreamWriter(buffer, SourceFileEncoding.FromBytes(existingBytes),
+                bufferSize: 1024, leaveOpen: true))
             {
-                FileSnapshotCapture.FromBytesOrFallback(editorconfigPath, existingBytes, fallbackText: null),
-            };
-            _undoService.CaptureBeforeApply(
-                workspaceId,
-                $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
-                preApplySolution: null,
-                fileSnapshots: snapshot);
+                foreach (var line in lines)
+                {
+                    writer.WriteLine(line);
+                }
+            }
+            var writtenBytes = buffer.ToArray();
+            transaction.WriteBytes(writtenBytes);
+            return (new EditorConfigWriteResultDto(editorconfigPath, key, value, created), snapshot);
         }
 
-        const string csharpSection = "[*.{cs,csx,cake}]";
-        UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
-
-        var directory = Path.GetDirectoryName(editorconfigPath);
-        if (!string.IsNullOrEmpty(directory))
+        (EditorConfigWriteResultDto Result, FileSnapshotDto Snapshot) applied;
+        try
         {
-            Directory.CreateDirectory(directory);
+            applied = coordinator.RunOwnedWrite(workspaceId, editorconfigPath, Write);
         }
-
-        // mutation-write-paths-drop-original-encoding: the encoding-less File.WriteAllLines overload
-        // is UTF-8-no-BOM by definition, so it silently stripped/rewrote the BOM of an existing
-        // .editorconfig. existingBytes is already in scope for the undo snapshot — reuse it to
-        // detect the original encoding (null when we are creating the file, which correctly
-        // resolves to UTF-8-no-BOM).
-        File.WriteAllLines(editorconfigPath, lines, SourceFileEncoding.FromBytes(existingBytes));
-
-        // workspace-changes-log-missing-editorconfig-writers: route the editorconfig write
-        // through ChangeTracker so `workspace_changes` surfaces the originating tool name
-        // (`set_editorconfig_option` or `set_diagnostic_severity`) instead of omitting
-        // editorconfig applies entirely.
+        catch (EditorConfigUnrecoveredWriteException)
+        {
+            // The write failed, but its bytes remain at the path. Retain an undo target
+            // for that mutation instead of leaving the previous success as the target.
+            var failedSnapshot = preApplySnapshot
+                ?? throw new InvalidOperationException("An unrecovered .editorconfig write has no prewrite snapshot.");
+            var description = $"Failed .editorconfig write of '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}";
+            _undoService?.CaptureBeforeApply(workspaceId, description, preApplySolution: null,
+                fileSnapshots: [failedSnapshot]);
+            _changeTracker?.RecordChange(workspaceId, description, [editorconfigPath], toolName);
+            throw;
+        }
+        // Keep the previous undo target until the coordinator has verified that the
+        // bytes it wrote are still at the path. A failed write must not replace it.
+        _undoService?.CaptureBeforeApply(
+            workspaceId,
+            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
+            preApplySolution: null,
+            fileSnapshots: [applied.Snapshot]);
         _changeTracker?.RecordChange(
             workspaceId,
             $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
             [editorconfigPath],
             toolName);
+        return Task.FromResult(applied.Result);
+    }
 
-        return Task.FromResult(new EditorConfigWriteResultDto(editorconfigPath, key, value, created));
+    private static bool IsWithinWorkspace(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !Path.IsPathRooted(relative)
+            && relative != ".."
+            && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    }
+
+    private static List<string> ReadConfigLines(byte[] bytes)
+    {
+        using var reader = new StreamReader(
+            new MemoryStream(bytes), System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+        return lines;
     }
 
     /// <summary>

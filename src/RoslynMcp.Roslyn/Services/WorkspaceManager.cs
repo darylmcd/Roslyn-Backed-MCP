@@ -51,6 +51,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
+    internal IEditorConfigWriteCoordinator? EditorConfigWriteCoordinator => _fileWatcher as IEditorConfigWriteCoordinator;
     private readonly bool _ownsFileWatcher;
     private readonly WorkspaceManagerOptions _options;
     /// <summary>

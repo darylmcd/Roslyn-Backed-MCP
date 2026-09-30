@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -36,6 +37,9 @@ public sealed class CompositeApplyOrchestratorTests
         TestFixtureFileSystem.DeleteDirectoryIfExists(_tempDir);
     }
 
+    private void AssertNoTempArtifacts(string path) =>
+        Assert.IsEmpty(Directory.EnumerateFiles(_tempDir, "*.tmp"));
+
     [TestMethod]
     public async Task AtomicFileWriter_RoundTrips_Content_And_Leaves_No_Temp_Artifact()
     {
@@ -45,7 +49,7 @@ public sealed class CompositeApplyOrchestratorTests
         await AtomicFileWriter.WriteAllTextAsync(path, content, CancellationToken.None);
 
         Assert.AreEqual(content, await File.ReadAllTextAsync(path));
-        Assert.IsFalse(File.Exists(path + ".tmp"), "The .tmp sibling must not survive a successful write.");
+        AssertNoTempArtifacts(path);
     }
 
     [TestMethod]
@@ -57,28 +61,227 @@ public sealed class CompositeApplyOrchestratorTests
         await AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None);
 
         Assert.AreEqual("replacement", await File.ReadAllTextAsync(path));
-        Assert.IsFalse(File.Exists(path + ".tmp"));
+        AssertNoTempArtifacts(path);
     }
 
     [TestMethod]
-    public async Task AtomicFileWriter_Logs_Warning_When_Temp_Cleanup_Fails_After_Write_Failure()
+    public async Task AtomicFileWriter_OverlappingWritesKeepSeparateTempFiles()
     {
-        // Windows-only: an exclusive FileShare.None lock on the pre-created .tmp forces BOTH the
-        // initial write (File.WriteAllTextAsync to the locked .tmp) AND the subsequent cleanup
-        // delete to fail — so we exercise the swallowed-cleanup catch with a genuine failure, not a
-        // no-op. On non-Windows, a held handle does not block delete the same way, so we skip.
-        if (!OperatingSystem.IsWindows())
+        var path = Path.Combine(_tempDir, "target.cs");
+        var firstPrepared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = AtomicFileWriter.WriteAtomicAsync(path, async (_, stream) =>
         {
-            Assert.Inconclusive("Deterministic temp-lock only reproduces on Windows (FileShare.None semantics).");
-            return;
+            await stream.WriteAsync("first"u8.ToArray());
+            firstPrepared.SetResult();
+            await releaseFirst.Task;
+        }, CancellationToken.None, logger: null, exceptionReporter: null);
+
+        await firstPrepared.Task;
+        try
+        {
+            await AtomicFileWriter.WriteAtomicAsync(path,
+                (_, stream) => stream.WriteAsync("second"u8.ToArray()).AsTask(),
+                CancellationToken.None, logger: null, exceptionReporter: null);
+        }
+        finally
+        {
+            releaseFirst.SetResult();
         }
 
-        var path = Path.Combine(_tempDir, "target.cs");
-        var tmp = path + ".tmp";
+        await first;
+        Assert.AreEqual("first", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
 
-        // Pre-create and hold the .tmp with an exclusive lock so the write to it throws IOException
-        // and the cleanup delete also throws (still locked) — the path the fix must observe.
-        using var hold = new FileStream(tmp, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+    [TestMethod]
+    public async Task AtomicFileWriter_UsesShortSameDirectoryTempForLongTargetName()
+    {
+        var path = Path.Combine(_tempDir, new string('x', 120) + ".cs");
+        string? tempPath = null;
+        await AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
+        {
+            tempPath = tmp;
+            await stream.WriteAsync("content"u8.ToArray());
+        }, CancellationToken.None, logger: null, exceptionReporter: null);
+
+        Assert.IsNotNull(tempPath);
+        Assert.AreEqual(Path.GetDirectoryName(path), Path.GetDirectoryName(tempPath));
+        Assert.IsTrue(Path.GetFileName(tempPath).Length < 30);
+        Assert.AreEqual("content", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_CancelAfterTempWrite_DoesNotReplaceTarget()
+    {
+        var path = Path.Combine(_tempDir, "target.cs");
+        await File.WriteAllTextAsync(path, "original");
+        using var cancellation = new CancellationTokenSource();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            AtomicFileWriter.WriteAtomicAsync(path, async (_, stream) =>
+            {
+                await stream.WriteAsync("replacement"u8.ToArray());
+                cancellation.Cancel();
+            }, cancellation.Token, logger: null, exceptionReporter: null));
+
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_ReplacedTempNameNeverCommitsForeignBytes()
+    {
+        var path = Path.Combine(_tempDir, "target.cs");
+        await File.WriteAllTextAsync(path, "original");
+        string? tempPath = null;
+
+        await Assert.ThrowsExactlyAsync<IOException>(() =>
+            AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
+            {
+                tempPath = tmp;
+                await stream.WriteAsync("intended"u8.ToArray());
+                File.Move(tmp, tmp + ".held");
+                await File.WriteAllTextAsync(tmp, "foreign");
+            }, CancellationToken.None, logger: null, exceptionReporter: null));
+
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        Assert.IsNotNull(tempPath);
+        Assert.AreEqual("foreign", await File.ReadAllTextAsync(tempPath));
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_SymlinkSwapCannotRedirectWriteOrCommit()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var path = Path.Combine(_tempDir, "target.cs");
+        var foreignPath = Path.Combine(_tempDir, "foreign.cs");
+        await File.WriteAllTextAsync(path, "original");
+        await File.WriteAllTextAsync(foreignPath, "foreign");
+        string? tempPath = null;
+
+        await Assert.ThrowsExactlyAsync<IOException>(() =>
+            AtomicFileWriter.WriteAtomicAsync(path, async (tmp, stream) =>
+            {
+                tempPath = tmp;
+                File.Move(tmp, tmp + ".held");
+                File.CreateSymbolicLink(tmp, foreignPath);
+                await stream.WriteAsync("intended"u8.ToArray());
+            }, CancellationToken.None, logger: null, exceptionReporter: null));
+
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        Assert.AreEqual("foreign", await File.ReadAllTextAsync(foreignPath));
+        Assert.IsNotNull(tempPath);
+        Assert.IsTrue(new FileInfo(tempPath).LinkTarget is not null,
+            "Foreign symlink must remain untouched by ownership-aware cleanup.");
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_DanglingSymlinkSwapIsReportedAndPreserved()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var path = Path.Combine(_tempDir, "target.cs");
+        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
+        string? tempPath = null;
+
+        await Assert.ThrowsExactlyAsync<IOException>(() =>
+            AtomicFileWriter.WriteAtomicAsync(path, (tmp, _) =>
+            {
+                tempPath = tmp;
+                File.Move(tmp, tmp + ".held");
+                File.CreateSymbolicLink(tmp, Path.Combine(_tempDir, "missing"));
+                throw new IOException("Injected failure.");
+            }, CancellationToken.None, logger, exceptionReporter: null));
+
+        Assert.IsNotNull(tempPath);
+        Assert.IsFalse(File.Exists(Path.Combine(_tempDir, "missing")));
+        Assert.IsNotNull(new FileInfo(tempPath).LinkTarget);
+        Assert.HasCount(1, logger.Entries.Where(e => e.Level == LogLevel.Warning));
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_SymlinkedParentCanBeWritten()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var physical = Path.Combine(_tempDir, "physical");
+        Directory.CreateDirectory(physical);
+        var alias = Path.Combine(_tempDir, "alias");
+        Directory.CreateSymbolicLink(alias, physical);
+        var path = Path.Combine(alias, "target.cs");
+
+        await AtomicFileWriter.WriteAllTextAsync(path, "content", CancellationToken.None);
+
+        Assert.AreEqual("content", await File.ReadAllTextAsync(Path.Combine(physical, "target.cs")));
+    }
+
+    [TestMethod]
+    public void AtomicFileWriter_NormalizesWindowsUncHandlePath()
+    {
+        Assert.AreEqual(@"\\server\share\file.tmp",
+            AtomicFileWriter.NormalizeWindowsHandlePath(@"\\?\UNC\server\share\file.tmp"));
+        Assert.AreEqual(@"C:\folder\file.tmp",
+            AtomicFileWriter.NormalizeWindowsHandlePath(@"\\?\C:\folder\file.tmp"));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task AtomicFileWriter_ReplaceWaitsForWindowsReader(bool shareDelete)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var path = Path.Combine(_tempDir, "target.editorconfig");
+        await File.WriteAllTextAsync(path, "original");
+        Task replace;
+        using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read,
+            shareDelete ? FileShare.ReadWrite | FileShare.Delete : FileShare.ReadWrite))
+        {
+            replace = AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None);
+            var first = await Task.WhenAny(replace, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            Assert.AreNotSame(replace, first);
+        }
+
+        await replace;
+        Assert.AreEqual("replacement", await File.ReadAllTextAsync(path));
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_PersistentReaderFailsWithinBound_AndCleansTemp()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var path = Path.Combine(_tempDir, "target.editorconfig");
+        await File.WriteAllTextAsync(path, "original");
+        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var started = Stopwatch.StartNew();
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+            AtomicFileWriter.WriteAllTextAsync(path, "replacement", CancellationToken.None));
+        Assert.IsTrue(started.Elapsed < TimeSpan.FromSeconds(5), "A persistent lock must fail within the retry bound.");
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_CancellationStopsSharingWait_AndCleansTemp()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var path = Path.Combine(_tempDir, "target.editorconfig");
+        await File.WriteAllTextAsync(path, "original");
+        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            AtomicFileWriter.WriteAllTextAsync(path, "replacement", cancellation.Token));
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        AssertNoTempArtifacts(path);
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_LogsWarningAndPreservesForeignTempAfterWriteFailure()
+    {
+        var path = Path.Combine(_tempDir, "target.cs");
+        string? tmp = null;
 
         var logger = new RecordingLogger<CompositeApplyOrchestrator>();
         var sink = new CapturingServerObservabilitySink();
@@ -89,12 +292,14 @@ public sealed class CompositeApplyOrchestratorTests
 
         // (a) The original write failure must still propagate — primary failure is not masked.
         await Assert.ThrowsExactlyAsync<IOException>(
-            () => AtomicFileWriter.WriteAllTextAsync(
-                path,
-                "// content",
-                CancellationToken.None,
-                logger,
-                exceptionReporter: reporter));
+            () => AtomicFileWriter.WriteAtomicAsync(path, async (candidate, stream) =>
+            {
+                tmp = candidate;
+                await stream.WriteAsync("// content"u8.ToArray());
+                File.Move(candidate, candidate + ".held");
+                await File.WriteAllTextAsync(candidate, "foreign");
+                throw new IOException("Injected write failure after temp replacement.");
+            }, CancellationToken.None, logger, reporter));
 
         // (b) Exactly one Warning is recorded, and it is redacted: no raw exception attached, no
         // absolute temp/target paths, no caught-exception message text — only the stable cleanup
@@ -104,6 +309,7 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.AreEqual(1, warnings.Count, "Exactly one Warning should be logged for the failed temp cleanup.");
         Assert.IsNull(warnings[0].Exception, "The caught cleanup exception must not be attached to the log record.");
         Assert.IsFalse(warnings[0].Message.Contains(_tempDir, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute directory path.");
+        Assert.IsNotNull(tmp);
         Assert.IsFalse(warnings[0].Message.Contains(tmp, StringComparison.OrdinalIgnoreCase), "The warning must not contain the absolute .tmp path.");
         StringAssert.Contains(warnings[0].Message, "CompositeApplyTempCleanup", "The warning must carry the stable cleanup category token.");
         StringAssert.Contains(warnings[0].Message, Path.GetFileName(path), "The warning must name the target file (file name only).");
@@ -112,8 +318,39 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.HasCount(1, sink.Events);
         Assert.AreEqual(correlationId, sink.Events.Single().Exception.CorrelationId);
 
-        // (c) The .tmp still exists — cleanup genuinely failed (it is still locked open), not a no-op.
-        Assert.IsTrue(File.Exists(tmp), "The locked .tmp must remain on disk because its cleanup delete failed.");
+        // The name now belongs to another writer; cleanup must not delete it.
+        Assert.AreEqual("foreign", await File.ReadAllTextAsync(tmp));
+    }
+
+    [TestMethod]
+    public async Task AtomicFileWriter_LogsWarningWhenOwnedTempDeletionFails()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_tempDir, "target.cs");
+        string? tmp = null;
+        var logger = new RecordingLogger<CompositeApplyOrchestrator>();
+        try
+        {
+            await Assert.ThrowsExactlyAsync<IOException>(() =>
+                AtomicFileWriter.WriteAtomicAsync(path, (candidate, _) =>
+                {
+                    tmp = candidate;
+                    File.SetAttributes(candidate, FileAttributes.ReadOnly);
+                    throw new IOException("Injected write failure.");
+                }, CancellationToken.None, logger, exceptionReporter: null));
+
+            Assert.IsNotNull(tmp);
+            Assert.IsTrue(File.Exists(tmp), "Read-only owned temp must survive failed cleanup.");
+            Assert.HasCount(1, logger.Entries.Where(e => e.Level == LogLevel.Warning));
+        }
+        finally
+        {
+            if (tmp is not null && File.Exists(tmp))
+            {
+                File.SetAttributes(tmp, FileAttributes.Normal);
+                File.Delete(tmp);
+            }
+        }
     }
 
     [TestMethod]
@@ -253,7 +490,7 @@ public sealed class CompositeApplyOrchestratorTests
         Assert.IsFalse(result.Error.Contains(sentinel, StringComparison.Ordinal));
         Assert.IsFalse(result.Error.Contains(_tempDir, StringComparison.OrdinalIgnoreCase));
         Assert.AreEqual("// good content", await File.ReadAllTextAsync(goodPath), "The successful write must remain on disk.");
-        Assert.IsFalse(File.Exists(goodPath + ".tmp"), "No .tmp artifact should remain from the successful write.");
+        AssertNoTempArtifacts(goodPath);
         Assert.IsFalse(File.Exists(doomedPath), "The failing mutation must not have produced a file.");
 
         // A warning was logged for the partial failure.

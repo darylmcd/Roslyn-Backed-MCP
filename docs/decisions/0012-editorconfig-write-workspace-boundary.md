@@ -1,0 +1,57 @@
+# ADR 0012: Bound editorconfig writes to the loaded workspace
+
+Status: Proposed, 2026-09-29; pending the operator's release decision.
+
+## Context
+
+`set_editorconfig_option` is a stable write tool. Its applicable `.editorconfig` may
+be an ancestor of the loaded solution. Previously, the tool could edit that file
+even when its physical path was outside the loaded workspace, affecting other
+projects and bypassing the workspace boundary used for write attribution.
+
+## Decision
+
+Require the selected `.editorconfig` to resolve within the loaded workspace's
+physical root before writing. The tool refuses an outside target without a
+partial write. Ancestor configuration remains readable and watchable, so
+diagnostics still reflect settings supplied from outside the workspace.
+
+Successful in-workspace writes use the workspace's coordinated write path to
+invalidate relevant snapshots and distinguish the server's own write from an
+external edit. No compatibility switch permits an outside write.
+On POSIX, that path holds an advisory file lock for cooperating writers,
+rechecks bytes immediately before writing, and rejects a pathname replacement
+detected after writing. An uncooperative writer can still change the same inode
+between the last byte check and the write. A follow-up row,
+`editorconfig-posix-uncooperative-write-race`, is staged for final backlog
+reconciliation.
+
+Direct `EditorConfigService` construction with an alternate `IWorkspaceManager`
+cannot provide that coordination through the existing public constructor.
+`SetOptionAsync` refuses such a call rather than writing without invalidation.
+
+## Compatibility and migration
+
+This changes the behavior of a stable tool for clients that previously edited
+an ancestor `.editorconfig`; it requires a major release if accepted. A refused call
+must be handled as a boundary error. To edit the ancestor file, use an
+operator-authorized editor outside this tool. To keep edits inside the loaded
+workspace, create or select an applicable `.editorconfig` under its physical
+root and call `set_editorconfig_option` again. Keep any intended ancestor
+inheritance in mind when placing the in-workspace file.
+
+Consumers that construct `EditorConfigService` directly with a custom
+`IWorkspaceManager` must use the repository's registered `WorkspaceManager` and
+`FileWatcherService` composition for writes. The existing public constructor
+remains callable for reads, but `SetOptionAsync` requires that coordinated
+workspace implementation. Custom workspace managers have no public write
+coordination contract in this release.
+
+## Consequences
+
+- A workspace-scoped request cannot mutate configuration shared by sibling
+  projects outside that workspace.
+- Consumers relying on ancestor writes need an explicit migration path.
+- Reads and file watching continue to include applicable ancestor settings.
+- Direct service integrations using another workspace-manager implementation
+  must migrate their write path to the registered coordinated composition.

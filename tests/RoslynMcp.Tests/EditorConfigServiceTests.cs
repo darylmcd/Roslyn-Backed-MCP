@@ -1,5 +1,7 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -20,6 +22,288 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    [TestMethod]
+    public async Task SetOptionAsync_RejectsUnloadedSourceBeforeCreatingConfig()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var unrelated = Path.Combine(workspace.RootPath, "Unloaded", "Missing.cs");
+        var config = Path.Combine(workspace.RootPath, ".editorconfig");
+        var before = File.Exists(config) ? await File.ReadAllBytesAsync(config) : null;
+
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(() =>
+            EditorConfigService.SetOptionAsync(workspace.WorkspaceId, unrelated,
+                "indent_size", "8", "set_editorconfig_option", CancellationToken.None));
+
+        var after = File.Exists(config) ? await File.ReadAllBytesAsync(config) : null;
+        if (before is null)
+        {
+            Assert.IsNull(after, "A rejected source must not create .editorconfig.");
+        }
+        else
+        {
+            CollectionAssert.AreEqual(before, after!, "A rejected source must not modify .editorconfig.");
+        }
+        Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_RejectsSourceOutsideLoadedWorkspaceBeforeFileIo()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var outside = Path.Combine(Path.GetDirectoryName(workspace.RootPath)!,
+            $"unloaded-{Guid.NewGuid():N}");
+        var source = Path.Combine(outside, "Outside.cs");
+
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(() =>
+            EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+                "indent_size", "8", "set_editorconfig_option", CancellationToken.None));
+
+        Assert.IsFalse(Directory.Exists(outside), "A refused path must not create an outside directory.");
+        Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_RefusesApplicableAncestorConfigOutsideWorkspace()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"roslyn-config-ancestor-{Guid.NewGuid():N}");
+        var projectRoot = Path.Combine(root, "project");
+        Directory.CreateDirectory(projectRoot);
+        var projectPath = Path.Combine(projectRoot, "Probe.csproj");
+        var source = Path.Combine(projectRoot, "Probe.cs");
+        var ancestorConfig = Path.Combine(root, ".editorconfig");
+        await File.WriteAllTextAsync(projectPath,
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        await File.WriteAllTextAsync(source, "namespace Probe; public class ProbeType { }\n");
+        await File.WriteAllTextAsync(ancestorConfig, "[*.cs]\nindent_size = 4\n");
+        var original = await File.ReadAllBytesAsync(ancestorConfig);
+        string? workspaceId = null;
+        try
+        {
+            workspaceId = (await WorkspaceManager.LoadAsync(projectPath, CancellationToken.None)).WorkspaceId;
+            await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+                EditorConfigService.SetOptionAsync(workspaceId, source, "indent_size", "8",
+                    "set_editorconfig_option", CancellationToken.None));
+            CollectionAssert.AreEqual(original, await File.ReadAllBytesAsync(ancestorConfig));
+            Assert.IsFalse(WorkspaceManager.GetStatus(workspaceId).IsStale);
+        }
+        finally
+        {
+            if (workspaceId is not null) WorkspaceManager.Close(workspaceId);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_RefusesLoadedLinkedDocumentOutsidePhysicalWorkspace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var outside = Path.Combine(Path.GetDirectoryName(workspace.RootPath)!,
+            $"linked-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outside);
+        var linkedSource = Path.Combine(outside, "Linked.cs");
+        await File.WriteAllTextAsync(linkedSource, "namespace SampleLib; public class LinkedType { }\n");
+        var projectPath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        var relative = Path.GetRelativePath(Path.GetDirectoryName(projectPath)!, linkedSource);
+        var projectXml = await File.ReadAllTextAsync(projectPath);
+        projectXml = projectXml.Replace("</Project>",
+            $"<ItemGroup><Compile Include=\"{relative}\" Link=\"Linked.cs\" /></ItemGroup></Project>",
+            StringComparison.Ordinal);
+        await File.WriteAllTextAsync(projectPath, projectXml);
+
+        try
+        {
+            var workspaceId = await workspace.LoadAsync();
+            Assert.IsTrue(WorkspaceManager.GetCurrentSolution(workspaceId).Projects
+                .SelectMany(project => project.Documents)
+                .Any(document => string.Equals(document.FilePath, linkedSource,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)));
+            await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+                EditorConfigService.SetOptionAsync(workspaceId, linkedSource, "indent_size", "8",
+                    "set_editorconfig_option", CancellationToken.None));
+            Assert.IsFalse(File.Exists(Path.Combine(outside, ".editorconfig")));
+        }
+        finally
+        {
+            if (Directory.Exists(outside)) Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_AlternateWorkspaceManagerWithoutCoordinator_RefusesWrite()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var proxy = System.Reflection.DispatchProxy.Create<
+            RoslynMcp.Roslyn.Contracts.IWorkspaceManager, ForwardingWorkspaceManagerProxy>();
+        ((ForwardingWorkspaceManagerProxy)(object)proxy).Target = WorkspaceManager;
+        var service = new EditorConfigService(proxy);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.SetOptionAsync(workspace.WorkspaceId, source, "indent_size", "8",
+                "set_editorconfig_option", CancellationToken.None));
+        StringAssert.Contains(exception.Message, "coordinated file watcher");
+        Assert.IsFalse(WorkspaceManager.GetStatus(workspace.WorkspaceId).IsStale);
+    }
+
+    public class ForwardingWorkspaceManagerProxy : System.Reflection.DispatchProxy
+    {
+        public RoslynMcp.Roslyn.Contracts.IWorkspaceManager Target { get; set; } = null!;
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod!.Invoke(Target, args);
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_MarksOwnedConfigWriteAsApply()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+
+        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "dotnet_diagnostic.CA1861.severity", "none", "set_editorconfig_option", CancellationToken.None);
+
+        var status = WorkspaceManager.GetStatus(workspace.WorkspaceId);
+        Assert.IsTrue(status.IsStale);
+        Assert.AreEqual(RoslynMcp.Core.Services.StaleReasons.Apply, status.StaleReason);
+        // Let the queued FileSystemWatcher event run; it must not relabel these same bytes.
+        await Task.Delay(300);
+        Assert.AreEqual(RoslynMcp.Core.Services.StaleReasons.Apply,
+            WorkspaceManager.GetStatus(workspace.WorkspaceId).StaleReason);
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_FailedPostWriteCheck_PreservesPriorUndoAndChangeHistory()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var configPath = workspace.GetPath("SampleLib", ".editorconfig");
+        var original = "[*.cs]\nindent_size = 4\n";
+        await File.WriteAllTextAsync(configPath, original);
+
+        await EditorConfigService.SetOptionAsync(workspace.WorkspaceId, source,
+            "indent_size", "8", "set_editorconfig_option", CancellationToken.None);
+        var firstUndo = UndoService.GetLastOperation(workspace.WorkspaceId);
+        Assert.IsNotNull(firstUndo);
+        var firstBytes = await File.ReadAllBytesAsync(configPath);
+        var firstChanges = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+
+        var failingService = new EditorConfigService(WorkspaceManager, UndoService, ChangeTracker,
+            logger: null, new RejectAfterWriteCoordinator());
+        await Assert.ThrowsExactlyAsync<EditorConfigConcurrentEditException>(() =>
+            failingService.SetOptionAsync(workspace.WorkspaceId, source, "indent_size", "2",
+                "set_editorconfig_option", CancellationToken.None));
+
+        CollectionAssert.AreEqual(firstBytes, await File.ReadAllBytesAsync(configPath));
+        Assert.AreEqual(firstUndo, UndoService.GetLastOperation(workspace.WorkspaceId));
+        Assert.AreEqual(firstChanges, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId));
+        Assert.AreEqual(original, await File.ReadAllTextAsync(configPath));
+    }
+
+    private sealed class RejectAfterWriteCoordinator : IEditorConfigWriteCoordinator
+    {
+        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        {
+            var originalBytes = File.ReadAllBytes(path);
+            using (var transaction = new EditorConfigFileTransaction(path, originalBytes))
+            {
+                _ = write(transaction);
+            }
+            File.WriteAllBytes(path, originalBytes);
+            throw new EditorConfigConcurrentEditException();
+        }
+    }
+
+    [TestMethod]
+    public async Task SetOptionAsync_UnrecoveredFailedWrite_CapturesUndoAndChange()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        var configPath = workspace.GetPath("SampleLib", ".editorconfig");
+        var original = "[*.cs]\nindent_size = 4\n";
+        await File.WriteAllTextAsync(configPath, original);
+        var priorChanges = ChangeTracker.GetChanges(workspace.WorkspaceId).Count;
+
+        var failingService = new EditorConfigService(WorkspaceManager, UndoService, ChangeTracker,
+            logger: null, new UnrecoveredAfterWriteCoordinator());
+        await Assert.ThrowsExactlyAsync<EditorConfigUnrecoveredWriteException>(() =>
+            failingService.SetOptionAsync(workspace.WorkspaceId, source, "indent_size", "8",
+                "set_editorconfig_option", CancellationToken.None));
+
+        Assert.AreNotEqual(original, await File.ReadAllTextAsync(configPath));
+        StringAssert.Contains(UndoService.GetLastOperation(workspace.WorkspaceId)?.Description,
+            "Failed .editorconfig write");
+        Assert.AreEqual(priorChanges + 1, ChangeTracker.GetChanges(workspace.WorkspaceId).Count);
+        Assert.IsTrue(await UndoService.RevertAsync(workspace.WorkspaceId));
+        Assert.AreEqual(original, await File.ReadAllTextAsync(configPath));
+    }
+
+    private sealed class UnrecoveredAfterWriteCoordinator : IEditorConfigWriteCoordinator
+    {
+        public T RunOwnedWrite<T>(string workspaceId, string path, Func<EditorConfigFileTransaction, T> write)
+        {
+            var originalBytes = File.ReadAllBytes(path);
+            using var transaction = new EditorConfigFileTransaction(path, originalBytes);
+            _ = write(transaction);
+            throw new EditorConfigUnrecoveredWriteException(new IOException("simulated failed restoration"));
+        }
+    }
+
+    [TestMethod]
+    public async Task ParseEditorconfigCsKeys_ClosesReadHandleBeforeYielding()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var configPath = Path.Combine(Path.GetTempPath(), $"roslyn-config-read-{Guid.NewGuid():N}.editorconfig");
+        await File.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 4\n");
+        try
+        {
+            using var entries = EditorConfigService.ParseEditorconfigCsKeys(configPath).GetEnumerator();
+            Assert.IsTrue(entries.MoveNext());
+            Assert.AreEqual("4", entries.Current.Value);
+            await AtomicFileWriter.WriteAllTextAsync(configPath, "[*.cs]\nindent_size = 8\n", CancellationToken.None);
+            Assert.AreEqual("[*.cs]\nindent_size = 8\n", await File.ReadAllTextAsync(configPath));
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task SetDiagnosticSeverity_RefreshesGatedDiagnosticsWithoutManualReload()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var source = workspace.GetPath("SampleLib", "Dog.cs");
+        await File.AppendAllTextAsync(source,
+            "\nnamespace SampleLib { public static class ConfigProbe { " +
+            "public static string Join() => string.Join(\",\", new[] { \"a\", \"b\" }); } }\n");
+        var workspaceId = await workspace.LoadAsync();
+
+        async Task<int> CountAsync()
+        {
+            var json = await AnalysisTools.GetProjectDiagnostics(WorkspaceExecutionGate,
+                DiagnosticService, workspaceId, projectName: "SampleLib", file: source,
+                diagnosticId: "CA1861", summary: true, ct: CancellationToken.None);
+            using var parsed = JsonDocument.Parse(json);
+            return parsed.RootElement.GetProperty("filteredDiagnostics").GetInt32();
+        }
+
+        Assert.IsTrue(await CountAsync() > 0, "CA1861 must be present before the severity change.");
+        var versionBefore = WorkspaceManager.GetStatus(workspaceId).WorkspaceVersion;
+        var suppression = new SuppressionService(EditorConfigService, EditService);
+        var write = await suppression.SetDiagnosticSeverityAsync(workspaceId, "CA1861", "none",
+            source, CancellationToken.None);
+        Assert.AreEqual(RoslynMcp.Core.Services.StaleReasons.Apply,
+            WorkspaceManager.GetStatus(workspaceId).StaleReason);
+
+        var afterCount = await CountAsync();
+        Assert.AreEqual(0, afterCount,
+            $"Gated diagnostics must reload the new severity. version={WorkspaceManager.GetStatus(workspaceId).WorkspaceVersion}, " +
+            $"config={await File.ReadAllTextAsync(write.EditorConfigPath)}");
+        Assert.IsTrue(WorkspaceManager.GetStatus(workspaceId).WorkspaceVersion > versionBefore);
+    }
 
     [TestMethod]
     public async Task SetThenGet_UnloadedAnalyzerId_IsReturned()

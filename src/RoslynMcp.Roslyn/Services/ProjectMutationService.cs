@@ -571,6 +571,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 projectFilePath,
                 updatedContent,
                 ct,
+                logger: _logger,
                 encoding: SourceFileEncoding.FromBytes(preApplyBytes)).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);

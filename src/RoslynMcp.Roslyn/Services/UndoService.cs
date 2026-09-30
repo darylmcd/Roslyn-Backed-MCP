@@ -380,14 +380,16 @@ public sealed class UndoService : IUndoService, IDisposable
                         await AtomicFileWriter.WriteAllBytesAsync(
                             file.FilePath,
                             file.OriginalBytes.ToArray(),
-                            cancellationToken).ConfigureAwait(false);
+                            cancellationToken,
+                            logger: _logger).ConfigureAwait(false);
                     }
                     else
                     {
                         await AtomicFileWriter.WriteAllTextAsync(
                             file.FilePath,
                             file.OriginalText,
-                            cancellationToken).ConfigureAwait(false);
+                            cancellationToken,
+                            logger: _logger).ConfigureAwait(false);
                     }
                     restoredAny = true;
                 }
@@ -600,6 +602,7 @@ public sealed class UndoService : IUndoService, IDisposable
                     filePath,
                     text,
                     cancellationToken,
+                    logger: _logger,
                     encoding: SourceFileEncoding.FromSourceText(encoding)).ConfigureAwait(false);
                 anyDiskWrite = true;
             }
