@@ -13,7 +13,7 @@
     {
       "id": "compile-check-restore-next-call",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "compile-check-restore-next-call"
       ],
@@ -43,19 +43,30 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/compile-check-restore-next-call",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1691",
+      "mergedAt": "2026-10-01T02:06:54Z",
       "notes": null,
       "fileSetHash": "1b39e662261760b70a271fc5891b3d00016673c85b2edb7aff455cf2827bb4d3",
       "stanzaHash": "fb4ada46dd743a45185188b79d673943e470d4a3aefb85b1cce1062453623b75",
-      "reviewedStanzaHash": "fb4ada46dd743a45185188b79d673943e470d4a3aefb85b1cce1062453623b75"
+      "reviewedStanzaHash": "fb4ada46dd743a45185188b79d673943e470d4a3aefb85b1cce1062453623b75",
+      "integrationGate": {
+        "pr": 1691,
+        "base": "main",
+        "mainOid": "29e7f77a1595f292815dbdb6ca470f62f81d62c4",
+        "headOid": "516e8235c0c3d60e25fdf2c88ddf666f5c36a66c",
+        "gatedTree": "5383cba009ff9295ccf5c2b7c971e49696872c7a",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-compile-check-restore-next-call-pr1691-20261001T015035054Z-22816.log",
+        "gatedAt": "2026-10-01T02:01:11.891Z"
+      }
     },
     {
       "id": "workspace-restore-safe-execution",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-restore-safe-execution"
       ],
@@ -87,14 +98,25 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/workspace-restore-safe-execution",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1692",
+      "mergedAt": "2026-10-01T01:11:15Z",
       "notes": null,
       "fileSetHash": "2d119091acb87d9053926f990f06a20320b49ec90d9f1f6dddc290e56d157204",
       "stanzaHash": "a58c0eef5a28f778f7a5976f31e9803ae34784e45233ac512b0a0d700d196be5",
-      "reviewedStanzaHash": "a58c0eef5a28f778f7a5976f31e9803ae34784e45233ac512b0a0d700d196be5"
+      "reviewedStanzaHash": "a58c0eef5a28f778f7a5976f31e9803ae34784e45233ac512b0a0d700d196be5",
+      "integrationGate": {
+        "pr": 1692,
+        "base": "main",
+        "mainOid": "80d40edac710d40f11729dcc840d92172a6e1cca",
+        "headOid": "fffc09409b1fcad74d40b6b3125bec676f3aec3a",
+        "gatedTree": "b93826dc258880f5f41ccf2ea83531290b073477",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-workspace-restore-safe-execution-pr1692-20261001T010028136Z-55436.log",
+        "gatedAt": "2026-10-01T01:11:10.478Z"
+      }
     },
     {
       "id": "workspace-restore-packages-path",
@@ -181,7 +203,7 @@
     {
       "id": "security-md-supported-versions-and-roots-stale",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "security-md-supported-versions-and-roots-stale"
       ],
@@ -205,19 +227,30 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/security-md-supported-versions-and-roots-stale",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1693",
+      "mergedAt": "2026-09-30T22:43:29Z",
       "notes": null,
       "fileSetHash": "f6ed156e4bf5c791680662464b94ea5d753f219ee816b385f67870e2c0d7d4c7",
       "stanzaHash": "9d97bd0dec0e658ad80c5f9f232a630c082df241a3c939acf155698312c3c284",
-      "reviewedStanzaHash": "9d97bd0dec0e658ad80c5f9f232a630c082df241a3c939acf155698312c3c284"
+      "reviewedStanzaHash": "9d97bd0dec0e658ad80c5f9f232a630c082df241a3c939acf155698312c3c284",
+      "integrationGate": {
+        "pr": 1693,
+        "base": "main",
+        "mainOid": "373a0bfc29a27b07a9af5f3eba093709242ff98d",
+        "headOid": "11602ac6ca1aa976557f4f8f498a12f6d6e3ad90",
+        "gatedTree": "5fecc195e3213347666a11c40b529edebd158b62",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-security-md-supported-versions-and-roots-stale-pr1693-20260930T223256583Z-18476.log",
+        "gatedAt": "2026-09-30T22:43:24.170Z"
+      }
     },
     {
       "id": "migrate-package-removes-shared-central-version",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "migrate-package-removes-shared-central-version"
       ],
@@ -248,19 +281,30 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/migrate-package-removes-shared-central-version",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1694",
+      "mergedAt": "2026-10-01T00:49:33Z",
       "notes": null,
       "fileSetHash": "9cb9fcf9596043e12b43c4e1e52b581f4e460368b41a0f8e19c01b457e8559d8",
       "stanzaHash": "2af5a3a6d0086212553fb61786f280f7916e816792bb212b6682f2ca7c2f2d2b",
-      "reviewedStanzaHash": "2af5a3a6d0086212553fb61786f280f7916e816792bb212b6682f2ca7c2f2d2b"
+      "reviewedStanzaHash": "2af5a3a6d0086212553fb61786f280f7916e816792bb212b6682f2ca7c2f2d2b",
+      "integrationGate": {
+        "pr": 1694,
+        "base": "main",
+        "mainOid": "f2240edf5d99c31cc79ab2b51a905c45acd58b9e",
+        "headOid": "595e5a076db6f9fdb99290bcc77d07f8d37c6cd9",
+        "gatedTree": "a0d706fe059339273643f5b0474578da5f2fa788",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-migrate-package-removes-shared-central-version-pr1694-20261001T003850024Z-44080.log",
+        "gatedAt": "2026-10-01T00:49:28.113Z"
+      }
     },
     {
       "id": "build-output-parser-drops-locationless-errors",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "build-output-parser-drops-locationless-errors"
       ],
@@ -286,19 +330,30 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/build-output-parser-drops-locationless-errors",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1695",
+      "mergedAt": "2026-09-30T22:54:21Z",
       "notes": null,
       "fileSetHash": "3f2feda33fd733862a22d6c3b9223e20211ec42b81e8938cc0a678f7e26e2c46",
       "stanzaHash": "5bc202bd7dcf640466d2eb3f5cae6f73983d86f9e638ec30fbbb62345f5ceb8d",
-      "reviewedStanzaHash": "5bc202bd7dcf640466d2eb3f5cae6f73983d86f9e638ec30fbbb62345f5ceb8d"
+      "reviewedStanzaHash": "5bc202bd7dcf640466d2eb3f5cae6f73983d86f9e638ec30fbbb62345f5ceb8d",
+      "integrationGate": {
+        "pr": 1695,
+        "base": "main",
+        "mainOid": "9a68d774fb8d929b73fb38f084e1b029d0d16e1c",
+        "headOid": "194cbe12e27164099e647996e88691a44b630755",
+        "gatedTree": "abeb62c60d464c35c23ff36e6bb6157a43e384c0",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-build-output-parser-drops-locationless-errors-pr1695-20260930T224333380Z-16808.log",
+        "gatedAt": "2026-09-30T22:54:15.856Z"
+      }
     },
     {
       "id": "netanalyzers-package-duplicates-sdk-analyzers",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "netanalyzers-package-duplicates-sdk-analyzers"
       ],
@@ -327,19 +382,30 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/netanalyzers-package-duplicates-sdk-analyzers",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1696",
+      "mergedAt": "2026-10-01T02:17:31Z",
       "notes": null,
       "fileSetHash": "eb72c30daae223b5a969e2a7e45ee1169db1c4b80a48797074f4d8ff7dba3d16",
       "stanzaHash": "edbdc4904fbfba451805e0809eb871797e3a78f84bfb468d75e552631d73f537",
-      "reviewedStanzaHash": "edbdc4904fbfba451805e0809eb871797e3a78f84bfb468d75e552631d73f537"
+      "reviewedStanzaHash": "edbdc4904fbfba451805e0809eb871797e3a78f84bfb468d75e552631d73f537",
+      "integrationGate": {
+        "pr": 1696,
+        "base": "main",
+        "mainOid": "60c594f22d67e1d95994b6874a895ca852982e0a",
+        "headOid": "d33c22f8180b92aecd12d64cf133546b3dbff26b",
+        "gatedTree": "06285cc26950cff89095b341131832e583b7238b",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-netanalyzers-package-duplicates-sdk-analyzers-pr1696-20261001T020658418Z-27016.log",
+        "gatedAt": "2026-10-01T02:17:25.676Z"
+      }
     },
     {
       "id": "surface-test-skill-prompt-drift",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "surface-test-skill-prompt-drift"
       ],
@@ -372,19 +438,30 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/surface-test-skill-prompt-drift",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1697",
+      "mergedAt": "2026-10-01T01:00:24Z",
       "notes": null,
       "fileSetHash": "698687337883f01d80eac7f15cb949378c9929e6289c2107745117b60d6a020d",
       "stanzaHash": "f04666c89b518da813d23cdcc0bc66c796b460511a27b450dd150c998868d063",
-      "reviewedStanzaHash": "f04666c89b518da813d23cdcc0bc66c796b460511a27b450dd150c998868d063"
+      "reviewedStanzaHash": "f04666c89b518da813d23cdcc0bc66c796b460511a27b450dd150c998868d063",
+      "integrationGate": {
+        "pr": 1697,
+        "base": "main",
+        "mainOid": "54813ddf8cbdf786a233a0b97fe6bc9de10c4cce",
+        "headOid": "f4aad0425ac7304f54b8323cc9302bbc234e25b9",
+        "gatedTree": "db02a68d94051c5e45d5523b8c98e4dbfbb4b4c4",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-surface-test-skill-prompt-drift-pr1697-20261001T004937543Z-21752.log",
+        "gatedAt": "2026-10-01T01:00:17.871Z"
+      }
     },
     {
       "id": "change-signature-callsite-rewrites-enclosing-invocation",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "change-signature-callsite-rewrites-enclosing-invocation"
       ],
@@ -410,19 +487,30 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/change-signature-callsite-rewrites-enclosing-invocation",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1698",
+      "mergedAt": "2026-09-30T23:31:04Z",
       "notes": null,
       "fileSetHash": "ad5a8039e70648d7aca3b9ae080fc96a140719b5bd41489a4b59e6707c7bd1df",
       "stanzaHash": "f333b8a925649070bf58f5268d49a9c84b76a5c6915fa478c0f6b7ecc675418f",
-      "reviewedStanzaHash": "f333b8a925649070bf58f5268d49a9c84b76a5c6915fa478c0f6b7ecc675418f"
+      "reviewedStanzaHash": "f333b8a925649070bf58f5268d49a9c84b76a5c6915fa478c0f6b7ecc675418f",
+      "integrationGate": {
+        "pr": 1698,
+        "base": "main",
+        "mainOid": "4e5a7e14f95dd59d9c4512e67964f4dea3c937e9",
+        "headOid": "ebfbcc649628cc9ff95bfc5421e34b3e25646d77",
+        "gatedTree": "f9dab9887e5d5b832c7b273b2141d926d042b419",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-change-signature-callsite-rewrites-enclosing-invocation-pr1698-20260930T231947234Z-6732.log",
+        "gatedAt": "2026-09-30T23:30:58.616Z"
+      }
     },
     {
       "id": "split-service-with-di-refuse-colliding-inputs-outputs",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "split-service-with-di-refuse-colliding-inputs-outputs"
       ],
@@ -448,14 +536,25 @@
         "ruleOneBundleResolved": "n/a"
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/split-service-with-di-refuse-colliding-inputs-outputs",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1699",
+      "mergedAt": "2026-09-30T23:42:07Z",
       "notes": null,
       "fileSetHash": "78f2d493e33b6f56c7e2deb5f75f278b4109eafad3eb386f552c32b23fb3d6c3",
       "stanzaHash": "a4932b27e869ecafaa43a8419f09f7b9d342d85aaf01fca5c8e843ac255391f1",
-      "reviewedStanzaHash": "a4932b27e869ecafaa43a8419f09f7b9d342d85aaf01fca5c8e843ac255391f1"
+      "reviewedStanzaHash": "a4932b27e869ecafaa43a8419f09f7b9d342d85aaf01fca5c8e843ac255391f1",
+      "integrationGate": {
+        "pr": 1699,
+        "base": "main",
+        "mainOid": "fef0168318e1c21d3eefec2ad059ae10f243b9e5",
+        "headOid": "9c4e36a0fffcc1a34d09552161323730d936b7ec",
+        "gatedTree": "a10d6b9335d501c12031184c26fbecef0adcca32",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-split-service-with-di-refuse-colliding-inputs-outputs-pr1699-20260930T233108206Z-46544.log",
+        "gatedAt": "2026-09-30T23:42:02.335Z"
+      }
     },
     {
       "id": "project-mutation-refusals-public-message",
@@ -498,7 +597,7 @@
     {
       "id": "cross-project-refactoring-refusals-public-message",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "cross-project-refactoring-refusals-public-message"
       ],
@@ -524,14 +623,25 @@
         "ruleOneBundleResolved": null
       },
       "dependsOn": [],
-      "branch": null,
+      "branch": "remediation/cross-project-refactoring-refusals-public-message",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1700",
+      "mergedAt": "2026-09-30T23:53:12Z",
       "notes": null,
       "fileSetHash": "6dd7b871d5c072686750b4f41fdae401242ef1600c517f81a18fe8e78eb28e41",
       "stanzaHash": "c79fc7f3066f01358498faac03e9bd8ba6d4de9c354f7d0cc838ef8009f82248",
-      "reviewedStanzaHash": "c79fc7f3066f01358498faac03e9bd8ba6d4de9c354f7d0cc838ef8009f82248"
+      "reviewedStanzaHash": "c79fc7f3066f01358498faac03e9bd8ba6d4de9c354f7d0cc838ef8009f82248",
+      "integrationGate": {
+        "pr": 1700,
+        "base": "main",
+        "mainOid": "e01c1ee7297ad4e109c2dfe7551bad39da30594f",
+        "headOid": "ff2bb1c1c664ef29e3759c60e5b1d5d6105c69ad",
+        "gatedTree": "f70365886a32e8ec8fcdcdc101576e192b7c3f1a",
+        "exit": 0,
+        "ciCmd": "{ pwsh -NoProfile -File ./eng/verify-changelog-fragments.ps1\n} && { pwsh -NoProfile -File ./eng/verify-ai-docs.ps1\n} && { pwsh -NoProfile -File ./eng/verify-actionlint.ps1\n} && { pwsh -NoProfile -File ./eng/verify-release.ps1 -Configuration Release\n} && { pwsh -NoProfile -File ./eng/verify-changed-format.ps1 -BaseRef origin/main -NoRestore\n} && { pwsh -NoProfile -File ./eng/verify-nuget-audit.ps1 -SolutionPath RoslynMcp.slnx\n}",
+        "log": "~/AppData/Local/Temp/bsweep-gate-logs/gate-cross-project-refactoring-refusals-public-message-pr1700-20260930T234211083Z-46724.log",
+        "gatedAt": "2026-09-30T23:53:06.578Z"
+      }
     }
   ],
   "anchorVerification": "performed",
