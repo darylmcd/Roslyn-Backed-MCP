@@ -106,6 +106,10 @@ The grep is intentionally inclusive. When eyeballing the output:
 
 This drift check is automated: `eng/verify-version-drift.ps1` runs at the top of `eng/verify-release.ps1` and exits non-zero if any of the seven files disagree. The manual grep is still useful for quick eyeballing but is no longer the only gate.
 
+## Release Lag Guard
+
+`eng/verify-changelog-fragments.ps1` also warns (never fails) when a current `changelog.d/*.md` fragment with `category: Fixed` has been unreleased longer than `CHANGELOG_FIXED_MAX_AGE_DAYS` days (default `7`; an invalid or non-positive value falls back to `7`). Age is the committer date of the commit that added the fragment, so squash and rebase merges count from merge time. The warning reads `changelog.d/<name>.md: Fixed fragment unreleased for N days (threshold T; ...). Cut a release.` and is also emitted as a `::warning::` annotation under GitHub Actions. The guard is skipped silently on shallow clones or when git history is unavailable.
+
 ## Release Checklist
 
 1. Run `eng/verify-release.ps1`.
