@@ -19,9 +19,8 @@ internal static class StructuredToolResult
 
         if (payload is string or JsonElement or JsonDocument or JsonNode)
         {
-            throw new ArgumentException(
-                "Structured tool results require a typed DTO, not pre-serialized JSON.",
-                nameof(payload));
+            throw new InvalidOperationException(
+                "Structured tool results require a typed DTO, not pre-serialized JSON.");
         }
 
         var structured = JsonSerializer.SerializeToElement(payload, JsonDefaults.Indented);
