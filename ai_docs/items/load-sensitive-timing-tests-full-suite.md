@@ -19,7 +19,8 @@
 ## Evidence
 
 - Plan 20260930T213336Z (2026-09-30/10-01): `MissingWorkspaceRootRetirementTests.TransientGateFailure_RetriesUntilMissingWorkspaceRetires` timed out (17 s) in one local integration gate and passed on rerun; it passed 12/12 in isolation and the clean-main full gate (3378 passed) was green. `SweepAbandonedRoots_LiveOtherProcess_PreservesStaleProcessCopies` failed 3 hosted Windows runs with a 15 s PowerShell cold start (fixed by #1701, `cmd.exe` owner). `AtomicFileWriter_PersistentReaderFailsWithinBound_AndCleansTemp` took ~7 s under the full suite against a ~2.4 s retry budget (2 s in isolation) and failed a local gate and two hosted runs (bound widened to 30 s by #1702).
-- All three started failing after the 2026-09-29/30 parallelization changes (`DoNotParallelize` audit waves, #1684 parallel validation timeout tests).
+- A fourth, `WorkspaceWarmServiceTests.WarmAsync_SecondCall_NoCold_FasterThanFirst` (`tests/RoslynMcp.Tests/WorkspaceWarmServiceTests.cs:58`, asserts the second warm is 10x faster than the first), failed the PR 1704 local gate with first=317 ms second=53 ms under full-suite load and passed on rerun. Add it to the Acceptance audit.
+- All of these started failing after the 2026-09-29/30 parallelization changes (`DoNotParallelize` audit waves, PR 1684 parallel validation timeout tests).
 
 ## Context
 
