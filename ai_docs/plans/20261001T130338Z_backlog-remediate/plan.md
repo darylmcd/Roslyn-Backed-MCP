@@ -50,3 +50,11 @@ Stanza: `plan/extract-type-interface-implementation-guard.md`
 ### 8. extract-type-preserve-private-fields
 
 Stanza: `plan/extract-type-preserve-private-fields.md`
+
+## Retrospective
+
+- **Routes:** 8 initiatives, all `deepen` (incl. `public-argument-exception-core-move`, declared L: routed deepen not split — forcing shape structural-unit + gate-forced-companion; plan review confirmed). Skipped: `timeout-error-names-fired-timer`, `test-run-nobuild-msbuild-properties` (split-budget-exhausted).
+- **Landed:** #1725 workspace-load-missing-assets-auto-restore (1 fix cycle: unguarded probe + duplication; then workspace_reload description 286>250 chars found by the full local gate, fixed in cycle 2), #1726 gated-test-run-command-budget, #1727 tool-parameter-index-schema-drift, #1728 release-lag-guard, #1729 extract-type-interface-implementation-guard, #1731 gated-vuln-scan-command-budget, #1732 public-argument-exception-core-move, #1733 extract-type-preserve-private-fields. Reconcile PRs #1724 (plan), #1730 (gen 1).
+- **Deviations:** local gate-chain ran three times (hit load-sensitive timing tests, filed `gate-timing-tests-fail-under-machine-load`), then switched to rebase + GitHub `validate` per operator preference. #1725/#1728/#1729 were rebased by `update-branch` after cold review (disjoint files), not re-reviewed. #1727 was blocked by a stale cancelled duplicate CI run; re-run fixed it.
+- **Spin-off rows:** `gate-timing-tests-fail-under-machine-load`, `extract-type-override-modifier-stripped` (investigate-first).
+- **Open note:** unreferenced `protected` members stay `protected` in the extracted sealed class (CS0628 warning) after `extract-type-preserve-private-fields`; not filed (unverified).
