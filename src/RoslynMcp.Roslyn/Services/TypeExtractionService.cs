@@ -56,6 +56,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var (membersToExtract, _, analysisNodes) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
         var blockingDependencies = CollectExtractTypeBlockingDependencies(semanticModel, typeSymbol, analysisNodes, ct);
+        blockingDependencies.AddRange(CollectInterfaceImplementationBlockers(semanticModel, typeSymbol, analysisNodes, ct));
 
         // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
         // The previous behavior emitted the warnings but still produced a preview that referenced
@@ -957,6 +958,59 @@ public sealed class TypeExtractionService : ITypeExtractionService
         }
 
         return blockingDependencies;
+    }
+
+    /// <summary>
+    /// extract-type-interface-implementation-guard: refuses members that implement an interface member
+    /// of the source type (implicit or explicit). The extracted type is a base-less composed class, so
+    /// moving such a member leaves the source declaring <c>: IFoo</c> without the member (CS0535); an
+    /// explicit implementation additionally gains an illegal <c>public</c> modifier (CS0106).
+    /// One entry per offending member, naming every interface member it implements.
+    /// </summary>
+    private static List<BlockingDependencyDto> CollectInterfaceImplementationBlockers(
+        SemanticModel semanticModel,
+        INamedTypeSymbol typeSymbol,
+        IReadOnlyList<SyntaxNode> analysisNodes,
+        CancellationToken ct)
+    {
+        var blockers = new List<BlockingDependencyDto>();
+        if (typeSymbol.AllInterfaces.IsDefaultOrEmpty)
+            return blockers;
+
+        foreach (var node in analysisNodes)
+        {
+            if (!IsDeclarationNode(node)) continue;
+
+            var declared = semanticModel.GetDeclaredSymbol(node, ct);
+            if (declared is null) continue;
+
+            var implemented = new List<string>();
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                foreach (var interfaceMember in iface.GetMembers())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var impl = typeSymbol.FindImplementationForInterfaceMember(interfaceMember);
+                    if (impl is not null && SymbolEqualityComparer.Default.Equals(impl, declared))
+                    {
+                        implemented.Add(
+                            $"{iface.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}." +
+                            interfaceMember.Name);
+                    }
+                }
+            }
+
+            if (implemented.Count == 0) continue;
+
+            var memberName = GetAnalysisNodeName(node) ?? node.Kind().ToString();
+            blockers.Add(new BlockingDependencyDto(
+                memberName,
+                $"Member '{memberName}' implements interface member(s) {string.Join(", ", implemented)} of the source type " +
+                $"'{typeSymbol.Name}'; moving it would leave the source type without the required implementation. " +
+                "Drop it from memberNames or extract the interface contract manually."));
+        }
+
+        return blockers;
     }
 
     private static bool IsDeclaredInOrUnderType(ISymbol sym, INamedTypeSymbol typeSymbol)
