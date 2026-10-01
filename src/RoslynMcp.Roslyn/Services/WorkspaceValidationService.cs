@@ -613,7 +613,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 "git is not available on PATH; validated full workspace.",
             WorkspaceValidationFailureOperation.GitStatus =>
                 "git status failed; validated full workspace.",
-            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, null),
+            _ => throw new UnreachableException(
+                $"Undefined {nameof(WorkspaceValidationFailureOperation)} value: {operation}."),
         };
 
         return new WorkspaceValidationFailureDetail(
