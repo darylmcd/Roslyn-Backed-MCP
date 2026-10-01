@@ -99,7 +99,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var identifierCore = newTypeName[0] == '@' ? newTypeName[1..] : newTypeName;
         var fieldName = "_" + char.ToLowerInvariant(identifierCore[0]) + identifierCore[1..];
-        var rewrittenTypeDecl = RewriteSameFileConsumers(
+        var (rewrittenTypeDecl, referencedExtractedNames) = RewriteSameFileConsumers(
             typeDecl,
             semanticModel,
             analysisNodes,
@@ -115,7 +115,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         resolvedTargetPath = Path.GetFullPath(resolvedTargetPath);
 
         // Build the new type declaration with extracted members
-        var newFileRoot = BuildNewFileRoot(sourceRoot, typeDecl, membersToExtract, newTypeName);
+        var newFileRoot = BuildNewFileRoot(
+            sourceRoot, typeDecl, membersToExtract, newTypeName, referencedExtractedNames);
 
         // Remove extracted members from source type and inject field + ctor parameter
         var updatedTypeDecl = InjectFieldAndCtorParameter(
@@ -383,9 +384,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// Rebinds references from retained source members to the extracted member's new owner.
     /// References are matched by symbol identity, so overloads, static access, and method groups
     /// cannot be redirected by a same-spelled unrelated symbol. Extracted declarations themselves
-    /// are skipped and retain their original intra-helper references.
+    /// are skipped and retain their original intra-helper references. Also returns the names of the
+    /// extracted members the retained code still references (each rebound to `_field.Member` /
+    /// `NewType.Member`), because only those must be reachable from the source type.
     /// </summary>
-    private static TypeDeclarationSyntax RewriteSameFileConsumers(
+    private static (TypeDeclarationSyntax Rewritten, IReadOnlySet<string> ReferencedExtractedNames) RewriteSameFileConsumers(
         TypeDeclarationSyntax typeDecl,
         SemanticModel semanticModel,
         IReadOnlyList<SyntaxNode> analysisNodes,
@@ -413,7 +416,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
             fieldName,
             sourceTypeName,
             ct);
-        return (TypeDeclarationSyntax)rewriter.Visit(typeDecl)!;
+        var rewritten = (TypeDeclarationSyntax)rewriter.Visit(typeDecl)!;
+        return (rewritten, rewriter.ReferencedExtractedNames);
     }
 
     private sealed class SameFileConsumerRewriter : CSharpSyntaxRewriter
@@ -424,6 +428,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         private readonly string _fieldName;
         private readonly string _sourceTypeName;
         private readonly CancellationToken _ct;
+        private readonly HashSet<string> _referencedExtractedNames = new(StringComparer.Ordinal);
 
         public SameFileConsumerRewriter(
             SemanticModel semanticModel,
@@ -440,6 +445,9 @@ public sealed class TypeExtractionService : ITypeExtractionService
             _sourceTypeName = sourceTypeName;
             _ct = ct;
         }
+
+        /// <summary>Names of extracted members that retained code references (and so was rebound).</summary>
+        public IReadOnlySet<string> ReferencedExtractedNames => _referencedExtractedNames;
 
         public override SyntaxNode? Visit(SyntaxNode? node)
         {
@@ -523,6 +531,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var resolved = _semanticModel.GetSymbolInfo(node, _ct).Symbol;
             if (resolved is not null && IsExtracted(resolved))
             {
+                _referencedExtractedNames.Add(resolved.Name);
                 symbol = resolved;
                 return true;
             }
@@ -558,15 +567,17 @@ public sealed class TypeExtractionService : ITypeExtractionService
         CompilationUnitSyntax sourceRoot,
         TypeDeclarationSyntax typeDecl,
         IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
-        string newTypeName)
+        string newTypeName,
+        IReadOnlySet<string> referencedExtractedNames)
     {
+        // Extracted members keep their original accessibility; only those the retained source type
+        // still references (rebound to `_field.Member` / `NewType.Member`) are widened to `public`.
         // The new type is emitted as `public sealed class NewType` with NO base list, so any
         // inheritance-only modifiers on the extracted members (`override`, `virtual`, `abstract`,
-        // `sealed`, `new`) become compile errors or meaningless noise. Strip them alongside the
-        // access-modifier normalization. Tracked by
-        // `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas`.
+        // `sealed`, `new`) become compile errors or meaningless noise. Strip them after the
+        // widening. Tracked by `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas`.
         var extractedMembers = membersToExtract
-            .Select(EnsurePublicAccessibility)
+            .Select(member => WidenIfReferencedByRetainedCode(member, referencedExtractedNames))
             .Select(StripInheritanceOnlyModifiers)
             .ToList();
         TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(newTypeName)
@@ -1073,6 +1084,23 @@ public sealed class TypeExtractionService : ITypeExtractionService
             EventDeclarationSyntax e => e.Identifier.Text,
             _ => null
         };
+    }
+
+    private static MemberDeclarationSyntax WidenIfReferencedByRetainedCode(
+        MemberDeclarationSyntax member,
+        IReadOnlySet<string> referencedExtractedNames)
+    {
+        var isReferenced = member switch
+        {
+            FieldDeclarationSyntax f => f.Declaration.Variables
+                .Any(v => referencedExtractedNames.Contains(v.Identifier.ValueText)),
+            MethodDeclarationSyntax m => referencedExtractedNames.Contains(m.Identifier.ValueText),
+            PropertyDeclarationSyntax p => referencedExtractedNames.Contains(p.Identifier.ValueText),
+            EventDeclarationSyntax e => referencedExtractedNames.Contains(e.Identifier.ValueText),
+            _ => false
+        };
+
+        return isReferenced ? EnsurePublicAccessibility(member) : member;
     }
 
     private static MemberDeclarationSyntax EnsurePublicAccessibility(MemberDeclarationSyntax member)
