@@ -594,7 +594,11 @@ public static class WorkspaceTools
 
             if (!execution.Succeeded)
             {
-                throw new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution));
+                // The detailed message (absolute path + output tails) rides as the inner exception for logs;
+                // the public message is path-free so ToolErrorHandler can return it verbatim.
+                throw new PublicInvalidOperationException(
+                    $"workspace auto-restore failed (exit code {execution.ExitCode}); run dotnet restore for the loaded project and retry workspace_reload.",
+                    new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution)));
             }
         }
 
