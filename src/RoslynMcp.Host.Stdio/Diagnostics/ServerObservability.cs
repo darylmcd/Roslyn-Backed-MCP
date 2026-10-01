@@ -21,9 +21,8 @@ internal sealed record ServerObservabilityOptions(ServerObservabilitySinkKind Si
             null or "" or "disabled" => new(ServerObservabilitySinkKind.Disabled),
             "stderr" => new(ServerObservabilitySinkKind.Stderr),
             "file" => new(ServerObservabilitySinkKind.File),
-            _ => throw new ArgumentException(
-                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file'.",
-                nameof(value)),
+            _ => throw new InvalidOperationException(
+                $"{EnvironmentVariableName} must be 'disabled', 'stderr', or 'file'."),
         };
 }
 
