@@ -112,12 +112,16 @@ public static class TestCoverageTools
                 // ValidationBundleTools.RestoreForkAsync.
                 throw;
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
             {
                 // Gate-timeout branch stays a structured Timeout envelope (success=false,
                 // non-retryable), consistent with test_run keeping its timeout result
-                // (TestRunnerService), instead of an isError frame. Ordered before the generic
-                // catch below so cancellation is never rethrown as an unexpected failure.
+                // (TestRunnerService), instead of an isError frame. GatedCommandExecutor and
+                // WorkspaceExecutionGate reclassify their internal timeout CTS into
+                // TimeoutException (not OCE), so TimeoutException is the real production shape;
+                // a non-caller OCE is kept for a gate-internal cancel that was not reclassified.
+                // Ordered after the caller-cancellation rethrow and before the generic catch below
+                // so neither is rethrown as an unexpected failure.
                 ProgressHelper.Report(progress, 1, 1);
                 return SerializeWithDeprecation(TestCoverageCoordinator.BuildTimeoutResult(), deprecation);
             }

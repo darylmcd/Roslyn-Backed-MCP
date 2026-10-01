@@ -59,6 +59,44 @@ public sealed class TestCoverageFailureEnvelopeTests
     }
 
     /// <summary>
+    /// Command-gate timeout: <c>GatedCommandExecutor</c> / <c>WorkspaceExecutionGate</c> reclassify
+    /// their internal timeout into <see cref="TimeoutException"/> (not an
+    /// <see cref="OperationCanceledException"/>), so that is the real production gate-timeout shape.
+    /// It must still yield the structured <c>Timeout</c> failureEnvelope (success=false,
+    /// non-retryable), not rethrow to the shared filter as isError.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_RunnerThrowsTimeoutException_EmitsTimeoutEnvelope()
+    {
+        var gate = new PassthroughGate();
+        var workspace = new FakeWorkspaceManager();
+        var runner = new ThrowingDotnetCommandRunner(new TimeoutException("simulated command-gate timeout"));
+
+        var json = await TestCoverageTools.RunTestCoverageCore(
+            gate,
+            workspace,
+            runner,
+            workspaceId: "ws-coverage-gate-timeout",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsFalse(root.GetProperty("success").GetBoolean(),
+            "Command-gate timeouts must report success=false.");
+
+        var envelope = root.GetProperty("failureEnvelope");
+        Assert.AreEqual(JsonValueKind.Object, envelope.ValueKind,
+            "Command-gate timeouts must populate failureEnvelope, not leave it null.");
+        Assert.AreEqual("Timeout", envelope.GetProperty("errorKind").GetString());
+        Assert.IsFalse(envelope.GetProperty("isRetryable").GetBoolean(),
+            "Timeout is not transient - retry without a config change is wasted.");
+    }
+
+    /// <summary>
     /// (2) An arbitrary <see cref="Exception"/> from <c>RunAsync</c> must propagate (not be
     /// recovered into a success-shaped envelope) so the shared filter formats it as isError.
     /// </summary>
