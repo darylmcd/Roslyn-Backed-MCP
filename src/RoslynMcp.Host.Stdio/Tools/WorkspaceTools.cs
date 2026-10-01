@@ -583,20 +583,61 @@ public static class WorkspaceTools
         // Route through the shared per-workspace command gate so the restore cannot write obj/
         // concurrently with build_workspace/test_run. BuildTimeout is a total budget that includes
         // the queue wait (GatedCommandExecutor.ExecuteAsync), so a held gate yields TimeoutException.
-        var execution = await commandExecutor.ExecuteAsync(
-            status.WorkspaceId,
-            status.LoadedPath,
-            ["restore", status.LoadedPath, "--nologo"],
-            validationOptions.BuildTimeout,
-            ct).ConfigureAwait(false);
-
-        if (!execution.Succeeded)
+        foreach (var (targetPath, packagesPath) in PlanRestoreInvocations(status))
         {
-            throw new InvalidOperationException(BuildRestoreFailureMessage(status.LoadedPath, execution));
+            var execution = await commandExecutor.ExecuteAsync(
+                status.WorkspaceId,
+                targetPath,
+                BuildRestoreArguments(targetPath, packagesPath),
+                validationOptions.BuildTimeout,
+                ct).ConfigureAwait(false);
+
+            if (!execution.Succeeded)
+            {
+                // The detailed message (absolute path + output tails) rides as the inner exception for logs;
+                // the public message is path-free so ToolErrorHandler can return it verbatim.
+                throw new PublicInvalidOperationException(
+                    $"workspace auto-restore failed (exit code {execution.ExitCode}); run dotnet restore for the loaded project and retry workspace_reload.",
+                    new InvalidOperationException(BuildRestoreFailureMessage(targetPath, execution)));
+            }
         }
 
         return await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// workspace-restore-packages-path: decides which restore commands to run. Restore must write to
+    /// the package folder the projects' existing <c>project.assets.json</c> recorded (e.g. a worktree
+    /// scratch folder), not the host's default. One distinct recorded path (or none) → one restore of
+    /// the loaded path; several distinct paths → one restore per project with its own path.
+    /// </summary>
+    private static IReadOnlyList<(string TargetPath, string? PackagesPath)> PlanRestoreInvocations(WorkspaceStatusDto status)
+    {
+        var loadedPath = status.LoadedPath!;
+        var projectPaths = status.Projects.Select(p => p.FilePath).ToList();
+        if (projectPaths.Count == 0 && loadedPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            projectPaths.Add(loadedPath);
+        }
+
+        var recorded = projectPaths
+            .Select(path => (Path: path, PackagesPath: RestoreStalenessDetector.TryReadRestorePackagesPath(path)))
+            .ToList();
+        var distinctPackagesPaths = recorded
+            .Select(r => r.PackagesPath)
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return distinctPackagesPaths.Count > 1
+            ? recorded.Select(r => (r.Path, r.PackagesPath)).ToList()
+            : [(loadedPath, distinctPackagesPaths.SingleOrDefault())];
+    }
+
+    private static IReadOnlyList<string> BuildRestoreArguments(string targetPath, string? packagesPath) =>
+        packagesPath is null
+            ? ["restore", targetPath, "--nologo"]
+            : ["restore", targetPath, "--nologo", "--packages", packagesPath];
 
     private static string SerializeWorkspaceLoadResult(
         WorkspaceStatusDto status,

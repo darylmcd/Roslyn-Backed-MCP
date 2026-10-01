@@ -68,7 +68,7 @@ public sealed class ProjectMutationService : IProjectMutationService
         if (evaluatedPackages.Items.Any(item =>
                 string.Equals(item.Include, request.PackageId, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Package reference '{request.PackageId}' is already present in the evaluated project graph " +
                 "(declared in the .csproj or imported via Directory.Build.props / Directory.Packages.props / SDK imports). " +
                 "No changes needed.");
@@ -79,7 +79,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             if (document.Descendants("PackageReference").Any(element =>
                     string.Equals((string?)element.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new InvalidOperationException($"Package reference '{request.PackageId}' already exists.");
+                throw new PublicInvalidOperationException($"Package reference '{request.PackageId}' already exists.");
             }
 
             var packageReference = new XElement("PackageReference",
@@ -134,7 +134,7 @@ public sealed class ProjectMutationService : IProjectMutationService
 
         if (string.IsNullOrWhiteSpace(project.FilePath) || string.IsNullOrWhiteSpace(referencedProject.FilePath))
         {
-            throw new InvalidOperationException("Both projects must have a file path on disk.");
+            throw new PublicInvalidOperationException("Both projects must have a file path on disk.");
         }
 
         return PreviewProjectMutationAsync(workspaceId, project, document =>
@@ -146,7 +146,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             if (document.Descendants("ProjectReference").Any(element =>
                     string.Equals(NormalizeInclude((string?)element.Attribute("Include")), NormalizeInclude(relativePath), StringComparison.OrdinalIgnoreCase)))
             {
-                throw new InvalidOperationException($"Project reference '{referencedProject.Name}' already exists.");
+                throw new PublicInvalidOperationException($"Project reference '{referencedProject.Name}' already exists.");
             }
 
             var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference");
@@ -216,7 +216,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             var existingElement = propertyGroup.Element(request.PropertyName);
             if (string.Equals(existingElement?.Value, request.Value, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     $"No changes needed — property '{request.PropertyName}' is already set to '{request.Value}'.");
             }
 
@@ -274,7 +274,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 var frameworks = ParseTargetFrameworks(frameworksElement.Value);
                 if (frameworks.Contains(request.TargetFramework, StringComparer.OrdinalIgnoreCase))
                 {
-                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
+                    throw new PublicInvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
                 }
 
                 frameworks.Add(request.TargetFramework);
@@ -287,7 +287,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             {
                 if (string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
+                    throw new PublicInvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
                 }
 
                 targetFrameworkElement.Name = "TargetFrameworks";
@@ -299,7 +299,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             var baseline = !string.IsNullOrWhiteSpace(evalTfs) ? evalTfs : evalTf;
             if (string.IsNullOrWhiteSpace(baseline))
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     "Project file does not declare <TargetFramework> or <TargetFrameworks>, and MSBuild evaluation did not return a value. " +
                     "Ensure the project loads in the workspace and that imports define TargetFramework, or add an explicit element to the .csproj.");
             }
@@ -307,7 +307,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             var list = ParseTargetFrameworks(baseline);
             if (list.Contains(request.TargetFramework, StringComparer.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
+                throw new PublicInvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
             }
 
             list.Add(request.TargetFramework);
@@ -389,7 +389,7 @@ public sealed class ProjectMutationService : IProjectMutationService
 
                 if (frameworks.Count == 0)
                 {
-                    throw new InvalidOperationException("A project must keep at least one target framework.");
+                    throw new PublicInvalidOperationException("A project must keep at least one target framework.");
                 }
 
                 if (frameworks.Count == 1)
@@ -406,13 +406,13 @@ public sealed class ProjectMutationService : IProjectMutationService
             var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault();
             if (targetFrameworkElement is not null)
             {
-                throw new InvalidOperationException("Cannot remove the only target framework from a project.");
+                throw new PublicInvalidOperationException("Cannot remove the only target framework from a project.");
             }
 
             var baseline = !string.IsNullOrWhiteSpace(evalTfs) ? evalTfs : evalTf;
             if (string.IsNullOrWhiteSpace(baseline))
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     "Project file does not declare <TargetFramework> or <TargetFrameworks>, and MSBuild evaluation did not return a value.");
             }
 
@@ -421,7 +421,7 @@ public sealed class ProjectMutationService : IProjectMutationService
 
             if (list.Count == 0)
             {
-                throw new InvalidOperationException(
+                throw new PublicInvalidOperationException(
                     "Removing this target framework would leave the project with none. The value currently comes from MSBuild imports (e.g. Directory.Build.props). " +
                     "Edit that file or add an explicit <TargetFramework> override in this .csproj.");
             }
@@ -482,7 +482,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             if (document.Descendants("PackageVersion").Any(element =>
                     string.Equals((string?)element.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new InvalidOperationException($"Central package version '{request.PackageId}' already exists.");
+                throw new PublicInvalidOperationException($"Central package version '{request.PackageId}' already exists.");
             }
 
             var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageVersion");
@@ -621,7 +621,7 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
         {
-            throw new InvalidOperationException($"Project file was not found for '{project.Name}'.");
+            throw new PublicInvalidOperationException($"Project file was not found for '{project.Name}'.");
         }
 
         return PreviewXmlFileMutationAsync(workspaceId, project.FilePath, mutator, description, ct, warnings);
@@ -654,20 +654,20 @@ public sealed class ProjectMutationService : IProjectMutationService
     private Project ResolveRoslynProject(string workspaceId, string projectName)
     {
         return _workspace.GetProject(workspaceId, projectName)
-               ?? throw new InvalidOperationException($"Project not found: {projectName}");
+               ?? throw new PublicInvalidOperationException($"Project not found: {projectName}");
     }
 
     private static void ValidateProjectReferenceCanBeAdded(Project project, Project referencedProject)
     {
         if (project.Id == referencedProject.Id)
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Project '{project.Name}' cannot reference itself.");
         }
 
         if (ProjectGraphHelpers.WouldCreateProjectReferenceCycle(project, referencedProject))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Adding a project reference from '{project.Name}' to '{referencedProject.Name}' would create a project-reference cycle.");
         }
     }
@@ -681,7 +681,7 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         if (!AllowedProperties.Contains(propertyName))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 $"Property '{propertyName}' is not supported. Allowed properties: {string.Join(", ", AllowedProperties.OrderBy(value => value, StringComparer.Ordinal))}.");
         }
     }
@@ -690,7 +690,7 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         if (!SupportedConditionPattern.IsMatch(condition))
         {
-            throw new InvalidOperationException(
+            throw new PublicInvalidOperationException(
                 "Conditional property updates only support equality conditions on $(Configuration), $(TargetFramework), or $(Platform). " +
                 "Use MSBuild-style single-quoting: '$(Configuration)' == 'Release'");
         }
@@ -706,7 +706,7 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         if (!MsBuildMetadataHelper.IsCentralPackageManagementEnabled(packagesPropsPath))
         {
-            throw new InvalidOperationException("Central package management is not enabled for the loaded workspace.");
+            throw new PublicInvalidOperationException("Central package management is not enabled for the loaded workspace.");
         }
     }
 
@@ -744,7 +744,7 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
         {
-            throw new InvalidOperationException($"Project file was not found for '{project.Name}'.");
+            throw new PublicInvalidOperationException($"Project file was not found for '{project.Name}'.");
         }
 
         var content = await File.ReadAllTextAsync(project.FilePath, ct).ConfigureAwait(false);

@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Logging;
-using RoslynMcp.Core.Models;
-using RoslynMcp.Roslyn.Helpers;
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -384,7 +384,43 @@ internal class RestoreStalenessDetector
         return centralPackages;
     }
 
-    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
+    /// <summary>
+    /// workspace-restore-packages-path: reads <c>project.restore.packagesPath</c> from the project's
+    /// existing <c>obj/project.assets.json</c> — the package folder the last restore wrote to (for
+    /// example a worktree scratch folder). Returns <see langword="null"/> when the assets file, the
+    /// property, or a non-empty string value is absent (first restore) or the file cannot be read.
+    /// </summary>
+    public static string? TryReadRestorePackagesPath(string projectFilePath)
+    {
+        try
+        {
+            var assetsPath = GetExistingAssetsPath(projectFilePath);
+            if (assetsPath is null)
+            {
+                return null;
+            }
+
+            using var stream = File.OpenRead(assetsPath);
+            using var document = JsonDocument.Parse(stream);
+            if (document.RootElement.TryGetProperty("project", out var project) &&
+                project.TryGetProperty("restore", out var restore) &&
+                restore.ValueKind == JsonValueKind.Object &&
+                restore.TryGetProperty("packagesPath", out var packagesPath) &&
+                packagesPath.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(packagesPath.GetString()))
+            {
+                return packagesPath.GetString();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // Unreadable assets file: treated as a first restore (no --packages override).
+        }
+
+        return null;
+    }
+
+    private static string? GetExistingAssetsPath(string projectFilePath)
     {
         var projectDirectory = Path.GetDirectoryName(projectFilePath);
         if (string.IsNullOrWhiteSpace(projectDirectory))
@@ -393,7 +429,13 @@ internal class RestoreStalenessDetector
         }
 
         var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath))
+        return File.Exists(assetsPath) ? assetsPath : null;
+    }
+
+    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
+    {
+        var assetsPath = GetExistingAssetsPath(projectFilePath);
+        if (assetsPath is null)
         {
             return null;
         }
